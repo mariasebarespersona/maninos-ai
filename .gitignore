@@ -1,0 +1,79 @@
+__pycache__/
+.venv/
+.env
+.env.local
+*.log
+*.db
+*.db-shm
+*.db-wal
+backend.log
+web/frontend.log
+node_modules/
+packages/*/node_modules/
+web/node_modules/
+/tmp/
+.DS_Store
+web/tsconfig.tsbuildinfo
+data/**
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.cleanenv/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store
+
+# IDEs / editors
+.vscode/
+.idea/
+*.iml
+
+# Local data / cache
+*.sqlite
+*.db
+*.log
+.sessions.json
+
+# Credentials and service files
+*.key
+*.pem
+
+# Python tooling
+.build/
+.pytest_cache/
+.mypy_cache/
+coverage/
+htmlcov/
+
+# Node/gradio temp
+node_modules/
+web/.next/
+web/node_modules/
+.env.*
+.env.bak
+
+# Logs
+logs/
+*.log
+
+# Legacy/backup files (RAMA → MANINOS migration)
+agentic_rama_legacy.py
+agents/numbers_agent_legacy_rama.py
+router/scaffold_legacy.py
+prompts/tasks/numbers_legacy_rama.md
+prompts/agents/docs_agent/set_strategy_legacy_rama.md
+
+# Frontend legacy files
+web/src/components/legacy/
+web/src/app/api/legacy/
+web/src/app/legacy/

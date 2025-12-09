@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 
+    PALETTE: "Maninos Corporate" 
+    Primary: Deep Royal Blue (Trust, Professionalism)
+    Secondary: Warm Gold/Sand (Value, Texas)
+    Background: Clean White/Slate
+  */
+
+  /* Base Hues */
+  --slate-50:  #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+
+  /* Brand Blue */
+  --brand-50:  #eff6ff;
+  --brand-100: #dbeafe;
+  --brand-200: #bfdbfe;
+  --brand-500: #3b82f6;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a; /* Primary Brand Color */
+
+  /* Accent Gold */
+  --gold-100: #fef3c7;
+  --gold-400: #fbbf24;
+  --gold-500: #f59e0b;
+  --gold-600: #d97706;
+
+  /* Semantic Variables */
+  
+  /* Backgrounds */
+  --bg-app: var(--slate-50);
+  --bg-surface: #ffffff;
+  --bg-surface-glass: rgba(255, 255, 255, 0.9);
+  
+  /* Text */
+  --text-primary: var(--slate-900);
+  --text-secondary: var(--slate-500);
+  --text-tertiary: var(--slate-400);
+  --text-brand: var(--brand-900);
+
+  /* Borders */
+  --border-subtle: var(--slate-200);
+  --border-strong: var(--slate-300);
+  --border-focus: var(--brand-500);
+
+  /* Compatibility Mapping (for existing components using old vars) */
+  --stone-50: var(--slate-50);
+  --stone-100: var(--slate-100);
+  --stone-200: var(--slate-200);
+  --stone-300: var(--slate-300);
+  --stone-400: var(--slate-400);
+  
+  --forest-50: var(--brand-50);
+  --forest-100: var(--brand-100);
+  --forest-500: var(--brand-500);
+  --forest-800: var(--brand-800);
+  --forest-900: var(--brand-900);
+  
+  --wheat-100: var(--gold-100);
+  --wheat-400: var(--gold-400);
+  --wheat-500: var(--gold-500);
+}
+
+@layer base {
+  body {
+    @apply antialiased text-[color:var(--text-primary)] bg-[color:var(--bg-app)];
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-inter), sans-serif; /* Cleaner, more modern than serif */
+  }
+}
+
+@layer components {
+  .rama-card {
+    @apply bg-white rounded-xl border border-[color:var(--border-subtle)] shadow-sm transition-all duration-200;
+  }
+  .rama-card:hover {
+    @apply shadow-md border-[color:var(--brand-200)];
+  }
+
+  .btn-primary {
+    @apply bg-[color:var(--brand-900)] text-white font-medium px-4 py-2 rounded-lg 
+           shadow-sm hover:bg-[color:var(--brand-800)] hover:shadow-md 
+           active:transform active:scale-[0.98] transition-all duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-white border border-[color:var(--border-strong)] text-[color:var(--text-secondary)] 
+           font-medium px-4 py-2 rounded-lg hover:bg-[color:var(--slate-50)] hover:text-[color:var(--text-primary)]
+           transition-all duration-200;
+  }
+
+  /* Scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--slate-300) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--slate-300);
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--slate-400);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
