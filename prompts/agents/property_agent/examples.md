@@ -2,6 +2,99 @@
 
 Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
+## 🆕 Ejemplo MODERNO: Flujo con Checklist Interactivo (2024)
+
+### Conversación Completa
+
+**Usuario**: "Quiero evaluar Sunny Park 14 en 123 Main St. Precio 10000, market value 40000"
+
+**Agent** (Tool Calls):
+```json
+[
+  {"tool": "add_property", "args": {"name": "Sunny Park 14", "address": "123 Main St"}},
+  {"tool": "calculate_maninos_deal", "args": {"asking_price": 10000, "market_value": 40000, "property_id": "abc-123"}}
+]
+```
+
+**Agent** (Response):
+```
+✅ PASO 1 COMPLETADO - Regla del 70%
+El precio ($10,000) está dentro del límite. ¿Deseas que genere el checklist de inspección?
+```
+
+**Usuario**: "Sí"
+
+**Agent** (Tool Calls):
+```json
+[{"tool": "get_inspection_checklist", "args": {}}]
+```
+
+**Agent** (Response):
+```
+📋 He generado el **Checklist de Inspección Interactivo**. 
+Por favor, marca los defectos encontrados y selecciona el estado del título en la pantalla. 
+Cuando termines, avísame (di 'listo' o 'siguiente paso') para continuar.
+```
+
+*(El usuario marca Roof y Windows en el UI. Total: $4,000. Title Status: Clean/Blue. Se guarda automáticamente en la BD)*
+
+**Usuario**: "listo" o "siguiente paso" o "en qué paso estamos?"
+
+**Agent** (Tool Calls):
+```json
+[{"tool": "get_property", "args": {"property_id": "abc-123"}}]
+```
+
+**Tool Response**:
+```json
+{
+  "repair_estimate": 4000,
+  "title_status": "Clean/Blue",
+  "acquisition_stage": "passed_70_rule"
+}
+```
+
+**Agent** (ANALIZA):
+- ✅ `repair_estimate = 4000` → Defectos marcados
+- ✅ `title_status = "Clean/Blue"` → Título verificado
+- **CONCLUSIÓN**: Paso 2 COMPLETO
+
+**Agent** (Response):
+```
+✅ Perfecto, veo que completaste la inspección:
+- Reparaciones estimadas: $4,000
+- Estado del título: Clean/Blue
+
+Todo en orden. Para calcular la Regla del 80%, necesito el **ARV (After Repair Value)**. 
+¿Cuál es el valor DESPUÉS de hacer las reparaciones?
+```
+
+**Usuario**: "ARV es 90000"
+
+**Agent** (Tool Calls):
+```json
+[
+  {
+    "tool": "calculate_maninos_deal",
+    "args": {
+      "asking_price": 10000,
+      "repair_costs": 4000,
+      "arv": 90000,
+      "market_value": 40000,
+      "property_id": "abc-123"
+    }
+  }
+]
+```
+
+**Agent** (Response):
+```
+🟢 PASO 4 COMPLETADO - READY TO BUY
+...
+```
+
+---
+
 ## 🚨 REGLA CRÍTICA: NUNCA INVENTES NÚMEROS
 
 **SI EL USUARIO NO PROPORCIONA asking_price O market_value:**
