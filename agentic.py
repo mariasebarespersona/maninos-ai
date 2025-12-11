@@ -18,9 +18,21 @@ import logfire
 logfire.instrument_openai()
 
 from tools.registry import TOOLS
+from tools.property_tools import get_property, list_properties, find_property
+from tools.docs_tools import list_documents
 from tools.contracts import validate_tool_call
 
 logger = logging.getLogger(__name__)
+
+# MainAgent only needs READ-ONLY tools for status queries
+# All execution tools (generate_buy_contract, calculate_maninos_deal, etc.) 
+# should be handled by specialized agents (PropertyAgent, DocsAgent)
+MAIN_AGENT_TOOLS = [
+    get_property,
+    list_properties,
+    find_property,
+    list_documents
+]
 
 # ==================== STATE DEFINITION ====================
 
@@ -98,12 +110,12 @@ def assistant_node(state: AgentState) -> Dict[str, Any]:
     recent_msgs = msgs[-MAX_RECENT_MESSAGES:] if len(msgs) > MAX_RECENT_MESSAGES else msgs
     coordinator_msgs.extend(recent_msgs)
     
-    # Initialize LLM
+    # Initialize LLM (with READ-ONLY tools for MainAgent)
     model = ChatOpenAI(
         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         temperature=0.0,
         streaming=False
-    ).bind_tools(TOOLS)
+    ).bind_tools(MAIN_AGENT_TOOLS)
     
     # Invoke
     try:
@@ -228,11 +240,37 @@ def tools_with_validation(state: AgentState) -> Dict[str, Any]:
         # Tool call is valid - execute it
         logger.info(f"[tools_with_validation] Executing: {tool_name}")
     
-    # All validations passed - execute tools normally
-    tool_node = ToolNode(TOOLS)
-    result = tool_node.invoke(state)
+    # All validations passed - execute tools normally (using MainAgent's limited toolset)
+    tool_node = ToolNode(MAIN_AGENT_TOOLS)
     
-    return result
+    try:
+        result = tool_node.invoke(state)
+        
+        # Ensure result is not empty to avoid LangGraph InvalidUpdateError
+        if not result or (isinstance(result, dict) and not result):
+            logger.warning("[tools_with_validation] Tool execution returned empty result, creating error message")
+            return {
+                "messages": [
+                    ToolMessage(
+                        content="❌ Tool execution failed or returned empty result",
+                        tool_call_id=state.get("messages", [])[-1].tool_calls[0].get("id", "") if state.get("messages") else "",
+                        name="unknown"
+                    )
+                ]
+            }
+        
+        return result
+    except Exception as e:
+        logger.error(f"[tools_with_validation] Tool execution error: {e}", exc_info=True)
+        return {
+            "messages": [
+                ToolMessage(
+                    content=f"❌ Error executing tool: {str(e)}",
+                    tool_call_id=state.get("messages", [])[-1].tool_calls[0].get("id", "") if state.get("messages") else "",
+                    name="unknown"
+                )
+            ]
+        }
 
 
 # ==================== GRAPH CONSTRUCTION ====================
