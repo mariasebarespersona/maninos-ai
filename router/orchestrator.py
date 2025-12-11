@@ -181,8 +181,16 @@ class OrchestrationRouter:
                                 # INTELLIGENT ROUTING: Check what the AI just asked about
                                 # This allows both PropertyAgent and DocsAgent to work within the acquisition flow
                                 
+                                # PRIORITY #0: Property deletion (MUST be before document checks)
+                                # If message asks about deleting PROPERTY (even if mentions "documents"), use PropertyAgent
+                                if ("eliminar" in ai_content or "eliminación" in ai_content or "borrar" in ai_content) and "propiedad" in ai_content:
+                                    continue_with_agent = "PropertyAgent"
+                                    continue_intent = "property.confirm"
+                                    logger.info(f"[orchestrator] 🎯 Confirmation about property deletion → PropertyAgent")
+                                
                                 # PRIORITY #1: Document-related questions → DocsAgent
-                                if any(kw in ai_content for kw in ["documento", "archivo", "pdf", "subir", "upload", "zillow", "mhvillage", "adjuntar"]):
+                                # BUT: Only if NOT about deleting property (checked above)
+                                elif any(kw in ai_content for kw in ["documento", "archivo", "pdf", "subir", "upload", "zillow", "mhvillage", "adjuntar"]) and "eliminar" not in ai_content:
                                     continue_with_agent = "DocsAgent"
                                     continue_intent = "docs.confirm"
                                     logger.info(f"[orchestrator] 🎯 Confirmation about documents → DocsAgent")
