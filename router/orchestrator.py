@@ -80,16 +80,17 @@ class OrchestrationRouter:
             full_context["session_id"] = session_id
             full_context["property_id"] = property_id
             
-            # Add property_name to context so agent knows which property it's working with
+            # Add property_name and acquisition_stage to context
             if property_id:
                 try:
                     from tools.property_tools import get_property
                     prop_info = get_property(property_id)
                     if prop_info:
                         full_context["property_name"] = prop_info.get("name")
-                        logger.info(f"[orchestrator] Working with property: {full_context['property_name']} ({property_id})")
+                        full_context["acquisition_stage"] = prop_info.get("acquisition_stage")
+                        logger.info(f"[orchestrator] Working with property: {full_context['property_name']} ({property_id}), stage={full_context['acquisition_stage']}")
                 except Exception as e:
-                    logger.warning(f"[orchestrator] Could not get property name: {e}")
+                    logger.warning(f"[orchestrator] Could not get property info: {e}")
             
             # CRITICAL: Load conversation history from LangGraph checkpointer
             # This enables specialized agents to maintain context across turns
