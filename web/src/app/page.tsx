@@ -11,7 +11,7 @@ import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCirc
 
 // --- Rich UI Components ---
 
-function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { content: string, propertyId: string | null, onPropertyUpdate?: () => void }) {
+function RichMessageRenderer({ content, propertyId, property, onPropertyUpdate }: { content: string, propertyId: string | null, property: MobileHomeProperty | null, onPropertyUpdate?: () => void }) {
   // 1. Detect Checklist - ONLY show when agent EXPLICITLY asks user to complete checklist
   // CRITICAL: Must be VERY specific to avoid showing checklist when agent just mentions "inspection" casually
   const contentLower = content.toLowerCase();
@@ -402,7 +402,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                         {m.role === 'user' ? (
                             <div className="whitespace-pre-wrap">{m.content}</div>
                         ) : (
-                            <RichMessageRenderer content={m.content} propertyId={propertyId} onPropertyUpdate={() => propertyId && fetchProperty(propertyId)} />
+                            <RichMessageRenderer content={m.content} propertyId={propertyId} property={property} onPropertyUpdate={() => propertyId && fetchProperty(propertyId)} />
           )}
                 </div>
               </div>
