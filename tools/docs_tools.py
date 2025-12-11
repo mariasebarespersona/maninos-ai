@@ -534,14 +534,18 @@ def list_docs(property_id: str) -> List[Dict]:
     logger = logging.getLogger(__name__)
     
     try:
-        sb.postgrest.schema = "public"
-        result = sb.rpc("list_property_documents", {"p_id": property_id}).execute().data
+        # MANINOS: Read directly from maninos_documents table (simple approach)
+        result = sb.table("maninos_documents").select("*").eq("property_id", property_id).execute()
+        documents = result.data or []
         
-        # Return full structure - optimization was breaking other parts of the code
-        # that expect document_group, document_subgroup, document_name keys
-        return result or []
-    except Exception as rpc_error:
-        logger.error(f"❌ RPC failed: {rpc_error}")
+        logger.info(f"✅ [list_docs] Found {len(documents)} documents for property {property_id}")
+        
+        # Return list of documents with storage_key indicating they're uploaded
+        return documents
+        
+    except Exception as e:
+        logger.error(f"❌ [list_docs] Error reading from maninos_documents: {e}")
+        # Return empty list if table doesn't exist or other error
         return []
 
 def signed_url_for(property_id: str, document_group: str, document_subgroup: str, document_name: str, expires: int = 31536000) -> str:

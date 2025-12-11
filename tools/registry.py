@@ -219,18 +219,19 @@ def list_docs_tool(property_id: str) -> Dict:
         "summary": "Human-readable summary"
     }
     
-    Each document has: document_group, document_subgroup, document_name, storage_key, metadata."""
+    Each document has: document_name, document_type, storage_key, uploaded_at."""
     import logging
     logger = logging.getLogger(__name__)
     
     docs = _list_docs(property_id)
     
-    # Explicitly separate uploaded vs pending
-    uploaded_docs = [d for d in docs if d.get("storage_key")]
-    pending_docs = [d for d in docs if not d.get("storage_key")]
+    # For MANINOS: All documents in maninos_documents table have storage_key (they're all uploaded)
+    # There's no concept of "pending" documents in this simplified structure
+    uploaded_docs = docs  # All documents from maninos_documents are uploaded
+    pending_docs = []
     
     total_uploaded = len(uploaded_docs)
-    total_pending = len(pending_docs)
+    total_pending = 0
     
     logger.info(f"🔍 [list_docs_tool] Property {property_id[:8]}...")
     logger.info(f"   - Total docs: {len(docs)}")
@@ -239,11 +240,21 @@ def list_docs_tool(property_id: str) -> Dict:
     
     # Create explicit summary to prevent agent confusion
     if total_uploaded == 0:
-        summary = f"No hay documentos subidos. Hay {total_pending} documentos pendientes."
+        summary = "No hay documentos subidos."
     elif total_uploaded == 1:
-        summary = f"Hay 1 documento subido y {total_pending} pendientes."
+        summary = f"Hay 1 documento subido: {uploaded_docs[0].get('document_name', 'Unknown')}"
+    elif total_uploaded == 2:
+        summary = f"Hay 2 documentos subidos: {uploaded_docs[0].get('document_name', '')} y {uploaded_docs[1].get('document_name', '')}"
     else:
-        summary = f"Hay {total_uploaded} documentos subidos y {total_pending} pendientes."
+        summary = f"Hay {total_uploaded} documentos subidos."
+    
+    # Log all uploaded documents for verification
+    if uploaded_docs:
+        logger.info(f"   - Uploaded documents:")
+        for doc in uploaded_docs:
+            doc_type = doc.get('document_type', 'Unknown')
+            doc_name = doc.get('document_name', 'Unknown')
+            logger.info(f"     * [{doc_type}] {doc_name}")
     
     # Return structured data that's IMPOSSIBLE to misinterpret
     return {
@@ -254,12 +265,6 @@ def list_docs_tool(property_id: str) -> Dict:
         "summary": summary,
         "all_docs": docs  # Backwards compatibility
     }
-    
-    # Log all uploaded documents for verification
-    if uploaded_docs:
-        logger.info(f"   - Uploaded documents:")
-        for doc in uploaded_docs:
-            logger.info(f"     * {doc.get('document_group')} / {doc.get('document_subgroup')} / {doc.get('document_name')}")
     
     return docs
 
