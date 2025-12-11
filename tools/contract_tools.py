@@ -4,8 +4,11 @@ Contract Generation Tools for Maninos AI
 Generates purchase contracts for mobile homes after acquisition analysis.
 """
 
+import logging
 from datetime import datetime
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def generate_buy_contract(
