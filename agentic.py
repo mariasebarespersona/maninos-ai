@@ -19,7 +19,7 @@ logfire.instrument_openai()
 
 from tools.registry import TOOLS
 from tools.property_tools import get_property, list_properties, find_property
-from tools.docs_tools import list_documents
+from tools.docs_tools import list_docs
 from tools.contracts import validate_tool_call
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ MAIN_AGENT_TOOLS = [
     get_property,
     list_properties,
     find_property,
-    list_documents
+    list_docs
 ]
 
 # ==================== STATE DEFINITION ====================
