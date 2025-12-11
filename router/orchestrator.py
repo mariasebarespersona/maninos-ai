@@ -188,7 +188,7 @@ class OrchestrationRouter:
                                     logger.info(f"[orchestrator] 🎯 Confirmation about documents → DocsAgent")
                                 
                                 # PRIORITY #2: Property evaluation questions → PropertyAgent
-                                elif any(kw in ai_content for kw in ["contrato", "generar", "checklist", "arv", "precio", "70%", "80%", "inspección", "reparaciones", "título"]):
+                                elif any(kw in ai_content for kw in ["contrato", "generar", "checklist", "arv", "precio", "70%", "80%", "inspección", "reparaciones", "título", "eliminar", "eliminación", "borrar"]):
                                     continue_with_agent = "PropertyAgent"
                                     continue_intent = "property.confirm"
                                     logger.info(f"[orchestrator] 🎯 Confirmation about property evaluation → PropertyAgent")
