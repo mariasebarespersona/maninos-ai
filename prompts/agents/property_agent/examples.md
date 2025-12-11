@@ -38,26 +38,30 @@ Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
 ### ✅ Conversación CORRECTA
 
+**Turn 1: Usuario pide eliminar**
+
 **Usuario**: "Elimina la propiedad Casa Sebares"
 
-**Agent** (Tool Call - buscar propiedad primero):
+**Agent Actions**:
+1. Si ya estás en esa propiedad (property_id en contexto): Llama `get_property(property_id)`
+2. Si NO estás en esa propiedad: Llama `find_property(name="Casa Sebares")`
+
+**Agent Tool Call**:
 ```json
-[
-  {"tool": "find_property", "args": {"name": "Casa Sebares"}}
-]
+{"tool": "get_property", "args": {"property_id": "c21013f0-8082-453d-9db9-8ef3c4b06d41"}}
 ```
 
 **Tool Result**:
 ```json
 {
-  "id": "abc-123-...",
+  "id": "c21013f0-8082-453d-9db9-8ef3c4b06d41",
   "name": "Casa Sebares",
   "address": "Ronda de Sobradiel 15",
   "acquisition_stage": "passed_70_rule"
 }
 ```
 
-**Agent Response** (PEDIR CONFIRMACIÓN - OBLIGATORIO):
+**Agent Response** (MUST ask for confirmation - NO tool calls here):
 ```
 ⚠️ CONFIRMAR ELIMINACIÓN
 
@@ -76,13 +80,15 @@ Responde "SÍ" o "CONFIRMAR" para proceder con la eliminación.
 Responde "NO" o "CANCELAR" para mantener la propiedad.
 ```
 
+---
+
+**Turn 2: Usuario confirma**
+
 **Usuario**: "SÍ"
 
-**Agent** (Tool Call - AHORA SÍ eliminar):
+**Agent Tool Call** (AHORA SÍ eliminar):
 ```json
-[
-  {"tool": "delete_property", "args": {"property_id": "abc-123-...", "purge_docs_first": true}}
-]
+{"tool": "delete_property", "args": {"property_id": "c21013f0-8082-453d-9db9-8ef3c4b06d41", "purge_docs_first": true}}
 ```
 
 **Tool Result**:
@@ -106,28 +112,22 @@ La propiedad ha sido eliminada de:
 Para evaluar una nueva propiedad, dime su dirección.
 ```
 
-### ❌ Conversación INCORRECTA
+**⚠️ RECUERDA:** 
+- Turn 1: SIEMPRE pedir confirmación (después de obtener datos con get_property)
+- Turn 2: SOLO eliminar si el usuario confirma con "SÍ"
+- NUNCA elimines en el primer mensaje sin confirmación
 
-**Usuario**: "Elimina la propiedad Casa Sebares"
+---
 
-**Agent** (❌ NO hacer esto - eliminar sin confirmar):
-```json
-[
-  {"tool": "delete_property", "args": {"property_id": "abc-123-..."}}
-]
-```
+### 🔄 Alternativa: Usuario cancela la eliminación
 
-**❌ ERROR: NUNCA elimines sin pedir confirmación explícita primero.**
+**Turn 1**: Usuario pide eliminar → Agent llama `get_property` → Agent pide confirmación
 
-### 🔄 Flujo si el usuario cancela:
-
-**Usuario**: "Elimina Casa Sebares"
-
-**Agent**: [Pide confirmación como arriba]
+**Turn 2**: 
 
 **Usuario**: "NO" o "CANCELAR"
 
-**Agent Response**:
+**Agent** (NO tool calls - solo responder):
 ```
 ✅ Operación cancelada
 
