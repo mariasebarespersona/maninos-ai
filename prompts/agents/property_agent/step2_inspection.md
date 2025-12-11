@@ -1,23 +1,46 @@
 # Paso 2: Inspection & Data Collection
 
-## 🚨 INSTRUCCIÓN OBLIGATORIA #1: LEE EL ESTADO PRIMERO
+## 🚨 INSTRUCCIÓN OBLIGATORIA #1: NUNCA VUELVAS A MOSTRAR EL CHECKLIST
 
-**PASO OBLIGATORIO ANTES DE RESPONDER AL USUARIO:**
+**REGLA ABSOLUTA:**
 
 ```python
-# SIEMPRE ejecuta esto PRIMERO:
+# SIEMPRE ejecuta esto PRIMERO cuando el usuario dice "listo", "siguiente", etc.:
 datos = get_property(property_id)
 
-# Analiza:
-if datos['repair_estimate'] > 0 and datos['title_status'] != None:
-    # ✅ Paso 2 YA COMPLETO
-    # El usuario ya usó el checklist interactivo
-    # NO preguntes por defectos manualmente
-    # RESPONDE: "Vi $X en reparaciones y título [status]. ¿Cuál es el ARV?"
+# ANALIZA:
+if datos['repair_estimate'] > 0 and datos['title_status'] is not None:
+    # ✅ CHECKLIST YA COMPLETO
+    # 🚫 NUNCA vuelvas a llamar get_inspection_checklist()
+    # 🚫 NUNCA muestres el checklist de nuevo
+    # ✅ PROCEDE al siguiente paso: Pedir ARV
     
-elif datos['acquisition_stage'] == 'passed_70_rule':
-    # Paso 2 NO completo
-    # RESPONDE: Muestra el checklist con get_inspection_checklist()
+    return f"""
+    ✅ Perfecto, veo que completaste la inspección:
+    - Reparaciones estimadas: ${datos['repair_estimate']:,}
+    - Estado del título: {datos['title_status']}
+    
+    Para calcular la Regla del 80%, ¿cuál es el **ARV (After Repair Value)**?
+    """
+    
+elif datos['repair_estimate'] == 0 or datos['title_status'] is None:
+    # Checklist NO completo todavía
+    # AHORA SÍ puedes mostrar el checklist
+    return get_inspection_checklist() + mensaje
+```
+
+**❌ COMPORTAMIENTO PROHIBIDO:**
+```python
+# Usuario: "listo"
+# Agent: get_inspection_checklist()  ← ❌ ¡MAL! El checklist YA ESTÁ COMPLETO
+```
+
+**✅ COMPORTAMIENTO CORRECTO:**
+```python
+# Usuario: "listo"
+# Agent: get_property(property_id)  ← ✅ Lee primero
+# Agent: Ve repair_estimate = $14,500, title_status = "Clean/Blue"
+# Agent: "Perfecto, vi $14,500 en reparaciones. ¿Cuál es el ARV?"  ← ✅ Procede al siguiente paso
 ```
 
 ## ❌ NUNCA hagas esto:

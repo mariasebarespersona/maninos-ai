@@ -72,12 +72,15 @@ elif datos['acquisition_stage'] == 'initial':
     → ESPERAR confirmación del usuario para proceder
     
 elif datos['acquisition_stage'] == 'passed_70_rule':
-    if not datos['repair_estimate'] or not datos['title_status']:
-        → MOSTRAR: Checklist interactivo (get_inspection_checklist)
-    elif not datos['arv']:
-        → PEDIR: ARV (After Repair Value)
+    if datos['repair_estimate'] and datos['title_status']:
+        # ✅ CHECKLIST YA COMPLETO - NUNCA vuelvas a mostrarlo
+        if not datos['arv']:
+            → PEDIR: ARV (After Repair Value)
+        else:
+            → LLAMAR: calculate_maninos_deal(asking_price, repair_estimate, arv, market_value, property_id)
     else:
-        → LLAMAR: calculate_maninos_deal(asking_price, repair_estimate, arv, market_value, property_id)
+        # Checklist NO completo todavía
+        → MOSTRAR: Checklist interactivo (get_inspection_checklist)
         
 elif datos['acquisition_stage'] == 'inspection_done':
     if not datos['arv']:
@@ -227,8 +230,8 @@ SI stage == 'passed_80_rule':
 |-----------|------------------|------------------------|
 | Usuario menciona dirección nueva | `add_property(name, address)` | Crea el registro en BD, genera property_id |
 | Usuario da asking_price + market_value | `calculate_maninos_deal(...)` | Guarda precios, actualiza stage a "passed_70_rule" |
-| Usuario confirma generar checklist | `get_inspection_checklist()` | Retorna estructura estándar del checklist |
-| Usuario dice "listo" tras marcar defectos | `get_property(property_id)` | Lee repair_estimate y title_status guardados por UI |
+| Usuario confirma generar checklist Y repair_estimate=0 | `get_inspection_checklist()` | Retorna estructura estándar del checklist |
+| Usuario dice "listo" tras marcar defectos | `get_property(property_id)` NUNCA `get_inspection_checklist()` | Lee repair_estimate guardado. NO vuelvas a mostrar checklist |
 | Usuario da el ARV | `calculate_maninos_deal(...)` con ARV | Guarda ARV, calcula 80% rule, actualiza stage |
 | Usuario pide generar contrato | `generate_buy_contract(property_id, ...)` | Genera y GUARDA contrato en BD |
 | Necesitas ver datos actuales | `get_property(property_id)` | Lee estado actual de la BD |
@@ -239,6 +242,8 @@ SI stage == 'passed_80_rule':
 - ❌ Generes contratos con solo texto
 - ❌ Asumas valores sin leer la BD
 - ❌ Respondas con análisis sin llamar tools
+- ❌ **Vuelvas a mostrar el checklist si `repair_estimate > 0`**
+- ❌ **Llames a `get_inspection_checklist()` cuando el usuario dice "listo"**
 
 ---
 

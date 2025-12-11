@@ -223,6 +223,33 @@ Todo en orden. Para calcular la Regla del 80%, necesito el **ARV (After Repair V
 ¿Cuál es el valor DESPUÉS de hacer las reparaciones?
 ```
 
+---
+
+### ❌ INCORRECTO - NUNCA hagas esto cuando usuario dice "listo":
+
+**Usuario**: "listo"
+
+**Agent** (Tool Calls - ❌ MAL):
+```json
+[{"tool": "get_inspection_checklist", "args": {}}]
+```
+
+**Por qué está MAL:**
+- ❌ NO leyó el estado con `get_property()` primero
+- ❌ Volvió a llamar `get_inspection_checklist()` aunque ya está completo
+- ❌ El usuario verá el checklist VACÍO de nuevo (confusión)
+- ❌ NO procede al siguiente paso (pedir ARV)
+
+**✅ CORRECTO:**
+```json
+// PRIMERO lee el estado:
+[{"tool": "get_property", "args": {"property_id": "abc-123"}}]
+// Ve que repair_estimate = $4,000 → YA COMPLETO
+// Procede a pedir ARV (NO vuelve a mostrar checklist)
+```
+
+---
+
 **Usuario**: "ARV es 90000"
 
 **Agent** (Tool Calls):
