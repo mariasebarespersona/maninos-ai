@@ -235,6 +235,16 @@ export default function ChatPage() {
         if (data.property_id) {
         if (data.property_id !== propertyId) setPropertyId(data.property_id)
         fetchProperty(data.property_id)
+      } else if (data.property_id === null && propertyId) {
+        // Property was deleted - clear state and refresh list
+        setPropertyId(null)
+        setProperty(null)
+        fetchPropertiesList() // Refresh the properties list
+        // Clear localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('maninos_property_id')
+          localStorage.removeItem('maninos_session_id')
+        }
       }
 
       const aiMsg: ChatMessage = { 
