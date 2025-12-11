@@ -75,12 +75,10 @@ INTENTS DISPONIBLES:
 {intent_list}
 
 REGLAS CRÍTICAS:
-1. "R2B" en contexto de DOCUMENTOS (elegir camino, estrategia, no tengo más docs) → docs.set_strategy
-2. "R2B" en contexto de NÚMEROS (plantilla, celda, B5, Excel) → numbers.select_template
-3. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status" → property.acquisition
-4. Si el usuario pregunta sobre el CONTENIDO de un documento → docs.qa
-5. Si el usuario quiere LISTAR documentos → docs.list
-6. Si el usuario quiere CAMBIAR de propiedad → property.switch
+1. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status" → property.acquisition
+2. Si el usuario pregunta sobre el CONTENIDO de un documento → docs.qa
+3. Si el usuario quiere LISTAR documentos → docs.list
+4. Si el usuario quiere CAMBIAR de propiedad → property.switch
 
 MENSAJE DEL USUARIO:
 "{user_text}"
