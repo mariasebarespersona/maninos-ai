@@ -372,7 +372,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
         
         {/* Documents Collector (Paso 0) - Only show when in documents_pending stage */}
         {property && property.acquisition_stage === 'documents_pending' && propertyId && (
-            <div className="flex-shrink-0 p-4 bg-slate-50">
+            <div className="flex-shrink-0 px-4 py-2 bg-slate-50">
                 <DocumentsCollector 
                     propertyId={propertyId}
                     onComplete={() => {

@@ -119,44 +119,43 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden my-4 w-full">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <FileText size={24} />
-              <h3 className="font-bold text-xl">Documentos Iniciales</h3>
+    <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden w-full">
+      {/* Compact Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <FileText size={18} />
+            <div>
+              <h3 className="font-bold text-sm">📄 Documentos Iniciales</h3>
+              <p className="text-blue-100 text-xs">Paso 0: Sube 3 documentos obligatorios</p>
             </div>
-            <p className="text-blue-100 text-sm">Paso 0: Recopilación de documentos obligatorios</p>
           </div>
-          <div className="bg-white/20 px-4 py-2 rounded-lg">
-            <p className="text-xs text-blue-100">Progress</p>
-            <p className="text-2xl font-bold">{uploadedCount}/{totalCount}</p>
+          <div className="bg-white/20 px-3 py-1 rounded text-center">
+            <p className="text-lg font-bold">{uploadedCount}/{totalCount}</p>
             <p className="text-xs text-blue-100">({progress}%)</p>
           </div>
         </div>
       </div>
 
-      {/* Status Badge */}
+      {/* Compact Status Badge */}
       {allUploaded && (
-        <div className="bg-emerald-50 border-b border-emerald-200 p-4">
+        <div className="bg-emerald-50 border-b border-emerald-200 px-4 py-2">
           <div className="flex items-center gap-2 text-emerald-800">
-            <CheckCircle2 size={20} />
-            <p className="font-semibold text-sm">✅ FASE OBLIGATORIA COMPLETADA - Todos los documentos subidos</p>
+            <CheckCircle2 size={16} />
+            <p className="font-semibold text-xs">✅ Todos los documentos subidos</p>
           </div>
         </div>
       )}
 
-      {/* Documents List */}
-      <div className="p-6">
-        <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-4">Documentos Requeridos</h4>
+      {/* Compact Documents List */}
+      <div className="px-4 py-3">
+        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Documentos Requeridos</h4>
         
-        <div className="space-y-3">
+        <div className="space-y-2">
           {documents.map((doc) => (
             <div 
               key={doc.id}
-              className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all ${
+              className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
                 doc.uploaded 
                   ? 'bg-emerald-50 border-emerald-300' 
                   : 'bg-slate-50 border-slate-200 hover:border-blue-300'
@@ -165,28 +164,28 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
               {/* Status Icon */}
               <div className="shrink-0">
                 {doc.uploaded ? (
-                  <CheckCircle2 size={24} className="text-emerald-600" />
+                  <CheckCircle2 size={18} className="text-emerald-600" />
                 ) : (
-                  <Circle size={24} className="text-slate-300" />
+                  <Circle size={18} className="text-slate-300" />
                 )}
               </div>
 
               {/* Document Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h5 className="font-bold text-slate-800 text-sm">{doc.name}</h5>
-                  {doc.required && !doc.uploaded && (
-                    <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded">
-                      OBLIGATORIO
-                    </span>
-                  )}
+                  <h5 className="font-semibold text-slate-800 text-xs">{doc.name}</h5>
                   {doc.uploaded && (
-                    <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded">
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-1.5 py-0.5 rounded">
                       SUBIDO
                     </span>
                   )}
+                  {doc.required && !doc.uploaded && (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                      OBLIGATORIO
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-slate-500 mt-1">{doc.description}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">{doc.description}</p>
               </div>
 
               {/* Upload Button */}
@@ -208,9 +207,9 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
                     type="button"
                     onClick={(e) => (e.currentTarget.previousElementSibling as HTMLInputElement)?.click()}
                     disabled={uploading}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
-                    <Upload size={16} />
+                    <Upload size={14} />
                     Subir
                   </button>
                 </label>
@@ -219,35 +218,21 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
           ))}
         </div>
 
-        {/* Help Text */}
+        {/* Compact Help Text */}
         {!allUploaded && (
-          <div className="mt-6 bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-blue-600 shrink-0 mt-0.5" size={20} />
-              <div>
-                <h4 className="font-bold text-blue-900 text-sm mb-1">ℹ️ Información</h4>
-                <p className="text-xs text-blue-800 leading-relaxed">
-                  Sube los <strong>3 documentos obligatorios</strong> para continuar con el análisis de la propiedad. 
-                  Formatos aceptados: PDF, JPG, PNG, WebP.
-                </p>
-              </div>
-            </div>
+          <div className="mt-3 bg-blue-50 border-l-2 border-blue-400 p-2 rounded text-xs text-blue-800">
+            <p className="leading-tight">
+              📄 Sube los <strong>3 documentos obligatorios</strong> para continuar. Formatos: PDF, JPG, PNG, WebP.
+            </p>
           </div>
         )}
 
-        {/* Completion Message */}
+        {/* Compact Completion Message */}
         {allUploaded && (
-          <div className="mt-6 bg-emerald-50 border-l-4 border-emerald-400 p-4 rounded">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
-              <div>
-                <h4 className="font-bold text-emerald-900 text-sm mb-1">✅ Documentos Completos</h4>
-                <p className="text-xs text-emerald-800 leading-relaxed">
-                  Todos los documentos han sido subidos correctamente. 
-                  Ahora puedes continuar con el <strong>70% Rule Check</strong> (Paso 1).
-                </p>
-              </div>
-            </div>
+          <div className="mt-3 bg-emerald-50 border-l-2 border-emerald-400 p-2 rounded text-xs text-emerald-800">
+            <p className="leading-tight">
+              ✅ <strong>Documentos completos.</strong> Puedes continuar con el 70% Rule Check (Paso 1).
+            </p>
           </div>
         )}
       </div>
