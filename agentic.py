@@ -108,7 +108,31 @@ def assistant_node(state: AgentState) -> Dict[str, Any]:
     # Add recent conversation (keep it minimal)
     MAX_RECENT_MESSAGES = 10
     recent_msgs = msgs[-MAX_RECENT_MESSAGES:] if len(msgs) > MAX_RECENT_MESSAGES else msgs
-    coordinator_msgs.extend(recent_msgs)
+    
+    # CRITICAL: Sanitize messages to prevent orphaned ToolMessages
+    # OpenAI API requires: ToolMessage must have a preceding AIMessage with tool_calls
+    sanitized_msgs = []
+    has_pending_tool_calls = False
+    
+    for msg in recent_msgs:
+        if isinstance(msg, AIMessage):
+            # AIMessage with tool_calls creates expectation for ToolMessages
+            has_pending_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
+            sanitized_msgs.append(msg)
+        elif isinstance(msg, ToolMessage):
+            # Only include ToolMessage if we have pending tool_calls
+            if has_pending_tool_calls:
+                sanitized_msgs.append(msg)
+            else:
+                logger.warning(f"[assistant_node] Skipping orphaned ToolMessage: {msg.name}")
+        elif isinstance(msg, (HumanMessage, SystemMessage)):
+            # Regular messages break tool_calls sequence
+            has_pending_tool_calls = False
+            sanitized_msgs.append(msg)
+        else:
+            sanitized_msgs.append(msg)
+    
+    coordinator_msgs.extend(sanitized_msgs)
     
     # Initialize LLM (with READ-ONLY tools for MainAgent)
     model = ChatOpenAI(
