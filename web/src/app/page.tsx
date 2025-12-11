@@ -1,59 +1,119 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { mcpExcel } from '@/lib/mcp/client'
-// Removed RAMA components:
-// - Spreadsheet (Excel templates - not needed for MANINOS)
-// - DocumentFramework (R2B/Promoción framework - not needed for MANINOS)
-import { PropertyHeader } from '@/components/PropertyHeader'
-import type { DragEvent } from 'react'
-import { Property } from '@/types'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { AcquisitionStepper } from '@/components/AcquisitionStepper'
+import { DealSidebar } from '@/components/DealSidebar'
+import { MobileHomeProperty } from '@/types/maninos'
+import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  agentName?: string
-  toolCalls?: any[]
-  toolResults?: any[]
-  userMessage?: string
-  showDocuments?: boolean
+// --- Rich UI Components ---
+
+function RichMessageRenderer({ content }: { content: string }) {
+  // 1. Detect Checklist
+  if (content.includes('📋') && (content.includes('Checklist') || content.includes('Inspección'))) {
+    const lines = content.split('\n');
+    return (
+      <div className="space-y-3">
+        {lines.map((line, i) => {
+          if (line.trim().startsWith('- [ ]') || line.trim().startsWith('- [x]')) {
+             const isChecked = line.includes('[x]');
+             const text = line.replace(/- \[[x ]\]/, '').trim();
+             return (
+               <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-slate-50 border border-slate-100">
+                 <div className={`w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}>
+                   {isChecked && <CheckSquare size={12} />}
+                 </div>
+                 <span className="text-sm text-slate-700 font-medium">{text}</span>
+               </div>
+             )
+          }
+          // Header or normal text
+          return <p key={i} className="mb-1">{line}</p>
+        })}
+      </div>
+    )
+  }
+
+  // 2. Detect Contract/Document
+  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract'))) {
+      const handleDownload = () => {
+          const blob = new Blob([content], { type: 'text/plain' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Purchase_Agreement_Draft.txt';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+      };
+
+      return (
+          <div>
+              <div className="whitespace-pre-wrap mb-4">{content}</div>
+              <div onClick={handleDownload} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-colors group cursor-pointer">
+                  <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
+                      <FileText size={24} className="text-rose-500" />
+                  </div>
+                  <div className="flex-1">
+                      <h4 className="font-bold text-slate-800 text-sm">Purchase_Agreement_Draft.txt</h4>
+                      <p className="text-xs text-slate-500">Ready for review</p>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleDownload(); }} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-md hover:bg-slate-800">
+                      Download
+                  </button>
+              </div>
+          </div>
+      )
+  }
+
+  // 3. Detect 70% Rule Pass/Fail
+  if (content.includes('Regla del 70%') || content.includes('70% Rule')) {
+      const isPass = content.includes('✅') || content.includes('PASS');
+      return (
+          <div>
+              <div className={`mb-4 p-3 rounded-lg border-l-4 ${isPass ? 'bg-emerald-50 border-emerald-500' : 'bg-rose-50 border-rose-500'}`}>
+                  <div className="flex items-start">
+                      <div className={`mt-0.5 mr-3 ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {isPass ? <CheckSquare size={18} /> : <AlertCircle size={18} />}
+                      </div>
+                      <div>
+                          <h4 className={`font-bold text-sm ${isPass ? 'text-emerald-800' : 'text-rose-800'}`}>
+                              {isPass ? '70% Rule Passed' : '70% Rule Warning'}
+                          </h4>
+                          <p className="text-xs opacity-80 mt-1">
+                              {isPass ? 'Price is within safe margin.' : 'Price exceeds recommended offer.'}
+                          </p>
+                      </div>
+                  </div>
+              </div>
+              <div className="whitespace-pre-wrap">{content}</div>
+          </div>
+      )
+  }
+
+  // Default Markdown
+  return <div className="whitespace-pre-wrap">{content}</div>
 }
 
 export default function ChatPage() {
+  // --- State ---
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [files, setFiles] = useState<File[]>([])
-  const [isRecording, setIsRecording] = useState(false)
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false)
   
   // Property State
   const [propertyId, setPropertyId] = useState<string | null>(null)
-  const [property, setProperty] = useState<Property | null>(null)
+  const [property, setProperty] = useState<MobileHomeProperty | null>(null)
   
-  const [excelTemplate, setExcelTemplate] = useState<string | null>(null)
-  const [toolLogs, setToolLogs] = useState<Array<{tool:string,args:any,ms:number,mode:string,result:any}>>([])
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
+  // UI State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true) // Mobile toggle
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  
-  // Document list state
-  const [documents, setDocuments] = useState<{uploaded: any[], pending: any[]}>({uploaded: [], pending: []})
-  const [documentsLoading, setDocumentsLoading] = useState(false)
-  const [showDocumentList, setShowDocumentList] = useState(false)
 
-  // Backend URL
-  const RAW_BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
-  const BACKEND_URL = (() => {
-    let s = String(RAW_BACKEND_URL || '').trim()
-    const cutIdx = s.indexOf('NEXT_PUBLIC_API_URL=')
-    if (cutIdx >= 0) s = s.slice(0, cutIdx)
-    s = s.replace(/"+$/g, '').trim()
-    return s || 'http://127.0.0.1:8080'
-  })()
+  // --- Configuration ---
+  const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
 
-  // Fetch full property details
+  // --- Data Fetching ---
   const fetchProperty = useCallback(async (pid: string) => {
     if (!pid) return
     try {
@@ -61,306 +121,200 @@ export default function ChatPage() {
       const data = await res.json()
       if (data.ok && data.property) {
         setProperty(data.property)
-        console.log('[Property] Loaded:', data.property)
+        console.log('[Property] Sync:', data.property)
       }
     } catch (e) {
-      console.error('[Property] Failed to fetch details:', e)
+      console.error('[Property] Fetch Error:', e)
     }
   }, [BACKEND_URL])
 
-  // Sync with backend on mount
+  // Initial Sync
   useEffect(() => {
-    const syncWithBackend = async () => {
-      console.log('[SYNC] Starting sync with backend...')
+    const sync = async () => {
       try {
         const form = new FormData()
         form.append('text', '') 
         form.append('session_id', 'web-ui')
-        
         const resp = await fetch('/api/chat', { method: 'POST', body: form })
         const data = await resp.json()
         
         if (data.property_id) {
           setPropertyId(data.property_id)
           fetchProperty(data.property_id)
-        } else {
-          localStorage.removeItem('property_id')
-          setPropertyId(null)
-          setProperty(null)
         }
       } catch (e) {
-        console.error('[SYNC] Failed to sync:', e)
-        const savedPropertyId = localStorage.getItem('property_id')
-        if (savedPropertyId) {
-          setPropertyId(savedPropertyId)
-          fetchProperty(savedPropertyId)
-        }
+        console.error('Sync failed', e)
       }
     }
-    syncWithBackend()
+    sync()
   }, [fetchProperty])
-
-  // Save property ID
-  useEffect(() => {
-    if (propertyId) localStorage.setItem('property_id', propertyId)
-  }, [propertyId])
-
-  // Fetch documents
-  const fetchDocuments = useCallback(async (pid: string) => {
-    if (!pid) return
-    setDocumentsLoading(true)
-    try {
-      const url = `${BACKEND_URL}/api/documents?property_id=${pid}`
-      const resp = await fetch(url)
-      const data = await resp.json()
-      if (data.ok) {
-        setDocuments({
-          uploaded: data.uploaded || [],
-          pending: data.pending || []
-        })
-      }
-    } catch (e) {
-      console.error('[Documents] Failed to fetch:', e)
-    } finally {
-      setDocumentsLoading(false)
-    }
-  }, [BACKEND_URL])
-
-  useEffect(() => {
-    if (propertyId) {
-      fetchDocuments(propertyId)
-      fetchProperty(propertyId) // Refresh details too
-    } else {
-      setDocuments({uploaded: [], pending: []})
-      setShowDocumentList(false)
-      setProperty(null)
-    }
-  }, [propertyId, fetchDocuments, fetchProperty])
 
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
-      if (isNearBottom) {
-        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-      }
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
     }
   }, [messages.length])
 
-  const onDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const dropped = Array.from(e.dataTransfer.files || [])
-    if (dropped.length) setFiles(prev => [...prev, ...dropped])
-  }, [])
-
-  // ... (Excel writeCell and related logic kept mostly same but simplified for brevity in this refactor if needed) ...
-  // Keeping the essential parts for chat interaction
-
+  // --- Handlers ---
   const onSend = useCallback(async () => {
-    if (!input.trim() && files.length === 0) return
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input }
-    console.log('[SEND] Adding user message:', userMessage)
-    setMessages(prev => {
-      console.log('[SEND] Current messages count:', prev.length)
-      return [...prev, userMessage]
-    })
-    setInput('')
+    if (!input.trim()) return
 
-    const form = new FormData()
-    form.append('text', userMessage.content)
-    form.append('session_id', 'web-ui')
-    if (propertyId) form.append('property_id', propertyId)
-    for (const f of files) form.append('files', f)
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input }
+    setMessages(prev => [...prev, userMsg])
+    setInput('')
     setUploading(true)
-    
+
     try {
+      const form = new FormData()
+      form.append('text', userMsg.content)
+      form.append('session_id', 'web-ui')
+      if (propertyId) form.append('property_id', propertyId)
+
       const resp = await fetch('/api/chat', { method: 'POST', body: form })
       const data = await resp.json()
-      const answer = String(data?.answer ?? '')
-      
-      // Update property info if changed
+
+      // Update Property Context
       if (data.property_id) {
-        console.log('[PROPERTY UPDATE] Backend returned property_id:', data.property_id)
-        if (data.property_id !== propertyId) {
-          console.log('[PROPERTY UPDATE] New property, updating state')
-          setPropertyId(data.property_id) // This triggers fetchProperty
-        } else {
-          console.log('[PROPERTY UPDATE] Same property, refreshing details')
-          // If same property, refresh details anyway (e.g. status changed)
-          fetchProperty(data.property_id)
-        }
-      } else {
-        console.log('[PROPERTY UPDATE] No property_id in response')
+        if (data.property_id !== propertyId) setPropertyId(data.property_id)
+        fetchProperty(data.property_id)
       }
 
-      // Show docs if requested
-      if (data?.show_documents && propertyId) {
-        fetchDocuments(propertyId)
-        setShowDocumentList(true)
-      }
-
-      const assistantMessage = { 
+      const aiMsg: ChatMessage = { 
         id: crypto.randomUUID(), 
-        role: 'assistant' as const, 
-        content: answer,
-        showDocuments: data?.show_documents || false
+        role: 'assistant', 
+        content: String(data?.answer || 'No response') 
       }
-      console.log('[RESPONSE] Adding assistant message:', assistantMessage)
-      setMessages(prev => {
-        console.log('[RESPONSE] Current messages count:', prev.length)
-        return [...prev, assistantMessage]
-      })
-      
-      setFiles([])
-    } catch (e: any) {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${e?.message || String(e)}` }])
+      setMessages(prev => [...prev, aiMsg])
+
+    } catch (e) {
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Error communicating with agent.' }])
     } finally {
       setUploading(false)
     }
-  }, [input, files, propertyId, fetchDocuments, fetchProperty])
+  }, [input, propertyId, fetchProperty])
 
-  // ... (Voice logic same as before) ...
-  const startRecording = useCallback(async () => { /* ... */ }, [])
-  const stopRecording = useCallback(() => { /* ... */ }, [])
-  // Mocking voice for brevity in this file rewrite, assuming existing logic or streamlined
-  // Actually, I should keep it to not break functionality. I'll put a simplified placeholder or copy relevant parts if space allows.
-  // I will just keep the chat logic clean.
-
-  const removeFile = useCallback((idx: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== idx))
-  }, [])
-
-  const filePreviews = useMemo(() => files.map((f, i) => (
-    <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm shadow-sm">
-      <span className="truncate max-w-[16rem] font-medium text-[color:var(--text-primary)]">{f.name}</span>
-      <button onClick={() => removeFile(i)} className="text-[color:var(--text-tertiary)] hover:text-red-500">✕</button>
-    </div>
-  )), [files, removeFile])
-
-  // Message Renderer
-  const renderMessageContent = useCallback((text: string) => {
-    if (!text) return null
-    // Simple markdown renderer
-    return <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{text}</div>
-  }, [])
-
+  // --- Render ---
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col gap-4">
-      {/* Property Header - MANINOS AI specific */}
-      <PropertyHeader 
-        property={property} 
-        onToggleDocs={() => setShowDocumentList(!showDocumentList)} 
-        docsCount={documents.uploaded.length + documents.pending.length}
-        showDocsToggle={showDocumentList}
-      />
-
-      {/* Document List - Simplified for MANINOS */}
-      {property && showDocumentList && (
-        <div className="maninos-card p-4 animate-fade-in max-h-60 overflow-y-auto">
-          <div className="text-sm">
-            <h3 className="font-semibold mb-2">📄 Documentos</h3>
-            {documents.uploaded.length > 0 ? (
-              <ul className="space-y-1">
-                {documents.uploaded.map((doc: any, idx: number) => (
-                  <li key={idx} className="text-xs text-gray-600">
-                    ✅ {doc.name || doc.filename || 'Documento'}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-gray-500">No hay documentos subidos</p>
-            )}
-            {documents.pending.length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-amber-600">⏳ {documents.pending.length} pendientes</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+      {/* 1. LEFT SIDEBAR (Navigation) - Simplified for MVP */}
+      <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/50">
+          M
+        </div>
+        <nav className="flex flex-col gap-4 w-full items-center">
+            {/* Nav Items */}
+            <button className="p-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors">
+                <Menu size={20} />
+            </button>
+            <div className="w-8 h-[1px] bg-slate-800" />
+            {/* Add more nav icons here if needed */}
+        </nav>
+      </aside>
+
+      {/* 2. CENTER STAGE (Chat & Stepper) */}
+      <main className="flex-1 flex flex-col min-w-0 relative">
+        
+        {/* Stepper Header */}
+        <div className="flex-shrink-0 bg-white shadow-sm z-20">
+            {property && (
+                <AcquisitionStepper 
+                    currentStage={property.acquisition_stage || 'initial'} 
+                    status={property.status || 'New'} 
+                />
+            )}
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-              <div className="mb-6 h-20 w-20 bg-[color:var(--brand-50)] rounded-full flex items-center justify-center text-4xl shadow-sm border border-[color:var(--brand-100)]">
-                🏠
-              </div>
-              <h2 className="mb-2 text-2xl font-bold text-[color:var(--text-primary)]">
-                Bienvenido a MANINOS AI
-              </h2>
-              <p className="text-[color:var(--text-secondary)] mb-8 max-w-md">
-                Asistente inteligente para la adquisición y análisis de Mobile Homes.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl w-full">
-                <button 
-                  onClick={() => setInput("Quiero evaluar una nueva propiedad")}
-                  className="maninos-card p-4 hover:border-[color:var(--brand-200)] text-left group transition-all"
-                >
-                  <div className="font-bold text-[color:var(--brand-900)] mb-1 group-hover:text-[color:var(--brand-700)]">Nueva Evaluación</div>
-                  <div className="text-xs text-[color:var(--text-tertiary)]">Analizar 70% rule y reparaciones</div>
-                </button>
-                <button 
-                  onClick={() => setInput("Generar contrato de compra")}
-                  className="maninos-card p-4 hover:border-[color:var(--brand-200)] text-left group transition-all"
-                >
-                  <div className="font-bold text-[color:var(--brand-900)] mb-1 group-hover:text-[color:var(--brand-700)]">Generar Contratos</div>
-                  <div className="text-xs text-[color:var(--text-tertiary)]">Crear acuerdos legales automáticamente</div>
-                </button>
-              </div>
+            <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
+                <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
+                    <Bot size={32} className="text-slate-500" />
+                </div>
+                <h3 className="text-xl font-semibold text-slate-700">Maninos AI</h3>
+                <p className="text-sm text-slate-500 max-w-xs mt-2">
+                    Start by entering a property address to begin the evaluation process.
+                </p>
             </div>
           ) : (
-            <div className="space-y-6 pb-4">
-              {messages.map((m) => (
-                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={
-                    'max-w-[85%] md:max-w-[75%] rounded-2xl px-5 py-4 shadow-sm ' +
-                    (m.role === 'user'
-                      ? 'bg-[color:var(--brand-900)] text-white rounded-tr-sm'
-                      : 'bg-white border border-[color:var(--border-strong)] text-[color:var(--text-primary)] rounded-tl-sm')
-                  }>
-                    {renderMessageContent(m.content)}
-                  </div>
+            messages.map((m) => (
+              <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''} max-w-4xl mx-auto`}>
+                
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    m.role === 'user' ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white'
+                }`}>
+                    {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
-              ))}
-              {uploading && (
-                <div className="flex justify-start">
-                  <div className="bg-[color:var(--slate-50)] text-[color:var(--text-tertiary)] px-4 py-2 rounded-full text-xs animate-pulse">
-                    Analizando...
-                  </div>
+
+                {/* Bubble */}
+                <div className={`flex flex-col max-w-[80%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`px-5 py-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                        m.role === 'user' 
+                        ? 'bg-slate-900 text-white rounded-tr-sm' 
+                        : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
+                    }`}>
+                        {m.role === 'user' ? (
+                            <div className="whitespace-pre-wrap">{m.content}</div>
+                        ) : (
+                            <RichMessageRenderer content={m.content} />
+                        )}
+                    </div>
                 </div>
-              )}
-            </div>
+
+              </div>
+            ))
+          )}
+          {uploading && (
+             <div className="flex gap-4 max-w-4xl mx-auto">
+                <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                    <Bot size={16} />
+                </div>
+                <div className="flex items-center space-x-2 bg-white px-4 py-3 rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+             </div>
           )}
         </div>
 
-        {/* Composer */}
-        <div className="mt-3 flex items-end gap-3 rounded-xl border border-[color:var(--border-strong)] bg-white p-3 shadow-sm focus-within:ring-2 focus-within:ring-[color:var(--brand-100)] focus-within:border-[color:var(--brand-500)] transition-all">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Escribe sobre la propiedad..."
-            rows={1}
-            className="min-h-[40px] flex-1 resize-none bg-transparent py-2.5 text-[color:var(--text-primary)] placeholder:text-[color:var(--gray-400)] outline-none font-sans"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                onSend()
-              }
-            }}
-          />
-          <button
-            onClick={onSend}
-            disabled={uploading}
-            className="h-10 rounded-lg bg-[color:var(--brand-900)] px-6 text-sm font-medium text-white shadow-sm hover:bg-[color:var(--brand-700)] disabled:opacity-50 transition-colors"
-          >
-            {uploading ? '...' : 'Enviar'}
-          </button>
+        {/* Input Area */}
+        <div className="p-4 md:p-6 bg-white border-t border-slate-200">
+            <div className="max-w-4xl mx-auto relative flex items-center gap-3">
+                <div className="flex-1 relative">
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && onSend()}
+                        placeholder="Type a message..."
+                        className="w-full pl-4 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
+                        disabled={uploading}
+                    />
+                    <button className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1">
+                        <Paperclip size={18} />
+                    </button>
+                </div>
+                <button 
+                    onClick={onSend}
+                    disabled={!input.trim() || uploading}
+                    className="p-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors shadow-md shadow-blue-600/20"
+                >
+                    <Send size={18} />
+                </button>
+            </div>
+            <div className="text-center mt-2">
+                <p className="text-[10px] text-slate-400">Maninos AI can make mistakes. Verify important info.</p>
+            </div>
         </div>
-      </div>
+      </main>
+
+      {/* 3. RIGHT SIDEBAR (Deal Context) */}
+      <DealSidebar property={property} className="hidden lg:flex" />
+
     </div>
   )
 }

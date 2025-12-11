@@ -149,8 +149,8 @@ def propose_doc_slot_tool(filename: str, hint: str = "", property_id: str = "", 
     CRITICAL: If this returns an 'error' key, DO NOT proceed with upload. ASK the user for clarification.
     
     Returns:
-        - Success: {"document_group": "...", "document_subgroup": "...", "document_name": "..."}
-        - Error: {"error": "...", "message": "...", "document_group": None, "document_subgroup": None, "document_name": None}
+    - Success: {"document_group": "...", "document_subgroup": "...", "document_name": "..."}
+    - Error: {"error": "...", "message": "...", "document_group": None, "document_subgroup": None, "document_name": None}
     
     If you receive an error, you MUST:
     1. Tell the user the error message

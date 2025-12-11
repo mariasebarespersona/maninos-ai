@@ -238,7 +238,7 @@ class ActiveRouter:
             # Exclude if explicitly about documents (e.g. "documento de inspeccion")
             if "documento" not in s and "pdf" not in s:
                 return ("property.acquisition", 0.95, "PropertyAgent")
-
+        
         # ========== PROPERTY OPERATIONS ==========
         # Create property - context-aware detection
         # Keywords for property types
