@@ -11,33 +11,35 @@ import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCirc
 // --- Rich UI Components ---
 
 function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { content: string, propertyId: string | null, onPropertyUpdate?: () => void }) {
-  // 1. Detect Checklist
-  if (content.includes('📋') && (content.includes('Checklist') || content.includes('Inspección'))) {
+  // 1. Detect Checklist - ALWAYS show InteractiveChecklist (never old text version)
+  const contentLower = content.toLowerCase();
+  const isChecklistMessage = (
+    content.includes('📋') || 
+    contentLower.includes('checklist') || 
+    contentLower.includes('inspección') || 
+    contentLower.includes('inspeccion') ||
+    (contentLower.includes('marca') && contentLower.includes('defecto'))
+  );
+  
+  if (isChecklistMessage) {
     if (propertyId) {
-        return <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />;
+        // ALWAYS show the new InteractiveChecklist component
+        return (
+            <div>
+                <div className="mb-4 text-slate-700">{content}</div>
+                <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />
+            </div>
+        );
     }
-
-    const lines = content.split('\n');
+    
+    // Fallback if no propertyId (shouldn't happen in normal flow)
     return (
-      <div className="space-y-3">
-        {lines.map((line, i) => {
-          if (line.trim().startsWith('- [ ]') || line.trim().startsWith('- [x]')) {
-             const isChecked = line.includes('[x]');
-             const text = line.replace(/- \[[x ]\]/, '').trim();
-             return (
-               <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                 <div className={`w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}>
-                   {isChecked && <CheckSquare size={12} />}
-                 </div>
-                 <span className="text-sm text-slate-700 font-medium">{text}</span>
-               </div>
-             )
-          }
-          // Header or normal text
-          return <p key={i} className="mb-1">{line}</p>
-        })}
-      </div>
-    )
+        <div className="p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
+            <p className="text-sm text-amber-800">
+                ⚠️ No hay propiedad activa. Por favor, crea una propiedad primero.
+            </p>
+        </div>
+    );
   }
 
   // 2. Detect Contract/Document

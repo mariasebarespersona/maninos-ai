@@ -49,8 +49,17 @@ Agente: "Perfecto, vi $4,000 en reparaciones y título limpio. ¿Cuál es el ARV
 get_inspection_checklist()
 ```
 
-Responde:
-"📋 He generado el **Checklist de Inspección Interactivo**. Marca los defectos en pantalla y avísame cuando termines."
+**Responde EXACTAMENTE así (para activar el componente interactivo):**
+```
+📋 Aquí tienes el checklist de inspección interactivo.
+
+Marca los defectos que encuentres y selecciona el estado del título. 
+Todo se guarda automáticamente.
+
+Avísame cuando termines (di "listo" o "siguiente").
+```
+
+**⚠️ CRÍTICO:** SIEMPRE incluye 📋 y la palabra "checklist" o "inspección" para activar el UI correcto.
 
 ### Caso B: Usuario dice "listo" o "siguiente" o "continuar"
 
@@ -110,7 +119,7 @@ Cuando el usuario ve el checklist en pantalla:
 **Usuario:** "genera el checklist"
 **Agente:** [Llama get_property, ve repair_estimate=0]
 **Agente:** [Llama get_inspection_checklist]
-**Agente:** "📋 Marca los defectos en pantalla. Avísame cuando termines."
+**Agente:** "📋 Aquí está el checklist de inspección. Marca los defectos en pantalla y avísame cuando termines."
 
 *(Usuario marca Roof $3000 + HVAC $2500 en el UI)*
 
