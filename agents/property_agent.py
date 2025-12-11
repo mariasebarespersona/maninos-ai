@@ -19,7 +19,9 @@ from tools.registry import (
     get_property_tool,
     calculate_repair_costs_tool,
     calculate_maninos_deal_tool,
-    generate_buy_contract_tool
+    generate_buy_contract_tool,
+    get_inspection_checklist_tool,
+    save_inspection_results_tool
 )
 
 
@@ -204,5 +206,7 @@ class PropertyAgent(BaseAgent):
             get_property_tool,
             calculate_repair_costs_tool,
             calculate_maninos_deal_tool,
-            generate_buy_contract_tool
+            generate_buy_contract_tool,
+            get_inspection_checklist_tool,
+            save_inspection_results_tool
         ]
