@@ -26,6 +26,7 @@ export interface MobileHomeProperty {
   arv?: number;
   repair_estimate?: number;
   title_status?: TitleStatus;
+  status?: string; // Legacy field (e.g., "Proceed to Inspection")
   acquisition_stage: AcquisitionStage;
   created_at: string;
   updated_at: string;
@@ -79,6 +80,13 @@ export interface BuyContract {
   roi: number;
   contract_date: string;
   status: 'draft' | 'final';
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
 }
 
 // Stage display configuration

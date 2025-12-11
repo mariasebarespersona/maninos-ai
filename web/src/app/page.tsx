@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
-import { MobileHomeProperty } from '@/types/maninos'
+import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
 // --- Rich UI Components ---
