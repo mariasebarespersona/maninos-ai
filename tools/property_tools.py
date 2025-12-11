@@ -200,9 +200,13 @@ def delete_property(property_id: str, purge_docs_first: bool = True) -> Dict:
     """Delete a property by UUID (hard delete).
 
     Steps:
-    - Optionally purge uploaded documents (storage + links)
+    - Optionally purge uploaded documents (storage + links) - DEFAULT: True (eliminar docs)
     - Delete the property from the database
     - Return {deleted: True}
+    
+    Args:
+        property_id: UUID of the property to delete
+        purge_docs_first: If True, delete associated documents. DEFAULT: True (eliminar todo)
     """
     import logging
     logger = logging.getLogger(__name__)

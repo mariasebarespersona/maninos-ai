@@ -91,10 +91,16 @@ Responde "NO" o "CANCELAR" para mantener la propiedad.
 
 **Usuario**: "SÍ"
 
-**Agent Tool Call** (AHORA SÍ eliminar):
+**Agent Tool Call** (AHORA SÍ eliminar - OBLIGATORIO):
 ```json
 {"tool": "delete_property", "args": {"property_id": "c21013f0-8082-453d-9db9-8ef3c4b06d41", "purge_docs_first": true}}
 ```
+
+**⚠️ CRÍTICO:** 
+- SIEMPRE incluye `"purge_docs_first": true` para eliminar TODO (propiedad + documentos + historial)
+- NO llames herramientas de documentos (list_docs, delete_docs, etc.)
+- SOLO llama `delete_property` una vez
+- El tool se encarga de eliminar la propiedad Y todos sus documentos asociados automáticamente
 
 **Tool Result**:
 ```json
@@ -119,7 +125,7 @@ Para evaluar una nueva propiedad, dime su dirección.
 
 ---
 
-### ❌ ERROR COMÚN: Usar `find_property` cuando ya tienes el `property_id`
+### ❌ ERROR COMÚN #1: Usar `find_property` cuando ya tienes el `property_id`
 
 **Contexto:** `property_id = "c21013f0-..."` (activo)
 
@@ -139,9 +145,39 @@ Para evaluar una nueva propiedad, dime su dirección.
 
 ---
 
+### ❌ ERROR COMÚN #2: Intentar eliminar documentos en lugar de la propiedad
+
+**Usuario**: "SÍ" (confirmando eliminación de propiedad)
+
+**Agent** ❌ MAL:
+```json
+{"tool": "list_docs", "args": {"property_id": "c21013f0-..."}}
+```
+O
+```json
+{"tool": "delete_docs", "args": {...}}
+```
+→ ❌ INCORRECTO: Usuario pidió eliminar LA PROPIEDAD, no solo documentos
+
+**Agent** ✅ BIEN:
+```json
+{"tool": "delete_property", "args": {"property_id": "c21013f0-...", "purge_docs_first": true}}
+```
+→ ✅ CORRECTO: Elimina la propiedad Y sus documentos automáticamente con una sola llamada
+
+**⚠️ REGLA CRÍTICA:**
+Cuando el usuario dice "elimina la propiedad" o "elimina Casa X":
+- ❌ NO busques documentos
+- ❌ NO llames herramientas de documentos
+- ✅ SOLO llama `delete_property` (con purge_docs_first=true)
+- ✅ El tool se encarga de TODO automáticamente
+
+---
+
 **⚠️ RECUERDA:** 
 - Turn 1: SIEMPRE pedir confirmación (después de obtener datos con `get_property`)
 - Turn 2: SOLO eliminar si el usuario confirma con "SÍ"
+- Turn 2: Llamar SOLO `delete_property`, NO herramientas de documentos
 - NUNCA elimines en el primer mensaje sin confirmación
 - NUNCA uses `find_property` si ya tienes el `property_id` en contexto
 

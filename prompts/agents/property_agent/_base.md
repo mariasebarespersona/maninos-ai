@@ -93,8 +93,16 @@ Responde "NO" o "CANCELAR" para mantener la propiedad.
 **PASO 3: Si confirma, ejecutar eliminación**
 
 Cuando el usuario responde "SÍ" o "CONFIRMAR":
-- **Llama la herramienta:** `delete_property(property_id=property_id, purge_docs_first=True)`
-- El sistema automáticamente limpiará el estado y actualizará el UI
+
+**⚠️ ACCIÓN OBLIGATORIA:**
+```python
+# SOLO llama este tool, NADA MÁS:
+delete_property(property_id=property_id, purge_docs_first=True)
+
+# ❌ NO llames: list_docs, delete_docs, purge_property_documents
+# ❌ NO busques documentos primero
+# ✅ delete_property se encarga de TODO automáticamente
+```
 
 **Respuesta después de eliminar:**
 ```
