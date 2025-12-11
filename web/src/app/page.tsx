@@ -5,6 +5,7 @@ import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
 import { PropertiesDrawer } from '@/components/PropertiesDrawer'
+import { ContractViewer } from '@/components/ContractViewer'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
@@ -44,37 +45,45 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
     );
   }
 
-  // 2. Detect Contract/Document
-  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract'))) {
-      const handleDownload = () => {
-          const blob = new Blob([content], { type: 'text/plain' });
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'Purchase_Agreement_Draft.txt';
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-      };
-
-      return (
-          <div>
-              <div className="whitespace-pre-wrap mb-4">{content}</div>
-              <div onClick={handleDownload} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-colors group cursor-pointer">
-                  <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
-                      <FileText size={24} className="text-rose-500" />
-                  </div>
-                  <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-sm">Purchase_Agreement_Draft.txt</h4>
-                      <p className="text-xs text-slate-500">Ready for review</p>
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); handleDownload(); }} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-md hover:bg-slate-800">
-                      Download
-                  </button>
-              </div>
-          </div>
-      )
+  // 2. Detect Contract/Document - Use ContractViewer component
+  if ((content.includes('📄') || content.includes('PURCHASE AGREEMENT') || content.includes('CONTRACT')) && 
+      (content.includes('Contrato') || content.includes('Contract') || content.includes('BUYER') || content.includes('SELLER'))) {
+      
+      // Try to parse financial data from property state (more reliable than parsing text)
+      const purchasePrice = property?.asking_price || 0;
+      const repairEstimate = property?.repair_estimate || 0;
+      const totalInvestment = purchasePrice + repairEstimate;
+      const arv = property?.arv || 0;
+      const projectedProfit = arv > 0 ? arv - totalInvestment : 0;
+      const roi = totalInvestment > 0 ? (projectedProfit / totalInvestment) * 100 : 0;
+      
+      // Extract contract text (everything after header markers)
+      let contractText = content;
+      const startMarkers = ['═════════', '---', 'PURCHASE AGREEMENT', 'CONTRACT'];
+      for (const marker of startMarkers) {
+          const idx = content.indexOf(marker);
+          if (idx !== -1) {
+              contractText = content.substring(idx);
+              break;
+          }
+      }
+      
+      // If we have valid property and financial data, render ContractViewer
+      if (property && purchasePrice > 0) {
+          return (
+              <ContractViewer
+                  contractText={contractText}
+                  propertyName={property.name || 'Property'}
+                  purchasePrice={purchasePrice}
+                  totalInvestment={totalInvestment}
+                  projectedProfit={projectedProfit}
+                  roi={roi}
+              />
+          );
+      }
+      
+      // Fallback: show as text if property data is missing
+      return <div className="whitespace-pre-wrap">{content}</div>;
   }
 
   // 3. Detect 70% Rule Pass/Fail
