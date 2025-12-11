@@ -42,14 +42,19 @@ Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
 **Usuario**: "Elimina la propiedad Casa Sebares"
 
-**Agent Actions**:
-1. Si ya estás en esa propiedad (property_id en contexto): Llama `get_property(property_id)`
-2. Si NO estás en esa propiedad: Llama `find_property(name="Casa Sebares")`
+**Context:** `property_id = "c21013f0-8082-453d-9db9-8ef3c4b06d41"` (ya estás en esa propiedad)
 
-**Agent Tool Call**:
+**Agent MUST:**
+- 🚨 Detectar que YA está en la propiedad (property_id en contexto)
+- ✅ Usar `get_property` (NO `find_property`)
+- ⏸️ NO eliminar aún, solo leer datos
+
+**Agent Tool Call** (OBLIGATORIO):
 ```json
 {"tool": "get_property", "args": {"property_id": "c21013f0-8082-453d-9db9-8ef3c4b06d41"}}
 ```
+
+**⚠️ NOTA:** Si el usuario pide eliminar OTRA propiedad diferente a la activa, entonces sí usar `find_property`.
 
 **Tool Result**:
 ```json
@@ -112,10 +117,33 @@ La propiedad ha sido eliminada de:
 Para evaluar una nueva propiedad, dime su dirección.
 ```
 
+---
+
+### ❌ ERROR COMÚN: Usar `find_property` cuando ya tienes el `property_id`
+
+**Contexto:** `property_id = "c21013f0-..."` (activo)
+
+**Usuario**: "Elimina Casa Sebares"
+
+**Agent** ❌ MAL:
+```json
+{"tool": "find_property", "args": {"name": "Casa Sebares"}}
+```
+→ ❌ Falla: `field required: address`
+
+**Agent** ✅ BIEN:
+```json
+{"tool": "get_property", "args": {"property_id": "c21013f0-..."}}
+```
+→ ✅ Funciona: Ya tienes el ID, úsalo directamente
+
+---
+
 **⚠️ RECUERDA:** 
-- Turn 1: SIEMPRE pedir confirmación (después de obtener datos con get_property)
+- Turn 1: SIEMPRE pedir confirmación (después de obtener datos con `get_property`)
 - Turn 2: SOLO eliminar si el usuario confirma con "SÍ"
 - NUNCA elimines en el primer mensaje sin confirmación
+- NUNCA uses `find_property` si ya tienes el `property_id` en contexto
 
 ---
 

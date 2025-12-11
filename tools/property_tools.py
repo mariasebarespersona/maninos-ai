@@ -57,15 +57,21 @@ def get_property(property_id: str) -> Optional[Dict]:
     return rows[0] if rows else None
 
 
-def find_property(name: str, address: str) -> Optional[Dict]:
-    rows = (
-        sb.table("properties")
-        .select("*")
-        .eq("name", name)
-        .eq("address", address)
-        .limit(1)
-        .execute()
-    ).data
+def find_property(name: str, address: Optional[str] = None) -> Optional[Dict]:
+    """
+    Find a property by name and optionally address (case-insensitive).
+    Uses ILIKE for flexible matching (e.g., "Ronda De" matches "Ronda de").
+    
+    Args:
+        name: Property name (required)
+        address: Property address (optional, for more specific search)
+    """
+    query = sb.table("properties").select("*").ilike("name", name)
+    
+    if address:
+        query = query.ilike("address", address)
+    
+    rows = query.limit(1).execute().data
     return rows[0] if rows else None
 
 

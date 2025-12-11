@@ -934,11 +934,11 @@ def get_property_tool(property_id: str) -> Optional[Dict]:
 
 class FindPropertyInput(BaseModel):
     name: str
-    address: str
+    address: Optional[str] = None
 
 @tool("find_property")
-def find_property_tool(name: str, address: str) -> Optional[Dict]:
-    """Find a property by name and address (exact match)."""
+def find_property_tool(name: str, address: Optional[str] = None) -> Optional[Dict]:
+    """Find a property by name and optionally address (case-insensitive search)."""
     return _find_property(name, address)
 
 
