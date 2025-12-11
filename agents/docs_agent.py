@@ -36,26 +36,22 @@ class DocsAgent(BaseAgent):
     
     # No override needed - BaseAgent.run() with ReAct loop handles everything
     def get_system_prompt(self, intent: str = None) -> str:
-        """Get system prompt for MANINOS docs agent (generic PDF management)."""
+        """Get system prompt using modular prompt loader (same as PropertyAgent)."""
+        import sys
         import os
         
-        # Read the simplified MANINOS docs prompt
+        # Add prompts directory to path
         prompts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
-        base_prompt_path = os.path.join(prompts_dir, "agents", "docs_agent", "_base_maninos.md")
+        if prompts_dir not in sys.path:
+            sys.path.insert(0, prompts_dir)
         
-        try:
-            with open(base_prompt_path, "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError:
-            # Fallback to inline prompt if file doesn't exist
-            return """You are a document management assistant for MANINOS AI (mobile home acquisitions).
-
-Help users:
-- Upload PDFs (Zillow, MHVillage, inspections, title docs)
-- Extract data from PDFs using rag_qa_with_citations
-- List documents (use list_docs)
-- Delete documents (use delete_document)
-- Send documents by email
+        from prompt_loader import build_agent_prompt
+        
+        # Build modular prompt (base + intent-specific modules)
+        return build_agent_prompt(
+            agent_name="docs_agent",
+            intent=intent,
+            property_name=None  # DocsAgent doesn't use property_name in prompts
 
 CRITICAL RULES:
 1. ALWAYS call tools (never answer from memory)

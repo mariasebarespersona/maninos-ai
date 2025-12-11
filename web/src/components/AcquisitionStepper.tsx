@@ -15,6 +15,7 @@ interface AcquisitionStepperProps {
 
 export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperProps) {
   const steps: { id: AcquisitionStage | 'contract'; label: string }[] = [
+    { id: 'documents_pending' as AcquisitionStage, label: '0. Documents' },
     { id: 'initial', label: '1. Initial Check (70%)' },
     { id: 'passed_70_rule', label: '2. Inspection' },
     { id: 'inspection_done', label: '3. Repairs Calc' },
@@ -27,10 +28,11 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
   const getStepStatus = (stepId: string, index: number): Step['status'] => {
     // Map database stages to indices for linear comparison
     const stageOrder: Record<string, number> = {
-      'initial': 0,
-      'passed_70_rule': 1,
-      'inspection_done': 2,
-      'passed_80_rule': 3,
+      'documents_pending': 0,
+      'initial': 1,
+      'passed_70_rule': 2,
+      'inspection_done': 3,
+      'passed_80_rule': 4,
       'rejected': -1 // Special case
     };
 

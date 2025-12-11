@@ -6,6 +6,7 @@ import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
 import { PropertiesDrawer } from '@/components/PropertiesDrawer'
 import { ContractViewer } from '@/components/ContractViewer'
+import { DocumentsCollector } from '@/components/DocumentsCollector'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
@@ -368,6 +369,19 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                 />
           )}
         </div>
+        
+        {/* Documents Collector (Paso 0) - Only show when in documents_pending stage */}
+        {property && property.acquisition_stage === 'documents_pending' && propertyId && (
+            <div className="flex-shrink-0 p-4 bg-slate-50">
+                <DocumentsCollector 
+                    propertyId={propertyId}
+                    onComplete={() => {
+                        // Refresh property to see stage update
+                        fetchProperty(propertyId);
+                    }}
+                />
+            </div>
+        )}
         
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>

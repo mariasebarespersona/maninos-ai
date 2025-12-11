@@ -181,24 +181,44 @@ La propiedad "[nombre]" se ha mantenido sin cambios.
 
 **SI el usuario menciona una dirección o propiedad nueva Y no hay property_id activo:**
 
-```python
-# Ejemplo: "Evaluar mobile home en 123 Main St, Sunny Park"
-if NO hay property_id en contexto:
-    → LLAMAR INMEDIATAMENTE: add_property(name="123 Main St", address="123 Main St, Sunny Park")
-    → ESPERAR a que se cree la propiedad
-    
-    # Si el usuario menciona un park name (como "Sunny Park"), captúralo:
-    if "park" en el mensaje:
-        → DESPUÉS de crear: update_property_fields(property_id, {"park_name": "Sunny Park"})
-    
-    → LUEGO pedir precios
+**PASO 1: Crear la propiedad**
+→ Llama: `add_property(name="Casa X", address="Dirección completa")`
+→ La propiedad se crea con `acquisition_stage='documents_pending'`
+
+**PASO 2: Capturar park_name si lo menciona**
+→ Si el usuario dice "en Sunny Park" o "at Oak Valley Park"
+→ Llama: `update_property_fields(property_id, {"park_name": "Sunny Park"})`
+
+**PASO 3: Indicar que debe subir documentos (FORMATO OBLIGATORIO)**
+
+```
+✅ PROPIEDAD CREADA
+
+📊 Resultados:
+• Propiedad: [nombre]
+• Dirección: [dirección]
+• Park: [park_name] (si lo mencionó)
+
+═══════════════════════════════════════════
+
+➡️ **Siguiente paso**: Recopilación de Documentos (Paso 0)
+
+Antes de calcular el 70% Rule, necesitas subir 3 documentos obligatorios:
+
+1. **Title Status Document** - Estado del título (Clean/Blue, Lien, etc.)
+2. **Property Listing** - PDF de MHVillage/Zillow
+3. **Property Photos** - Fotos del exterior/interior
+
+Usa el panel de "Documentos Subidos" que aparece arriba para subirlos,
+o pregúntame si tienes dudas sobre qué documentos necesitas.
+
+Cuando los hayas subido, di "listo" o "documentos subidos" para continuar.
 ```
 
-**NUNCA pidas precios sin haber creado la propiedad primero.**
-
-**CAPTURA AUTOMÁTICA:**
-- Si el usuario dice "en Sunny Park" o "at Oak Valley Park", guarda el park_name automáticamente
-- Herramienta: `update_property_fields(property_id, {"park_name": "Nombre del parque"})`
+**⚠️ CRÍTICO:**
+- NO pidas precios todavía
+- NO calcules el 70% rule
+- El DocsAgent tomará el control para manejar la subida de documentos
 
 ---
 

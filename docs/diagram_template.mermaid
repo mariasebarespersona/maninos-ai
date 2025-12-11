@@ -1,0 +1,30 @@
+graph TD
+    %% Leyenda
+    subgraph Legend
+        L1(Procesos Actuales) :::current
+        L2(Nueva IA para Automatizar) :::new_ai
+        L3(IA Existente RAMA/Maninos) :::existing_ai
+    end
+
+    %% Ejemplo de Flujo (Sustituir con tu diagrama)
+    %% Nodos Actuales (Azul)
+    Input[Entrada de Cliente] :::current
+    ManualCheck[Revisión Manual] :::current
+    
+    %% Nodos IA Existente (Negro)
+    Router[Router de Intención] :::existing_ai
+    
+    %% Nodos Nueva IA (Rojo)
+    AutoExtract[Extracción Automática] :::new_ai
+    AutoReply[Respuesta Automática] :::new_ai
+
+    %% Conexiones
+    Input --> Router
+    Router -->|Confianza baja| ManualCheck
+    Router -->|Confianza alta| AutoExtract
+    AutoExtract --> AutoReply
+
+    %% Estilos
+    classDef current fill:#e1f5ff,stroke:#0077b6,stroke-width:2px,color:black;
+    classDef new_ai fill:#ffe1e1,stroke:#d62828,stroke-width:2px,color:black;
+    classDef existing_ai fill:#dedede,stroke:#000000,stroke-width:2px,color:black;

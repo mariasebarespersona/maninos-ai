@@ -4,6 +4,7 @@
  */
 
 export type AcquisitionStage = 
+  | 'documents_pending'
   | 'initial' 
   | 'passed_70_rule' 
   | 'inspection_done' 
@@ -91,6 +92,7 @@ export interface ChatMessage {
 
 // Stage display configuration
 export const STAGE_CONFIG: Record<AcquisitionStage, { label: string; color: string; icon: string }> = {
+  documents_pending: { label: 'Docs Pending', color: 'gray', icon: '○' },
   initial: { label: 'Initial', color: 'gray', icon: '○' },
   passed_70_rule: { label: '70% Passed', color: 'blue', icon: '◐' },
   inspection_done: { label: 'Inspected', color: 'yellow', icon: '◑' },

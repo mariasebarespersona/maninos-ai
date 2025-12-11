@@ -52,6 +52,7 @@ INTENT_DESCRIPTIONS = {
     "property.acquisition": "Usuario está EVALUANDO un mobile home: checklist, inspección, reparaciones, ARV, reglas del 70% o 80%, análisis de inversión, title status, generar contrato de compra (purchase agreement).",
     
     # Docs intents (Generic - for PDFs, Zillow/MHVillage docs)
+    "docs.initial_collection": "Usuario está en Paso 0 (Recopilación de Documentos Iniciales): subir Title Status, Property Listing, Property Photos",
     "docs.qa": "Usuario hace una PREGUNTA sobre el CONTENIDO de un documento PDF (qué dice, datos, valores, etc.)",
     "docs.send_email": "Usuario quiere ENVIAR un documento o resumen por EMAIL",
     "docs.upload": "Usuario quiere SUBIR un documento PDF (Zillow listing, MHVillage, inspección, etc.)",
@@ -129,6 +130,26 @@ class ActiveRouter:
         """
         s = (user_text or "").lower()
         ctx = context or {}
+        
+        # ========== PASO 0: DOCUMENTS PENDING (PRIORITY ROUTING) ==========
+        # If acquisition_stage is 'documents_pending', route to DocsAgent for initial document collection
+        acquisition_stage = ctx.get("acquisition_stage")
+        if acquisition_stage == "documents_pending":
+            # Check if user is saying "done" or "ready" or "listo"
+            completion_keywords = ["listo", "ya está", "ya esta", "terminé", "termine", "completé", "complete", "done", "ready", "finished"]
+            if any(kw in s for kw in completion_keywords):
+                logger.info(f"[active_router] 📄 Documents pending stage + completion signal → DocsAgent (docs.initial_collection)")
+                return ("docs.initial_collection", 0.99, "DocsAgent")
+            
+            # Check if user is asking about documents or uploading
+            doc_keywords = ["documento", "pdf", "subir", "upload", "archivo", "file", "zillow", "mhvillage", "listing", "title", "foto", "photo"]
+            if any(kw in s for kw in doc_keywords):
+                logger.info(f"[active_router] 📄 Documents pending stage + doc keyword → DocsAgent (docs.initial_collection)")
+                return ("docs.initial_collection", 0.99, "DocsAgent")
+            
+            # Default: If in documents_pending stage, prioritize DocsAgent
+            logger.info(f"[active_router] 📄 Documents pending stage (fallback) → DocsAgent (docs.initial_collection)")
+            return ("docs.initial_collection", 0.85, "DocsAgent")
         
         # ========== CONVERSATION CONTINUATION DETECTION ==========
         # Check if user is responding to a previous agent question

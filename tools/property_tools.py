@@ -11,18 +11,18 @@ def add_property(name: str, address: str) -> Dict:
     """
     Create a new mobile home property for MANINOS AI.
     
-    MANINOS: Simple property creation, no complex document frameworks.
-    Just creates the property record with acquisition_stage='initial'.
-    Documents are managed generically (upload/list/delete) without frameworks.
+    MANINOS: Simple property creation, starts at 'documents_pending' stage.
+    User must upload required documents before proceeding to 70% rule check.
     """
     import logging
     logger = logging.getLogger(__name__)
     
-    # MANINOS AI: Create property with initial acquisition stage
+    # MANINOS AI: Create property starting at documents_pending stage (Paso 0)
     r = sb.table("properties").insert({
         "name": name, 
         "address": address,
-        "acquisition_stage": "initial"
+        "acquisition_stage": "documents_pending",
+        "status": "Pending Documents"
     }).execute()
     
     if not r.data or len(r.data) == 0:

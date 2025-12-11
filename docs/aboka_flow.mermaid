@@ -1,0 +1,106 @@
+flowchart TB
+    %% --- CONFIGURACIÓN DE TEMA ---
+    %% Theme variables for cleaner look
+    
+    %% --- ESTILOS ---
+    classDef current fill:#e3f2fd,stroke:#1e88e5,stroke-width:3px,color:#0d47a1,font-weight:bold,rx:10,ry:10;
+    classDef new_ai fill:#ffebee,stroke:#e53935,stroke-width:3px,color:#b71c1c,font-weight:bold,rx:20,ry:20;
+    classDef existing_ai fill:#f5f5f5,stroke:#616161,stroke-width:2px,color:#212121,stroke-dasharray: 5 5,rx:5,ry:5;
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:3px,color:#f57f17,rx:5,ry:5;
+    classDef external fill:#ffffff,stroke:#fb8c00,stroke-width:3px,stroke-dasharray: 5 5,color:#ef6c00;
+
+    %% --- LEYENDA ---
+    subgraph Legend [" 🗺️  LEYENDA "]
+        direction LR
+        L1[Proceso Manual Actual]:::current
+        L2(Nueva IA / Automatización):::new_ai
+        L3{{IA Core - Disponible}}:::existing_ai
+    end
+
+    %% --- IA CORE ---
+    subgraph Core [" 🧠  IA CORE (RAMA) "]
+        direction LR
+        C1{{📧 Email Docs}}:::existing_ai
+        C2{{🧠 RAG Analysis}}:::existing_ai
+        C3{{⏰ Recordatorios}}:::existing_ai
+        C4{{🎙️ Voz}}:::existing_ai
+        C5{{📊 Dashboard Global}}:::existing_ai
+    end
+
+    %% --- FLUJO PRINCIPAL ---
+    subgraph MainFlow [" 🏢  FLUJO DE NEGOCIO ABOKA "]
+        direction TB
+        
+        %% PASO 1
+        subgraph P1_Group [" 1. BÚSQUEDA "]
+            direction TB
+            Step1[🔍 Búsqueda Manual]:::current
+            AI1(🤖 Scraper Idealista):::new_ai
+            Step1 -.-> AI1
+        end
+
+        %% PASO 2
+        subgraph P2_Group [" 2. COMPRA "]
+            direction TB
+            Step2[💰 Compra / Negociación]:::current
+            AI2a(📄 Proceso de Compra):::new_ai
+            AI2b(🔢 Calc Rentabilidad):::new_ai
+            Step2 -.-> AI2a & AI2b
+        end
+
+        %% PASO 3
+        subgraph P3_Group [" 3. REFORMA "]
+            direction TB
+            Step3[🛠️ Gestión de Obra]:::current
+            AI3a(✅ Inspection Checklist):::new_ai
+            AI3b(📉 Control Presupuesto):::new_ai
+            AI3c(📜 Contratos Auto):::new_ai
+            AI3d(👷 Dashboard Personal):::new_ai
+            Step3 -.-> AI3a & AI3b & AI3c & AI3d
+        end
+
+        %% DECISIÓN
+        Dec{⚖️ ESTRATEGIA}:::decision
+
+        %% PASO 4
+        subgraph P4_Group [" 4. ALQUILER "]
+            direction TB
+            Step4[🏠 Short-term Let]:::current
+            AI4a(📅 Calendario Auto):::new_ai
+            AI4b(👥 Gestión Huéspedes):::new_ai
+            Step4 -.-> AI4a & AI4b
+        end
+
+        %% PASO 5
+        subgraph P5_Group [" 5. VENTA "]
+            direction TB
+            Step5[🤝 Venta Propiedad]:::current
+            AI5a(🔍 Checks Comprador):::new_ai
+            AI5b(📂 Documentación Venta):::new_ai
+            Step5 -.-> AI5a & AI5b
+        end
+
+        %% CONEXIONES DE FLUJO
+        P1_Group ==> P2_Group
+        P2_Group ==> P3_Group
+        P3_Group ==> Dec
+        Dec ==>|Rentabilidad| P4_Group
+        Dec ==>|Exit| P5_Group
+    end
+
+    %% --- PARTNER EXTERNO ---
+    Ext[🤝 INMUGA\nGestión Inmobiliaria]:::external
+
+    %% --- CONEXIONES EXTERNAS Y CORE ---
+    %% Partner
+    Step2 <==> Ext
+    Step5 <==> Ext
+
+    %% Core Capabilities
+    C1 -.- AI2a & AI5b
+    C2 -.- AI1
+    C3 -.- Step3
+    C5 -.- Step4 & Step5
+
+    %% Estilo de enlaces
+    linkStyle default stroke:#78909c,stroke-width:2px,fill:none;
