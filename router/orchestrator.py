@@ -178,20 +178,28 @@ class OrchestrationRouter:
                                     break
                             
                             if is_confirmation:
-                                # MANINOS PRIORITY: If there's an active property in acquisition flow,
-                                # ALL generic confirmations go to PropertyAgent (prevents routing errors)
-                                if property_id and full_context.get("acquisition_stage") in ["initial", "passed_70_rule", "inspection_done", "passed_80_rule"]:
+                                # INTELLIGENT ROUTING: Check what the AI just asked about
+                                # This allows both PropertyAgent and DocsAgent to work within the acquisition flow
+                                
+                                # PRIORITY #1: Document-related questions → DocsAgent
+                                if any(kw in ai_content for kw in ["documento", "archivo", "pdf", "subir", "upload", "zillow", "mhvillage", "adjuntar"]):
+                                    continue_with_agent = "DocsAgent"
+                                    continue_intent = "docs.confirm"
+                                    logger.info(f"[orchestrator] 🎯 Confirmation about documents → DocsAgent")
+                                
+                                # PRIORITY #2: Property evaluation questions → PropertyAgent
+                                elif any(kw in ai_content for kw in ["contrato", "generar", "checklist", "arv", "precio", "70%", "80%", "inspección", "reparaciones", "título"]):
                                     continue_with_agent = "PropertyAgent"
                                     continue_intent = "property.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Confirmation in acquisition flow → PropertyAgent (stage={full_context.get('acquisition_stage')})")
+                                    logger.info(f"[orchestrator] 🎯 Confirmation about property evaluation → PropertyAgent")
                                 
-                                # FALLBACK: If we know which agent was last active, continue with that agent
-                                elif last_agent_name and last_agent_name in ["PropertyAgent", "DocsAgent"]:
-                                    continue_with_agent = last_agent_name
-                                    continue_intent = "property.confirm" if last_agent_name == "PropertyAgent" else "docs.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Confirmation routed to {continue_with_agent} (last active agent)")
+                                # PRIORITY #3: If ambiguous but in acquisition flow → PropertyAgent (safe fallback)
+                                elif property_id and full_context.get("acquisition_stage") in ["initial", "passed_70_rule", "inspection_done", "passed_80_rule"]:
+                                    continue_with_agent = "PropertyAgent"
+                                    continue_intent = "property.confirm"
+                                    logger.info(f"[orchestrator] 🎯 Ambiguous confirmation in acquisition flow → PropertyAgent (stage={full_context.get('acquisition_stage')})")
                                 
-                                # FALLBACK: Pattern-based detection if last_agent unknown
+                                # FALLBACK: Pattern-based detection for specific actions
                                 # PATTERN: Property deletion confirmation
                                 elif ("¿estás seguro" in ai_content or "estas seguro" in ai_content) and "eliminar" in ai_content:
                                     continue_with_agent = "PropertyAgent"
