@@ -52,12 +52,7 @@ class DocsAgent(BaseAgent):
             agent_name="docs_agent",
             intent=intent,
             property_name=None  # DocsAgent doesn't use property_name in prompts
-
-CRITICAL RULES:
-1. ALWAYS call tools (never answer from memory)
-2. ALWAYS pass property_id to tools
-3. NO complex frameworks - just simple upload/list/delete
-4. Use rag_qa_with_citations to extract data from PDFs"""
+        )
     
     def get_tools(self) -> List:
         """Return docs-specific tools for MANINOS (generic PDF management)."""
