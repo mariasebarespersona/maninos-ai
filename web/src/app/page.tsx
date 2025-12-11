@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
+import { ContractViewer } from '@/components/ContractViewer'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
@@ -40,35 +41,35 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
   }
 
   // 2. Detect Contract/Document
-  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract'))) {
-      const handleDownload = () => {
-          const blob = new Blob([content], { type: 'text/plain' });
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'Purchase_Agreement_Draft.txt';
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-      };
+  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract') || content.includes('PURCHASE AGREEMENT'))) {
+      // Extract contract text (everything between the header markers)
+      const contractMatch = content.match(/══════════════════════════════════════════════════════════════\n([\s\S]*?)══════════════════════════════════════════════════════════════/);
+      const contractText = contractMatch ? contractMatch[1].trim() : content;
+      
+      // Parse financial metrics from the contract text
+      const purchasePriceMatch = content.match(/Purchase Price:\s*\$?([\d,]+)/i);
+      const totalInvestmentMatch = content.match(/Total Investment:\s*\$?([\d,]+)/i);
+      const projectedProfitMatch = content.match(/Projected Profit:\s*\$?([\d,]+)/i);
+      const roiMatch = content.match(/ROI:\s*([\d.]+)%/i);
+      
+      const purchasePrice = purchasePriceMatch ? parseFloat(purchasePriceMatch[1].replace(/,/g, '')) : 0;
+      const totalInvestment = totalInvestmentMatch ? parseFloat(totalInvestmentMatch[1].replace(/,/g, '')) : 0;
+      const projectedProfit = projectedProfitMatch ? parseFloat(projectedProfitMatch[1].replace(/,/g, '')) : 0;
+      const roi = roiMatch ? parseFloat(roiMatch[1]) : 0;
+      
+      // Extract property name from content
+      const propertyNameMatch = content.match(/Property Name:\s*(.+)/i);
+      const propertyName = propertyNameMatch ? propertyNameMatch[1].trim() : "Property";
 
       return (
-          <div>
-              <div className="whitespace-pre-wrap mb-4">{content}</div>
-              <div onClick={handleDownload} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-colors group cursor-pointer">
-                  <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
-                      <FileText size={24} className="text-rose-500" />
-                  </div>
-                  <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-sm">Purchase_Agreement_Draft.txt</h4>
-                      <p className="text-xs text-slate-500">Ready for review</p>
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); handleDownload(); }} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-md hover:bg-slate-800">
-                      Download
-                  </button>
-              </div>
-          </div>
+          <ContractViewer
+              contractText={contractText}
+              propertyName={propertyName}
+              purchasePrice={purchasePrice}
+              totalInvestment={totalInvestment}
+              projectedProfit={projectedProfit}
+              roi={roi}
+          />
       )
   }
 
@@ -128,7 +129,7 @@ export default function ChatPage() {
         setProperty(data.property)
         console.log('[Property] Sync:', data.property)
       }
-    } catch (e) {
+          } catch (e) {
       console.error('[Property] Fetch Error:', e)
     }
   }, [BACKEND_URL])
@@ -137,17 +138,17 @@ export default function ChatPage() {
   useEffect(() => {
     const sync = async () => {
       try {
-        const form = new FormData()
+    const form = new FormData()
         form.append('text', '') 
-        form.append('session_id', 'web-ui')
-        const resp = await fetch('/api/chat', { method: 'POST', body: form })
-        const data = await resp.json()
-        
-        if (data.property_id) {
-          setPropertyId(data.property_id)
+    form.append('session_id', 'web-ui')
+      const resp = await fetch('/api/chat', { method: 'POST', body: form })
+      const data = await resp.json()
+      
+      if (data.property_id) {
+        setPropertyId(data.property_id)
           fetchProperty(data.property_id)
-        }
-      } catch (e) {
+      }
+    } catch (e) {
         console.error('Sync failed', e)
       }
     }
@@ -180,7 +181,7 @@ export default function ChatPage() {
       const data = await resp.json()
 
       // Update Property Context
-      if (data.property_id) {
+        if (data.property_id) {
         if (data.property_id !== propertyId) setPropertyId(data.property_id)
         fetchProperty(data.property_id)
       }
@@ -200,19 +201,19 @@ export default function ChatPage() {
   }, [input, propertyId, fetchProperty])
 
   // --- Render ---
-  return (
+    return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       
       {/* 1. LEFT SIDEBAR (Navigation) - Simplified for MVP */}
       <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0">
         <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/50">
           M
-        </div>
+                      </div>
         <nav className="flex flex-col gap-4 w-full items-center">
             {/* Nav Items */}
             <button className="p-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors">
                 <Menu size={20} />
-            </button>
+                    </button>
             <div className="w-8 h-[1px] bg-slate-800" />
             {/* Add more nav icons here if needed */}
         </nav>
@@ -230,19 +231,19 @@ export default function ChatPage() {
                 />
             )}
         </div>
-
+        
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
                 <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
                     <Bot size={32} className="text-slate-500" />
-                </div>
+          </div>
                 <h3 className="text-xl font-semibold text-slate-700">Maninos AI</h3>
                 <p className="text-sm text-slate-500 max-w-xs mt-2">
                     Start by entering a property address to begin the evaluation process.
                 </p>
-            </div>
+        </div>
           ) : (
             messages.map((m) => (
               <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''} max-w-4xl mx-auto`}>
@@ -252,7 +253,7 @@ export default function ChatPage() {
                     m.role === 'user' ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white'
                 }`}>
                     {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-                </div>
+          </div>
 
                 {/* Bubble */}
                 <div className={`flex flex-col max-w-[80%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -265,13 +266,13 @@ export default function ChatPage() {
                             <div className="whitespace-pre-wrap">{m.content}</div>
                         ) : (
                             <RichMessageRenderer content={m.content} propertyId={propertyId} onPropertyUpdate={() => propertyId && fetchProperty(propertyId)} />
-                        )}
-                    </div>
-                </div>
-
-              </div>
-            ))
           )}
+        </div>
+          </div>
+
+                    </div>
+            ))
+                  )}
           {uploading && (
              <div className="flex gap-4 max-w-4xl mx-auto">
                 <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
@@ -281,19 +282,19 @@ export default function ChatPage() {
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-             </div>
-          )}
-        </div>
-
+                    </div>
+                  </div>
+                )}
+              </div>
+              
         {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-slate-200">
             <div className="max-w-4xl mx-auto relative flex items-center gap-3">
                 <div className="flex-1 relative">
                     <input
                         type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && onSend()}
                         placeholder="Type a message..."
                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
@@ -303,18 +304,18 @@ export default function ChatPage() {
                         <Paperclip size={18} />
                     </button>
                 </div>
-                <button 
-                    onClick={onSend}
+              <button
+                onClick={onSend}
                     disabled={!input.trim() || uploading}
                     className="p-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors shadow-md shadow-blue-600/20"
-                >
+              >
                     <Send size={18} />
-                </button>
+              </button>
             </div>
             <div className="text-center mt-2">
                 <p className="text-[10px] text-slate-400">Maninos AI can make mistakes. Verify important info.</p>
-            </div>
         </div>
+      </div>
       </main>
 
       {/* 3. RIGHT SIDEBAR (Deal Context) */}

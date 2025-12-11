@@ -9,42 +9,70 @@ from typing import Dict, Optional
 
 
 def generate_buy_contract(
-    property_name: str,
-    property_address: str,
-    asking_price: float,
-    market_value: float,
-    arv: float,
-    repair_costs: float,
-    buyer_name: str = "[BUYER NAME]",
+    property_id: str,
+    buyer_name: str = "MANINOS HOMES LLC",
     seller_name: str = "[SELLER NAME]",
-    park_name: Optional[str] = None
+    closing_date: Optional[str] = None
 ) -> Dict:
     """
     Generate a Mobile Home Purchase Contract based on acquisition analysis.
     
+    CRITICAL: This function AUTO-EXTRACTS all property data from the database.
+    Only buyer_name and seller_name need to be provided by the user.
+    
     Args:
-        property_name: Name/identifier of the property
-        property_address: Full address of the mobile home
-        asking_price: Agreed purchase price
-        market_value: Current market value (as-is)
-        arv: After Repair Value
-        repair_costs: Estimated repair costs
-        buyer_name: Name of the buyer (default placeholder)
-        seller_name: Name of the seller (default placeholder)
-        park_name: Name of the mobile home park (optional)
+        property_id: UUID of the property
+        buyer_name: Name of the buyer (default: "MANINOS HOMES LLC")
+        seller_name: Name of the seller (default: "[SELLER NAME]")
+        closing_date: Optional closing date (default: current date)
     
     Returns:
         Dict with contract text and metadata
     """
+    from .property_tools import get_property
+    
+    # STEP 1: Extract ALL data from database
+    property_data = get_property(property_id)
+    if not property_data:
+        return {
+            "ok": False,
+            "error": "property_not_found",
+            "message": f"No se encontró la propiedad con ID {property_id}"
+        }
+    
+    # STEP 2: Validate required fields exist
+    required_fields = ["name", "address", "asking_price", "market_value", "arv", "repair_estimate"]
+    missing = [f for f in required_fields if not property_data.get(f)]
+    
+    if missing:
+        return {
+            "ok": False,
+            "error": "missing_required_data",
+            "missing_fields": missing,
+            "message": f"Faltan datos requeridos en la base de datos: {', '.join(missing)}. Complete la evaluación primero."
+        }
+    
+    # STEP 3: Extract values from DB
+    property_name = property_data["name"]
+    property_address = property_data["address"]
+    asking_price = property_data["asking_price"]
+    market_value = property_data["market_value"]
+    arv = property_data["arv"]
+    repair_costs = property_data["repair_estimate"]
+    park_name = property_data.get("park_name")
     
     # Calculate key metrics
     total_investment = asking_price + repair_costs
     potential_profit = arv - total_investment
     roi = (potential_profit / total_investment) * 100 if total_investment > 0 else 0
     
-    # Generate contract date
+    # Generate contract dates
     contract_date = datetime.now().strftime("%B %d, %Y")
-    closing_date = datetime.now().strftime("%B %d, %Y")  # Could add +30 days
+    if not closing_date:
+        # Default to 30 days from now
+        from datetime import timedelta
+        closing_date_obj = datetime.now() + timedelta(days=30)
+        closing_date = closing_date_obj.strftime("%B %d, %Y")
     
     # Build contract text
     contract_text = f"""

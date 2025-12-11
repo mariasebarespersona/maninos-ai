@@ -1094,31 +1094,29 @@ class GenerateBuyContractInput(BaseModel):
 
 @tool("generate_buy_contract")
 def generate_buy_contract_tool(
-    property_name: str, 
-    property_address: str, 
-    asking_price: float, 
-    market_value: float, 
-    arv: float, 
-    repair_costs: float,
-    buyer_name: str = "[BUYER NAME]",
+    property_id: str,
+    buyer_name: str = "MANINOS HOMES LLC",
     seller_name: str = "[SELLER NAME]",
-    park_name: Optional[str] = None
+    closing_date: Optional[str] = None
 ) -> Dict:
     """Generate a Mobile Home Purchase Contract after successful deal validation.
     
-    This should be called AFTER both 70% and 80% rules have passed.
-    Returns a complete purchase agreement with all financial details.
+    AUTO-EXTRACTS all property data from the database (name, address, prices, etc.).
+    Only requires property_id and optional buyer/seller names.
+    
+    Args:
+        property_id: UUID of the property (REQUIRED)
+        buyer_name: Name of buyer (default: "MANINOS HOMES LLC")
+        seller_name: Name of seller (default: "[SELLER NAME]")
+        closing_date: Optional closing date (default: 30 days from now)
+    
+    CRITICAL: Property must have acquisition_stage='passed_80_rule' and all required data.
     """
     return _generate_buy_contract(
-        property_name=property_name,
-        property_address=property_address,
-        asking_price=asking_price,
-        market_value=market_value,
-        arv=arv,
-        repair_costs=repair_costs,
+        property_id=property_id,
         buyer_name=buyer_name,
         seller_name=seller_name,
-        park_name=park_name
+        closing_date=closing_date
     )
 
 # ==================== INSPECTION TOOLS (MANINOS AI) ====================
