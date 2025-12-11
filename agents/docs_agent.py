@@ -35,8 +35,13 @@ class DocsAgent(BaseAgent):
         super().__init__(name="DocsAgent", model="gpt-4o-mini", temperature=0.5)
     
     # No override needed - BaseAgent.run() with ReAct loop handles everything
-    def get_system_prompt(self, intent: str = None) -> str:
-        """Get system prompt using modular prompt loader (same as PropertyAgent)."""
+    def get_system_prompt(self, intent: str = None, property_name: str = None, numbers_template: str = None) -> str:
+        """
+        Get system prompt using modular prompt loader (same as PropertyAgent).
+        
+        Note: property_name and numbers_template are accepted for compatibility with BaseAgent
+        but are not used by DocsAgent.
+        """
         import sys
         import os
         
@@ -48,10 +53,10 @@ class DocsAgent(BaseAgent):
         from prompt_loader import build_agent_prompt
         
         # Build modular prompt (base + intent-specific modules)
+        # DocsAgent doesn't use property_name or numbers_template
         return build_agent_prompt(
             agent_name="docs_agent",
-            intent=intent,
-            property_name=None  # DocsAgent doesn't use property_name in prompts
+            intent=intent
         )
     
     def get_tools(self) -> List:

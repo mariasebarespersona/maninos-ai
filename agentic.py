@@ -281,9 +281,9 @@ def tools_with_validation(state: AgentState) -> Dict[str, Any]:
     try:
         result = tool_node.invoke(state)
         
-        # Ensure result is not empty to avoid LangGraph InvalidUpdateError
-        if not result or (isinstance(result, dict) and not result):
-            logger.warning("[tools_with_validation] Tool execution returned empty result, creating error message")
+        # Ensure result is not empty and has valid structure to avoid LangGraph InvalidUpdateError
+        if not result:
+            logger.warning("[tools_with_validation] Tool execution returned None, creating error message")
             return {
                 "messages": [
                     ToolMessage(
@@ -293,6 +293,24 @@ def tools_with_validation(state: AgentState) -> Dict[str, Any]:
                     )
                 ]
             }
+        
+        # Check if result is an empty dict or doesn't have required keys
+        if isinstance(result, dict):
+            # LangGraph expects at least one of these keys
+            required_keys = ['input', 'messages', 'property_id', 'property_name', 'session_id', 
+                           'awaiting_confirmation', 'pending_tool_call', 'tool_validation_error']
+            
+            if not any(key in result for key in required_keys):
+                logger.warning(f"[tools_with_validation] Tool result missing required keys: {result}")
+                return {
+                    "messages": [
+                        ToolMessage(
+                            content="❌ Tool execution returned invalid result structure",
+                            tool_call_id=state.get("messages", [])[-1].tool_calls[0].get("id", "") if state.get("messages") else "",
+                            name="unknown"
+                        )
+                    ]
+                }
         
         return result
     except Exception as e:
