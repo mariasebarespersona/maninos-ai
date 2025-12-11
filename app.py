@@ -2935,7 +2935,7 @@ async def list_properties_api():
     try:
         from tools.supabase_client import sb
         # Fetch properties ordered by update time
-        result = sb.table("properties").select("id, name, address, acquisition_stage, updated_at, asking_price").order("updated_at", desc=True).limit(50).execute()
+        result = sb.table("properties").select("id, name, address, acquisition_stage, updated_at, asking_price, created_at").order("updated_at", desc=True).limit(50).execute()
         return JSONResponse({"ok": True, "properties": result.data})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
