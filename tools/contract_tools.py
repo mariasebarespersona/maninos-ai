@@ -52,7 +52,8 @@ def generate_buy_contract(
     
     # STEP 3: Validate required fields exist
     required_fields = ["name", "address", "asking_price", "market_value", "arv", "repair_estimate"]
-    missing = [f for f in required_fields if not property_data.get(f)]
+    # CRITICAL: Use 'is None' instead of 'not' to allow 0 values (e.g., repair_estimate: 0)
+    missing = [f for f in required_fields if property_data.get(f) is None]
     
     if missing:
         return {

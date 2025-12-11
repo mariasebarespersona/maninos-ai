@@ -118,15 +118,28 @@ def save_inspection_results(
         
         logger.info(f"✅ [save_inspection_results] Inspection saved: {inspection_id}")
         
-        # Update the property table with latest inspection data AND stage
-        sb.table("properties").update({
+        # Update the property table with latest inspection data
+        # CRITICAL: Only update stage if currently at 'passed_70_rule'
+        # Don't overwrite more advanced stages (inspection_done, passed_80_rule)
+        update_data = {
             "title_status": title_status,
             "repair_estimate": repair_estimate,
-            "acquisition_stage": "inspection_done",  # CRITICAL: Update stage
             "updated_at": "NOW()"
-        }).eq("id", property_id).execute()
+        }
         
-        logger.info(f"✅ [save_inspection_results] Property updated with latest inspection data + stage → inspection_done")
+        # Only advance stage if currently at passed_70_rule
+        if current_stage == "passed_70_rule":
+            update_data["acquisition_stage"] = "inspection_done"
+            logger.info(f"✅ [save_inspection_results] Advancing stage: passed_70_rule → inspection_done")
+        else:
+            logger.info(f"✅ [save_inspection_results] Keeping existing stage: {current_stage} (not overwriting)")
+        
+        sb.table("properties").update(update_data).eq("id", property_id).execute()
+        
+        logger.info(f"✅ [save_inspection_results] Property updated with latest inspection data")
+        
+        # Determine final stage
+        final_stage = "inspection_done" if current_stage == "passed_70_rule" else current_stage
         
         return {
             "ok": True,
@@ -136,7 +149,7 @@ def save_inspection_results(
             "title_status": title_status,
             "repair_estimate": repair_estimate,
             "repair_breakdown": repair_calc.get("breakdown", {}),
-            "acquisition_stage": "inspection_done",  # Added for test
+            "acquisition_stage": final_stage,
             "created_at": inspection_record.get("created_at"),
             "message": f"Inspección guardada. Costo estimado de reparaciones: ${repair_estimate:,.2f}"
         }
