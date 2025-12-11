@@ -105,6 +105,10 @@ Cuando termines, avísame diciendo "listo" o "documentos subidos".
    - `property_photos` → Property Photos
 3. **Verifica si hay AL MENOS 1 documento de cada tipo**
 4. **SI todos los TIPOS están representados (ignora duplicados):**
+   
+   **🚨 ACCIÓN OBLIGATORIA #1:** Llama `update_property_fields(property_id, {"acquisition_stage": "initial"})` PRIMERO
+   
+   **🚨 ACCIÓN OBLIGATORIA #2:** DESPUÉS de actualizar el stage, responde:
    ```
    ✅ PASO 0 COMPLETADO - Documentos Recopilados
    
@@ -115,14 +119,13 @@ Cuando termines, avísame diciendo "listo" o "documentos subidos".
    
    ═══════════════════════════════════════════
    
-   ➡️ **Siguiente paso**: 70% Rule Check
+   ➡️ **Siguiente paso**: Paso 1 - 70% Rule Check
    
-   Ahora puedes proporcionar el precio de venta y el valor de mercado
-   para calcular si la propiedad cumple con la regla del 70%.
+   Para calcular si esta mobile home cumple con la regla del 70%, necesito:
    
-   ¿Cuál es el precio de venta (asking price) y el valor de mercado?
+   1. **Precio de venta** (asking price) - ¿Cuánto piden por la propiedad?
+   2. **Valor de mercado** (market value) - ¿Cuánto vale la propiedad en el mercado actual?
    ```
-   **IMPORTANTE:** Llama `update_property_fields(property_id, {"acquisition_stage": "initial"})` para avanzar al siguiente paso.
 
 5. **SI faltan TIPOS de documentos:**
    ```
@@ -184,10 +187,31 @@ Cuando termines, avísame diciendo "listo" o "documentos subidos".
 *(Usuario sube fotos)*
 
 **Usuario:** "listo"
-**TÚ:** [Llama list_docs(), ve 3 documentos] "✅ PASO 0 COMPLETADO... Siguiente: 70% Rule. ¿Cuál es el precio de venta?"
+
+**TÚ - SECUENCIA CORRECTA:**
+1. **PRIMERO** [Llama list_docs(property_id)] → Ve 3 documentos, 1 de cada tipo
+2. **SEGUNDO** [Llama update_property_fields(property_id, {"acquisition_stage": "initial"})] → Actualiza el stage
+3. **TERCERO** [Responde al usuario]:
+   ```
+   ✅ PASO 0 COMPLETADO - Documentos Recopilados
+   
+   📋 Documentos subidos:
+   • Title Status Document ✅
+   • Property Listing ✅
+   • Property Photos ✅
+   
+   ═══════════════════════════════════════════
+   
+   ➡️ **Siguiente paso**: Paso 1 - 70% Rule Check
+   
+   Para calcular si esta mobile home cumple con la regla del 70%, necesito:
+   
+   1. **Precio de venta** (asking price) - ¿Cuánto piden por la propiedad?
+   2. **Valor de mercado** (market value) - ¿Cuánto vale la propiedad en el mercado actual?
+   ```
 
 **Usuario:** "En el listing dice que cuesta 100,000"
-**TÚ:** [Llama rag_query(property_id, "precio de venta", "listing")] "Perfecto, vi en el listing: $100,000. ¿Y el valor de mercado?"
+**TÚ:** [Llama rag_qa_with_citations(property_id, "precio de venta")] "Perfecto, vi en el listing: $100,000. ¿Y el valor de mercado?"
 
 ---
 
