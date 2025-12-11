@@ -2931,11 +2931,13 @@ async def get_property_api(property_id: str):
 
 @app.get("/api/properties")
 async def list_properties_api():
-    """List all properties for the menu."""
+    """List all properties for the menu with isolated chat contexts."""
     try:
         from tools.supabase_client import sb
         # Fetch properties ordered by update time
-        result = sb.table("properties").select("id, name, address, acquisition_stage, updated_at, asking_price, created_at").order("updated_at", desc=True).limit(50).execute()
+        result = sb.table("properties").select(
+            "id, name, address, acquisition_stage, updated_at, asking_price, created_at"
+        ).order("updated_at", desc=True).limit(50).execute()
         return JSONResponse({"ok": True, "properties": result.data})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -3704,5 +3706,4 @@ async def numbers_chart_sens(property_id: str = Form(...), precio_vec_json: str 
 # REMOVED: EVALUATION / FEEDBACK ENDPOINTS
 # All observability is now handled by Logfire automatically
 # ============================================================================
-
 

@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
-import { ContractViewer } from '@/components/ContractViewer'
 import { PropertiesDrawer } from '@/components/PropertiesDrawer'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
@@ -42,31 +41,35 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
   }
 
   // 2. Detect Contract/Document
-  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract') || content.includes('PURCHASE AGREEMENT'))) {
-      // Parse financial metrics from the contract text
-      const purchasePriceMatch = content.match(/Purchase Price:\s*\$?([\d,]+\.?\d*)/i);
-      const totalInvestmentMatch = content.match(/Total Investment:\s*\$?([\d,]+\.?\d*)/i);
-      const projectedProfitMatch = content.match(/Projected Profit:\s*\$?([\d,]+\.?\d*)/i);
-      const roiMatch = content.match(/ROI:\s*([\d.]+)%/i);
-      
-      const purchasePrice = purchasePriceMatch ? parseFloat(purchasePriceMatch[1].replace(/,/g, '')) : 0;
-      const totalInvestment = totalInvestmentMatch ? parseFloat(totalInvestmentMatch[1].replace(/,/g, '')) : 0;
-      const projectedProfit = projectedProfitMatch ? parseFloat(projectedProfitMatch[1].replace(/,/g, '')) : 0;
-      const roi = roiMatch ? parseFloat(roiMatch[1]) : 0;
-      
-      // Extract property name from content
-      const propertyNameMatch = content.match(/Property Name:\s*(.+)/i);
-      const propertyName = propertyNameMatch ? propertyNameMatch[1].trim() : "Property";
+  if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract'))) {
+      const handleDownload = () => {
+          const blob = new Blob([content], { type: 'text/plain' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Purchase_Agreement_Draft.txt';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+      };
 
       return (
-          <ContractViewer
-              contractText={content}
-              propertyName={propertyName}
-              purchasePrice={purchasePrice}
-              totalInvestment={totalInvestment}
-              projectedProfit={projectedProfit}
-              roi={roi}
-          />
+          <div>
+              <div className="whitespace-pre-wrap mb-4">{content}</div>
+              <div onClick={handleDownload} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-colors group cursor-pointer">
+                  <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
+                      <FileText size={24} className="text-rose-500" />
+                  </div>
+                  <div className="flex-1">
+                      <h4 className="font-bold text-slate-800 text-sm">Purchase_Agreement_Draft.txt</h4>
+                      <p className="text-xs text-slate-500">Ready for review</p>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleDownload(); }} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-md hover:bg-slate-800">
+                      Download
+                  </button>
+              </div>
+          </div>
       )
   }
 
@@ -108,6 +111,8 @@ export default function ChatPage() {
   // Property State
   const [propertyId, setPropertyId] = useState<string | null>(null)
   const [property, setProperty] = useState<MobileHomeProperty | null>(null)
+  
+  // Session Management - Each property gets its own session for memory isolation
   const [sessionId, setSessionId] = useState('web-ui')
   
   // UI State
@@ -139,12 +144,12 @@ export default function ChatPage() {
         setProperty(data.property)
         console.log('[Property] Sync:', data.property)
       }
-          } catch (e) {
+    } catch (e) {
       console.error('[Property] Fetch Error:', e)
     }
   }, [BACKEND_URL])
 
-  // Initial Sync
+  // Initial Sync - Load properties list and sync session
   useEffect(() => {
     fetchPropertiesList()
     const sync = async () => {
@@ -165,7 +170,7 @@ export default function ChatPage() {
     }
     sync()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  // Note: sessionId intentionally omitted - initial sync should only run on mount, not when switching properties
+    // NOTE: sessionId intentionally omitted from deps - we only want this to run on mount
   }, [fetchProperty, fetchPropertiesList])
 
   // Auto-scroll
@@ -213,26 +218,28 @@ export default function ChatPage() {
     }
   }, [input, propertyId, fetchProperty, sessionId])
 
+  // --- Property Switching Handlers ---
   const handleSwitchProperty = async (newPropertyId: string) => {
+      // Each property gets its own session ID for isolated memory/context
+      const newSessionId = `web-ui-${newPropertyId}`
+      setSessionId(newSessionId)
       setPropertyId(newPropertyId)
-      // Use a unique session ID per property to maintain separate chat history
-      setSessionId(`web-ui-${newPropertyId}`)
-      setMessages([]) // Clear UI messages (new session)
+      setMessages([]) // Clear UI messages - new conversation view
       await fetchProperty(newPropertyId)
-      setIsDrawerOpen(false)
+      // Note: LangGraph will load the conversation history for this session automatically
   }
 
   const handleNewEvaluation = () => {
+      // Generate a unique session for brand new evaluation
+      const newSessionId = `web-ui-new-${crypto.randomUUID().slice(0, 8)}`
+      setSessionId(newSessionId)
       setPropertyId(null)
       setProperty(null)
-      const newSession = `web-ui-${crypto.randomUUID()}`
-      setSessionId(newSession)
       setMessages([])
-      setIsDrawerOpen(false)
   }
 
   // --- Render ---
-    return (
+  return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       
       <PropertiesDrawer

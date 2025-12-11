@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { X, Home, Building2, ChevronRight, Plus } from 'lucide-react'
+import { X, Home, Building2, Plus } from 'lucide-react'
 import { MobileHomeProperty, STAGE_CONFIG } from '@/types/maninos'
 
 interface PropertiesDrawerProps {
@@ -112,4 +112,3 @@ export function PropertiesDrawer({
     </div>
   );
 }
-
