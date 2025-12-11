@@ -181,7 +181,7 @@ Please have this reviewed by a licensed attorney before signing.
 ══════════════════════════════════════════════════════════════
 """
 
-    return {
+    result = {
         "ok": True,
         "contract_text": contract_text.strip(),
         "property_name": property_name,
@@ -190,6 +190,36 @@ Please have this reviewed by a licensed attorney before signing.
         "projected_profit": potential_profit,
         "roi": roi,
         "contract_date": contract_date,
+        "closing_date": closing_date,
+        "buyer_name": buyer_name,
+        "seller_name": seller_name,
         "status": "draft"
     }
+    
+    # SAVE CONTRACT TO DATABASE
+    try:
+        from .supabase_client import sb
+        
+        # Check if contracts table exists (graceful degradation if not)
+        contract_record = sb.table("contracts").insert({
+            "property_id": property_id,
+            "contract_text": contract_text.strip(),
+            "buyer_name": buyer_name,
+            "seller_name": seller_name,
+            "closing_date": closing_date,
+            "purchase_price": asking_price,
+            "total_investment": total_investment,
+            "projected_profit": potential_profit,
+            "roi": roi,
+            "status": "draft"
+        }).execute()
+        
+        if contract_record.data:
+            result["contract_id"] = contract_record.data[0]["id"]
+            logger.info(f"✅ [generate_buy_contract] Contract saved to DB: {result['contract_id']}")
+    except Exception as e:
+        # Don't fail if contracts table doesn't exist yet
+        logger.warning(f"⚠️ [generate_buy_contract] Could not save contract to DB (table might not exist): {e}")
+    
+    return result
 
