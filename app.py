@@ -3703,6 +3703,134 @@ async def numbers_chart_sens(property_id: str = Form(...), precio_vec_json: str 
 
 
 # ============================================================================
+# UPLOAD DOCUMENT ENDPOINT (for MANINOS Documents Collection - Paso 0)
+# ============================================================================
+
+@app.post("/upload_document")
+async def upload_document_endpoint(
+    file: UploadFile = File(...),
+    property_id: str = Form(...),
+    document_type: str | None = Form(None),
+):
+    """
+    Simple document upload endpoint for MANINOS AI - Paso 0 Documents Collection.
+    Uploads file to Supabase Storage and creates a basic document record.
+    """
+    import logging
+    import mimetypes
+    from datetime import datetime
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Read file bytes
+        file_bytes = await file.read()
+        filename = file.filename or f"document_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Determine document group based on document_type (from UI)
+        doc_group_map = {
+            "title_status": "Title Status",
+            "property_listing": "Property Listing",
+            "property_photos": "Property Photos"
+        }
+        document_group = doc_group_map.get(document_type, "General Documents")
+        
+        # Generate storage key
+        storage_key = f"property/{property_id}/documents/{filename}"
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        
+        # Upload to Supabase Storage
+        from env_loader import sb
+        BUCKET = "property-documents"
+        
+        logger.info(f"[upload_document] Uploading {filename} to {storage_key}")
+        sb.storage.from_(BUCKET).upload(
+            storage_key, 
+            file_bytes, 
+            {"content-type": content_type, "upsert": "true"}
+        )
+        
+        # Create signed URL (valid for 1 year)
+        signed_url_result = sb.storage.from_(BUCKET).create_signed_url(storage_key, 31536000)
+        signed_url = signed_url_result.get("signedURL") if signed_url_result else None
+        
+        # Save document record to database using RPC
+        # MANINOS uses the same document structure as RAMA (via list_property_documents RPC)
+        # We'll insert a minimal record into the documents table
+        doc_record = {
+            "property_id": property_id,
+            "document_group": document_group,
+            "document_subgroup": "",
+            "document_name": filename,
+            "storage_key": storage_key,
+            "content_type": content_type,
+            "last_signed_url": signed_url,
+            "signed_url_expires_at": datetime.utcnow().isoformat(),
+            "metadata": {"uploaded_via": "maninos_ui", "document_type": document_type}
+        }
+        
+        # Use docs_schema to ensure the document structure exists, then insert
+        from tools.docs_tools import docs_schema
+        schema = docs_schema(property_id)
+        
+        # Insert the document
+        # Note: The exact table/RPC depends on your database schema
+        # For MANINOS, we'll use a simplified approach via the existing docs_tools
+        from tools.docs_tools import upload_and_link
+        
+        result = upload_and_link(
+            property_id=property_id,
+            file_bytes=file_bytes,
+            filename=filename,
+            document_group=document_group,
+            document_subgroup="",
+            document_name=filename,
+            metadata={"document_type": document_type, "uploaded_via": "maninos_ui"}
+        )
+        
+        logger.info(f"✅ [upload_document] File uploaded successfully: {filename}")
+        
+        return JSONResponse({
+            "success": True,
+            "filename": filename,
+            "storage_key": storage_key,
+            "document_group": document_group,
+            "signed_url": signed_url
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ [upload_document] Error uploading file: {e}", exc_info=True)
+        return JSONResponse({"error": str(e), "success": False}, status_code=500)
+
+
+@app.get("/api/property/{property_id}/documents")
+async def get_property_documents(property_id: str):
+    """
+    Get all documents for a property (for Paso 0 - Documents Collection).
+    Returns a list of documents with their upload status.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from tools.docs_tools import list_docs
+        
+        documents = list_docs(property_id)
+        
+        logger.info(f"[get_property_documents] Found {len(documents)} documents for property {property_id}")
+        
+        return JSONResponse({
+            "success": True,
+            "documents": documents,
+            "count": len(documents)
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ [get_property_documents] Error: {e}", exc_info=True)
+        return JSONResponse({"error": str(e), "success": False}, status_code=500)
+
+
+# ============================================================================
 # REMOVED: EVALUATION / FEEDBACK ENDPOINTS
 # All observability is now handled by Logfire automatically
 # ============================================================================
