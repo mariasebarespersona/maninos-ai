@@ -111,10 +111,21 @@ def assistant_node(state: AgentState) -> Dict[str, Any]:
     
     # CRITICAL: Sanitize messages to prevent orphaned ToolMessages
     # OpenAI API requires: ToolMessage must have a preceding AIMessage with tool_calls
+    
+    # STEP 1: Skip any leading ToolMessages (they're orphaned if they come first)
+    start_idx = 0
+    for i, msg in enumerate(recent_msgs):
+        if isinstance(msg, ToolMessage):
+            logger.warning(f"[assistant_node] Skipping leading ToolMessage at index {i}: {msg.name}")
+            start_idx = i + 1
+        else:
+            break
+    
+    # STEP 2: Sanitize remaining messages
     sanitized_msgs = []
     has_pending_tool_calls = False
     
-    for msg in recent_msgs:
+    for msg in recent_msgs[start_idx:]:
         if isinstance(msg, AIMessage):
             # AIMessage with tool_calls creates expectation for ToolMessages
             has_pending_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
