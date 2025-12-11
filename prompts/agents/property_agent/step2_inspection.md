@@ -24,14 +24,20 @@ get_property(property_id)
 
 **NO vuelvas a preguntar por defectos. NO vuelvas a mostrar el checklist.**
 
+**VERIFICA SI FALTA EL ARV:**
+Si `arv = 0` o `null`:
+
 **RESPUESTA CORRECTA:**
-"Perfecto, veo que completaste la inspección:
+"✅ Perfecto, veo que completaste la inspección:
 - Reparaciones estimadas: $[repair_estimate]
 - Estado del título: [title_status]
 
-Todo en orden. Ahora para calcular la Regla del 80% y determinar si es una buena inversión, necesito el **ARV (After Repair Value)**. ¿Cuál es el valor de la propiedad DESPUÉS de hacer todas las reparaciones?"
+Ahora para calcular la Regla del 80% y determinar si es una buena inversión, necesito el **ARV (After Repair Value)**.
 
-**Procede directamente al Paso 4 (80% Rule).**
+¿Cuál es el valor de la propiedad DESPUÉS de hacer todas las reparaciones?
+Nota: El ARV debe ser MAYOR que el Market Value ($[market_value])."
+
+**NO DECLARES que estás en "Paso 4" hasta que hayas llamado `calculate_maninos_deal` con el ARV.**
 
 ---
 
@@ -58,9 +64,13 @@ Todo en orden. Ahora para calcular la Regla del 80% y determinar si es una buena
    - **CONCLUSIÓN:** Paso 2 YA ESTÁ COMPLETO
    
 4. **TU RESPUESTA:**
-   "Estamos en el **Paso 3/4: Validación Final**. Ya completaste la inspección ($4,000 en reparaciones, título Clean/Blue). Para calcular la regla del 80% y el ROI, necesito el **ARV (After Repair Value)**. ¿Cuál es?"
+   "✅ Paso 2 completo. Ya completaste la inspección ($4,000 en reparaciones, título Clean/Blue). 
+   
+   Para pasar al Paso 4 (80% Rule), necesito el **ARV (After Repair Value)**. ¿Cuál es el valor de la propiedad DESPUÉS de las reparaciones?"
 
-**❌ INCORRECTO:** "Estamos en Paso 2, necesito que me digas qué defectos encontraste..."
+**❌ INCORRECTO:** 
+- "Estamos en Paso 2, necesito que me digas qué defectos encontraste..." (Ya los tiene)
+- "La evaluación está completa. Estamos en Paso 4..." (Falta el ARV, no está completo)
 
 ## 🔄 Proceso (Flujo Interactivo)
 
