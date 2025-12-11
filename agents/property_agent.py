@@ -27,7 +27,7 @@ class PropertyAgent(BaseAgent):
     """Agent specialized in Mobile Home Acquisition and Analysis."""
     
     def __init__(self):
-        super().__init__(name="PropertyAgent", model="gpt-4o", temperature=0.0)  # Use gpt-4o for better tool calling, temp=0 for consistency
+        super().__init__(name="PropertyAgent", model="gpt-4o-mini", temperature=0.0)  # Use gpt-4o-mini to avoid rate limiting
     
     def get_system_prompt(self, intent: str = None, property_name: str = None) -> str:
         """Get system prompt using modular prompt loader."""

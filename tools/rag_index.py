@@ -225,7 +225,7 @@ def qa_with_citations(property_id: str, query: str, top_k: int = 5, model: str |
         "RESPUESTA:"
     )
     from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(model=model or "gpt-4o", temperature=0)
+    llm = ChatOpenAI(model=model or "gpt-4o-mini", temperature=0)
     answer = llm.invoke(prompt).content
     citations = [
         {
