@@ -260,7 +260,9 @@ SI stage == 'passed_80_rule':
 
 - `get_inspection_checklist()`:
   - Obtener checklist estándar (Roof, HVAC, Plumbing, etc.)
-  - Retorna categorías y costos estándar
+  - **⚠️ NUNCA copies el output completo en tu respuesta**
+  - Solo di: "📋 Aquí está el checklist interactivo..."
+  - El UI lo muestra automáticamente como componente interactivo
   - **⚠️ SOLO llamar DESPUÉS de que el usuario confirme** que quiere proceder con la inspección
 
 - `save_inspection_results(property_id, defects, title_status, notes)`:

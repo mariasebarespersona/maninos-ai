@@ -23,13 +23,8 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
   
   if (isChecklistMessage) {
     if (propertyId) {
-        // ALWAYS show the new InteractiveChecklist component
-        return (
-            <div>
-                <div className="mb-4 text-slate-700">{content}</div>
-                <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />
-            </div>
-        );
+        // ONLY show the InteractiveChecklist, NOT the agent's text (to avoid duplication)
+        return <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />;
     }
     
     // Fallback if no propertyId (shouldn't happen in normal flow)
@@ -174,7 +169,7 @@ export default function ChatPage() {
       if (typeof window !== 'undefined') {
           if (propertyId) {
               localStorage.setItem('maninos_property_id', propertyId)
-          } else {
+    } else {
               localStorage.removeItem('maninos_property_id')
           }
       }
@@ -191,7 +186,7 @@ export default function ChatPage() {
     
     const sync = async () => {
       try {
-        const form = new FormData()
+      const form = new FormData()
         form.append('text', '') 
         form.append('session_id', sessionId)
         if (propertyId) form.append('property_id', propertyId)
@@ -201,8 +196,8 @@ export default function ChatPage() {
         if (data.property_id && data.property_id !== propertyId) {
           setPropertyId(data.property_id)
           fetchProperty(data.property_id)
-        }
-      } catch (e) {
+      }
+    } catch (e) {
         console.error('Sync failed', e)
       }
     }
@@ -243,7 +238,7 @@ export default function ChatPage() {
       }
 
       const aiMsg: ChatMessage = { 
-          id: crypto.randomUUID(), 
+        id: crypto.randomUUID(), 
         role: 'assistant', 
         content: String(data?.answer || 'No response') 
       }
@@ -296,7 +291,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
       setIsDrawerOpen(false)
       
       // Focus input after state updates
-      setTimeout(() => {
+                            setTimeout(() => {
           inputRef.current?.focus()
       }, 100)
   }

@@ -59,7 +59,11 @@ Todo se guarda automáticamente.
 Avísame cuando termines (di "listo" o "siguiente").
 ```
 
-**⚠️ CRÍTICO:** SIEMPRE incluye 📋 y la palabra "checklist" o "inspección" para activar el UI correcto.
+**⚠️ CRÍTICO:** 
+- SIEMPRE incluye 📋 y la palabra "checklist" para activar el UI
+- NO copies el contenido completo del checklist del tool result
+- SOLO envía el mensaje corto de arriba
+- El usuario verá el checklist interactivo automáticamente en el UI
 
 ### Caso B: Usuario dice "listo" o "siguiente" o "continuar"
 
