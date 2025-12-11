@@ -34,6 +34,108 @@ Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
 ---
 
+## 🚨 Ejemplo #-1: Eliminar Propiedad (CON CONFIRMACIÓN OBLIGATORIA)
+
+### ✅ Conversación CORRECTA
+
+**Usuario**: "Elimina la propiedad Casa Sebares"
+
+**Agent** (Tool Call - buscar propiedad primero):
+```json
+[
+  {"tool": "find_property", "args": {"name": "Casa Sebares"}}
+]
+```
+
+**Tool Result**:
+```json
+{
+  "id": "abc-123-...",
+  "name": "Casa Sebares",
+  "address": "Ronda de Sobradiel 15",
+  "acquisition_stage": "passed_70_rule"
+}
+```
+
+**Agent Response** (PEDIR CONFIRMACIÓN - OBLIGATORIO):
+```
+⚠️ CONFIRMAR ELIMINACIÓN
+
+¿Estás seguro de que deseas eliminar la propiedad "Casa Sebares"?
+
+📍 Dirección: Ronda de Sobradiel 15
+🏷️ Estado: passed_70_rule
+
+⚠️ Esta acción:
+• Eliminará la propiedad de la base de datos
+• Eliminará todos los documentos asociados
+• Eliminará el historial de inspecciones
+• NO se puede deshacer
+
+Responde "SÍ" o "CONFIRMAR" para proceder con la eliminación.
+Responde "NO" o "CANCELAR" para mantener la propiedad.
+```
+
+**Usuario**: "SÍ"
+
+**Agent** (Tool Call - AHORA SÍ eliminar):
+```json
+[
+  {"tool": "delete_property", "args": {"property_id": "abc-123-...", "purge_docs_first": true}}
+]
+```
+
+**Tool Result**:
+```json
+{
+  "deleted": true,
+  "property_id": "abc-123-...",
+  "name": "Casa Sebares"
+}
+```
+
+**Agent Response**:
+```
+✅ Propiedad "Casa Sebares" eliminada correctamente
+
+La propiedad ha sido eliminada de:
+• Base de datos ✅
+• Lista de propiedades ✅
+• Documentos asociados ✅
+
+Para evaluar una nueva propiedad, dime su dirección.
+```
+
+### ❌ Conversación INCORRECTA
+
+**Usuario**: "Elimina la propiedad Casa Sebares"
+
+**Agent** (❌ NO hacer esto - eliminar sin confirmar):
+```json
+[
+  {"tool": "delete_property", "args": {"property_id": "abc-123-..."}}
+]
+```
+
+**❌ ERROR: NUNCA elimines sin pedir confirmación explícita primero.**
+
+### 🔄 Flujo si el usuario cancela:
+
+**Usuario**: "Elimina Casa Sebares"
+
+**Agent**: [Pide confirmación como arriba]
+
+**Usuario**: "NO" o "CANCELAR"
+
+**Agent Response**:
+```
+✅ Operación cancelada
+
+La propiedad "Casa Sebares" se ha mantenido sin cambios.
+```
+
+---
+
 ## 🚨 Ejemplo #0: Crear Propiedad PRIMERO (OBLIGATORIO)
 
 ### ✅ Conversación CORRECTA

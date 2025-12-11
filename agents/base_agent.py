@@ -602,8 +602,8 @@ INSTRUCCIONES CRÍTICAS:
                 if isinstance(msg, ToolMessage):
                     logger.info(f"[{self.name}] 🔍 Found ToolMessage #{i}: name={msg.name}, content_type={type(msg.content).__name__}")
                     
-                    # Check for set_current_property OR add_property
-                    if msg.name in ["set_current_property", "add_property"]:
+                    # Check for set_current_property OR add_property OR delete_property
+                    if msg.name in ["set_current_property", "add_property", "delete_property"]:
                         logger.info(f"[{self.name}] 🎯 Found {msg.name}! Content: {str(msg.content)[:200]}")
                         try:
                             import json
@@ -633,6 +633,13 @@ INSTRUCCIONES CRÍTICAS:
                             # Extract property_id from different formats
                             prop_id = None
                             if tool_result and isinstance(tool_result, dict):
+                                # Special case: delete_property should clear property_id
+                                if msg.name == "delete_property" and tool_result.get("deleted"):
+                                    result["property_id"] = None
+                                    result["property_deleted"] = True
+                                    logger.info(f"[{self.name}] 🗑️ Property deleted, clearing property_id")
+                                    break
+                                
                                 # Try direct property_id field
                                 prop_id = tool_result.get("property_id")
                                 
