@@ -6,6 +6,7 @@ import { InspectionItem, InspectionRecord, TitleStatus } from '@/types/maninos'
 
 interface InteractiveChecklistProps {
   propertyId: string;
+  onUpdate?: () => void;
 }
 
 interface ChecklistData {
@@ -14,7 +15,7 @@ interface ChecklistData {
     current_inspection?: InspectionRecord;
 }
 
-export function InteractiveChecklist({ propertyId }: InteractiveChecklistProps) {
+export function InteractiveChecklist({ propertyId, onUpdate }: InteractiveChecklistProps) {
   const [data, setData] = useState<ChecklistData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,6 +31,7 @@ export function InteractiveChecklist({ propertyId }: InteractiveChecklistProps) 
   const fetchData = async () => {
     try {
       setLoading(true);
+      // Ensure we use the /api prefix which is proxied to backend
       const res = await fetch(`/api/property/${propertyId}/inspection`);
       const json = await res.json();
       if (json.ok) {
@@ -77,6 +79,10 @@ export function InteractiveChecklist({ propertyId }: InteractiveChecklistProps) 
                   title_status: titleStatus
               })
           });
+          // Notify parent to refresh property data (updates sidebar in real-time)
+          if (onUpdate) {
+              onUpdate();
+          }
       } catch (err) {
           console.error("Failed to save", err);
       } finally {

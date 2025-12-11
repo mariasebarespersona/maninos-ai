@@ -9,6 +9,15 @@ El usuario va a inspeccionar la mobile home. Tu objetivo: generar el checklist e
 - Si no es así, `save_inspection_results` retornará un error
 - Solución: Completar Paso 1 primero
 
+## 🚨 REGLA CRÍTICA: LEER ANTES DE PREGUNTAR
+
+**ANTES de pedir al usuario que escriba defectos manualmente**, SIEMPRE llama a:
+```python
+get_property(property_id)
+```
+
+Si `repair_estimate` y `title_status` ya existen en la base de datos, **NO PREGUNTES MANUALMENTE**. El usuario ya los marcó en el UI interactivo.
+
 ## 🔄 Proceso (Flujo Interactivo)
 
 ### 2a. Generar Checklist Interactivo
@@ -20,29 +29,40 @@ get_inspection_checklist()
 ```
 
 **RESPUESTA AL USUARIO**:
-Debes invitar al usuario a usar el componente interactivo:
-"He generado el **Checklist de Inspección Interactivo**. Por favor, marca los defectos encontrados y selecciona el estado del título en la pantalla. Cuando termines, avísame (di 'listo' o 'ya está') para continuar."
+"He generado el **Checklist de Inspección Interactivo**. Por favor, marca los defectos encontrados y selecciona el estado del título en la pantalla. Cuando termines, avísame (di 'listo', 'ya está', 'siguiente paso', etc.) para continuar."
 
 *(Nota: El sistema mostrará un componente visual donde el usuario puede marcar casillas y se guardan automáticamente en la base de datos)*.
 
-### 2b. Confirmar Resultados (Cuando el usuario dice "listo")
+### 2b. Confirmar Resultados (Cuando el usuario avisa)
 
-Cuando el usuario confirme que ha terminado (ej: "listo", "ya marqué todo"):
+**DETECTA** cuando el usuario está listo para continuar. Frases clave:
+- "listo"
+- "ya está"
+- "ya marqué todo"
+- "siguiente paso"
+- "cual es el siguiente paso"
+- "continuar"
+- "proceder"
 
-1. **Lee los resultados guardados** revisando la propiedad:
-   ```python
-   get_property(property_id)
-   ```
-   *Busca `repair_estimate` y `title_status` en la respuesta.*
+Cuando detectes cualquiera de estas frases:
 
-2. **Confirma con el usuario**:
-   "Veo que el costo estimado de reparaciones es **$[repair_estimate]** y el estado del título es **[title_status]**. ¿Es correcto?"
+**PASO 1: LEER DATOS GUARDADOS (OBLIGATORIO)**
+```python
+get_property(property_id)
+```
+Busca `repair_estimate` y `title_status` en la respuesta.
 
-3. **Si falta información** (ej. `repair_estimate` es 0 o `title_status` es None/Pending):
-   - Pregunta: "No veo defectos marcados o falta el estado del título. ¿Está la casa en perfectas condiciones y con título limpio?"
-   - Si el usuario lo confirma por texto (ej: "Sí, el techo está mal"), usa `save_inspection_results` para guardarlo manualmente.
+**PASO 2: CONFIRMAR CON EL USUARIO**
+Si los datos existen:
+"Perfecto. Veo que has marcado defectos por un total de **$[repair_estimate]** y el estado del título es **[title_status]**. ¿Es correcto?"
 
-### 2c. Guardado Manual (Solo si el usuario NO usa el UI)
+Si el usuario confirma (sí, correcto, ok), procede al siguiente paso (ARV).
+
+**PASO 3: SI FALTAN DATOS**
+Si `repair_estimate` es 0 o `title_status` es None/null:
+"No veo datos de inspección guardados. ¿Marcaste los defectos en el checklist en pantalla? Si prefieres, puedes decírmelos por texto (ej: 'roof, hvac, plumbing')."
+
+### 2c. Guardado Manual (Solo si el usuario escribe defectos por texto)
 
 Si el usuario insiste en escribir los defectos por chat en lugar de usar el UI:
 
@@ -94,25 +114,26 @@ Si `title_status == "Clean/Blue"` y tienes el estimado de reparaciones:
 
 ## ⚠️ Errores Comunes a Evitar
 
-### ERROR 1: Asumir que el usuario siempre escribe los defectos
-- **Incorrecto:** "Dime qué defectos encontraste para yo anotarlos."
-- **Correcto:** "Usa el checklist en pantalla para marcar los defectos."
+### ERROR 1: Preguntar por defectos sin leer la base de datos primero
+- **Incorrecto:** "¿Qué defectos encontraste?" (sin llamar a `get_property`)
+- **Correcto:** `get_property(property_id)` → "Veo $4,000 en reparaciones..."
 
-### ERROR 2: No validar los datos guardados por el UI
-- Siempre llama a `get_property` después de que el usuario diga "listo" para asegurarte de que los datos se guardaron correctamente.
+### ERROR 2: No detectar frases como "siguiente paso"
+- El usuario puede decir "siguiente paso" en lugar de "listo".
+- Ambos significan lo mismo: "Ya terminé con el checklist".
 
-### ERROR 3: Olvidar pedir Title Status
-- El UI tiene un selector para Title Status. Verifica que no sea `null` o `Pending`.
+### ERROR 3: Olvidar validar Title Status
+- El UI tiene un selector para Title Status. Verifica que no sea `null`.
 
 ## 📝 Template de Respuesta (Confirmación)
 
 ```
-[✅] He leído los resultados de tu inspección:
+✅ He leído los resultados de tu inspección:
 
-📋 Defectos Registrados: [Menciona los defectos o "Ninguno"]
 💰 Total Reparaciones: $[repair_estimate]
 [✅/⚠️] Title Status: [title_status]
 
 [Si todo está bien]
-¿Procedemos a calcular el ARV?
+Para calcular la regla del 80% y el ROI, necesito el **ARV (After Repair Value)**.
+¿Cuál es el valor de la propiedad DESPUÉS de todas las reparaciones?
 ```

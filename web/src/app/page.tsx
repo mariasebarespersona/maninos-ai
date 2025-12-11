@@ -9,11 +9,11 @@ import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCirc
 
 // --- Rich UI Components ---
 
-function RichMessageRenderer({ content, propertyId }: { content: string, propertyId: string | null }) {
+function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { content: string, propertyId: string | null, onPropertyUpdate?: () => void }) {
   // 1. Detect Checklist
   if (content.includes('📋') && (content.includes('Checklist') || content.includes('Inspección'))) {
     if (propertyId) {
-        return <InteractiveChecklist propertyId={propertyId} />;
+        return <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />;
     }
 
     const lines = content.split('\n');
@@ -264,7 +264,7 @@ export default function ChatPage() {
                         {m.role === 'user' ? (
                             <div className="whitespace-pre-wrap">{m.content}</div>
                         ) : (
-                            <RichMessageRenderer content={m.content} propertyId={propertyId} />
+                            <RichMessageRenderer content={m.content} propertyId={propertyId} onPropertyUpdate={() => propertyId && fetchProperty(propertyId)} />
                         )}
                     </div>
                 </div>

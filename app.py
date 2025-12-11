@@ -2930,6 +2930,7 @@ async def get_property_api(property_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 @app.get("/api/property/{property_id}/inspection")
+@app.get("/property/{property_id}/inspection")
 async def get_inspection_api(property_id: str):
     """Get inspection checklist and current status."""
     try:
@@ -2951,6 +2952,7 @@ async def get_inspection_api(property_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 @app.post("/api/property/{property_id}/inspection")
+@app.post("/property/{property_id}/inspection")
 async def save_inspection_api(property_id: str, data: Dict):
     """Save inspection results (interactive update)."""
     try:
