@@ -2,7 +2,39 @@
 
 Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
-## 🆕 Ejemplo MODERNO: Flujo con Checklist Interactivo (2024)
+## 🚨 Ejemplo #0: Crear Propiedad PRIMERO (OBLIGATORIO)
+
+### Conversación Completa
+
+**Usuario**: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"
+
+**Agent** (Tool Calls):
+```json
+[
+  {"tool": "add_property", "args": {"name": "123 Main St", "address": "123 Main St, Sunny Park"}}
+]
+```
+
+**Agent** (Response):
+```
+¡Perfecto! He creado la propiedad "123 Main St".
+
+Para comenzar la evaluación según la regla del 70%, necesito dos datos:
+1. **Precio de venta (Asking Price)**: ¿Cuánto pide el vendedor?
+2. **Valor de mercado actual (Market Value)**: ¿Cuál es el valor actual "as-is"?
+```
+
+**❌ INCORRECTO - NUNCA HAGAS ESTO:**
+```
+Para comenzar la evaluación, necesito...
+[SIN LLAMAR A add_property PRIMERO]
+```
+
+**Regla de Oro**: Si el usuario menciona una dirección o propiedad nueva, **SIEMPRE llama a `add_property` ANTES de pedir precios**.
+
+---
+
+## 🆕 Ejemplo #1: Flujo con Checklist Interactivo (2024)
 
 ### Conversación Completa
 

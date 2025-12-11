@@ -108,12 +108,23 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [uploading, setUploading] = useState(false)
   
-  // Property State
-  const [propertyId, setPropertyId] = useState<string | null>(null)
+  // Property State - Persist across page refresh
+  const [propertyId, setPropertyId] = useState<string | null>(() => {
+      if (typeof window !== 'undefined') {
+          return localStorage.getItem('maninos_property_id')
+      }
+      return null
+  })
   const [property, setProperty] = useState<MobileHomeProperty | null>(null)
   
   // Session Management - Each property gets its own session for memory isolation
-  const [sessionId, setSessionId] = useState('web-ui')
+  // Persist sessionId in localStorage to survive page refresh
+  const [sessionId, setSessionId] = useState(() => {
+      if (typeof window !== 'undefined') {
+          return localStorage.getItem('maninos_session_id') || 'web-ui'
+      }
+      return 'web-ui'
+  })
   
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true) // Mobile toggle
@@ -131,7 +142,7 @@ export default function ChatPage() {
           const res = await fetch(`${BACKEND_URL}/api/properties`)
           const json = await res.json()
           if (json.ok) setPropertiesList(json.properties)
-      } catch (e) {
+    } catch (e) {
           console.error('Failed to fetch properties list', e)
       }
   }, [BACKEND_URL])
@@ -145,23 +156,47 @@ export default function ChatPage() {
         setProperty(data.property)
         console.log('[Property] Sync:', data.property)
       }
-    } catch (e) {
+          } catch (e) {
       console.error('[Property] Fetch Error:', e)
     }
   }, [BACKEND_URL])
 
+  // Persist sessionId and propertyId to localStorage
+  useEffect(() => {
+      if (typeof window !== 'undefined') {
+          localStorage.setItem('maninos_session_id', sessionId)
+      }
+  }, [sessionId])
+
+  useEffect(() => {
+      if (typeof window !== 'undefined') {
+          if (propertyId) {
+              localStorage.setItem('maninos_property_id', propertyId)
+          } else {
+              localStorage.removeItem('maninos_property_id')
+          }
+      }
+  }, [propertyId])
+
   // Initial Sync - Load properties list and sync session
   useEffect(() => {
     fetchPropertiesList()
+    
+    // If we have a persisted propertyId, load its data
+    if (propertyId) {
+        fetchProperty(propertyId)
+    }
+    
     const sync = async () => {
       try {
         const form = new FormData()
         form.append('text', '') 
         form.append('session_id', sessionId)
+        if (propertyId) form.append('property_id', propertyId)
         const resp = await fetch('/api/chat', { method: 'POST', body: form })
         const data = await resp.json()
         
-        if (data.property_id) {
+        if (data.property_id && data.property_id !== propertyId) {
           setPropertyId(data.property_id)
           fetchProperty(data.property_id)
         }
@@ -206,7 +241,7 @@ export default function ChatPage() {
       }
 
       const aiMsg: ChatMessage = { 
-        id: crypto.randomUUID(), 
+          id: crypto.randomUUID(), 
         role: 'assistant', 
         content: String(data?.answer || 'No response') 
       }
@@ -237,6 +272,11 @@ export default function ChatPage() {
       setPropertyId(null)
       setProperty(null)
       
+      // Clear localStorage to start fresh
+      if (typeof window !== 'undefined') {
+          localStorage.removeItem('maninos_property_id')
+      }
+      
       // Add a welcome message to guide the user
       const welcomeMessage: ChatMessage = {
           id: crypto.randomUUID(),
@@ -260,7 +300,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
   }
 
   // --- Render ---
-  return (
+    return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       
       <PropertiesDrawer
@@ -276,10 +316,10 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
       <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0">
         <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/50">
           M
-                      </div>
+                </div>
         <nav className="flex flex-col gap-4 w-full items-center">
             {/* Nav Items */}
-            <button 
+                  <button
                 onClick={() => {
                     fetchPropertiesList()
                     setIsDrawerOpen(true)
@@ -287,7 +327,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                 className="p-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
             >
                 <Menu size={20} />
-            </button>
+                  </button>
             <div className="w-8 h-[1px] bg-slate-800" />
             {/* Add more nav icons here if needed */}
         </nav>
@@ -303,21 +343,21 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                     currentStage={property.acquisition_stage || 'initial'} 
                     status={property.status || 'New'} 
                 />
-            )}
+          )}
         </div>
         
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
-          {messages.length === 0 ? (
+            {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
                 <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
                     <Bot size={32} className="text-slate-500" />
-          </div>
+                  </div>
                 <h3 className="text-xl font-semibold text-slate-700">Maninos AI</h3>
                 <p className="text-sm text-slate-500 max-w-xs mt-2">
                     Start by entering a property address to begin the evaluation process.
-                </p>
-        </div>
+                    </p>
+                  </div>
           ) : (
             messages.map((m) => (
               <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''} max-w-4xl mx-auto`}>
@@ -327,8 +367,8 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                     m.role === 'user' ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white'
                 }`}>
                     {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-          </div>
-
+              </div>
+              
                 {/* Bubble */}
                 <div className={`flex flex-col max-w-[80%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`px-5 py-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
@@ -341,25 +381,25 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                         ) : (
                             <RichMessageRenderer content={m.content} propertyId={propertyId} onPropertyUpdate={() => propertyId && fetchProperty(propertyId)} />
           )}
-        </div>
-          </div>
-
-                    </div>
+                </div>
+              </div>
+              
+                  </div>
             ))
                   )}
           {uploading && (
              <div className="flex gap-4 max-w-4xl mx-auto">
                 <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
                     <Bot size={16} />
-                </div>
+          </div>
                 <div className="flex items-center space-x-2 bg-white px-4 py-3 rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+                </div>
+              )}
+            </div>
               
         {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-slate-200">
@@ -368,8 +408,8 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                     <input
                         ref={inputRef}
                         type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && onSend()}
                         placeholder="Type a message..."
                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
