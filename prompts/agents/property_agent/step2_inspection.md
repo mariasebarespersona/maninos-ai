@@ -74,10 +74,10 @@ get_inspection_checklist()
 
 **Responde EXACTAMENTE así (para activar el componente interactivo):**
 ```
-📋 Aquí tienes el checklist de inspección interactivo.
+📋 Usa el checklist de inspección interactivo que aparece arriba.
 
 Marca los defectos que encuentres y selecciona el estado del título. 
-Todo se guarda automáticamente.
+Los cambios se guardan automáticamente.
 
 Avísame cuando termines (di "listo" o "siguiente").
 ```

@@ -11,14 +11,21 @@ import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCirc
 // --- Rich UI Components ---
 
 function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { content: string, propertyId: string | null, onPropertyUpdate?: () => void }) {
-  // 1. Detect Checklist - ALWAYS show InteractiveChecklist (never old text version)
+  // 1. Detect Checklist - ONLY show when agent EXPLICITLY asks user to complete checklist
+  // CRITICAL: Must be VERY specific to avoid showing checklist when agent just mentions "inspection" casually
   const contentLower = content.toLowerCase();
   const isChecklistMessage = (
-    content.includes('📋') || 
-    contentLower.includes('checklist') || 
-    contentLower.includes('inspección') || 
-    contentLower.includes('inspeccion') ||
-    (contentLower.includes('marca') && contentLower.includes('defecto'))
+    // ONLY trigger if agent explicitly asks to use/complete the checklist
+    // This prevents showing checklist when agent just mentions "inspection" in status or casual conversation
+    (content.includes('📋') && (contentLower.includes('marca') || contentLower.includes('usa') || contentLower.includes('completa'))) ||
+    (contentLower.includes('checklist') && (
+      contentLower.includes('usa el') || 
+      contentLower.includes('usa la') ||
+      contentLower.includes('completa') || 
+      contentLower.includes('rellena') ||
+      contentLower.includes('marca los defectos') ||
+      contentLower.includes('selecciona los defectos')
+    ))
   );
   
   if (isChecklistMessage) {
