@@ -2929,6 +2929,56 @@ async def get_property_api(property_id: str):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+@app.get("/api/property/{property_id}/inspection")
+async def get_inspection_api(property_id: str):
+    """Get inspection checklist and current status."""
+    try:
+        from tools.inspection_tools import get_inspection_checklist, get_latest_inspection
+        
+        # 1. Get Standard Checklist
+        checklist_data = get_inspection_checklist()
+        
+        # 2. Get Saved Results (if any)
+        latest = get_latest_inspection(property_id)
+        
+        return JSONResponse({
+            "ok": True,
+            "checklist": checklist_data["checklist"],
+            "defect_costs": checklist_data["defect_costs"],
+            "current_inspection": latest
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.post("/api/property/{property_id}/inspection")
+async def save_inspection_api(property_id: str, data: Dict):
+    """Save inspection results (interactive update)."""
+    try:
+        from tools.inspection_tools import save_inspection_results
+        
+        defects = data.get("defects", [])
+        title_status = data.get("title_status", "Pending Check")
+        notes = data.get("notes")
+        
+        # Ensure title_status is valid if it's "Pending Check" or similar UI placeholder
+        valid_statuses = ["Clean/Blue", "Missing", "Lien", "Other"]
+        if title_status not in valid_statuses:
+             # Default to "Other" or keep current if valid
+             if title_status == "Pending Check":
+                 title_status = "Other" # Or handle as "Unknown"
+
+        result = save_inspection_results(
+            property_id=property_id,
+            defects=defects,
+            title_status=title_status,
+            notes=notes,
+            created_by="user_ui"
+        )
+        
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 @app.get("/api/documents")
 async def get_documents_api(property_id: str):
     """Get all documents for a property. Returns both uploaded and pending documents."""

@@ -9,95 +9,50 @@ El usuario va a inspeccionar la mobile home. Tu objetivo: generar el checklist e
 - Si no es así, `save_inspection_results` retornará un error
 - Solución: Completar Paso 1 primero
 
-## 🔄 Proceso (2 Sub-pasos)
+## 🔄 Proceso (Flujo Interactivo)
 
-### 2a. Generar Checklist Estándar
+### 2a. Generar Checklist Interactivo
+
+Ejecuta la herramienta para mostrar el checklist:
 
 ```python
 get_inspection_checklist()
 ```
 
-**QUÉ RETORNA**:
-```json
-{
-  "checklist": [
-    {"category": "Roof", "key": "roof", "description": "..."},
-    {"category": "HVAC", "key": "hvac", "description": "..."},
-    {"category": "Plumbing", "key": "plumbing", "description": "..."},
-    ... // 10 categorías total
-  ],
-  "defect_costs": {
-    "roof": 3000,
-    "hvac": 2500,
-    "plumbing": 1500,
-    ...
-  }
-}
-```
+**RESPUESTA AL USUARIO**:
+Debes invitar al usuario a usar el componente interactivo:
+"He generado el **Checklist de Inspección Interactivo**. Por favor, marca los defectos encontrados y selecciona el estado del título en la pantalla. Cuando termines, avísame (di 'listo' o 'ya está') para continuar."
 
-**MUESTRA AL USUARIO**:
-```
-📋 PASO 2 - Checklist de Inspección
+*(Nota: El sistema mostrará un componente visual donde el usuario puede marcar casillas y se guardan automáticamente en la base de datos)*.
 
-Inspecciona la mobile home y marca los defectos encontrados:
+### 2b. Confirmar Resultados (Cuando el usuario dice "listo")
 
-✅ Roof (Techo) - $3,000 si necesita reparación
-✅ HVAC (Climatización) - $2,500
-✅ Plumbing (Fontanería) - $1,500
-✅ Electrical (Electricidad) - $2,000
-✅ Flooring (Suelo) - $1,200
-✅ Windows (Ventanas) - $1,000
-✅ Skirting (Rodapié exterior) - $800
-✅ Painting (Pintura) - $1,000
-✅ Appliances (Electrodomésticos) - $1,500
-✅ Deck (Terraza/Porche) - $1,000
+Cuando el usuario confirme que ha terminado (ej: "listo", "ya marqué todo"):
 
-📌 IMPORTANTE: También necesito el **Title Status**:
-   • Clean/Blue (✅ Título limpio)
-   • Missing (❌ Título faltante)
-   • Lien (❌ Con gravamen)
-   • Other (⚠️ Otro)
+1. **Lee los resultados guardados** revisando la propiedad:
+   ```python
+   get_property(property_id)
+   ```
+   *Busca `repair_estimate` y `title_status` en la respuesta.*
 
-Por favor, indícame:
-1. ¿Qué defectos encontraste? (usa las keys: roof, hvac, plumbing, etc.)
-2. ¿Cuál es el estado del título?
-```
+2. **Confirma con el usuario**:
+   "Veo que el costo estimado de reparaciones es **$[repair_estimate]** y el estado del título es **[title_status]**. ¿Es correcto?"
 
-### 2b. Guardar Resultados de Inspección
+3. **Si falta información** (ej. `repair_estimate` es 0 o `title_status` es None/Pending):
+   - Pregunta: "No veo defectos marcados o falta el estado del título. ¿Está la casa en perfectas condiciones y con título limpio?"
+   - Si el usuario lo confirma por texto (ej: "Sí, el techo está mal"), usa `save_inspection_results` para guardarlo manualmente.
 
-Una vez el usuario responde (ej: "Encontré: roof, hvac, plumbing. Título: Clean/Blue"):
+### 2c. Guardado Manual (Solo si el usuario NO usa el UI)
+
+Si el usuario insiste en escribir los defectos por chat en lugar de usar el UI:
 
 ```python
 save_inspection_results(
-    property_id="abc-123-...",
-    defects=["roof", "hvac", "plumbing"],
+    property_id="...",
+    defects=["roof", "hvac"], # Keys extraídas del texto
     title_status="Clean/Blue",
-    notes="Optional: cualquier observación adicional"
+    notes="..."
 )
-```
-
-**QUÉ HACE LA HERRAMIENTA**:
-1. ✅ VALIDA que `acquisition_stage >= 'passed_70_rule'`
-2. ✅ AUTO-CALCULA `repair_estimate` usando `DEFECT_COSTS`
-   - roof ($3,000) + hvac ($2,500) + plumbing ($1,500) = $7,000
-3. ✅ Guarda inspección en historial (`property_inspections` table)
-4. ✅ Actualiza propiedad con `title_status` y `repair_estimate`
-5. ✅ Actualiza `acquisition_stage='inspection_done'`
-
-**RETORNA**:
-```json
-{
-  "ok": true,
-  "inspection_id": "xyz-789-...",
-  "repair_estimate": 7000,
-  "repair_breakdown": {
-    "roof": 3000,
-    "hvac": 2500,
-    "plumbing": 1500
-  },
-  "title_status": "Clean/Blue",
-  "message": "Inspección guardada. Costo estimado: $7,000"
-}
 ```
 
 ## 🔴 Title Status = Deal Breaker
@@ -122,19 +77,15 @@ Puedo continuar la evaluación financiera, pero esta propiedad NO es recomendabl
 ¿Deseas continuar con la evaluación de todos modos? (Solo para referencia)
 ```
 
-Si `title_status == "Clean/Blue"`:
+## ✅ Transición al Paso 3 (Reparaciones/ARV)
+
+Si `title_status == "Clean/Blue"` y tienes el estimado de reparaciones:
 
 ```
-✅ PASO 2 COMPLETADO - Inspección Guardada
+✅ PASO 2 COMPLETADO - Inspección Verificada
 
-📋 Defectos Encontrados:
-• Roof (Techo): $3,000
-• HVAC (Climatización): $2,500
-• Plumbing (Fontanería): $1,500
-
-💰 Costo Total Estimado de Reparaciones: $7,000
-
-✅ Title Status: Clean/Blue (Título limpio)
+💰 Costo Total Estimado de Reparaciones: $[repair_estimate]
+✅ Title Status: Clean/Blue
 
 ➡️ Siguiente paso: Para completar la evaluación, necesito el **ARV (After Repair Value)**.
 
@@ -143,83 +94,25 @@ Si `title_status == "Clean/Blue"`:
 
 ## ⚠️ Errores Comunes a Evitar
 
-### ERROR 1: Llamar save_inspection_results sin completar Paso 1
+### ERROR 1: Asumir que el usuario siempre escribe los defectos
+- **Incorrecto:** "Dime qué defectos encontraste para yo anotarlos."
+- **Correcto:** "Usa el checklist en pantalla para marcar los defectos."
 
-```python
-# Si acquisition_stage != 'passed_70_rule':
-save_inspection_results(...)
-# → Retorna: {"ok": false, "error": "stage_validation_failed", ...}
+### ERROR 2: No validar los datos guardados por el UI
+- Siempre llama a `get_property` después de que el usuario diga "listo" para asegurarte de que los datos se guardaron correctamente.
 
-# Solución: Completar Paso 1 primero
-```
+### ERROR 3: Olvidar pedir Title Status
+- El UI tiene un selector para Title Status. Verifica que no sea `null` o `Pending`.
 
-### ERROR 2: No mostrar el checklist completo
-
-```python
-# ❌ INCORRECTO
-"Dime qué defectos encontraste"
-# El usuario no sabe qué buscar
-
-# ✅ CORRECTO
-get_inspection_checklist()
-# Muestra TODAS las categorías con costos
-"Inspecciona estas 10 áreas: Roof ($3k), HVAC ($2.5k), ..."
-```
-
-### ERROR 3: Calcular repair_estimate manualmente
-
-```python
-# ❌ INCORRECTO
-"Roof cuesta $3k y HVAC $2.5k, entonces total es $5.5k"
-# NO hacer cálculos manuales
-
-# ✅ CORRECTO
-save_inspection_results(defects=["roof", "hvac"], ...)
-# La herramienta calcula automáticamente
-```
-
-### ERROR 4: Olvidar pedir Title Status
-
-```python
-# ❌ INCORRECTO
-save_inspection_results(defects=["roof"], title_status="")  # Error
-
-# ✅ CORRECTO
-# SIEMPRE pregunta por el title status ANTES de llamar la herramienta
-"¿Cuál es el estado del título? (Clean/Blue, Missing, Lien, Other)"
-```
-
-## 📝 Template de Respuesta (Paso 2b - Guardado)
+## 📝 Template de Respuesta (Confirmación)
 
 ```
-[✅/🔴] PASO 2 - Inspección Completada
+[✅] He leído los resultados de tu inspección:
 
-📋 Defectos Identificados:
-[Lista con costos individuales]
+📋 Defectos Registrados: [Menciona los defectos o "Ninguno"]
+💰 Total Reparaciones: $[repair_estimate]
+[✅/⚠️] Title Status: [title_status]
 
-💰 Costo Total de Reparaciones: $[repair_estimate]
-
-[✅/🔴] Title Status: [title_status]
-
-[Si Clean/Blue]:
-  ✅ El título está limpio. Podemos proceder.
-  ➡️ Siguiente paso: Necesito el ARV para la validación final (Regla del 80%).
-
-[Si NO Clean/Blue]:
-  🔴 ALTO RIESGO: Título no está limpio.
-  ⚠️ NO proceder sin asesoría legal.
-  [Advertencias detalladas]
+[Si todo está bien]
+¿Procedemos a calcular el ARV?
 ```
-
-## 🎯 Objetivo Final del Paso 2
-
-Al completar este paso, debes:
-1. ✅ Checklist generado y mostrado al usuario
-2. ✅ Defectos recopilados del usuario
-3. ✅ Title Status verificado
-4. ✅ Tool `save_inspection_results` ejecutado
-5. ✅ `repair_estimate` calculado automáticamente
-6. ✅ `acquisition_stage` actualizado a `'inspection_done'`
-7. ✅ Usuario advertido si title status != Clean/Blue
-8. ✅ Preparar transición al Paso 4 (80% rule) - pedir ARV
-

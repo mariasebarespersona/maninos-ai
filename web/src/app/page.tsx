@@ -3,14 +3,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
+import { InteractiveChecklist } from '@/components/InteractiveChecklist'
 import { MobileHomeProperty } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
 // --- Rich UI Components ---
 
-function RichMessageRenderer({ content }: { content: string }) {
+function RichMessageRenderer({ content, propertyId }: { content: string, propertyId: string | null }) {
   // 1. Detect Checklist
   if (content.includes('📋') && (content.includes('Checklist') || content.includes('Inspección'))) {
+    if (propertyId) {
+        return <InteractiveChecklist propertyId={propertyId} />;
+    }
+
     const lines = content.split('\n');
     return (
       <div className="space-y-3">
@@ -259,7 +264,7 @@ export default function ChatPage() {
                         {m.role === 'user' ? (
                             <div className="whitespace-pre-wrap">{m.content}</div>
                         ) : (
-                            <RichMessageRenderer content={m.content} />
+                            <RichMessageRenderer content={m.content} propertyId={propertyId} />
                         )}
                     </div>
                 </div>
