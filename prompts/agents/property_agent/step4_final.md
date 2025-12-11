@@ -95,6 +95,8 @@ calculate_maninos_deal(
 
 ## ✅ Interpretación: 80% Rule PASA
 
+**🚨 FORMATO OBLIGATORIO - SIEMPRE USA ESTE FORMATO:**
+
 ```
 🟢 PASO 4 COMPLETADO - READY TO BUY
 

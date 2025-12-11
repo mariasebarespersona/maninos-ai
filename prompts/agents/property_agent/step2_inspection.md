@@ -98,13 +98,28 @@ datos = get_property(property_id)
 **PASO 2: Decide según los datos**
 
 **Si `repair_estimate > 0` y `title_status != None` y `arv = 0`:**
-```
-✅ Perfecto, veo que completaste la inspección:
-- Reparaciones estimadas: $[repair_estimate]
-- Estado del título: [title_status]
 
-Para calcular la Regla del 80%, ¿cuál es el **ARV (After Repair Value)**?
-El ARV debe ser MAYOR que el Market Value ($[market_value]).
+**🚨 FORMATO OBLIGATORIO - RESUMEN + SIGUIENTE PASO:**
+```
+✅ PASO 2 COMPLETADO - Inspección de la mobile home
+
+📋 Resultados de la Inspección:
+• Reparaciones estimadas: $[repair_estimate]
+• Estado del título: [title_status]
+• Costo total de reparaciones: $[repair_estimate]
+
+✅ La inspección ha sido completada y guardada en la base de datos.
+
+═══════════════════════════════════════════
+
+➡️ **Siguiente paso**: Cálculo de la Regla del 80% (ARV)
+
+Para verificar si la propiedad cumple con la regla del 80%, necesito el **ARV (After Repair Value)**.
+
+El ARV es el valor estimado de la propiedad DESPUÉS de hacer todas las reparaciones.
+Debe ser MAYOR que el Market Value actual ($[market_value]).
+
+¿Cuál es el ARV de esta propiedad?
 ```
 
 **Si `repair_estimate = 0` o `null`:**

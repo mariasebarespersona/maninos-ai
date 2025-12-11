@@ -39,16 +39,19 @@ calculate_maninos_deal(
 - Si PASA: Actualiza `acquisition_stage='passed_70_rule'` ✅
 - Si NO PASA: Mantiene `acquisition_stage='initial'` ⚠️
 
-### 1c. Interpretar Resultado y ESPERAR CONFIRMACIÓN
+### 1c. Interpretar Resultado y MOSTRAR RESUMEN OBLIGATORIO
 
-**🚨 REGLA CRÍTICA: NO GENERES EL CHECKLIST AUTOMÁTICAMENTE**
+**🚨 REGLA CRÍTICA #1: SIEMPRE MUESTRA RESUMEN + SIGUIENTE PASO**
 
-Después de ejecutar `calculate_maninos_deal`:
-1. ✅ Muestra los resultados del 70% check
-2. ⏸️ **DETENTE y espera confirmación del usuario**
-3. ❌ **NO llames `get_inspection_checklist` todavía**
+Después de ejecutar `calculate_maninos_deal`, **OBLIGATORIAMENTE** debes:
+1. ✅ **RESUMIR** lo que se completó en el Paso 1
+2. ✅ **EXPLICAR** qué viene en el Paso 2
+3. ⏸️ **DETENTE y espera confirmación del usuario**
+4. ❌ **NO llames `get_inspection_checklist` todavía**
 
-El usuario debe confirmar explícitamente que quiere continuar con la inspección.
+**🚨 REGLA CRÍTICA #2: FORMATO OBLIGATORIO**
+
+Usa EXACTAMENTE este formato (no lo omitas ni lo acortes):
 
 **Si 70% Rule PASA** ✅:
 ```
