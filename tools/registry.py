@@ -12,6 +12,7 @@ from .property_tools import add_property as _add_property, list_frameworks as _l
 from .property_tools import get_property as _get_property, find_property as _find_property, list_properties as _list_properties
 from .property_tools import search_properties as _search_properties
 from .property_tools import delete_property as _delete_property, delete_properties as _delete_properties
+from .property_tools import update_property_fields as _update_property_fields
 from .docs_tools import (
     propose_slot as _propose_slot,
     upload_and_link as _upload_and_link,
@@ -123,6 +124,20 @@ def delete_properties_tool(property_ids: List[str], purge_docs_first: bool = Tru
     The LLM should resolve names to ids first using `search_properties` or a prior list.
     """
     return _delete_properties(property_ids, purge_docs_first)
+
+
+@tool("update_property_fields")
+def update_property_fields_tool(property_id: str, fields: Dict) -> Dict:
+    """Update one or more fields of a property.
+    
+    Common use cases:
+    - Update acquisition_stage: update_property_fields(property_id, {"acquisition_stage": "initial"})
+    - Update title_status: update_property_fields(property_id, {"title_status": "Clean/Blue"})
+    - Update multiple fields: update_property_fields(property_id, {"arv": 150000, "status": "Ready to Buy"})
+    
+    Returns {"ok": True, "updated": {...}} on success.
+    """
+    return _update_property_fields(property_id, fields)
 
 
 class ProposeDocInput(BaseModel):
@@ -1194,7 +1209,7 @@ def get_inspection_history_tool(property_id: str, limit: int = 10) -> List[Dict]
 # ============================================================================
 
 TOOLS = [
-    # Property Management (8 tools)
+    # Property Management (9 tools)
     add_property_tool,
     get_property_tool,
     set_current_property_tool,
@@ -1203,6 +1218,7 @@ TOOLS = [
     search_properties_tool,
     delete_property_tool,
     delete_properties_tool,
+    update_property_fields_tool,
     
     # Document Management - Generic (8 tools)
     upload_and_link_tool,
