@@ -40,7 +40,17 @@ def generate_buy_contract(
             "message": f"No se encontró la propiedad con ID {property_id}"
         }
     
-    # STEP 2: Validate required fields exist
+    # STEP 2: Validate acquisition_stage
+    acquisition_stage = property_data.get("acquisition_stage")
+    if acquisition_stage != "passed_80_rule":
+        return {
+            "ok": False,
+            "error": "invalid_stage",
+            "current_stage": acquisition_stage,
+            "message": f"No se puede generar contrato. La propiedad debe pasar primero la regla del 80% (stage actual: {acquisition_stage})"
+        }
+    
+    # STEP 3: Validate required fields exist
     required_fields = ["name", "address", "asking_price", "market_value", "arv", "repair_estimate"]
     missing = [f for f in required_fields if not property_data.get(f)]
     
@@ -172,6 +182,7 @@ Please have this reviewed by a licensed attorney before signing.
 """
 
     return {
+        "ok": True,
         "contract_text": contract_text.strip(),
         "property_name": property_name,
         "purchase_price": asking_price,

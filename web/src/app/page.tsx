@@ -42,14 +42,10 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
 
   // 2. Detect Contract/Document
   if (content.includes('📄') && (content.includes('Contrato') || content.includes('Contract') || content.includes('PURCHASE AGREEMENT'))) {
-      // Extract contract text (everything between the header markers)
-      const contractMatch = content.match(/══════════════════════════════════════════════════════════════\n([\s\S]*?)══════════════════════════════════════════════════════════════/);
-      const contractText = contractMatch ? contractMatch[1].trim() : content;
-      
       // Parse financial metrics from the contract text
-      const purchasePriceMatch = content.match(/Purchase Price:\s*\$?([\d,]+)/i);
-      const totalInvestmentMatch = content.match(/Total Investment:\s*\$?([\d,]+)/i);
-      const projectedProfitMatch = content.match(/Projected Profit:\s*\$?([\d,]+)/i);
+      const purchasePriceMatch = content.match(/Purchase Price:\s*\$?([\d,]+\.?\d*)/i);
+      const totalInvestmentMatch = content.match(/Total Investment:\s*\$?([\d,]+\.?\d*)/i);
+      const projectedProfitMatch = content.match(/Projected Profit:\s*\$?([\d,]+\.?\d*)/i);
       const roiMatch = content.match(/ROI:\s*([\d.]+)%/i);
       
       const purchasePrice = purchasePriceMatch ? parseFloat(purchasePriceMatch[1].replace(/,/g, '')) : 0;
@@ -63,7 +59,7 @@ function RichMessageRenderer({ content, propertyId, onPropertyUpdate }: { conten
 
       return (
           <ContractViewer
-              contractText={contractText}
+              contractText={content}
               propertyName={propertyName}
               purchasePrice={purchasePrice}
               totalInvestment={totalInvestment}

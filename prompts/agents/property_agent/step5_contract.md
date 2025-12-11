@@ -1,135 +1,111 @@
 # Paso 5: Contract Generation
 
-## ⚠️ PRE-REQUISITOS ABSOLUTOS
+## ⚠️ VALIDACIÓN OBLIGATORIA ANTES DE GENERAR
 
-**SOLO ejecutar si:**
-- ✅ `acquisition_stage == 'passed_80_rule'`
-- ✅ 70% Rule: PASS
-- ✅ 80% Rule: PASS
-- ✅ Title Status: Clean/Blue (recomendado, pero advertir si no)
-
-**NO generar contrato si:**
-- ❌ `acquisition_stage == 'rejected'`
-- ❌ Falta `arv`, `asking_price`, `market_value`, o `repair_estimate`
-
----
-
-## 🚨 NUEVO SISTEMA SIMPLIFICADO
-
-La herramienta `generate_buy_contract` ahora es **MUCHO MÁS SIMPLE**:
-
-### ✅ ANTES (Complicado - Deprecated)
-```python
-# ❌ VIEJO - NO USES ESTO
-generate_buy_contract(
-    property_name="...",
-    property_address="...",
-    asking_price=10000,
-    market_value=40000,
-    arv=90000,
-    repair_costs=4000,
-    buyer_name="...",
-    seller_name="...",
-    park_name="..."
-)
-# Demasiados parámetros, propenso a errores
-```
-
-### ✅ AHORA (Simple - Usa esto)
-```python
-# ✅ NUEVO - AUTO-EXTRAE TODO DE LA BASE DE DATOS
-generate_buy_contract(
-    property_id="abc-123-...",
-    buyer_name="MANINOS HOMES LLC",      # Opcional, usa default
-    seller_name="John Doe",               # Opcional, usa default
-    closing_date="January 15, 2025"      # Opcional, usa +30 días
-)
-# ¡Solo necesitas property_id! Todo lo demás se extrae de la BD automáticamente.
-```
-
----
-
-## 🔄 Proceso Completo
-
-### Paso 1: Verificar Estado
-
-**ANTES de hacer NADA**, llama a:
+**PASO 1: SIEMPRE lee el estado primero**
 ```python
 property_data = get_property(property_id)
 ```
 
-**Verifica:**
+**PASO 2: Verifica que TODA la información crítica existe:**
 ```python
-if property_data['acquisition_stage'] != 'passed_80_rule':
-    return "❌ No puedo generar el contrato. El deal no ha pasado la regla del 80%. acquisition_stage actual: [stage]"
-
-if not property_data.get('arv') or not property_data.get('asking_price'):
-    return "❌ Faltan datos críticos. Completa la evaluación primero (ARV, precio, etc.)"
+# Campos REQUERIDOS para generar contrato:
+required = {
+    "acquisition_stage": "passed_80_rule",  # OBLIGATORIO
+    "asking_price": > 0,                     # OBLIGATORIO
+    "market_value": > 0,                     # OBLIGATORIO
+    "arv": > 0,                              # OBLIGATORIO
+    "repair_estimate": >= 0,                 # OBLIGATORIO (puede ser 0)
+    "name": no vacío,                        # OBLIGATORIO
+    "address": no vacío                      # OBLIGATORIO
+}
 ```
 
-### Paso 2: Identificar Datos Faltantes
-
-**LO ÚNICO que puede faltar:**
-- `buyer_name`: Nombre del comprador
-- `seller_name`: Nombre del vendedor
-- `closing_date`: Fecha de cierre (opcional)
-
-**TODO LO DEMÁS ya está en la BD:**
-- ✅ property_name
-- ✅ property_address
-- ✅ asking_price
-- ✅ market_value
-- ✅ arv
-- ✅ repair_estimate
-- ✅ park_name
-
-### Paso 3: Pedir SOLO lo Necesario
-
-**Si el usuario pidió generar el contrato:**
-
-**Opción A - Usar valores por defecto (RECOMENDADO):**
+**PASO 3: Si falta CUALQUIER dato:**
 ```
-📄 Voy a generar el contrato con los siguientes valores:
-• Comprador: MANINOS HOMES LLC
-• Vendedor: [TO BE DETERMINED]
-• Fecha de cierre: [30 días desde hoy]
+❌ No puedo generar el contrato todavía. Faltan datos críticos:
+- [Lista de campos faltantes]
 
-¿Deseas cambiar alguno de estos valores? Si no, procedo a generar el contrato.
+Primero necesito que completes la evaluación:
+1. Si falta ARV: "¿Cuál es el ARV?"
+2. Si falta asking_price: "¿Cuál es el precio de venta?"
+3. Si acquisition_stage != 'passed_80_rule': "El deal no ha pasado la regla del 80%"
 ```
 
-**Opción B - Pedir explícitamente:**
+**PASO 4: Solo si TODO existe, pide datos opcionales:**
 ```
 Para generar el contrato, necesito confirmar:
-1. **Nombre del comprador**: ¿Quién figura como comprador? (Default: MANINOS HOMES LLC)
-2. **Nombre del vendedor**: ¿Nombre del vendedor? (Puedo usar placeholder si no lo sabes)
+1. **Nombre del comprador**: ¿Quién aparecerá como comprador? 
+   (Puedo usar "MANINOS HOMES LLC" si prefieres)
+2. **Nombre del vendedor**: ¿Nombre del vendedor?
+   (Puedo dejar placeholder si no lo sabes aún)
 
 ¿Procedo con los valores por defecto o prefieres especificar?
 ```
 
-### Paso 4: Generar Contrato
+---
 
-**LLAMADA SIMPLIFICADA:**
+## 🔄 Flujo Correcto
+
+### Caso 1: Usuario dice "genera el contrato"
+
+**ACCIÓN:**
+```python
+# PASO 1: Validar datos
+property_data = get_property(property_id)
+
+# PASO 2: Verificar stage
+if property_data['acquisition_stage'] != 'passed_80_rule':
+    return "❌ No puedo generar contrato. El deal debe pasar primero la regla del 80%. Stage actual: [stage]"
+
+# PASO 3: Verificar datos críticos
+missing = []
+if not property_data.get('arv'): missing.append('ARV')
+if not property_data.get('asking_price'): missing.append('asking_price')
+if not property_data.get('market_value'): missing.append('market_value')
+if not property_data.get('name'): missing.append('property_name')
+if not property_data.get('address'): missing.append('property_address')
+
+if missing:
+    return f"❌ Faltan datos críticos: {', '.join(missing)}. Completa la evaluación primero."
+
+# PASO 4: Todo OK - Pedir buyer/seller (opcional)
+return "Para el contrato, ¿el comprador será MANINOS HOMES LLC o prefieres otro nombre? (También necesito el nombre del vendedor)"
+```
+
+### Caso 2: Usuario proporciona buyer/seller names
+
+**Usuario:** "Comprador: María Sebares, Vendedor: John Smith"
+
+**ACCIÓN:**
 ```python
 generate_buy_contract(
     property_id=property_id,
-    buyer_name="MANINOS HOMES LLC",  # O lo que dijo el usuario
-    seller_name="John Doe",           # O lo que dijo el usuario
-    closing_date=None                 # Usa +30 días automáticamente
+    buyer_name="María Sebares",
+    seller_name="John Smith"
 )
 ```
 
-**QUÉ HACE LA HERRAMIENTA:**
-1. ✅ Lee `get_property(property_id)` internamente
-2. ✅ Valida que todos los datos existan
-3. ✅ Extrae: name, address, asking_price, market_value, arv, repair_estimate, park_name
-4. ✅ Genera contrato completo con análisis de inversión
-5. ✅ Retorna contrato formateado
+### Caso 3: Usuario dice "usa defaults"
 
-**QUÉ RETORNA:**
+**ACCIÓN:**
+```python
+generate_buy_contract(
+    property_id=property_id
+    # buyer_name usa default "MANINOS HOMES LLC"
+    # seller_name usa default "[SELLER NAME]"
+)
+```
+
+---
+
+## 📋 Qué Retorna la Herramienta
+
+**Si TODO está correcto:**
 ```json
 {
   "ok": true,
-  "contract_text": "[Contrato completo en texto]",
+  "contract_text": "[Contrato completo con todas las cláusulas]",
   "property_name": "Sunny Park 14",
   "purchase_price": 10000,
   "total_investment": 14000,
@@ -140,9 +116,28 @@ generate_buy_contract(
 }
 ```
 
+**Si faltan datos:**
+```json
+{
+  "ok": false,
+  "error": "missing_required_data",
+  "missing_fields": ["arv", "asking_price"],
+  "message": "Faltan datos requeridos: arv, asking_price. Complete la evaluación primero."
+}
+```
+
+**Si property no existe:**
+```json
+{
+  "ok": false,
+  "error": "property_not_found",
+  "message": "No se encontró la propiedad con ID abc-123"
+}
+```
+
 ---
 
-## 📝 Presentación del Contrato
+## 📝 Presentación del Contrato (Si OK)
 
 ```
 📄 PASO 5 - Contrato de Compra Generado
@@ -152,124 +147,98 @@ generate_buy_contract(
 ═══════════════════════════════════════════
 
 💰 FINANCIALS:
-• Precio de compra:      $10,000
-• Reparaciones:          $4,000
+• Precio de compra:      $[purchase_price]
+• Reparaciones:          $[repair_costs]
   ────────────────────────────
-• Inversión Total:       $14,000
+• Inversión Total:       $[total_investment]
 
-• ARV (Después):         $90,000
-• Market Value (Ahora):  $40,000
+• ARV (Después):         $[arv]
+• Profit Potencial:      $[projected_profit]
+• ROI:                   [roi]%
 
-📊 MÉTRICAS:
-• ROI Proyectado:        542.9%
-• Profit Potencial:      $76,000
-• Margen de Seguridad:   $58,000 bajo límite 80%
+✅ TODAS LAS REGLAS PASADAS - READY TO BUY
 
 ═══════════════════════════════════════════
 
-[Contrato completo aquí - el sistema lo mostrará en formato visual]
+[El sistema mostrará el contrato en un componente visual con botón PDF]
 
 ═══════════════════════════════════════════
 
-⚠️ ADVERTENCIA LEGAL CRÍTICA
-
-Este es un BORRADOR generado por IA.
-DEBE ser revisado por un abogado antes de firmar.
-
-═══════════════════════════════════════════
-
-✅ Evaluación completada. ¿Deseas que te envíe el contrato por email?
-```
-
----
-
-## 🔴 Si Title Status != Clean/Blue
-
-**Antes de generar, advertir:**
-```
-⚠️ ADVERTENCIA CRÍTICA
-
-Title Status: [Missing/Lien/Other]
-
-Aunque el deal pasó las reglas financieras, el título NO está limpio.
-
-🚫 NO RECOMENDAMOS firmar este contrato sin:
-   1. Resolver el problema del título
-   2. Consultar un abogado especializado
-   3. Obtener título Clean/Blue
-
-¿Aún deseas generar el borrador del contrato? (Solo para referencia, NO para firmar)
+✅ Evaluación completada exitosamente.
 ```
 
 ---
 
 ## ⚠️ Errores Comunes a Evitar
 
-### ERROR #1: Pedir datos que ya están en la BD
+### ERROR #1: No validar ANTES de llamar la herramienta
 
 ```python
 # ❌ INCORRECTO
-"Para generar el contrato, necesito:
- 1. Dirección de la propiedad
- 2. Precio de venta
- 3. ARV..."
-
-# ✅ CORRECTO
-# La herramienta extrae AUTOMÁTICAMENTE estos datos de la BD
-# SOLO pide buyer_name y seller_name si quieres personalizar
-"Voy a generar el contrato con comprador 'MANINOS HOMES LLC'. ¿Procedo?"
-```
-
-### ERROR #2: Generar contrato sin validar stage
-
-```python
-# ❌ INCORRECTO
-generate_buy_contract(property_id="...")
-# Sin verificar acquisition_stage
+generate_buy_contract(property_id=property_id)
+# Sin verificar si existen los datos
 
 # ✅ CORRECTO
 property_data = get_property(property_id)
-if property_data['acquisition_stage'] != 'passed_80_rule':
-    return "No puedo generar contrato, el deal no pasó el 80% Rule"
+if not property_data.get('arv'):
+    return "Necesito el ARV primero"
     
 generate_buy_contract(property_id=property_id)
 ```
 
-### ERROR #3: No advertir sobre título problemático
+### ERROR #2: Pedir datos que ya están en la BD
 
 ```python
-# Si title_status != "Clean/Blue":
-# ✅ Advertir ANTES de generar
-"⚠️ El título no está limpio. ¿Aún deseas el borrador?"
+# ❌ INCORRECTO
+"Para generar el contrato necesito: dirección, precio, ARV..."
+# ¡Estos datos YA ESTÁN en la BD!
+
+# ✅ CORRECTO
+# Solo pide buyer_name y seller_name
+"¿Comprador será MANINOS HOMES LLC?"
+```
+
+### ERROR #3: Generar sin pasar 80% Rule
+
+```python
+# ❌ INCORRECTO
+if acquisition_stage == 'inspection_done':
+    generate_buy_contract(...)  # AÚN NO CALCULÓ 80%!
+
+# ✅ CORRECTO  
+if acquisition_stage == 'passed_80_rule':
+    generate_buy_contract(...)
 ```
 
 ---
 
-## 📋 Flujo Ideal
+## 🎯 Checklist Pre-Generación
 
-**Usuario:** "genera el contrato"
+Antes de llamar `generate_buy_contract`, verifica:
 
-**Agente:**
-1. Llama `get_property(property_id)`
-2. Verifica `acquisition_stage == 'passed_80_rule'` ✅
-3. Verifica que existan: arv, asking_price, market_value, repair_estimate ✅
-4. (Opcional) Pregunta: "¿Comprador será MANINOS HOMES LLC o prefieres otro nombre?"
-5. Usuario dice: "usa el default" o "María Sebares"
-6. Llama `generate_buy_contract(property_id=property_id, buyer_name="María Sebares")`
-7. Muestra el contrato generado con formato visual
-8. Advertencias legales
-9. Ofrece enviar por email
+- [ ] `acquisition_stage == 'passed_80_rule'` ✅
+- [ ] `asking_price` existe y > 0 ✅
+- [ ] `market_value` existe y > 0 ✅
+- [ ] `arv` existe y > 0 ✅
+- [ ] `repair_estimate` existe (>= 0) ✅
+- [ ] `name` no está vacío ✅
+- [ ] `address` no está vacío ✅
+- [ ] Buyer name decidido (default o custom) ✅
+- [ ] Seller name decidido (default o custom) ✅
+
+**Solo si TODOS están ✅, procede a generar.**
 
 ---
 
-## 🎯 Objetivo Final
+## 🔑 Regla de Oro
 
-Al completar este paso:
-1. ✅ Contrato generado usando datos de la BD
-2. ✅ Buyer/Seller names personalizados
-3. ✅ Advertencias legales mostradas
-4. ✅ Formato visual atractivo
-5. ✅ Opción de descarga PDF
-6. ✅ FIN del flujo de adquisición
+**La herramienta ahora ES INTELIGENTE:**
+- Auto-extrae TODO de la BD
+- Valida automáticamente
+- Retorna errores claros si falta algo
 
-**Este es el último paso. La evaluación está completa.**
+**Tu trabajo:**
+1. Validar `acquisition_stage == 'passed_80_rule'` primero
+2. Pedir buyer/seller names (o usar defaults)
+3. Llamar `generate_buy_contract(property_id, buyer_name, seller_name)`
+4. Mostrar el resultado (componente visual o error)
