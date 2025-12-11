@@ -2,35 +2,157 @@
 
 Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
+---
+
+## ⚠️ REGLA ABSOLUTA SOBRE TOOL CALLS
+
+**CADA acción que tenga un tool disponible DEBE usar ese tool. NUNCA simules la acción con solo texto.**
+
+### Patrón Correcto:
+```
+1. Usuario: [solicitud]
+2. Agent Tool Call: [herramienta correspondiente]
+3. Tool Result: [resultado del tool]
+4. Agent Response: [respuesta basada en el resultado]
+```
+
+### ❌ NUNCA hagas esto:
+```
+1. Usuario: "Precio $10,000, market value $40,000"
+2. Agent Response: "El 70% de $40,000 es $28,000, así que pasamos..." [SIN TOOL CALL]
+```
+
+### ✅ SIEMPRE haz esto:
+```
+1. Usuario: "Precio $10,000, market value $40,000"
+2. Agent Tool Call: calculate_maninos_deal(10000, market_value=40000, property_id="...")
+3. Tool Result: {"status": "Proceed to Inspection", "checks": {"70_percent_rule": "PASS"}}
+4. Agent Response: "✅ 70% Rule PASADA..."
+```
+
+**Si no llamas al tool, los datos NO se guardan en la BD y la app NO funciona correctamente.**
+
+---
+
 ## 🚨 Ejemplo #0: Crear Propiedad PRIMERO (OBLIGATORIO)
 
-### Conversación Completa
+### ✅ Conversación CORRECTA
 
 **Usuario**: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"
 
-**Agent** (Tool Calls):
+**Agent** (Tool Calls - OBLIGATORIO):
 ```json
 [
   {"tool": "add_property", "args": {"name": "123 Main St", "address": "123 Main St, Sunny Park"}}
 ]
 ```
 
+**Tool Result**:
+```json
+{
+  "ok": true,
+  "property": {
+    "id": "abc-123-def",
+    "name": "123 Main St",
+    "address": "123 Main St, Sunny Park",
+    "acquisition_stage": "initial"
+  }
+}
+```
+
 **Agent** (Response):
 ```
-¡Perfecto! He creado la propiedad "123 Main St".
+✅ He creado la propiedad "123 Main St".
 
 Para comenzar la evaluación según la regla del 70%, necesito dos datos:
 1. **Precio de venta (Asking Price)**: ¿Cuánto pide el vendedor?
 2. **Valor de mercado actual (Market Value)**: ¿Cuál es el valor actual "as-is"?
 ```
 
-**❌ INCORRECTO - NUNCA HAGAS ESTO:**
+---
+
+### ❌ Conversación INCORRECTA (NUNCA HAGAS ESTO)
+
+**Usuario**: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"
+
+**Agent** (Sin Tool Calls - ❌ MAL):
 ```
-Para comenzar la evaluación, necesito...
-[SIN LLAMAR A add_property PRIMERO]
+Para comenzar la evaluación, necesito dos datos:
+1. Precio de venta
+2. Valor de mercado
 ```
 
+**Por qué está MAL:**
+- ❌ No llamó a `add_property` - La propiedad NO existe en la BD
+- ❌ El usuario no podrá ver "Property Active" en el UI
+- ❌ Los datos no se guardarán correctamente
+
 **Regla de Oro**: Si el usuario menciona una dirección o propiedad nueva, **SIEMPRE llama a `add_property` ANTES de pedir precios**.
+
+---
+
+## 📋 Ejemplo #0.5: Calcular 70% Rule (OBLIGATORIO)
+
+### ✅ Conversación CORRECTA
+
+**Usuario**: "Precio de venta $10,000 y market value $40,000"
+
+**Agent** (Tool Calls - OBLIGATORIO):
+```json
+[
+  {"tool": "calculate_maninos_deal", "args": {
+    "asking_price": 10000,
+    "market_value": 40000,
+    "property_id": "abc-123-def"
+  }}
+]
+```
+
+**Tool Result**:
+```json
+{
+  "status": "Proceed to Inspection",
+  "checks": {
+    "70_percent_rule": "PASS"
+  },
+  "metrics": {
+    "asking_price": 10000,
+    "market_value": 40000,
+    "max_allowable_offer_70": 28000
+  },
+  "reasoning": ["✅ 70% Rule PASS: Asking Price ($10,000) is within 70% of Market Value (max: $28,000)."]
+}
+```
+
+**Agent** (Response):
+```
+✅ PASO 1 COMPLETADO - Regla del 70% PASADA
+
+El precio ($10,000) está MUY POR DEBAJO del límite máximo ($28,000). 
+Excelente margen de seguridad.
+
+¿Quieres que genere el checklist de inspección para continuar?
+```
+
+---
+
+### ❌ Conversación INCORRECTA (NUNCA HAGAS ESTO)
+
+**Usuario**: "Precio de venta $10,000 y market value $40,000"
+
+**Agent** (Sin Tool Calls - ❌ MAL):
+```
+Perfecto. El límite del 70% sería $28,000, y tu precio es $10,000, 
+así que la regla del 70% pasa. ¿Quieres continuar con la inspección?
+```
+
+**Por qué está MAL:**
+- ❌ No llamó a `calculate_maninos_deal` - No se guardó en la BD
+- ❌ `acquisition_stage` sigue en "initial" en lugar de "passed_70_rule"
+- ❌ `asking_price` y `market_value` NO se guardaron en la BD
+- ❌ El sidebar NO se actualizará con los valores
+
+**Regla de Oro**: Si el usuario da precios, **SIEMPRE llama a `calculate_maninos_deal`** para guardar y validar.
 
 ---
 
