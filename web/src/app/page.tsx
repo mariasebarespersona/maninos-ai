@@ -164,7 +164,9 @@ export default function ChatPage() {
       }
     }
     sync()
-  }, [fetchProperty, fetchPropertiesList, sessionId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Note: sessionId intentionally omitted - initial sync should only run on mount, not when switching properties
+  }, [fetchProperty, fetchPropertiesList])
 
   // Auto-scroll
   useEffect(() => {
