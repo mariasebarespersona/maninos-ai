@@ -53,6 +53,7 @@ def list_frameworks(property_id: str) -> Dict:
 # ---- Verification helpers ----
 
 def get_property(property_id: str) -> Optional[Dict]:
+    """Fetch a property by its UUID from the database."""
     rows = (sb.table("properties").select("*").eq("id", property_id).limit(1).execute()).data
     return rows[0] if rows else None
 
@@ -76,6 +77,7 @@ def find_property(name: str, address: Optional[str] = None) -> Optional[Dict]:
 
 
 def list_properties(limit: int = 20) -> List[Dict]:
+    """List recent properties ordered by creation date, excluding deleted ones."""
     try:
         rows = (
             sb.table("properties")

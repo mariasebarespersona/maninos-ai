@@ -529,6 +529,7 @@ def seed_facturas_for(property_id: str, document_group: str, document_subgroup: 
     return {"created": created}
 
 def list_docs(property_id: str) -> List[Dict]:
+    """List all documents associated with a property."""
     import logging
     logger = logging.getLogger(__name__)
     
