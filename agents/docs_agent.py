@@ -21,7 +21,8 @@ from tools.registry import (
     qa_document_tool,
     rag_qa_with_citations_tool,
     summarize_document_tool,
-    delete_document_tool
+    delete_document_tool,
+    update_property_fields_tool  # Added for updating acquisition_stage
     # Removed RAMA-specific tools: list_related_facturas_tool, qa_payment_schedule_tool
 )
 
@@ -70,6 +71,7 @@ class DocsAgent(BaseAgent):
             qa_document_tool,
             summarize_document_tool,
             send_email_tool,
+            update_property_fields_tool,  # Update acquisition_stage when documents are complete
             # Removed RAMA-specific tools (facturas, payment schedules)
         ]
 
