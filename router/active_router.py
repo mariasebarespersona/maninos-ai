@@ -49,7 +49,7 @@ INTENT_DESCRIPTIONS = {
     "property.switch": "Usuario quiere CAMBIAR a otra propiedad existente",
     "property.list": "Usuario quiere VER LISTA de todas sus propiedades",
     "property.delete": "Usuario quiere ELIMINAR/BORRAR una propiedad",
-    "property.acquisition": "Usuario está EVALUANDO un mobile home: checklist, inspección, reparaciones, ARV, reglas del 70% o 80%, análisis de inversión, title status.",
+    "property.acquisition": "Usuario está EVALUANDO un mobile home: checklist, inspección, reparaciones, ARV, reglas del 70% o 80%, análisis de inversión, title status, generar contrato de compra (purchase agreement).",
     
     # Docs intents (Generic - for PDFs, Zillow/MHVillage docs)
     "docs.qa": "Usuario hace una PREGUNTA sobre el CONTENIDO de un documento PDF (qué dice, datos, valores, etc.)",
@@ -75,7 +75,7 @@ INTENTS DISPONIBLES:
 {intent_list}
 
 REGLAS CRÍTICAS:
-1. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status" → property.acquisition
+1. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status", "generar contrato", "purchase agreement" → property.acquisition
 2. Si el usuario pregunta sobre el CONTENIDO de un documento → docs.qa
 3. Si el usuario quiere LISTAR documentos → docs.list
 4. Si el usuario quiere CAMBIAR de propiedad → property.switch
@@ -181,10 +181,10 @@ class ActiveRouter:
                     
                     # Generic confirmation - check for any question mark and detect context
                     if "?" in last_ai_content:
-                        if any(kw in last_ai_content for kw in ["propiedad", "inmueble", "mobile home", "arv", "título"]):
+                        if any(kw in last_ai_content for kw in ["propiedad", "inmueble", "mobile home", "arv", "título", "contrato"]):
                             logger.info(f"[active_router] 🔄 Continuation: Generic PropertyAgent confirmation")
                             return ("property.acquisition", 0.95, "PropertyAgent")
-                        elif any(kw in last_ai_content for kw in ["documento", "archivo", "pdf", "contrato"]):
+                        elif any(kw in last_ai_content for kw in ["documento", "archivo", "pdf"]):
                             logger.info(f"[active_router] 🔄 Continuation: Generic DocsAgent confirmation")
                             return ("docs.confirm", 0.95, "DocsAgent")
                 
@@ -229,7 +229,8 @@ class ActiveRouter:
             "checklist", "inspección", "inspeccion", "defectos", "reparaciones", 
             "arv", "after repair value", "title status", "estado del título", "titulo",
             "70%", "80%", "regla del", "viabilidad", "analizar", "evaluar", "compra",
-            "asking price", "precio de venta", "valor de mercado", "market value"
+            "asking price", "precio de venta", "valor de mercado", "market value",
+            "contrato", "contract", "generar contrato", "purchase agreement"
         ]
         
         if any(kw in s for kw in acquisition_keywords):
