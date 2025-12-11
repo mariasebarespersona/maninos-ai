@@ -5,6 +5,7 @@ import { AcquisitionStepper } from '@/components/AcquisitionStepper'
 import { DealSidebar } from '@/components/DealSidebar'
 import { InteractiveChecklist } from '@/components/InteractiveChecklist'
 import { ContractViewer } from '@/components/ContractViewer'
+import { PropertiesDrawer } from '@/components/PropertiesDrawer'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
 import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
 
@@ -107,15 +108,28 @@ export default function ChatPage() {
   // Property State
   const [propertyId, setPropertyId] = useState<string | null>(null)
   const [property, setProperty] = useState<MobileHomeProperty | null>(null)
+  const [sessionId, setSessionId] = useState('web-ui')
   
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true) // Mobile toggle
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [propertiesList, setPropertiesList] = useState<MobileHomeProperty[]>([])
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   // --- Configuration ---
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
 
   // --- Data Fetching ---
+  const fetchPropertiesList = useCallback(async () => {
+      try {
+          const res = await fetch(`${BACKEND_URL}/api/properties`)
+          const json = await res.json()
+          if (json.ok) setPropertiesList(json.properties)
+      } catch (e) {
+          console.error('Failed to fetch properties list', e)
+      }
+  }, [BACKEND_URL])
+
   const fetchProperty = useCallback(async (pid: string) => {
     if (!pid) return
     try {
@@ -132,24 +146,25 @@ export default function ChatPage() {
 
   // Initial Sync
   useEffect(() => {
+    fetchPropertiesList()
     const sync = async () => {
       try {
-    const form = new FormData()
+        const form = new FormData()
         form.append('text', '') 
-    form.append('session_id', 'web-ui')
-      const resp = await fetch('/api/chat', { method: 'POST', body: form })
-      const data = await resp.json()
-      
-      if (data.property_id) {
-        setPropertyId(data.property_id)
+        form.append('session_id', sessionId)
+        const resp = await fetch('/api/chat', { method: 'POST', body: form })
+        const data = await resp.json()
+        
+        if (data.property_id) {
+          setPropertyId(data.property_id)
           fetchProperty(data.property_id)
-      }
-    } catch (e) {
+        }
+      } catch (e) {
         console.error('Sync failed', e)
       }
     }
     sync()
-  }, [fetchProperty])
+  }, [fetchProperty, fetchPropertiesList, sessionId])
 
   // Auto-scroll
   useEffect(() => {
@@ -170,7 +185,7 @@ export default function ChatPage() {
     try {
       const form = new FormData()
       form.append('text', userMsg.content)
-      form.append('session_id', 'web-ui')
+      form.append('session_id', sessionId)
       if (propertyId) form.append('property_id', propertyId)
 
       const resp = await fetch('/api/chat', { method: 'POST', body: form })
@@ -194,12 +209,39 @@ export default function ChatPage() {
     } finally {
       setUploading(false)
     }
-  }, [input, propertyId, fetchProperty])
+  }, [input, propertyId, fetchProperty, sessionId])
+
+  const handleSwitchProperty = async (newPropertyId: string) => {
+      setPropertyId(newPropertyId)
+      // Use a unique session ID per property to maintain separate chat history
+      setSessionId(`web-ui-${newPropertyId}`)
+      setMessages([]) // Clear UI messages (new session)
+      await fetchProperty(newPropertyId)
+      setIsDrawerOpen(false)
+  }
+
+  const handleNewEvaluation = () => {
+      setPropertyId(null)
+      setProperty(null)
+      const newSession = `web-ui-${crypto.randomUUID()}`
+      setSessionId(newSession)
+      setMessages([])
+      setIsDrawerOpen(false)
+  }
 
   // --- Render ---
     return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       
+      <PropertiesDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          properties={propertiesList}
+          onSelectProperty={handleSwitchProperty}
+          currentPropertyId={propertyId}
+          onNewProperty={handleNewEvaluation}
+      />
+
       {/* 1. LEFT SIDEBAR (Navigation) - Simplified for MVP */}
       <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0">
         <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/50">
@@ -207,9 +249,15 @@ export default function ChatPage() {
                       </div>
         <nav className="flex flex-col gap-4 w-full items-center">
             {/* Nav Items */}
-            <button className="p-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors">
+            <button 
+                onClick={() => {
+                    fetchPropertiesList()
+                    setIsDrawerOpen(true)
+                }}
+                className="p-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+            >
                 <Menu size={20} />
-                    </button>
+            </button>
             <div className="w-8 h-[1px] bg-slate-800" />
             {/* Add more nav icons here if needed */}
         </nav>

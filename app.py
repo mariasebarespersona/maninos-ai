@@ -2929,6 +2929,17 @@ async def get_property_api(property_id: str):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+@app.get("/api/properties")
+async def list_properties_api():
+    """List all properties for the menu."""
+    try:
+        from tools.supabase_client import sb
+        # Fetch properties ordered by update time
+        result = sb.table("properties").select("id, name, address, acquisition_stage, updated_at, asking_price").order("updated_at", desc=True).limit(50).execute()
+        return JSONResponse({"ok": True, "properties": result.data})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 @app.get("/api/property/{property_id}/inspection")
 @app.get("/property/{property_id}/inspection")
 async def get_inspection_api(property_id: str):
