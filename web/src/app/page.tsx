@@ -120,6 +120,7 @@ export default function ChatPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [propertiesList, setPropertiesList] = useState<MobileHomeProperty[]>([])
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   // --- Configuration ---
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
@@ -235,7 +236,27 @@ export default function ChatPage() {
       setSessionId(newSessionId)
       setPropertyId(null)
       setProperty(null)
-      setMessages([])
+      
+      // Add a welcome message to guide the user
+      const welcomeMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `👋 ¡Hola! Vamos a empezar una nueva evaluación de propiedad.
+
+Para comenzar, dime:
+• La dirección de la mobile home
+• O el nombre de la propiedad
+
+Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
+          timestamp: new Date().toISOString()
+      }
+      setMessages([welcomeMessage])
+      setIsDrawerOpen(false)
+      
+      // Focus input after state updates
+      setTimeout(() => {
+          inputRef.current?.focus()
+      }, 100)
   }
 
   // --- Render ---
@@ -345,9 +366,10 @@ export default function ChatPage() {
             <div className="max-w-4xl mx-auto relative flex items-center gap-3">
                 <div className="flex-1 relative">
                     <input
+                        ref={inputRef}
                         type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && onSend()}
                         placeholder="Type a message..."
                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
