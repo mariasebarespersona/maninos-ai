@@ -33,6 +33,7 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
       'passed_70_rule': 2,
       'inspection_done': 3,
       'passed_80_rule': 4,
+      'contract_generated': 5,
       'rejected': -1 // Special case
     };
 

@@ -225,5 +225,23 @@ Please have this reviewed by a licensed attorney before signing.
         # Don't fail if contracts table doesn't exist yet
         logger.warning(f"⚠️ [generate_buy_contract] Could not save contract to DB (table might not exist): {e}")
     
+    # UPDATE ACQUISITION STAGE TO 'contract_generated'
+    try:
+        from .property_tools import update_property_fields
+        
+        stage_update = update_property_fields(property_id, {
+            "acquisition_stage": "contract_generated",
+            "status": "Under Contract"
+        })
+        
+        if stage_update.get("ok"):
+            result["acquisition_stage_updated"] = "contract_generated"
+            logger.info(f"✅ [generate_buy_contract] Acquisition stage updated to 'contract_generated'")
+        else:
+            logger.error(f"❌ [generate_buy_contract] Failed to update stage: {stage_update.get('error')}")
+    except Exception as e:
+        logger.error(f"❌ [generate_buy_contract] Error updating acquisition stage: {e}")
+        # Don't fail contract generation if stage update fails
+    
     return result
 

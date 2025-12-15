@@ -9,6 +9,7 @@ export type AcquisitionStage =
   | 'passed_70_rule' 
   | 'inspection_done' 
   | 'passed_80_rule' 
+  | 'contract_generated'
   | 'rejected';
 
 export type TitleStatus = 
@@ -97,6 +98,7 @@ export const STAGE_CONFIG: Record<AcquisitionStage, { label: string; color: stri
   passed_70_rule: { label: '70% Passed', color: 'blue', icon: '◐' },
   inspection_done: { label: 'Inspected', color: 'yellow', icon: '◑' },
   passed_80_rule: { label: '80% Passed', color: 'green', icon: '●' },
+  contract_generated: { label: 'Contract Ready', color: 'emerald', icon: '✓' },
   rejected: { label: 'Rejected', color: 'red', icon: '✕' },
 };
 
