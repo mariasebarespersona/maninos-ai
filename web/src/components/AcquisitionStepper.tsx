@@ -87,10 +87,10 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
 
               {/* Connecting Line */}
               {index < steps.length - 1 && (
-                <div className={`absolute top-4 left-1/2 w-full h-[2px] -z-10 ${
-                  getStepStatus(steps[index+1].id, index+1) === 'completed' || stepStatus === 'completed' 
-                    ? 'bg-emerald-200' 
-                    : 'bg-slate-100'
+                <div className={`absolute top-4 left-1/2 h-[3px] -z-10 ${
+                  stepStatus === 'completed' 
+                    ? 'bg-emerald-400' 
+                    : 'bg-slate-200'
                 }`} style={{ width: 'calc(100% + 2rem)', transform: 'translateX(50%)' }} />
               )}
             </div>
