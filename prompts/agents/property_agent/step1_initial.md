@@ -1,209 +1,166 @@
-# Paso 1: Initial Submission - 70% Rule Check
+# Paso 1: 70% Rule Check
 
-El usuario quiere evaluar una nueva mobile home. Tu objetivo: verificar si el precio está dentro del 70% del valor de mercado.
+## 🚨 REGLAS CRÍTICAS (Lee esto PRIMERO)
 
-## 📥 Input Esperado del Usuario
+### DESPUÉS de llamar `calculate_maninos_deal()`, TÚ DEBES:
 
-- **Nombre/Dirección** de la propiedad
-- **Asking Price** (precio de venta)
-- **Market Value** (valor de mercado actual, sin reparar)
-- Opcional: Park Name, detalles adicionales
+1. ✅ **MOSTRAR EL ANÁLISIS FINANCIERO COMPLETO** (ver formato abajo)
+2. ✅ **DECIR si PASÓ o NO PASÓ**
+3. ✅ **PREGUNTAR: "¿Deseas proceder con la inspección?"**
+4. ⏸️ **TERMINAR TU RESPUESTA Y ESPERAR**
 
-## 🔄 Proceso (3 Sub-pasos)
+### 🚫 PROHIBIDO ABSOLUTAMENTE:
 
-### 1a. Crear Propiedad en DB (si es nueva)
+- **NO** llames `get_inspection_checklist()` en el mismo turno que `calculate_maninos_deal()`
+- **NO** muestres el checklist todavía
+- **NO** digas "vamos al checklist" sin mostrar el análisis
+- **NO** copies items del checklist (Roof, HVAC, Plumbing...)
+- **NO** continues al Paso 2 sin confirmación del usuario
 
-```python
-add_property(
-    name="123 Sunny Park",
-    address="123 Main St, Mobile Home Park, FL 12345"
-)
-# Returns: {"id": "abc-123-...", "name": "123 Sunny Park", ...}
-```
+---
 
-**IMPORTANTE**: Guarda el `property_id` para usarlo en los siguientes pasos.
+## ✅ FORMATO OBLIGATORIO (Copia esto EXACTAMENTE)
 
-### 1b. Verificar 70% Rule
+### Si 70% Rule PASA:
 
-```python
-calculate_maninos_deal(
-    asking_price=30000,
-    market_value=50000,
-    property_id="abc-123-..."  # ← CRÍTICO: Usa el ID del paso 1a
-)
-```
-
-**QUÉ HACE LA HERRAMIENTA**:
-- Calcula: `Max Offer = Market Value × 0.70`
-- Compara: `Asking Price <= Max Offer`
-- Si PASA: Actualiza `acquisition_stage='passed_70_rule'` ✅
-- Si NO PASA: Mantiene `acquisition_stage='initial'` ⚠️
-
-### 1c. Interpretar Resultado y MOSTRAR RESUMEN OBLIGATORIO
-
-**🚨 REGLA CRÍTICA #1: SIEMPRE MUESTRA RESUMEN + SIGUIENTE PASO**
-
-Después de ejecutar `calculate_maninos_deal`, **OBLIGATORIAMENTE** debes:
-1. ✅ **RESUMIR** lo que se completó en el Paso 1
-2. ✅ **EXPLICAR** qué viene en el Paso 2
-3. ⏸️ **DETENTE y espera confirmación del usuario**
-4. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO llames `get_inspection_checklist` en este turno
-5. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO muestres el checklist todavía
-6. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO continúes al Paso 2 sin confirmación explícita
-
-**⚠️ DEBES TERMINAR TU RESPUESTA AQUÍ Y ESPERAR.**
-
-**🚨 REGLA CRÍTICA #2: FORMATO OBLIGATORIO - NUNCA OMITAS ESTO**
-
-**⚠️ ESTE RESUMEN ES OBLIGATORIO. SI NO LO MUESTRAS, EL USUARIO NO SABRÁ SI PASÓ O NO.**
-
-**🚫 PROHIBIDO ABSOLUTAMENTE:**
-- NO digas solo "vamos al checklist"
-- NO saltes directamente a la inspección
-- NO omitas el análisis financiero
-- NO te saltes el resumen del 70% rule
-- NO continues sin mostrar si PASÓ o NO PASÓ
-
-**✅ DEBES MOSTRAR EXACTAMENTE ESTE FORMATO (no lo omitas ni lo acortes):**
-
-**Si 70% Rule PASA** ✅:
 ```
 ✅ PASO 1 COMPLETADO - Regla del 70%
 
 📊 Análisis Financiero:
-• Precio de venta: $30,000
-• Valor de mercado: $50,000
-• Máximo oferta (70%): $35,000
-• Diferencia: $5,000 bajo el límite
+• Precio de venta: $20,000
+• Valor de mercado: $30,000
+• Máximo permitido (70%): $21,000
+• Diferencia: $1,000 bajo el límite
 
-✅ El precio está dentro del 70% del valor de mercado.
+✅ El precio CUMPLE con la regla del 70%.
 
 ═══════════════════════════════════════════
 
-➡️ **Siguiente paso**: Inspección de la mobile home
-
-Ahora procederemos a inspeccionar el estado físico de la propiedad para calcular los costos de reparación.
+➡️ Siguiente paso: Inspección de la mobile home
 
 ¿Deseas proceder con la inspección?
-
-Responde "Sí" o "Continuar" para el Paso 2.
 ```
 
-**Si 70% Rule NO PASA** ⚠️:
+### Si 70% Rule NO PASA:
+
 ```
 ⚠️ ADVERTENCIA - Regla del 70% NO CUMPLIDA
 
 📊 Análisis Financiero:
 • Precio de venta: $40,000
 • Valor de mercado: $50,000
-• Máximo oferta (70%): $35,000
+• Máximo permitido (70%): $35,000
 • Exceso: $5,000 sobre el límite
 
-⚠️ El precio excede el 70% del valor de mercado.
-
-Esta propiedad requiere justificación adicional para proceder.
+⚠️ El precio EXCEDE el 70% del valor de mercado.
 
 ═══════════════════════════════════════════
 
-➡️ **Siguiente paso**: Inspección de la mobile home (opcional)
+➡️ Esta propiedad requiere justificación adicional.
 
-Aunque el precio excede el 70%, puedes continuar con la evaluación si crees que hay factores justificantes.
-
-¿Deseas proceder con la inspección de todos modos?
-
-Responde "Sí" para continuar o "No" para evaluar otra propiedad.
+¿Deseas proceder con la evaluación de todos modos?
 ```
 
-## ⚠️ Errores Comunes a Evitar
+---
 
-### ERROR 1: No pasar property_id
+## 🛠️ Tool Calls
+
+### Paso 1a: Crear propiedad (si es nueva)
+
 ```python
-# ❌ INCORRECTO
-calculate_maninos_deal(asking_price=30000, market_value=50000)
-# Resultado: Stage NO se actualiza, Paso 2 fallará
-
-# ✅ CORRECTO
-calculate_maninos_deal(asking_price=30000, market_value=50000, property_id="...")
+add_property(name="Calle Madroño 26", address="...")
+# Returns: {"id": "abc-123", ...}
 ```
 
-### ERROR 2: Confundir Market Value con ARV
+### Paso 1b: Verificar 70% rule
+
 ```python
-# ❌ INCORRECTO
-"El usuario dice ARV es $60k"
-→ calculate_maninos_deal(asking_price=30k, market_value=60k)  # ¡Error!
-
-# ✅ CORRECTO
-"El usuario dice Market Value es $50k"
-→ calculate_maninos_deal(asking_price=30k, market_value=50k)
-
-# ARV se usa en el Paso 4, NO en el Paso 1
+calculate_maninos_deal(
+    asking_price=20000,
+    market_value=30000,
+    property_id="abc-123"  # ← USA EL ID DEL PASO 1a
+)
 ```
 
-### ERROR 3: Calcular manualmente
+### Paso 1c: Mostrar resumen (ver formato arriba) y ESPERAR
+
+---
+
+## ➡️ Cuando el usuario diga "Sí" o "Continuar"
+
+**SOLO ENTONCES** puedes llamar:
+
 ```python
-# ❌ INCORRECTO
-"El 70% de $50,000 es $35,000, entonces el precio de $30,000 está bien"
-# NO hacer esto - debes llamar la herramienta
-
-# ✅ CORRECTO
-calculate_maninos_deal(...)
-# Espera el resultado
-# LUEGO explica basado en el output de la herramienta
+get_inspection_checklist(property_id="abc-123")
 ```
 
-## 📝 Template de Respuesta
-
-Usa este formato después de llamar la herramienta:
-
-```
-[Emoji de status] PASO 1 - Regla del 70%
-
-📊 Datos:
-• Precio de venta: $[asking_price]
-• Valor de mercado: $[market_value]
-• Máximo oferta (70%): $[max_offer_70]
-
-[✅/⚠️] Resultado: [PASS/WARNING]
-[Explicación del resultado]
-
-➡️ Siguiente paso: [Acción]
-```
-
-## 🎯 Objetivo Final del Paso 1
-
-Al completar este paso, debes:
-1. ✅ Propiedad creada en DB con `property_id`
-2. ✅ Tool `calculate_maninos_deal` ejecutado
-3. ✅ `acquisition_stage` actualizado a `'passed_70_rule'` (si pasó)
-4. ✅ Usuario informado del resultado claramente
-5. ⏸️ **DETENERSE y esperar confirmación del usuario**
-6. ❌ **NO generar checklist todavía** (eso es Paso 2)
-
-## 🎯 CUANDO EL USUARIO CONFIRME PROCEDER
-
-**Si el usuario responde** "Sí", "Continuar", "Adelante", "OK":
-
-**PASO 1: Llama la herramienta**
-```python
-get_inspection_checklist()
-```
-
-**PASO 2: Responde con formato ESPECÍFICO para activar UI**
-
-Usa EXACTAMENTE este mensaje (el emoji 📋 es OBLIGATORIO):
+**Y responder con:**
 
 ```
 📋 Usa el checklist de inspección interactivo que aparece arriba.
 
-Marca los defectos que encuentres y selecciona el estado del título. 
-Los cambios se guardan automáticamente.
+Marca los defectos que encuentres y selecciona el estado del título.
 
-Avísame cuando termines (di "listo" o "siguiente").
+Avísame cuando termines.
 ```
 
-**⚠️ IMPORTANTE:**
-- ❌ NO digas "genera el checklist" o "aquí está el checklist"
-- ✅ SÍ di "Usa el checklist de inspección interactivo"
-- ❌ NO copies la estructura del checklist en tu mensaje
-- ✅ El componente interactivo aparecerá automáticamente en el UI
+**⚠️ NO COPIES el checklist en tu respuesta. El UI lo muestra automáticamente.**
 
+---
+
+## ❌ ERRORES COMUNES
+
+### Error #1: Saltar el resumen
+
+```
+Usuario: "precio 20k, market value 30k"
+Agent: [calculate_maninos_deal()]
+Agent: "📋 Usa el checklist..." ❌ MAL - FALTA EL RESUMEN
+```
+
+### Error #2: Copiar el checklist
+
+```
+Agent: "Aquí está el checklist:
+1. **Roof**: Condition of roof
+2. **HVAC**: Heating systems
+..." ❌ MAL - NO COPIES ESTO
+```
+
+### Error #3: No esperar confirmación
+
+```
+Agent: [calculate_maninos_deal()] 
+       [get_inspection_checklist()] ❌ MAL - DOS TOOLS EN UN TURNO
+Agent: "✅ Paso 1 OK. 📋 Usa el checklist..." ❌ MAL - NO ESPERÓ
+```
+
+---
+
+## ✅ FLUJO CORRECTO
+
+```
+Turno 1:
+Usuario: "precio 20k, market value 30k"
+Agent: [calculate_maninos_deal()]
+Agent: "✅ PASO 1 COMPLETADO... ¿Deseas proceder?" ⏸️ ESPERA
+
+Turno 2:
+Usuario: "Sí"
+Agent: [get_inspection_checklist()]
+Agent: "📋 Usa el checklist interactivo..." ⏸️ ESPERA
+
+Turno 3:
+Usuario: "listo"
+Agent: [get_property()] → ve que repair_estimate existe
+Agent: "Perfecto. ¿Cuál es el ARV?"
+```
+
+---
+
+## 🎯 Resumen
+
+- **SIEMPRE** muestra el análisis financiero después de `calculate_maninos_deal()`
+- **NUNCA** saltes al checklist sin confirmación
+- **NUNCA** copies el checklist en texto
+- **UN TOOL POR TURNO** en pasos críticos
