@@ -261,10 +261,14 @@ class OrchestrationRouter:
                             "total_latency_ms": int((time.time() - start_time) * 1000)
                         }
                         
-                        # If agent returned a property_id (e.g., after switching properties), include it
-                        if result.get("property_id"):
+                        # If agent returned a property_id (e.g., after switching/deleting properties), include it
+                        # CRITICAL: Check if key EXISTS, not if value is truthy (None is valid after deletion)
+                        if "property_id" in result:
                             orchestrator_result["property_id"] = result["property_id"]
-                            logger.info(f"[orchestrator] 📍 Property changed to: {result['property_id']}")
+                            if result["property_id"]:
+                                logger.info(f"[orchestrator] 📍 Property changed to: {result['property_id']}")
+                            else:
+                                logger.info(f"[orchestrator] 🗑️ Property deleted (property_id set to None)")
                         
                         return orchestrator_result
                     

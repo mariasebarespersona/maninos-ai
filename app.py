@@ -1984,13 +1984,15 @@ async def ui_chat(
     # -------------------------------------------------------------
     out = run_turn(session_id=session_id, text=user_text, property_id=STATE.get("property_id"))
     
-    # Update property_id if the agent has one (messages are handled by PostgreSQL checkpointer)
+    # Update property_id if the agent returned one (messages are handled by PostgreSQL checkpointer)
+    # CRITICAL: Check if key EXISTS, not if value is truthy (None is a valid value after deletion)
     # Always sync from result to STATE to keep them in sync, even if STATE was cleared
-    if out.get("property_id"):
+    if "property_id" in out:
         if out["property_id"] != STATE.get("property_id"):
             print(f"[DEBUG] Property sync: STATE {STATE.get('property_id')} → {out['property_id']}")
         STATE["property_id"] = out["property_id"]
         save_session(session_id)
+        print(f"[DEBUG] Updated STATE property_id to: {out['property_id']}")
     
     # FAST PATH: If orchestrator already completed the task, use its response directly
     if out.get("orchestrator_completed"):
