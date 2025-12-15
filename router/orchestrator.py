@@ -89,6 +89,29 @@ class OrchestrationRouter:
                         full_context["property_name"] = prop_info.get("name")
                         full_context["acquisition_stage"] = prop_info.get("acquisition_stage")
                         logger.info(f"[orchestrator] Working with property: {full_context['property_name']} ({property_id}), stage={full_context['acquisition_stage']}")
+                        
+                        # === INTELLIGENT FLOW VALIDATION ===
+                        # Use flow validator to understand current step and what's needed
+                        from router.flow_validator import get_flow_validator
+                        flow_validator = get_flow_validator()
+                        
+                        # Validate current step
+                        validation = flow_validator.validate_current_step(prop_info)
+                        full_context["flow_validation"] = validation
+                        logger.info(f"[orchestrator] 📊 Flow validation: {validation['current_step']} - {'✅ Complete' if validation['is_complete'] else '⏳ Incomplete'}")
+                        
+                        if not validation['is_complete']:
+                            logger.info(f"[orchestrator] 📋 Missing data: {validation['missing_data']}")
+                        
+                        # Detect user intent based on context
+                        user_intent_analysis = flow_validator.detect_user_intent_for_stage(user_input, prop_info)
+                        full_context["user_intent_analysis"] = user_intent_analysis
+                        logger.info(f"[orchestrator] 🎯 User intent: {user_intent_analysis['intent']} (conf={user_intent_analysis['confidence']:.2f}) - {user_intent_analysis['reason']}")
+                        
+                        # Get next step guidance
+                        next_step_guidance = flow_validator.get_user_friendly_next_step(prop_info)
+                        full_context["next_step_guidance"] = next_step_guidance
+                        
                 except Exception as e:
                     logger.warning(f"[orchestrator] Could not get property info: {e}")
             
@@ -318,14 +341,72 @@ class OrchestrationRouter:
                     full_context["is_continuation"] = True
                     logger.info(f"[orchestrator] ✅ Conversation continuity: {continue_with_agent} with intent {continue_intent}")
                 else:
-                    # Get initial routing decision
-                    routing = await self.active_router.decide(current_input, full_context)
-                    current_agent_name = routing["target_agent"]
-                    agent_path.append(current_agent_name)
+                    # === INTELLIGENT ROUTING BASED ON FLOW VALIDATION ===
+                    # If we have flow validation, use it to make smart routing decisions
+                    if full_context.get("flow_validation") and full_context.get("user_intent_analysis"):
+                        flow_validation = full_context["flow_validation"]
+                        user_intent = full_context["user_intent_analysis"]
+                        
+                        # Special case: User asking "what's next?"
+                        if user_intent["intent"] == "ask_next_step":
+                            # Route to recommended agent for current stage
+                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
+                            routing = {
+                                "intent": "ask_next_step",
+                                "confidence": 0.95,
+                                "target_agent": recommended_agent,
+                                "method": "flow_validation",
+                                "guidance": full_context.get("next_step_guidance")
+                            }
+                            logger.info(f"[orchestrator] 🧭 User asking next step → {recommended_agent}")
+                        
+                        # Special case: User signaling completion
+                        elif user_intent["intent"] == "signal_complete":
+                            # Route to current stage's agent to validate completion
+                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
+                            routing = {
+                                "intent": "signal_complete",
+                                "confidence": 0.90,
+                                "target_agent": recommended_agent,
+                                "method": "flow_validation"
+                            }
+                            logger.info(f"[orchestrator] ✅ User signaling completion → {recommended_agent}")
+                        
+                        # Special case: User providing data for current step
+                        elif user_intent["intent"] in ["provide_price_data", "provide_arv"]:
+                            # Route to PropertyAgent (handles financial data)
+                            routing = {
+                                "intent": user_intent["intent"],
+                                "confidence": user_intent["confidence"],
+                                "target_agent": "PropertyAgent",
+                                "method": "flow_validation"
+                            }
+                            logger.info(f"[orchestrator] 💰 User providing data → PropertyAgent")
+                        
+                        # Fallback: Use recommended agent from flow validation
+                        else:
+                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
+                            routing = {
+                                "intent": "general_conversation",
+                                "confidence": 0.70,
+                                "target_agent": recommended_agent,
+                                "method": "flow_validation_fallback"
+                            }
+                            logger.info(f"[orchestrator] 🔄 Flow validation fallback → {recommended_agent}")
+                        
+                        current_agent_name = routing["target_agent"]
+                        agent_path.append(current_agent_name)
+                    
+                    else:
+                        # No flow validation available, use traditional active_router
+                        routing = await self.active_router.decide(current_input, full_context)
+                        current_agent_name = routing["target_agent"]
+                        agent_path.append(current_agent_name)
                     
                     logger.info(
-                        f"[orchestrator] Initial routing: {routing['intent']} "
-                        f"(conf={routing['confidence']:.2f}) → {current_agent_name}"
+                        f"[orchestrator] Initial routing: {routing.get('intent', 'unknown')} "
+                        f"(conf={routing.get('confidence', 0):.2f}) → {current_agent_name} "
+                        f"[method={routing.get('method', 'active_router')}]"
                     )
                 
                 # Log routing decision
