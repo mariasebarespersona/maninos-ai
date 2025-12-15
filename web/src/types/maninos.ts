@@ -6,6 +6,7 @@
 export type AcquisitionStage = 
   | 'documents_pending'
   | 'initial' 
+  | 'review_required'     // 70% rule failed - needs justification
   | 'passed_70_rule' 
   | 'inspection_done' 
   | 'passed_80_rule' 
@@ -95,6 +96,7 @@ export interface ChatMessage {
 export const STAGE_CONFIG: Record<AcquisitionStage, { label: string; color: string; icon: string }> = {
   documents_pending: { label: 'Docs Pending', color: 'gray', icon: '○' },
   initial: { label: 'Initial', color: 'gray', icon: '○' },
+  review_required: { label: 'Needs Review', color: 'orange', icon: '⚠' },
   passed_70_rule: { label: '70% Passed', color: 'blue', icon: '◐' },
   inspection_done: { label: 'Inspected', color: 'yellow', icon: '◑' },
   passed_80_rule: { label: '80% Passed', color: 'green', icon: '●' },

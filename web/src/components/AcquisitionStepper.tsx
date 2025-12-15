@@ -30,6 +30,7 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
     const stageOrder: Record<string, number> = {
       'documents_pending': 0,
       'initial': 1,
+      'review_required': 1, // Same step as 'initial' - just needs justification
       'passed_70_rule': 2,
       'inspection_done': 3,
       'passed_80_rule': 4,
@@ -50,6 +51,7 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
   const stageOrder: Record<string, number> = {
     'documents_pending': 0,
     'initial': 1,
+    'review_required': 1, // Same step as 'initial' - just needs justification
     'passed_70_rule': 2,
     'inspection_done': 3,
     'passed_80_rule': 4,

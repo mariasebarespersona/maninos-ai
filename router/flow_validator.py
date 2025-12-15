@@ -32,7 +32,13 @@ class ManinosFlowValidator:
             "initial": {
                 "name": "Paso 1: 70% Rule Check",
                 "required_data": ["asking_price", "market_value"],
-                "next_stage": "passed_70_rule",  # or "rejected"
+                "next_stage": "passed_70_rule",  # or "review_required" or "rejected"
+                "agent": "PropertyAgent"
+            },
+            "review_required": {
+                "name": "⚠️ Paso 1b: Revisión Humana Requerida (70% Rule Failed)",
+                "required_data": [],  # No new data needed - needs human justification
+                "next_stage": "passed_70_rule",  # Can advance after justification
                 "agent": "PropertyAgent"
             },
             "passed_70_rule": {
