@@ -184,10 +184,12 @@ def post_tool_node(state: AgentState) -> Dict[str, Any]:
     if state.get("awaiting_confirmation"):
         logger.info(f"[post_tool_node] Awaiting user confirmation for tool call")
         # Keep awaiting_confirmation=True until user confirms/denies
-        return {}
+        # Return empty messages list (valid update that doesn't change state)
+        return {"messages": []}
     
     # Normal flow - continue
-    return {}
+    # Return empty messages list (valid update that doesn't change state)
+    return {"messages": []}
 
 
 # ==================== ROUTING LOGIC ====================

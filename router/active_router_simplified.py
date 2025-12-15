@@ -20,7 +20,6 @@ Architecture:
 from __future__ import annotations
 import re
 import logging
-from time import perf_counter
 from typing import Tuple, Dict, Optional
 
 logger = logging.getLogger("active_router")
