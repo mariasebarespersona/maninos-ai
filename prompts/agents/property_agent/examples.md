@@ -125,6 +125,80 @@ Para evaluar una nueva propiedad, dime su dirección.
 
 ---
 
+### ✅ Ejemplo: Eliminar OTRA propiedad (con find_property)
+
+**Contexto:** `property_id = "old-id-abc"` (actualmente estás en otra propiedad)
+
+**Turn 1: Usuario pide eliminar otra propiedad**
+
+**Usuario**: "Elimina Casa Sebares 2"
+
+**Agent Tool Call** (buscar la propiedad mencionada):
+```json
+{"tool": "find_property", "args": {"name": "Casa Sebares 2"}}
+```
+
+**Tool Result**:
+```json
+{
+  "id": "new-id-xyz-789",
+  "name": "Casa Sebares 2",
+  "address": "Ronda de Sobradiel 16",
+  "acquisition_stage": "documents_pending"
+}
+```
+
+**Agent Response** (pedir confirmación - RECUERDA: property_id="new-id-xyz-789"):
+```
+⚠️ CONFIRMAR ELIMINACIÓN
+
+¿Estás seguro de que deseas eliminar la propiedad "Casa Sebares 2"?
+
+📍 Dirección: Ronda de Sobradiel 16
+🏷️ Estado: Pending Documents
+
+⚠️ Esta acción no se puede deshacer.
+
+Responde "SÍ" o "CONFIRMAR" para proceder.
+```
+
+---
+
+**Turn 2: Usuario confirma**
+
+**Usuario**: "SÍ"
+
+**Agent Tool Call** (🚨 USA EL ID QUE RETORNÓ find_property):
+```json
+{"tool": "delete_property", "args": {"property_id": "new-id-xyz-789", "purge_docs_first": true}}
+```
+
+**⚠️ CRÍTICO:**
+- ✅ USA "new-id-xyz-789" (el que retornó `find_property` en Turn 1)
+- ❌ NO uses "old-id-abc" (el property_id del contexto actual)
+- 🚨 El agent DEBE RECORDAR el property_id que obtuvo en Turn 1
+
+**Tool Result**:
+```json
+{
+  "deleted": true,
+  "property_id": "new-id-xyz-789",
+  "name": "Casa Sebares 2"
+}
+```
+
+**Agent Response**:
+```
+✅ Propiedad "Casa Sebares 2" eliminada correctamente
+
+La propiedad ha sido eliminada de:
+• Base de datos ✅
+• Lista de propiedades ✅
+• Documentos asociados ✅
+```
+
+---
+
 ### ❌ ERROR COMÚN #1: Usar `find_property` cuando ya tienes el `property_id`
 
 **Contexto:** `property_id = "c21013f0-..."` (activo)
@@ -142,6 +216,35 @@ Para evaluar una nueva propiedad, dime su dirección.
 {"tool": "get_property", "args": {"property_id": "c21013f0-..."}}
 ```
 → ✅ Funciona: Ya tienes el ID, úsalo directamente
+
+---
+
+### ❌ ERROR COMÚN #1B: Usar property_id incorrecto después de find_property
+
+**Contexto:** `property_id = "old-abc"` (actualmente en otra propiedad)
+
+**Turn 1:**
+**Usuario**: "Elimina Casa Sebares 2"
+**Agent**: `find_property("Casa Sebares 2")` → retorna `{"id": "xyz-789", ...}`
+**Agent**: "⚠️ ¿Estás seguro de eliminar Casa Sebares 2?"
+
+**Turn 2:**
+**Usuario**: "SÍ"
+
+**Agent** ❌ MAL:
+```json
+{"tool": "delete_property", "args": {"property_id": "old-abc", "purge_docs_first": true}}
+```
+→ ❌ INCORRECTO: Está intentando eliminar "old-abc" (contexto), no "xyz-789" (la propiedad solicitada)
+
+**Agent** ✅ BIEN:
+```json
+{"tool": "delete_property", "args": {"property_id": "xyz-789", "purge_docs_first": true}}
+```
+→ ✅ CORRECTO: Usa el property_id que retornó `find_property` en Turn 1
+
+**🚨 REGLA CRÍTICA:**
+Cuando usas `find_property` en Turn 1, **DEBES RECORDAR** el `property_id` que retorna y usarlo en Turn 2, NO el `property_id` del contexto actual.
 
 ---
 

@@ -177,18 +177,30 @@ Responde "NO" o "CANCELAR" para mantener la propiedad.
 **PASO 2: Esperar confirmación del usuario**
 - ⏸️ **DETENTE** y espera que el usuario responda "SÍ", "CONFIRMAR", "OK"
 - ❌ **NO elimines** hasta que el usuario confirme explícitamente
+- 🚨 **RECUERDA EL PROPERTY_ID** que obtuviste en Paso 1 (del `get_property` o `find_property`)
 
 **PASO 3: Si confirma, ejecutar eliminación**
 
 Cuando el usuario responde "SÍ" o "CONFIRMAR":
 
+**🚨 CRÍTICO - USA EL PROPERTY_ID CORRECTO:**
+
+1️⃣ **Si usaste `find_property` en Paso 1:**
+   → USA el property_id que te devolvió `find_property`
+   → ❌ NO uses el property_id del contexto actual
+   
+2️⃣ **Si usaste `get_property(property_id)` en Paso 1:**
+   → USA ese mismo property_id
+
 **⚠️ ACCIÓN OBLIGATORIA:**
 ```python
-# SOLO llama este tool, NADA MÁS:
-delete_property(property_id=property_id, purge_docs_first=True)
+# USA el property_id de la propiedad que el usuario quiere eliminar
+# (el que obtuviste en find_property o get_property del Paso 1)
+delete_property(property_id="[EL_ID_QUE_ENCONTRASTE_EN_PASO_1]", purge_docs_first=True)
 
 # ❌ NO llames: list_docs, delete_docs, purge_property_documents
 # ❌ NO busques documentos primero
+# ❌ NO uses property_id del contexto si llamaste find_property
 # ✅ delete_property se encarga de TODO automáticamente
 ```
 
@@ -222,12 +234,20 @@ La propiedad "[nombre]" se ha mantenido sin cambios.
 - Usuario: "elimina esta propiedad"
 - Agent: [Llama delete_property inmediatamente] ← ❌ MAL
 
-✅ **SIEMPRE pide confirmación primero:**
-- Usuario: "elimina esta propiedad"
-- Agent: [Llama get_property para ver datos]
-- Agent: "⚠️ ¿Estás seguro? Esta acción no se puede deshacer..." ← ✅ BIEN
+❌ **NUNCA uses el property_id incorrecto:**
+- Usuario: "elimina Casa Sebares"
+- Agent: [Llama find_property → retorna property_id="abc-123"]
+- Agent: "⚠️ ¿Estás seguro? ..."
 - Usuario: "SÍ"
-- Agent: [Llama delete_property] ← ✅ AHORA SÍ
+- Agent: [Llama delete_property(property_id="xyz-789")] ← ❌ MAL (property_id del contexto)
+- Agent: [Llama delete_property(property_id="abc-123")] ← ✅ BIEN (el que retornó find_property)
+
+✅ **FLUJO CORRECTO:**
+- Usuario: "elimina Casa Sebares"
+- Agent: [Llama find_property("Casa Sebares") → retorna property_id="abc-123"]
+- Agent: "⚠️ ¿Estás seguro de eliminar Casa Sebares?" ← ✅ BIEN (recuerda: abc-123)
+- Usuario: "SÍ"
+- Agent: [Llama delete_property(property_id="abc-123")] ← ✅ CORRECTO (usa el ID que encontró)
 
 ---
 
