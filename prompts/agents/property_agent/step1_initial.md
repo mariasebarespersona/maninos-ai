@@ -47,7 +47,11 @@ Después de ejecutar `calculate_maninos_deal`, **OBLIGATORIAMENTE** debes:
 1. ✅ **RESUMIR** lo que se completó en el Paso 1
 2. ✅ **EXPLICAR** qué viene en el Paso 2
 3. ⏸️ **DETENTE y espera confirmación del usuario**
-4. ❌ **NO llames `get_inspection_checklist` todavía**
+4. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO llames `get_inspection_checklist` en este turno
+5. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO muestres el checklist todavía
+6. 🚫 **PROHIBIDO ABSOLUTAMENTE:** NO continúes al Paso 2 sin confirmación explícita
+
+**⚠️ DEBES TERMINAR TU RESPUESTA AQUÍ Y ESPERAR.**
 
 **🚨 REGLA CRÍTICA #2: FORMATO OBLIGATORIO**
 
