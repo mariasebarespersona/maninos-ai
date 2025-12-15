@@ -1,246 +1,218 @@
-# Arquitectura de Routing - MANINOS AI
+# Routing Architecture - MANINOS AI
 
-**Última actualización**: 2025-01-04
+## 🎯 Filosofía: Intelligent, Not Robotic
 
----
-
-## 🏗️ Los 3 Componentes del Sistema de Routing
-
-### 📊 Tabla Comparativa
-
-| Archivo | Rol | Estado | Usado Por | Líneas |
-|---------|-----|--------|-----------|--------|
-| **`router/scaffold.py`** | Router legacy simple | ❌ ELIMINADO | Nadie (código muerto) | 39 |
-| **`router/active_router.py`** | Clasificador de intents | ✅ ACTIVO | orchestrator.py | ~800 |
-| **`router/orchestrator.py`** | Orquestador principal | ✅ ACTIVO | app.py | ~470 |
+El sistema de routing de MANINOS AI está diseñado para ser **inteligente y natural**, no basado en keywords rígidos.
 
 ---
 
-## 🎯 1. active_router.py (CLASIFICADOR)
+## 🏗️ Arquitectura de Dos Capas
 
-**Responsabilidad**: **"¿QUÉ quiere hacer el usuario?"**
+### **Capa 1: ActiveRouter (Básico)**
 
-### Funcionalidad
+**Responsabilidad:** Routing inicial para operaciones **SIN contexto de propiedad**
 
-Clasifica el input del usuario en un **intent** específico:
+**Maneja SOLO:**
+1. ✅ `property.create` - Detectar nueva dirección para evaluar
+2. ✅ `property.list` - Listar todas las propiedades
+3. ✅ `property.delete` - Eliminar una propiedad
+4. ✅ `property.switch` - Cambiar a otra propiedad
+5. ✅ `general_conversation` - Default fallback
 
+**NO maneja:**
+- ❌ Flujo de adquisición (checklist, inspección, arv, 70%, 80%)
+- ❌ Operaciones de documentos
+- ❌ Señales de completitud ("listo", "done")
+- ❌ Cualquier cosa relacionada con el flujo
+
+**Método:**
+- Keywords simples para detección rápida
+- LLM fallback solo para casos ambiguos
+- **Reducido a 256 líneas** (era 810 líneas)
+
+---
+
+### **Capa 2: FlowValidator (Inteligente)**
+
+**Responsabilidad:** Todo lo relacionado con el **flujo de adquisición**
+
+**Maneja:**
+1. ✅ Análisis del `acquisition_stage` actual
+2. ✅ Detección de datos faltantes
+3. ✅ Comprensión de intención del usuario (naturalmente, sin keywords)
+4. ✅ Guía para el siguiente paso
+5. ✅ Recomendación de agent apropiado
+
+**Método:**
+- Análisis contextual inteligente
+- Entiende lenguaje natural
+- NO depende de keywords específicos
+- Guidance explícita para el agent
+
+**Ubicación:** `router/flow_validator.py`
+
+---
+
+## 📊 División de Responsabilidades
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Usuario envía mensaje                     │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+                ┌─────────────────────┐
+                │  ¿property_id?      │
+                └──────┬──────────────┘
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+    ❌ NO                        ✅ SÍ
+         │                           │
+         ▼                           ▼
+┌──────────────────┐      ┌──────────────────────┐
+│  ActiveRouter    │      │   FlowValidator      │
+│  (Básico)        │      │   (Inteligente)      │
+├──────────────────┤      ├──────────────────────┤
+│ • property.create│      │ • Analiza stage      │
+│ • property.list  │      │ • Detecta faltantes  │
+│ • property.delete│      │ • Entiende intención │
+│ • property.switch│      │ • Recomienda paso    │
+│ • general        │      │ • Guía al agent      │
+└──────────────────┘      └──────────────────────┘
+         │                           │
+         └─────────────┬─────────────┘
+                       │
+                       ▼
+                ┌──────────────┐
+                │ PropertyAgent│
+                └──────────────┘
+```
+
+---
+
+## 🎯 Ejemplo de Flujo
+
+### **Escenario 1: Sin propiedad activa**
+
+```
+Usuario: "Evaluar propiedad en Calle Madroño 26"
+   ↓
+ActiveRouter: Detecta address → property.create → PropertyAgent
+   ↓
+PropertyAgent: Crea propiedad, pide documentos
+```
+
+### **Escenario 2: Con propiedad activa (acquisition_stage = 'documents_pending')**
+
+```
+Usuario: "done"
+   ↓
+FlowValidator:
+  - Stage actual: documents_pending
+  - Detecta: Usuario señala completitud (sin keywords, natural)
+  - Verifica: ¿Documentos realmente subidos? (list_docs)
+  - Guidance: "Verificar documentos, si completos → pedir precios"
+   ↓
+PropertyAgent: Sigue guidance, verifica, responde según estado real
+```
+
+### **Escenario 3: Con propiedad activa (acquisition_stage = 'passed_70_rule')**
+
+```
+Usuario: "ya terminé con eso"
+   ↓
+FlowValidator:
+  - Stage actual: passed_70_rule
+  - Detecta: Usuario señala completitud
+  - Verifica: ¿repair_estimate existe?
+  - Guidance: "Si repair_estimate > 0 → pedir ARV, si no → mostrar checklist"
+   ↓
+PropertyAgent: Sigue guidance, verifica, responde
+```
+
+---
+
+## ✅ Ventajas de Esta Arquitectura
+
+1. **Natural, no robótica:**
+   - Usuario puede decir "done", "listo", "ya está", "siguiente", "terminé", etc.
+   - FlowValidator entiende la intención, no busca keywords específicos
+
+2. **Consistente:**
+   - Prompts dicen "no keywords"
+   - Código respeta eso (ActiveRouter simplificado)
+   - FlowValidator es la fuente de inteligencia
+
+3. **Mantenible:**
+   - ActiveRouter: 256 líneas (simple y claro)
+   - Lógica compleja → FlowValidator (separado)
+   - Fácil de entender y modificar
+
+4. **Escalable:**
+   - Agregar nuevos pasos → Solo modificar FlowValidator
+   - No tocar ActiveRouter para flujo de adquisición
+
+---
+
+## 🚫 Lo que NO Hacemos
+
+1. ❌ **NO** buscamos keywords específicos para el flujo
+2. ❌ **NO** duplicamos lógica entre ActiveRouter y FlowValidator
+3. ❌ **NO** forzamos al usuario a usar frases específicas
+4. ❌ **NO** tenemos routing basado en keywords para señales de completitud
+
+---
+
+## 📝 Reglas de Oro
+
+1. **ActiveRouter:** Solo para operaciones básicas SIN property_id
+2. **FlowValidator:** Todo lo relacionado con el flujo de adquisición
+3. **Base de datos es la fuente de verdad:** Siempre verificar estado real
+4. **Natural, no robótico:** Usuario puede expresarse libremente
+
+---
+
+## 🔧 Cómo Agregar Nueva Funcionalidad
+
+### **¿Es una operación básica sin contexto?**
+→ Agregar a `ActiveRouter.predict_keywords()`
+
+**Ejemplo:** Nueva forma de listar propiedades
 ```python
-Input:  "Evaluar mobile home precio 30k, mercado 50k"
-Output: {
-  "intent": "property.acquisition",
-  "confidence": 0.95,
-  "target_agent": "PropertyAgent",
-  "method": "keywords"
+# router/active_router.py
+if "ver todas mis casas" in s:
+    return ("property.list", 0.90, "PropertyAgent")
+```
+
+### **¿Es parte del flujo de adquisición?**
+→ Agregar a `FlowValidator`
+
+**Ejemplo:** Nuevo paso después del contrato
+```python
+# router/flow_validator.py
+self.flow_steps = {
+    # ...
+    "contract_generated": {
+        "name": "Paso 6: Firma y Cierre",
+        "required_data": ["signature_date", "closing_date"],
+        "next_stage": "deal_closed",
+        "agent": "PropertyAgent"
+    }
 }
 ```
 
-### Métodos
+---
 
-#### **Fast Path** (~0ms):
-```python
-predict_keywords(text, context)
-```
-- Busca keywords en el texto
-- Ejemplos: "evaluar" → property.acquisition
-- "checklist" → property.acquisition
-- "arv" → property.acquisition
+## 📊 Métricas
 
-#### **Slow Path** (~200ms):
-```python
-predict_llm(text, context)
-```
-- Usa GPT-4o-mini para clasificar casos ambiguos
-- Se activa si confidence < 0.70
-- Más preciso pero más lento
-
-#### **Hybrid** (recomendado):
-```python
-predict(text, context)
-```
-- Intenta keywords primero
-- Si confidence < 0.70 → fallback a LLM
-- Balance entre velocidad y precisión
+- **ActiveRouter:** 810 líneas → 256 líneas (68% reducción)
+- **Keywords eliminados:** ~50 listas de keywords hardcodeados
+- **Intents manejados por ActiveRouter:** 5 (básicos)
+- **Intents manejados por FlowValidator:** ~15 (flujo completo)
 
 ---
 
-## 🎭 2. orchestrator.py (ORQUESTADOR)
+## 🎯 Resultado
 
-**Responsabilidad**: **"¿CÓMO ejecuto la tarea?"**
-
-### Funcionalidad
-
-Coordina todo el flujo de ejecución:
-
-```python
-async def route_and_execute(user_input, session_id, property_id):
-    # 1. Cargar contexto
-    context = load_context(session_id, property_id)
-    
-    # 2. Detectar continuación de conversación
-    if is_continuation(context):
-        agent = same_as_last_turn
-    else:
-        # 3. Clasificar intent
-        routing = await active_router.decide(user_input, context)
-        agent = routing["target_agent"]
-    
-    # 4. Ejecutar agente especializado
-    result = agent.run(user_input, property_id, context)
-    
-    # 5. Manejar redirects (si el agente necesita otro agente)
-    while result.action == "redirect":
-        agent = get_agent(result.target_agent)
-        result = agent.run(...)
-    
-    # 6. Retornar respuesta
-    return result
-```
-
-### Características Clave
-
-#### **Continuación de Conversación** 🔄
-```python
-Agent: "¿Cuál es el ARV?"
-User: "65000"  ← NO re-clasificar, continuar con PropertyAgent
-```
-
-Detecta patrones:
-- Confirmaciones: "sí", "no", "confirmo"
-- Respuestas a preguntas: Detecta que el agente hizo una pregunta
-- Templates/estrategias: Detecta respuestas a opciones
-
-#### **Redirects entre Agentes** 🔁
-```python
-PropertyAgent → "necesito DocAgent para extraer datos de PDF"
-  ↓
-Orchestrator redirige a DocsAgent
-  ↓
-DocsAgent extrae datos y retorna a PropertyAgent
-```
-
-#### **Loop Prevention** 🛡️
-```python
-max_redirects = 3  # Previene loops infinitos
-```
-
----
-
-## 🗑️ 3. scaffold.py (ELIMINADO)
-
-**Estado**: ❌ **Código muerto** - Ya no existe
-
-**Era**: Router simple con keywords básicos  
-**Reemplazado por**: `active_router.py` (mucho más robusto)
-
----
-
-## 🔄 Flujo Completo con Ejemplo Real
-
-### Escenario: Usuario evalúa mobile home
-
-```
-1️⃣ USER INPUT
-   "Evaluar mobile home precio 30k, mercado 50k"
-        ↓
-2️⃣ app.py (/ui_chat endpoint)
-   • Recibe request POST
-   • Extrae: text, session_id, property_id
-        ↓
-3️⃣ orchestrator.py
-   • Carga historial de conversación desde LangGraph
-   • NO detecta continuación (es nuevo input)
-   • Llama: active_router.decide(text, context)
-        ↓
-4️⃣ active_router.py
-   • predict_keywords(): Busca "evaluar", "precio", "mercado"
-   • Encuentra match: property.acquisition
-   • Confidence: 0.95 (alta)
-   • Returns: {
-       "intent": "property.acquisition",
-       "target_agent": "PropertyAgent",
-       "confidence": 0.95
-     }
-        ↓
-5️⃣ orchestrator.py (continúa)
-   • Enruta a PropertyAgent
-   • Pasa intent="property.acquisition" en context
-        ↓
-6️⃣ agents/property_agent.py
-   • get_system_prompt(intent="property.acquisition")
-   • prompt_loader carga:
-     - prompts/agents/property_agent/_base.md
-     - prompts/agents/property_agent/examples.md (porque intent tiene "acquisition")
-   • Ejecuta con LangGraph
-   • LLM decide: Llamar calculate_maninos_deal(30k, 50k, property_id)
-        ↓
-7️⃣ agentic.py (LangGraph Coordinator)
-   • assistant_node: Procesa tool call
-   • tools_with_validation: Valida con validate_tool_call()
-   • Ejecuta tool
-   • Retorna resultado
-        ↓
-8️⃣ PropertyAgent interpreta resultado
-   • Ve: {"70_percent_rule": "PASS"}
-   • Genera respuesta: "✅ PASO 1 COMPLETADO..."
-   • Returns: {"action": "complete", "response": "..."}
-        ↓
-9️⃣ orchestrator.py
-   • Detecta action="complete"
-   • Retorna respuesta final a app.py
-        ↓
-🔟 app.py
-   • Retorna JSON response al frontend
-        ↓
-1️⃣1️⃣ FRONTEND
-   • Muestra mensaje del agent en la UI
-```
-
----
-
-## 📋 RESUMEN EJECUTIVO
-
-### ¿Cuál es la diferencia?
-
-| Componente | Pregunta que responde | Output |
-|------------|----------------------|--------|
-| **`active_router.py`** | "¿QUÉ quiere hacer el usuario?" | Intent + Agente |
-| **`orchestrator.py`** | "¿CÓMO ejecuto la tarea?" | Respuesta final |
-| ~~`scaffold.py`~~ | ~~Router legacy~~ | ❌ Eliminado |
-
-### Analogía
-
-Imagina un restaurante:
-
-- **`active_router.py`** = **Recepcionista**
-  - Escucha al cliente: "Quiero pasta carbonara"
-  - Clasifica: `intent="order.pasta"` → Chef de pastas
-
-- **`orchestrator.py`** = **Gerente**
-  - Coordina: Envía orden al chef correcto
-  - Maneja: Si el chef necesita ingredientes del almacén
-  - Retorna: Plato terminado al cliente
-
-- ~~`scaffold.py`~~ = ~~Menú viejo~~ ❌ Ya no se usa
-
----
-
-## ✅ CAMBIOS APLICADOS
-
-1. ✅ Eliminado import de `scaffold.py` en `app.py`
-2. ✅ Eliminado instanciación `router = Router()` en `app.py`
-3. ✅ `scaffold.py` ya no existe en el proyecto
-4. ✅ Documentación creada: `docs/ROUTING_ARCHITECTURE.md`
-
----
-
-## 🧪 Verificación
-
-El sistema ahora usa **SOLO**:
-- ✅ `active_router.py` (clasificación de intents)
-- ✅ `orchestrator.py` (ejecución y coordinación)
-
-**Código muerto eliminado**: ❌ `scaffold.py`
-
----
-
-**¿Deseas que pruebe el backend ahora para verificar que todo funciona correctamente?** 🚀
+Sistema **inteligente, natural, y consistente** que permite al usuario expresarse libremente mientras mantiene un flujo claro y robusto.
