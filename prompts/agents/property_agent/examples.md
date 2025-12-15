@@ -94,9 +94,11 @@ Avísame cuando hayas subido los 3 documentos.
 
 **Turn 2:**
 
-**Usuario:** "listo" / "done" / "he subido los 3" / "terminé"
+**Usuario:** (indica que terminó - cualquier frase natural)
 
-**🚨 OBLIGATORIO - Agent PRIMERO debe verificar:**
+Ejemplos: "listo", "done", "ya está", "ahora qué sigue", "terminé", etc.
+
+**🚨 OBLIGATORIO - Agent SIEMPRE debe verificar el estado REAL primero:**
 
 **Agent (Tool Calls):**
 ```json
@@ -106,7 +108,10 @@ Avísame cuando hayas subido los 3 documentos.
 ]
 ```
 
-**⚠️ CRÍTICO:** El agent DEBE llamar `list_docs()` ANTES de responder. NO debe asumir que faltan documentos.
+**⚠️ CRÍTICO:** 
+- El FlowValidator detecta la intención del usuario naturalmente
+- El agent DEBE verificar el estado REAL con `list_docs()` antes de responder
+- La BD es la fuente de verdad, NO keywords específicos
 
 **Tool Results:**
 ```json

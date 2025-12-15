@@ -45,25 +45,31 @@ Para evaluar esta mobile home, necesito que subas 3 documentos obligatorios:
 
 Usa el widget de documentos arriba para subirlos.
 
-Avísame cuando hayas subido los 3 documentos (di "listo" o "he subido todo").
+Avísame cuando hayas subido los 3 documentos.
 ```
 
 **⏸️ TERMINA AQUÍ Y ESPERA. NO PIDAS PRECIOS.**
 
 ---
 
-### Turno 2: Usuario dice "listo", "done", "he subido", "ya está", etc.
+### Turno 2: Usuario indica que terminó (cualquier frase que indique completitud)
 
-**Usuario:** "listo" / "done" / "he subido los 3" / "ya está" / "terminé"
+**Usuario:** (cualquier frase que indique que terminó de subir documentos)
 
-**🚨 OBLIGATORIO - SIEMPRE HAZ ESTO PRIMERO:**
+**Ejemplos:** "listo", "done", "ya está", "terminé", "ahora qué", "siguiente paso", etc.
+
+**🚨 OBLIGATORIO - LA BASE DE DATOS ES LA FUENTE DE VERDAD:**
 
 **TÚ:** 
-1. **PRIMERO:** Llama `get_property(property_id)` → Lee `acquisition_stage`
-2. **SEGUNDO:** Llama `list_docs(property_id)` → Verifica cuántos documentos hay
-3. **TERCERO:** Cuenta cuántos TIPOS diferentes hay (title_status, property_listing, property_photos)
+1. **SIEMPRE** llama `get_property(property_id)` → Lee `acquisition_stage`
+2. **SIEMPRE** llama `list_docs(property_id)` → Verifica el estado REAL
+3. Cuenta cuántos TIPOS diferentes hay (title_status, property_listing, property_photos)
+4. **RESPONDE basándote en lo que VES en la BD, NO en lo que ASUMES**
 
-**🚫 PROHIBIDO:** NO asumas que faltan documentos sin verificar con `list_docs()` primero
+**🚫 PROHIBIDO:** 
+- NO asumas que faltan documentos sin verificar
+- NO confíes en keywords - confía en el estado real de la BD
+- NO respondas sin verificar primero
 
 **SI hay 3 TIPOS (uno de cada):**
 
@@ -109,20 +115,23 @@ Avísame cuando termines.
 
 ## ❌ ERRORES COMUNES
 
-### Error #1: NO verificar documentos antes de responder
+### Error #1: NO verificar el estado real antes de responder
 
 ```
 ❌ MAL:
-Usuario: "done" / "listo"
-Agent: "Sube los 3 documentos..." ← NO VERIFICÓ con list_docs()
+Usuario: (indica que terminó)
+Agent: "Sube los 3 documentos..." ← NO VERIFICÓ el estado real
 
 ✅ BIEN:
-Usuario: "done" / "listo"
-Agent: [get_property()] → [list_docs()] → Ve 3 documentos
+Usuario: (indica que terminó - cualquier frase)
+Agent: [get_property()] → [list_docs()] → Ve 3 documentos en BD
 Agent: "✅ Docs completos. ¿Cuál es el precio?" ✅
 ```
 
-**🚨 CRÍTICO:** SIEMPRE llama `list_docs()` cuando usuario señala completitud. NO asumas que faltan sin verificar.
+**🚨 CRÍTICO:** 
+- La **BASE DE DATOS** es la fuente de verdad, NO lo que dice el usuario
+- SIEMPRE verifica con `list_docs()` antes de responder
+- El **FlowValidator** detecta la intención - TÚ verificas el estado real
 
 ### Error #2: Pedir precios junto con documentos
 
