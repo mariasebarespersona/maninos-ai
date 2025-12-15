@@ -161,253 +161,48 @@ class OrchestrationRouter:
                 routing = None  # No routing decision was made
             else:
                 # ============================================================
-                # CRITICAL: CONVERSATION CONTINUITY DETECTION
-                # This enables multi-turn conversations with specialized agents
-                # The router MUST detect when user is responding to agent questions
+                # INTELLIGENT ROUTING: Let the system reason, not match keywords
                 # ============================================================
-                continue_with_agent = None
-                continue_intent = None
                 
-                if full_context.get("history"):
-                    try:
-                        # Get last AI message (the question) and current user input
-                        last_ai = None
-                        for msg in reversed(full_context["history"]):
-                            if isinstance(msg, AIMessage):
-                                last_ai = msg
-                                break
-                        
-                        if last_ai:
-                            ai_content = str(last_ai.content).lower()
-                            user_input_lower = user_input.lower().strip()
-                            
-                            # ============================================================
-                            # CONFIRMATION RESPONSES (si, sí, no, confirmo, etc.)
-                            # ============================================================
-                            confirmation_yes = ["si", "sí", "yes", "confirmo", "adelante", "ok", "vale", "claro", "por supuesto", "hazlo", "dale"]
-                            confirmation_no = ["no", "cancelar", "cancela", "olvídalo", "olvidalo", "mejor no"]
-                            
-                            is_confirmation = user_input_lower in confirmation_yes or user_input_lower in confirmation_no
-                            is_yes = user_input_lower in confirmation_yes
-                            
-                            # CRITICAL: Track which agent last spoke
-                            # For simple confirmations like "si", continue with the same agent
-                            last_agent_name = None
-                            for msg in reversed(full_context["history"]):
-                                if isinstance(msg, AIMessage):
-                                    # Check if message has metadata indicating which agent sent it
-                                    # For now, we'll use the last AI message context
-                                    last_agent_name = full_context.get("last_agent_used")
-                                    break
-                            
-                            if is_confirmation:
-                                # INTELLIGENT ROUTING: Check what the AI just asked about
-                                # This allows both PropertyAgent and DocsAgent to work within the acquisition flow
-                                
-                                # PRIORITY #0: Property deletion (MUST be before document checks)
-                                # If message asks about deleting PROPERTY (even if mentions "documents"), use PropertyAgent
-                                if ("eliminar" in ai_content or "eliminación" in ai_content or "borrar" in ai_content) and "propiedad" in ai_content:
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Confirmation about property deletion → PropertyAgent")
-                                
-                                # PRIORITY #1: Document-related questions → DocsAgent
-                                # BUT: Only if NOT about deleting property (checked above)
-                                elif any(kw in ai_content for kw in ["documento", "archivo", "pdf", "subir", "upload", "zillow", "mhvillage", "adjuntar"]) and "eliminar" not in ai_content:
-                                    continue_with_agent = "DocsAgent"
-                                    continue_intent = "docs.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Confirmation about documents → DocsAgent")
-                                
-                                # PRIORITY #2: Property evaluation questions → PropertyAgent
-                                elif any(kw in ai_content for kw in ["contrato", "generar", "checklist", "arv", "precio", "70%", "80%", "inspección", "reparaciones", "título", "eliminar", "eliminación", "borrar"]):
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Confirmation about property evaluation → PropertyAgent")
-                                
-                                # PRIORITY #3: If ambiguous but in acquisition flow → PropertyAgent (safe fallback)
-                                elif property_id and full_context.get("acquisition_stage") in ["initial", "passed_70_rule", "inspection_done", "passed_80_rule"]:
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.confirm"
-                                    logger.info(f"[orchestrator] 🎯 Ambiguous confirmation in acquisition flow → PropertyAgent (stage={full_context.get('acquisition_stage')})")
-                                
-                                # FALLBACK: Pattern-based detection for specific actions
-                                # PATTERN: Property deletion confirmation
-                                elif ("¿estás seguro" in ai_content or "estas seguro" in ai_content) and "eliminar" in ai_content:
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.delete_confirm" if is_yes else "property.delete_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with PropertyAgent (delete confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Property creation confirmation
-                                elif ("crear" in ai_content or "añadir" in ai_content) and "propiedad" in ai_content:
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.create_confirm" if is_yes else "property.create_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with PropertyAgent (create confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Document upload confirmation
-                                elif ("confirmas" in ai_content or "subir" in ai_content) and ("documento" in ai_content or "archivo" in ai_content):
-                                    continue_with_agent = "DocsAgent"
-                                    continue_intent = "docs.upload_confirm" if is_yes else "docs.upload_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with DocsAgent (upload confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Document DELETE confirmation (NEW)
-                                elif ("elimine" in ai_content or "eliminar" in ai_content or "borre" in ai_content or "borrar" in ai_content) and ("documento" in ai_content):
-                                    continue_with_agent = "DocsAgent"
-                                    continue_intent = "docs.delete_confirm" if is_yes else "docs.delete_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with DocsAgent (delete confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Email send confirmation
-                                elif ("enviar" in ai_content or "mandar" in ai_content) and ("email" in ai_content or "correo" in ai_content):
-                                    continue_with_agent = "DocsAgent"
-                                    continue_intent = "docs.email_confirm" if is_yes else "docs.email_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with DocsAgent (email confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Numbers template confirmation
-                                elif "plantilla" in ai_content and ("números" in ai_content or "numeros" in ai_content):
-                                    continue_with_agent = "NumbersAgent"
-                                    continue_intent = "numbers.template_confirm" if is_yes else "numbers.template_cancel"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with NumbersAgent (template confirmation: {user_input_lower})")
-                                
-                                # PATTERN: Generic confirmation - check for any question mark
-                                elif "?" in ai_content and not continue_with_agent:
-                                    # Try to detect agent from context
-                                    # CRITICAL: "contrato" goes to PropertyAgent (purchase agreements), NOT DocsAgent
-                                    if any(kw in ai_content for kw in ["propiedad", "inmueble", "casa", "piso", "precio", "arv", "contrato", "70%", "80%", "regla"]):
-                                        continue_with_agent = "PropertyAgent"
-                                        continue_intent = "property.confirm"
-                                    elif any(kw in ai_content for kw in ["documento", "archivo", "pdf", "upload", "subir"]):
-                                        continue_with_agent = "DocsAgent"
-                                        continue_intent = "docs.confirm"
-                                    elif any(kw in ai_content for kw in ["número", "plantilla", "excel", "celda"]):
-                                        continue_with_agent = "NumbersAgent"
-                                        continue_intent = "numbers.confirm"
-                                    
-                                    if continue_with_agent:
-                                        logger.info(f"[orchestrator] 🔄 Generic confirmation detected, continuing with {continue_with_agent}")
-                            
-                            # ============================================================
-                            # NON-CONFIRMATION RESPONSES (data input, selections, etc.)
-                            # ============================================================
-                            if not continue_with_agent:
-                                # PATTERN: PropertyAgent asked for name/address
-                                property_ask_phrases = [
-                                    "nombre y la dirección", "nombre y dirección",
-                                    "proporciona el nombre", "proporciona nombre",
-                                    "nombre de la propiedad", "dirección de la propiedad",
-                                    "cómo se llama", "como se llama"
-                                ]
-                                if any(phrase in ai_content for phrase in property_ask_phrases):
-                                    continue_with_agent = "PropertyAgent"
-                                    continue_intent = "property.create_continue"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with PropertyAgent (name/address response)")
-                                
-                                # PATTERN: AI asked for email, user provided email
-                                elif ("correo" in ai_content or "email" in ai_content) and ("@" in user_input_lower):
-                                    continue_with_agent = "DocsAgent"
-                                    continue_intent = "docs.email_continue"
-                                    logger.info(f"[orchestrator] 🔄 Continuing with DocsAgent (email provided)")
-                                
-                                # PATTERN: NumbersAgent asked for template selection
-                                numbers_ask_phrases = ["qué plantilla", "que plantilla", "elige una", "1) r2b", "1) **r2b**"]
-                                if any(phrase in ai_content for phrase in numbers_ask_phrases):
-                                    template_responses = ["r2b", "promoción", "promocion", "1", "2", "3", "4", "r2b+pm", "r2b + pm"]
-                                    if any(resp in user_input_lower for resp in template_responses):
-                                        continue_with_agent = "NumbersAgent"
-                                        continue_intent = "numbers.select_template"
-                                        logger.info(f"[orchestrator] 🔄 Continuing with NumbersAgent (template selection)")
-                                
-                                # PATTERN: DocsAgent asked for document strategy (R2B vs Promoción)
-                                strategy_ask_phrases = ["r2b o promoción", "r2b o promocion", "qué estrategia", "que estrategia", "qué camino", "que camino"]
-                                if any(phrase in ai_content for phrase in strategy_ask_phrases):
-                                    if any(resp in user_input_lower for resp in ["r2b", "promoción", "promocion", "1", "2"]):
-                                        continue_with_agent = "DocsAgent"
-                                        continue_intent = "docs.set_strategy"
-                                        logger.info(f"[orchestrator] 🔄 Continuing with DocsAgent (strategy selection)")
+                # Strategy:
+                # 1. If we have flow_validation (property exists) → use it
+                # 2. Otherwise → use active_router for general routing
+                # 3. Let the agent's LLM do the actual reasoning with enriched context
+                
+                routing = None
+                
+                # === PATH 1: FLOW-BASED ROUTING (when property exists) ===
+                if full_context.get("flow_validation") and property_id:
+                    flow_validation = full_context["flow_validation"]
+                    user_intent_analysis = full_context.get("user_intent_analysis", {})
+                    recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
                     
-                    except Exception as e:
-                        logger.warning(f"[orchestrator] Error checking conversation continuity: {e}")
-                
-                if continue_with_agent:
-                    current_agent_name = continue_with_agent
-                    agent_path.append(current_agent_name)
-                    # Create a synthetic routing result for continuity
+                    # Simple, intelligent routing based on flow analysis
                     routing = {
-                        "intent": continue_intent or "continuation",
-                        "confidence": 0.98,
-                        "target_agent": continue_with_agent,
-                        "method": "conversation_continuity"
+                        "intent": user_intent_analysis.get("intent", "general_conversation"),
+                        "confidence": user_intent_analysis.get("confidence", 0.80),
+                        "target_agent": recommended_agent,
+                        "method": "flow_validator",
+                        "reason": user_intent_analysis.get("reason", "Flow-based routing")
                     }
-                    # Pass the intent to context so agents know what to do
-                    full_context["intent"] = continue_intent
-                    full_context["is_continuation"] = True
-                    logger.info(f"[orchestrator] ✅ Conversation continuity: {continue_with_agent} with intent {continue_intent}")
-                else:
-                    # === INTELLIGENT ROUTING BASED ON FLOW VALIDATION ===
-                    # If we have flow validation, use it to make smart routing decisions
-                    if full_context.get("flow_validation") and full_context.get("user_intent_analysis"):
-                        flow_validation = full_context["flow_validation"]
-                        user_intent = full_context["user_intent_analysis"]
-                        
-                        # Special case: User asking "what's next?"
-                        if user_intent["intent"] == "ask_next_step":
-                            # Route to recommended agent for current stage
-                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
-                            routing = {
-                                "intent": "ask_next_step",
-                                "confidence": 0.95,
-                                "target_agent": recommended_agent,
-                                "method": "flow_validation",
-                                "guidance": full_context.get("next_step_guidance")
-                            }
-                            logger.info(f"[orchestrator] 🧭 User asking next step → {recommended_agent}")
-                        
-                        # Special case: User signaling completion
-                        elif user_intent["intent"] == "signal_complete":
-                            # Route to current stage's agent to validate completion
-                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
-                            routing = {
-                                "intent": "signal_complete",
-                                "confidence": 0.90,
-                                "target_agent": recommended_agent,
-                                "method": "flow_validation"
-                            }
-                            logger.info(f"[orchestrator] ✅ User signaling completion → {recommended_agent}")
-                        
-                        # Special case: User providing data for current step
-                        elif user_intent["intent"] in ["provide_price_data", "provide_arv"]:
-                            # Route to PropertyAgent (handles financial data)
-                            routing = {
-                                "intent": user_intent["intent"],
-                                "confidence": user_intent["confidence"],
-                                "target_agent": "PropertyAgent",
-                                "method": "flow_validation"
-                            }
-                            logger.info(f"[orchestrator] 💰 User providing data → PropertyAgent")
-                        
-                        # Fallback: Use recommended agent from flow validation
-                        else:
-                            recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
-                            routing = {
-                                "intent": "general_conversation",
-                                "confidence": 0.70,
-                                "target_agent": recommended_agent,
-                                "method": "flow_validation_fallback"
-                            }
-                            logger.info(f"[orchestrator] 🔄 Flow validation fallback → {recommended_agent}")
-                        
-                        current_agent_name = routing["target_agent"]
-                        agent_path.append(current_agent_name)
-                    
-                    else:
-                        # No flow validation available, use traditional active_router
-                        routing = await self.active_router.decide(current_input, full_context)
-                        current_agent_name = routing["target_agent"]
-                        agent_path.append(current_agent_name)
                     
                     logger.info(
-                        f"[orchestrator] Initial routing: {routing.get('intent', 'unknown')} "
-                        f"(conf={routing.get('confidence', 0):.2f}) → {current_agent_name} "
-                        f"[method={routing.get('method', 'active_router')}]"
+                        f"[orchestrator] 🧭 Flow-based routing → {recommended_agent} "
+                        f"(stage={full_context.get('acquisition_stage')}, "
+                        f"intent={routing['intent']})"
                     )
+                
+                # === PATH 2: ACTIVE ROUTER (no property or no flow validation) ===
+                else:
+                    routing = await self.active_router.decide(current_input, full_context)
+                    logger.info(
+                        f"[orchestrator] 🔍 Active router → {routing['target_agent']} "
+                        f"(intent={routing['intent']}, conf={routing['confidence']:.2f})"
+                    )
+                
+                # Set agent from routing decision
+                current_agent_name = routing["target_agent"]
+                agent_path.append(current_agent_name)
                 
                 # Log routing decision
                 log_event("routing", "route_decision", "success", 
