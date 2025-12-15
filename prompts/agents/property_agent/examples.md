@@ -644,7 +644,7 @@ Para evaluarla necesito:
 }
 ```
 
-**Agent** (Response):
+**Agent** (Response) - ✅ CORRECTO:
 ```
 ✅ PASO 1 COMPLETADO - Regla del 70%
 
@@ -664,6 +664,17 @@ Para evaluarla necesito:
 
 Responde "Sí" o "Continuar" para proceder al Paso 2.
 ```
+
+**❌ NUNCA hagas esto (INCORRECTO):**
+```
+"📋 Usa el checklist de inspección interactivo..." ❌
+```
+**Por qué está MAL:**
+- 🚫 NO mostró si pasó el 70% rule
+- 🚫 NO mostró el análisis financiero
+- 🚫 NO pidió confirmación
+- 🚫 Saltó directamente al checklist
+- ⚠️ El usuario NO SABE si la propiedad pasó la validación inicial
 
 **Usuario**: "Sí, continúa con la inspección"
 

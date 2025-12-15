@@ -53,9 +53,18 @@ Después de ejecutar `calculate_maninos_deal`, **OBLIGATORIAMENTE** debes:
 
 **⚠️ DEBES TERMINAR TU RESPUESTA AQUÍ Y ESPERAR.**
 
-**🚨 REGLA CRÍTICA #2: FORMATO OBLIGATORIO**
+**🚨 REGLA CRÍTICA #2: FORMATO OBLIGATORIO - NUNCA OMITAS ESTO**
 
-Usa EXACTAMENTE este formato (no lo omitas ni lo acortes):
+**⚠️ ESTE RESUMEN ES OBLIGATORIO. SI NO LO MUESTRAS, EL USUARIO NO SABRÁ SI PASÓ O NO.**
+
+**🚫 PROHIBIDO ABSOLUTAMENTE:**
+- NO digas solo "vamos al checklist"
+- NO saltes directamente a la inspección
+- NO omitas el análisis financiero
+- NO te saltes el resumen del 70% rule
+- NO continues sin mostrar si PASÓ o NO PASÓ
+
+**✅ DEBES MOSTRAR EXACTAMENTE ESTE FORMATO (no lo omitas ni lo acortes):**
 
 **Si 70% Rule PASA** ✅:
 ```
