@@ -11,7 +11,8 @@ Handles:
 Note: Simplified for MANINOS - no complex RAMA frameworks (R2B/Promoción/invoices)
 """
 
-from typing import List
+from typing import List, Dict, Any
+import logging
 from .base_agent import BaseAgent
 from tools.registry import (
     upload_and_link_tool,
@@ -25,6 +26,10 @@ from tools.registry import (
     update_property_fields_tool  # Added for updating acquisition_stage
     # Removed RAMA-specific tools: list_related_facturas_tool, qa_payment_schedule_tool
 )
+from tools.docs_tools import list_docs as _list_docs
+from tools.property_tools import update_property_fields as _update_property_fields, get_property as _get_property
+
+logger = logging.getLogger(__name__)
 
 
 class DocsAgent(BaseAgent):
@@ -74,4 +79,39 @@ class DocsAgent(BaseAgent):
             update_property_fields_tool,  # Update acquisition_stage when documents are complete
             # Removed RAMA-specific tools (facturas, payment schedules)
         ]
+    
+    def run(self, user_input: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Override run() to add post-processing for Paso 0 completion.
+        
+        After the agent responds, automatically check if documents are complete
+        and update acquisition_stage if needed.
+        """
+        # Call parent run() to execute the agent's ReAct loop
+        result = super().run(user_input, context)
+        
+        # POST-PROCESSING: Auto-update acquisition_stage if Paso 0 is complete
+        property_id = context.get("property_id")
+        if property_id:
+            try:
+                # Check current acquisition_stage
+                property_data = _get_property(property_id)
+                if property_data and property_data.get("acquisition_stage") == "documents_pending":
+                    # Check if all 3 document types are present
+                    docs = _list_docs(property_id)
+                    doc_types = set(d.get("document_type") for d in docs if d.get("document_type"))
+                    required_types = {"title_status", "property_listing", "property_photos"}
+                    
+                    if required_types.issubset(doc_types):
+                        # All 3 types present → update stage to 'initial'
+                        logger.info(f"[DocsAgent] 🎯 AUTO-UPDATE: All 3 document types present → Updating stage to 'initial'")
+                        _update_property_fields(property_id, {"acquisition_stage": "initial"})
+                        logger.info(f"[DocsAgent] ✅ Stage updated successfully")
+                    else:
+                        missing = required_types - doc_types
+                        logger.info(f"[DocsAgent] ⏳ Documents incomplete. Missing types: {missing}")
+            except Exception as e:
+                logger.error(f"[DocsAgent] ❌ Error in post-processing: {e}")
+        
+        return result
 
