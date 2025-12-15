@@ -34,6 +34,142 @@ Aquí hay ejemplos de flujos completos de adquisición con tool calls reales.
 
 ---
 
+## 🚨 Ejemplo #-2: UN PASO A LA VEZ - NUNCA SALTES
+
+### ❌ ERROR COMÚN: Pedir datos del siguiente paso sin confirmación
+
+**Turn 1:**
+
+**Usuario:** "Evaluar propiedad en Calle Alameda 11"
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "add_property", "args": {"name": "Calle Alameda 11", "address": "..."}}]
+```
+
+**Agent (Response) ❌ INCORRECTO:**
+```
+✅ Propiedad creada.
+
+📄 Paso 0: Sube los 3 documentos obligatorios.
+
+También para el Paso 1, necesito el precio de venta y market value.  ❌ MAL
+```
+
+**Por qué está MAL:**
+- 🚫 Pide datos del Paso 1 (precios) antes de completar Paso 0 (documentos)
+- 🚫 No espera confirmación de que documentos están subidos
+- 🚫 Confunde al usuario: "¿Primero subo docs o doy precios?"
+
+---
+
+### ✅ CONVERSACIÓN CORRECTA: ESPERA EN CADA PASO
+
+**Turn 1:**
+
+**Usuario:** "Evaluar propiedad en Calle Alameda 11"
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "add_property", "args": {"name": "Calle Alameda 11", "address": "..."}}]
+```
+
+**Agent (Response) ✅ CORRECTO:**
+```
+✅ Propiedad "Calle Alameda 11" creada.
+
+📄 Paso 0: Documentos Iniciales
+
+Sube los 3 documentos obligatorios usando el widget arriba:
+1. Title Status Document
+2. Property Listing
+3. Property Photos
+
+Avísame cuando hayas subido los 3 documentos.
+```
+
+**⏸️ TERMINA Y ESPERA. NO PIDE PRECIOS TODAVÍA.**
+
+---
+
+**Turn 2:**
+
+**Usuario:** "listo, he subido los 3"
+
+**Agent (Tool Calls):**
+```json
+[
+  {"tool": "get_property", "args": {"property_id": "abc-123"}},
+  {"tool": "list_docs", "args": {"property_id": "abc-123"}}
+]
+```
+
+**Tool Results:**
+```json
+// get_property result:
+{"acquisition_stage": "documents_pending", ...}
+
+// list_docs result:
+{"uploaded": [{"document_type": "title_status"}, {"document_type": "property_listing"}, {"document_type": "property_photos"}], ...}
+```
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "update_property_fields", "args": {"property_id": "abc-123", "updates": {"acquisition_stage": "initial"}}}]
+```
+
+**Agent (Response) ✅ CORRECTO:**
+```
+✅ PASO 0 COMPLETADO - Documentos Recopilados
+
+📋 Documentos subidos:
+• Title Status Document ✅
+• Property Listing ✅
+• Property Photos ✅
+
+═══════════════════════════════════════════
+
+➡️ Siguiente paso: Paso 1 - Regla del 70%
+
+Ahora necesito dos datos:
+1. **Precio de venta** (Asking Price)
+2. **Valor de mercado** (Market Value)
+```
+
+**⏸️ TERMINA Y ESPERA LOS PRECIOS.**
+
+---
+
+**Turn 3:**
+
+**Usuario:** "precio 20,000 y market value 30,000"
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "calculate_maninos_deal", "args": {"asking_price": 20000, "market_value": 30000, "property_id": "abc-123"}}]
+```
+
+**Agent (Response) ✅ CORRECTO:**
+```
+✅ PASO 1 COMPLETADO - Regla del 70%
+
+📊 Análisis Financiero:
+• Precio: $20,000
+• Valor de mercado: $30,000
+• Máximo (70%): $21,000
+✅ CUMPLE
+
+═══════════════════════════════════════════
+
+➡️ Siguiente paso: Inspección
+
+¿Deseas proceder con la inspección?
+```
+
+**⏸️ TERMINA Y ESPERA CONFIRMACIÓN. NO MUESTRA CHECKLIST TODAVÍA.**
+
+---
+
 ## 🚨 Ejemplo #-1: Eliminar Propiedad (CON CONFIRMACIÓN OBLIGATORIA)
 
 ### ✅ Conversación CORRECTA
