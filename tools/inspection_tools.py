@@ -155,8 +155,14 @@ def save_inspection_results(
         
         # Only advance stage if currently at passed_70_rule
         if current_stage == "passed_70_rule":
-            update_data["acquisition_stage"] = "inspection_done"
-            logger.info(f"✅ [save_inspection_results] Advancing stage: passed_70_rule → inspection_done")
+            # CRITICAL: Check title status - if problematic, require review
+            if title_status in ["Missing", "Lien"]:
+                update_data["acquisition_stage"] = "review_required_title"
+                logger.info(f"⚠️ [save_inspection_results] Title status is {title_status} → stage: passed_70_rule → review_required_title (BLOCKED)")
+            else:
+                # Title is Clean/Blue or Other → can proceed normally
+                update_data["acquisition_stage"] = "inspection_done"
+                logger.info(f"✅ [save_inspection_results] Title is {title_status} → stage: passed_70_rule → inspection_done")
         else:
             logger.info(f"✅ [save_inspection_results] Keeping existing stage: {current_stage} (not overwriting)")
         
@@ -164,8 +170,11 @@ def save_inspection_results(
         
         logger.info(f"✅ [save_inspection_results] Property updated with latest inspection data")
         
-        # Determine final stage
-        final_stage = "inspection_done" if current_stage == "passed_70_rule" else current_stage
+        # Determine final stage based on title status
+        if current_stage == "passed_70_rule":
+            final_stage = "review_required_title" if title_status in ["Missing", "Lien"] else "inspection_done"
+        else:
+            final_stage = current_stage
         
         return {
             "ok": True,

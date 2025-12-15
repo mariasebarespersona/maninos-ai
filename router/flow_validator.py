@@ -44,13 +44,25 @@ class ManinosFlowValidator:
             "passed_70_rule": {
                 "name": "Paso 2: Inspección",
                 "required_data": ["repair_estimate", "title_status"],
-                "next_stage": "inspection_done",
+                "next_stage": "inspection_done",  # or "review_required_title" if title problematic
+                "agent": "PropertyAgent"
+            },
+            "review_required_title": {
+                "name": "⚠️ Paso 2b: Revisión de Título Requerida (Missing/Lien)",
+                "required_data": [],  # No new data needed - needs action plan
+                "next_stage": "inspection_done",  # Can advance after plan
                 "agent": "PropertyAgent"
             },
             "inspection_done": {
                 "name": "Paso 3: 80% ARV Rule",
-                "required_data": ["arv"],  # asking_price + repair_estimate already validated
-                "next_stage": "passed_80_rule",  # or "rejected"
+                "required_data": ["arv"],
+                "next_stage": "passed_80_rule",  # or "review_required_80" if 80% fails
+                "agent": "PropertyAgent"
+            },
+            "review_required_80": {
+                "name": "⚠️ Paso 4b: Revisión Final Requerida (80% Rule Failed)",
+                "required_data": [],  # No new data needed - needs justification or rejection
+                "next_stage": "passed_80_rule",  # Can advance after justification, or → rejected
                 "agent": "PropertyAgent"
             },
             "passed_80_rule": {

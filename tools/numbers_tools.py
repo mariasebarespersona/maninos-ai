@@ -198,8 +198,9 @@ def calculate_maninos_deal(
             
             # If 80% rule failed (Step 4)
             elif result["checks"]["80_percent_rule"] == "FAIL":
-                new_stage = "rejected"
-                logger.info(f"[calculate_maninos_deal] 80% rule failed → updating stage to 'rejected'")
+                # 80% rule failed → requires justification before final rejection
+                new_stage = "review_required_80"
+                logger.info(f"[calculate_maninos_deal] ⚠️ Step 4: 80% rule FAILED → updating stage to 'review_required_80' (BLOCKED until justification)")
             
             # Update stage if determined
             if new_stage:

@@ -30,9 +30,11 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
     const stageOrder: Record<string, number> = {
       'documents_pending': 0,
       'initial': 1,
-      'review_required': 1, // Same step as 'initial' - just needs justification
+      'review_required': 1,       // Same step as 'initial' - needs 70% justification
       'passed_70_rule': 2,
+      'review_required_title': 2, // Same step as 'passed_70_rule' - needs title action plan
       'inspection_done': 3,
+      'review_required_80': 4,    // Same step as 'passed_80_rule' - needs 80% justification
       'passed_80_rule': 4,
       'contract_generated': 5,
       'rejected': -1 // Special case
@@ -51,9 +53,11 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
   const stageOrder: Record<string, number> = {
     'documents_pending': 0,
     'initial': 1,
-    'review_required': 1, // Same step as 'initial' - just needs justification
+    'review_required': 1,       // Same step as 'initial'
     'passed_70_rule': 2,
+    'review_required_title': 2, // Same step as 'passed_70_rule'
     'inspection_done': 3,
+    'review_required_80': 4,    // Same step as 'passed_80_rule'
     'passed_80_rule': 4,
     'contract_generated': 5,
     'rejected': -1
