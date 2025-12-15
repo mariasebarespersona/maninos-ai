@@ -46,9 +46,39 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
     return 'pending';
   };
 
+  // Calculate progress percentage for continuous line
+  const stageOrder: Record<string, number> = {
+    'documents_pending': 0,
+    'initial': 1,
+    'passed_70_rule': 2,
+    'inspection_done': 3,
+    'passed_80_rule': 4,
+    'contract_generated': 5,
+    'rejected': -1
+  };
+  const currentIndex = stageOrder[currentStage] ?? 0;
+  const progressPercent = (currentIndex / (steps.length - 1)) * 100;
+
   return (
     <div className="w-full py-4 px-2 bg-white border-b border-slate-200">
-      <div className="flex items-center justify-between max-w-3xl mx-auto">
+      <div className="flex items-center justify-between max-w-3xl mx-auto relative">
+        {/* Background Line (gray - full width) */}
+        <div className="absolute top-4 left-0 right-0 h-[3px] bg-slate-200" 
+             style={{ 
+               marginLeft: 'calc(2rem)',
+               marginRight: 'calc(2rem)'
+             }} 
+        />
+        
+        {/* Progress Line (green - grows with progress) */}
+        <div 
+          className="absolute top-4 left-0 h-[3px] bg-emerald-400 transition-all duration-500 ease-out" 
+          style={{ 
+            width: `calc(${progressPercent}% - ${(1 - progressPercent / 100) * 2}rem)`,
+            marginLeft: 'calc(2rem)'
+          }}
+        />
+
         {steps.map((step, index) => {
           const stepStatus = getStepStatus(step.id, index);
           
@@ -84,15 +114,6 @@ export function AcquisitionStepper({ currentStage, status }: AcquisitionStepperP
               }`}>
                 {step.label}
               </span>
-
-              {/* Connecting Line */}
-              {index < steps.length - 1 && (
-                <div className={`absolute top-4 left-1/2 h-[3px] -z-10 ${
-                  stepStatus === 'completed' 
-                    ? 'bg-emerald-400' 
-                    : 'bg-slate-200'
-                }`} style={{ width: 'calc(100% + 2rem)', transform: 'translateX(50%)' }} />
-              )}
             </div>
           );
         })}
