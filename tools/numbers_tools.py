@@ -180,10 +180,11 @@ def calculate_maninos_deal(
             # 2. UPDATE ACQUISITION STAGE
             new_stage = None
             
-            # If 70% rule passed and no 80% check yet (Step 1)
-            if result["checks"]["70_percent_rule"] == "PASS" and result["checks"]["80_percent_rule"] is None:
+            # If 70% rule was checked (Step 1 complete), update stage regardless of pass/fail
+            # The 'status' field indicates whether it passed or needs review
+            if result["checks"]["70_percent_rule"] is not None and result["checks"]["80_percent_rule"] is None:
                 new_stage = "passed_70_rule"
-                logger.info(f"[calculate_maninos_deal] 70% rule passed → updating stage to 'passed_70_rule'")
+                logger.info(f"[calculate_maninos_deal] Step 1 (70% rule check) complete → updating stage to 'passed_70_rule' (status: {result['status']})")
             
             # If 80% rule passed (Step 4)
             elif result["checks"]["80_percent_rule"] == "PASS":
