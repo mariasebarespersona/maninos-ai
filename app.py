@@ -2931,6 +2931,38 @@ async def get_property_api(property_id: str):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+@app.delete("/api/property/{property_id}")
+async def delete_property_api(property_id: str):
+    """Delete a property (hard delete). This is used by the UI trash button."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from tools.property_tools import delete_property
+        
+        logger.info(f"[DELETE /api/property/{property_id}] Deleting property via REST API")
+        
+        # Call the delete_property tool (purges docs by default)
+        result = delete_property(property_id, purge_docs_first=True)
+        
+        if result.get("deleted"):
+            logger.info(f"[DELETE /api/property/{property_id}] ✅ Property deleted successfully")
+            return JSONResponse({
+                "ok": True, 
+                "message": f"Property '{result.get('name', 'Unknown')}' deleted successfully",
+                "property_id": property_id
+            })
+        else:
+            logger.error(f"[DELETE /api/property/{property_id}] ❌ Delete failed: {result.get('error')}")
+            return JSONResponse({
+                "ok": False, 
+                "error": result.get("error", "Failed to delete property")
+            }, status_code=500)
+            
+    except Exception as e:
+        logger.error(f"[DELETE /api/property/{property_id}] ❌ Exception: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 @app.get("/api/properties")
 async def list_properties_api():
     """List all properties for the menu with isolated chat contexts."""

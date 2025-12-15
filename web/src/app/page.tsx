@@ -344,6 +344,7 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
           onSelectProperty={handleSwitchProperty}
           currentPropertyId={propertyId}
           onNewProperty={handleNewEvaluation}
+          onPropertyDeleted={fetchPropertiesList}
       />
 
       {/* 1. LEFT SIDEBAR (Navigation) - Simplified for MVP */}
