@@ -16,7 +16,7 @@ from router.active_router import ActiveRouter
 # Metrics removed - using Logfire instead
 def log_event(*args, **kwargs): pass  # No-op for now
 from agents.property_agent import PropertyAgent
-from agents.docs_agent import DocsAgent
+# DocsAgent merged into PropertyAgent - single agent for entire acquisition flow
 # NumbersAgent removed - not needed for MANINOS (mobile home acquisition)
 
 logger = logging.getLogger("orchestrator")
@@ -33,16 +33,15 @@ class OrchestrationRouter:
         self.max_redirects = 3
         
         # Initialize specialized agents
+        # SIMPLIFIED: Only PropertyAgent (handles entire acquisition flow including documents)
         self.property_agent = PropertyAgent()
-        self.docs_agent = DocsAgent()
         
         # Agent registry
         self.agents = {
-            "PropertyAgent": self.property_agent,
-            "DocsAgent": self.docs_agent
+            "PropertyAgent": self.property_agent
         }
         
-        logger.info(f"[orchestrator] Initialized with {len(self.agents)} specialized agents, max_redirects=3")
+        logger.info(f"[orchestrator] Initialized with {len(self.agents)} specialized agent (PropertyAgent), max_redirects=3")
     
     async def route_and_execute(
         self,

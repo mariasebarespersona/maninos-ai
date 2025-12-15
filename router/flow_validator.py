@@ -27,7 +27,7 @@ class ManinosFlowValidator:
                 "name": "Paso 0: Recopilación de Documentos",
                 "required_data": [],  # Validated by document count
                 "next_stage": "initial",
-                "agent": "DocsAgent"
+                "agent": "PropertyAgent"  # PropertyAgent now handles documents too
             },
             "initial": {
                 "name": "Paso 1: 70% Rule Check",

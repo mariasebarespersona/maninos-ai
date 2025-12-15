@@ -11,17 +11,31 @@ Handles:
 from typing import List
 from .base_agent import BaseAgent
 from tools.registry import (
+    # Property tools
     add_property_tool,
     set_current_property_tool,
     list_properties_tool,
     delete_property_tool,
     find_property_tool,
     get_property_tool,
+    update_property_fields_tool,
+    # Financial tools
     calculate_repair_costs_tool,
     calculate_maninos_deal_tool,
+    # Contract tools
     generate_buy_contract_tool,
+    # Inspection tools
     get_inspection_checklist_tool,
-    save_inspection_results_tool
+    save_inspection_results_tool,
+    # Document tools (from DocsAgent)
+    upload_and_link_tool,
+    list_docs_tool,
+    delete_document_tool,
+    signed_url_for_tool,
+    rag_qa_with_citations_tool,
+    qa_document_tool,
+    summarize_document_tool,
+    send_email_tool
 )
 
 
@@ -193,20 +207,67 @@ class PropertyAgent(BaseAgent):
                 }
         
         # Default: use parent's run method
-        return super().run(user_input, property_id, context)
+        result = super().run(user_input, property_id, context)
+        
+        # POST-PROCESSING: Auto-update acquisition_stage if Paso 0 (documents) is complete
+        # This ensures we never skip the document collection step
+        if property_id:
+            try:
+                from tools.property_tools import get_property as _get_property
+                from tools.docs_tools import list_docs as _list_docs, update_property_fields as _update_property_fields
+                
+                property_data = _get_property(property_id)
+                full_context = context or {}
+                
+                # Only check if currently in documents_pending stage
+                if property_data and property_data.get("acquisition_stage") == "documents_pending":
+                    docs = _list_docs(property_id)
+                    doc_types = {d.get("document_type") for d in docs if d.get("document_type")}
+                    required_types = {"title_status", "property_listing", "property_photos"}
+                    
+                    if required_types.issubset(doc_types):
+                        logger.info(f"[PropertyAgent] 🎯 AUTO-UPDATE: All 3 document types present → Updating stage to 'initial'")
+                        from tools.property_tools import update_property_fields as _update_fields
+                        _update_fields(property_id, {"acquisition_stage": "initial"})
+                        logger.info(f"[PropertyAgent] ✅ Stage updated successfully")
+                        
+                        # Update result to propagate new stage to UI
+                        result["property_id"] = property_id
+                        result["acquisition_stage"] = "initial"
+                    else:
+                        missing = required_types - doc_types
+                        logger.info(f"[PropertyAgent] ⏳ Documents incomplete. Missing types: {missing}")
+            except Exception as e:
+                logger.error(f"[PropertyAgent] ❌ Error in post-processing: {e}")
+        
+        return result
     
     def get_tools(self) -> List:
-        """Return property-specific tools."""
+        """Return all acquisition tools (property + documents + inspection + contract)."""
         return [
+            # Property management
             add_property_tool,
             set_current_property_tool,
             list_properties_tool,
             delete_property_tool,
             find_property_tool,
             get_property_tool,
+            update_property_fields_tool,
+            # Financial calculations
             calculate_repair_costs_tool,
             calculate_maninos_deal_tool,
-            generate_buy_contract_tool,
+            # Inspection
             get_inspection_checklist_tool,
-            save_inspection_results_tool
+            save_inspection_results_tool,
+            # Contract
+            generate_buy_contract_tool,
+            # Documents (Paso 0)
+            upload_and_link_tool,
+            list_docs_tool,
+            delete_document_tool,
+            signed_url_for_tool,
+            rag_qa_with_citations_tool,
+            qa_document_tool,
+            summarize_document_tool,
+            send_email_tool
         ]

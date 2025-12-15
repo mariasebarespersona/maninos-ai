@@ -4,7 +4,7 @@ Active Router - Routes requests to specialized agents.
 This router:
 1. Classifies user intent with confidence using keywords (fast path)
 2. Falls back to LLM classification for ambiguous cases (slow path)
-3. Routes to specialized agents (PropertyAgent, DocsAgent)
+3. Routes to specialized agent (PropertyAgent - handles all acquisition including documents)
 4. Falls back to MainAgent for low confidence or complex queries
 
 Architecture:
@@ -139,17 +139,17 @@ class ActiveRouter:
             completion_keywords = ["listo", "ya está", "ya esta", "terminé", "termine", "completé", "complete", "done", "ready", "finished"]
             if any(kw in s for kw in completion_keywords):
                 logger.info(f"[active_router] 📄 Documents pending stage + completion signal → DocsAgent (docs.initial_collection)")
-                return ("docs.initial_collection", 0.99, "DocsAgent")
+                return ("docs.initial_collection", 0.99, "PropertyAgent")
             
             # Check if user is asking about documents or uploading
             doc_keywords = ["documento", "pdf", "subir", "upload", "archivo", "file", "zillow", "mhvillage", "listing", "title", "foto", "photo"]
             if any(kw in s for kw in doc_keywords):
                 logger.info(f"[active_router] 📄 Documents pending stage + doc keyword → DocsAgent (docs.initial_collection)")
-                return ("docs.initial_collection", 0.99, "DocsAgent")
+                return ("docs.initial_collection", 0.99, "PropertyAgent")
             
             # Default: If in documents_pending stage, prioritize DocsAgent
             logger.info(f"[active_router] 📄 Documents pending stage (fallback) → DocsAgent (docs.initial_collection)")
-            return ("docs.initial_collection", 0.85, "DocsAgent")
+            return ("docs.initial_collection", 0.85, "PropertyAgent")
         
         # ========== CONVERSATION CONTINUATION DETECTION ==========
         # Check if user is responding to a previous agent question
@@ -192,13 +192,13 @@ class ActiveRouter:
                     if ("confirmas" in last_ai_content or "subir" in last_ai_content) and ("documento" in last_ai_content or "archivo" in last_ai_content):
                         intent = "docs.upload_confirm" if s.strip() in confirmation_yes else "docs.upload_cancel"
                         logger.info(f"[active_router] 🔄 Continuation: DocsAgent upload confirmation ({s})")
-                        return (intent, 0.98, "DocsAgent")
+                        return (intent, 0.98, "PropertyAgent")
                     
                     # Email send confirmation
                     if ("enviar" in last_ai_content or "mandar" in last_ai_content) and ("email" in last_ai_content or "correo" in last_ai_content):
                         intent = "docs.email_confirm" if s.strip() in confirmation_yes else "docs.email_cancel"
                         logger.info(f"[active_router] 🔄 Continuation: DocsAgent email confirmation ({s})")
-                        return (intent, 0.98, "DocsAgent")
+                        return (intent, 0.98, "PropertyAgent")
                     
                     # Generic confirmation - check for any question mark and detect context
                     if "?" in last_ai_content:
@@ -207,7 +207,7 @@ class ActiveRouter:
                             return ("property.acquisition", 0.95, "PropertyAgent")
                         elif any(kw in last_ai_content for kw in ["documento", "archivo", "pdf"]):
                             logger.info(f"[active_router] 🔄 Continuation: Generic DocsAgent confirmation")
-                            return ("docs.confirm", 0.95, "DocsAgent")
+                            return ("docs.confirm", 0.95, "PropertyAgent")
                 
                 # ============================================================
                 # NON-CONFIRMATION CONTINUATIONS
@@ -243,7 +243,7 @@ class ActiveRouter:
                     email_pattern = r'[\w\.-]+@[\w\.-]+\.\w+'
                     if re.search(email_pattern, s):
                         logger.info(f"[active_router] 🔄 Continuation: DocsAgent email response")
-                        return ("docs.send_email", 0.95, "DocsAgent")
+                        return ("docs.send_email", 0.95, "PropertyAgent")
         
         # ========== MANINOS ACQUISITION OPERATIONS ==========
         acquisition_keywords = [
@@ -371,7 +371,7 @@ class ActiveRouter:
             
             if has_doc_context and not has_numbers_context:
                 logger.info(f"[active_router] 🎯 Detected document strategy selection: R2B/Promoción")
-                return ("docs.set_strategy", 0.95, "DocsAgent")
+                return ("docs.set_strategy", 0.95, "PropertyAgent")
         
         # ========== NUMBERS/EXCEL OPERATIONS - REMOVED ==========
         # All Numbers/Excel/R2B/Plantilla functionality removed for MANINOS
@@ -412,7 +412,7 @@ class ActiveRouter:
             if has_email_dest or has_doc_keyword or has_context_ref or has_content_keyword:
                 # But NOT if it's about números/R2B
                 if not any(x in s for x in ["números", "numeros", "r2b", "tabla", "plantilla"]):
-                    return ("docs.send_email", 0.96, "DocsAgent")
+                    return ("docs.send_email", 0.96, "PropertyAgent")
         
         # SECOND: Check for list operations (higher priority than QA for "qué documentos tengo")
         # List documents - these should be checked BEFORE content questions
@@ -427,16 +427,16 @@ class ActiveRouter:
         if any(kw in s for kw in doc_list_keywords):
             # Check for list intent patterns
             if any(w in s for w in list_action_keywords):
-                return ("docs.list", 0.95, "DocsAgent")
+                return ("docs.list", 0.95, "PropertyAgent")
             # "qué documentos tengo/hay" = list, not QA
             if any(w in s for w in list_query_keywords):
-                return ("docs.list", 0.92, "DocsAgent")
+                return ("docs.list", 0.92, "PropertyAgent")
             # "qué documentos" alone without content verb = list
             if ("qué" in s or "que" in s or "cuáles" in s or "cuales" in s):
                 # Only list if NOT asking about content
                 content_verbs_check = ["dice", "pone", "contiene", "menciona", "explica", "establece", "indica"]
                 if not any(verb in s for verb in content_verbs_check):
-                    return ("docs.list", 0.90, "DocsAgent")
+                    return ("docs.list", 0.90, "PropertyAgent")
         
         # SECOND: Document content questions (RAG/QA)
         # Questions about document CONTENT should go to DocsAgent (it has RAG tools)
@@ -472,13 +472,13 @@ class ActiveRouter:
         # QA requires: specific document + (content verb OR payment term)
         # OR: specific document + question about content (not just "qué documentos")
         if has_specific_doc and (has_content_verb or has_payment_term):
-            return ("docs.qa", 0.90, "DocsAgent")
+            return ("docs.qa", 0.90, "PropertyAgent")
         
         # Also QA if asking specific question about a specific document
         if has_specific_doc and has_question:
             # Make sure it's not a list request
             if not any(w in s for w in list_query_keywords):
-                return ("docs.qa", 0.88, "DocsAgent")
+                return ("docs.qa", 0.88, "PropertyAgent")
         
         # ========== EMAIL CONTINUATION ==========
         # Detect when user ONLY provides an email address (continuation of email flow)
@@ -487,7 +487,7 @@ class ActiveRouter:
             words_in_message = s.split()
             if len(words_in_message) <= 5:
                 logger.info(f"[active_router] 🎯 Detected email continuation: {s}")
-                return ("docs.send_email", 0.95, "DocsAgent")
+                return ("docs.send_email", 0.95, "PropertyAgent")
         
         # Upload document - context-aware (must have document keyword)
         upload_doc_verbs = [
@@ -505,7 +505,7 @@ class ActiveRouter:
             property_exclusions = ["casa", "piso", "villa", "finca", "propiedad", "inmueble"]
             
             if not any(x in s for x in numbers_exclusions) and not any(x in s for x in property_exclusions):
-                return ("docs.upload", 0.92, "DocsAgent")
+                return ("docs.upload", 0.92, "PropertyAgent")
         
         # For ambiguous verbs (añade/agrega), require explicit document context
         if any(verb in s for verb in ambiguous_verbs):
@@ -517,7 +517,7 @@ class ActiveRouter:
             
             if has_doc_keyword and not any(x in s for x in numbers_exclusions) and not any(x in s for x in property_exclusions):
                 logger.info(f"[active_router] 📄 Detected docs.upload with document keyword")
-                return ("docs.upload", 0.90, "DocsAgent")
+                return ("docs.upload", 0.90, "PropertyAgent")
         
         # DELETE document - NEW: Must be before list operations
         # "borra el documento X", "elimina el documento X", "quita el documento X"
@@ -540,7 +540,7 @@ class ActiveRouter:
             
             if (has_doc_keyword or has_doc_generic) and not is_property_delete and not is_numbers_delete:
                 logger.info(f"[active_router] 🗑️ Detected docs.delete: {s[:50]}")
-                return ("docs.delete", 0.95, "DocsAgent")
+                return ("docs.delete", 0.95, "PropertyAgent")
         
         # List missing/pending documents - expanded synonyms
         pending_keywords = [
@@ -548,7 +548,7 @@ class ActiveRouter:
             "que me quedan", "que faltan", "incompletos", "sin completar"
         ]
         if any(kw in s for kw in doc_list_keywords) and any(w in s for w in pending_keywords):
-            return ("docs.list_pending", 0.88, "DocsAgent")
+            return ("docs.list_pending", 0.88, "PropertyAgent")
         
         # List facturas - expanded synonyms
         factura_keywords = ["facturas", "factura", "recibos", "recibo", "tickets", "ticket"]
@@ -557,12 +557,12 @@ class ActiveRouter:
             "vinculadas", "vinculados", "de", "del", "para"
         ]
         if any(kw in s for kw in factura_keywords) and any(rel in s for rel in factura_relation_keywords):
-            return ("docs.list_facturas", 0.85, "DocsAgent")
+            return ("docs.list_facturas", 0.85, "PropertyAgent")
         
         # Focus documents mode - expanded
         docs_focus_keywords = ["documentos", "documents", "docs", "papeles", "archivos"]
         if s.strip() in docs_focus_keywords:
-            return ("docs.focus", 0.85, "DocsAgent")
+            return ("docs.focus", 0.85, "PropertyAgent")
         
         # ========== GENERAL/FALLBACK ==========
         # Help - expanded synonyms
@@ -637,7 +637,7 @@ class ActiveRouter:
             if predicted_intent.startswith("property."):
                 target_agent = "PropertyAgent"
             elif predicted_intent.startswith("docs."):
-                target_agent = "DocsAgent"
+                target_agent = "PropertyAgent"
             else:
                 target_agent = "MainAgent"
             
