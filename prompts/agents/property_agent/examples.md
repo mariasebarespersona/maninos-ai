@@ -449,7 +449,7 @@ El precio ($10,000) está dentro del límite. ¿Deseas que genere el checklist d
 
 **Agent** (Tool Calls):
 ```json
-[{"tool": "get_inspection_checklist", "args": {}}]
+[{"tool": "get_inspection_checklist", "args": {"property_id": "abc-123"}}]
 ```
 
 **Agent** (Response):
@@ -500,12 +500,13 @@ Todo en orden. Para calcular la Regla del 80%, necesito el **ARV (After Repair V
 
 **Agent** (Tool Calls - ❌ MAL):
 ```json
-[{"tool": "get_inspection_checklist", "args": {}}]
+[{"tool": "get_inspection_checklist", "args": {"property_id": "abc-123"}}]
 ```
 
 **Por qué está MAL:**
 - ❌ NO leyó el estado con `get_property()` primero
 - ❌ Volvió a llamar `get_inspection_checklist()` aunque ya está completo
+- ❌ El tool lanzará un ERROR diciendo "Inspection checklist is already complete!"
 - ❌ El usuario verá el checklist VACÍO de nuevo (confusión)
 - ❌ NO procede al siguiente paso (pedir ARV)
 

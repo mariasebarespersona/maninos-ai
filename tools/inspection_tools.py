@@ -26,13 +26,39 @@ MANINOS_INSPECTION_CHECKLIST = [
 ]
 
 
-def get_inspection_checklist() -> Dict:
+def get_inspection_checklist(property_id: Optional[str] = None) -> Dict:
     """
     Return the standard Maninos mobile home inspection checklist.
     
+    Args:
+        property_id: Optional property ID to validate if checklist is already complete
+        
     Returns:
         Dict with checklist items and available defect costs
+        
+    Raises:
+        ValueError: If checklist is already complete (repair_estimate > 0) for this property
     """
+    # CRITICAL VALIDATION: If property_id provided, check if checklist is already complete
+    if property_id:
+        from .property_tools import get_property
+        prop = get_property(property_id)
+        if prop and prop.get("repair_estimate") and prop["repair_estimate"] > 0:
+            logger.error(f"[get_inspection_checklist] ❌ Checklist already complete for property {property_id}")
+            logger.error(f"[get_inspection_checklist] repair_estimate={prop['repair_estimate']}, title_status={prop.get('title_status')}")
+            raise ValueError(
+                f"🚫 ERROR: Inspection checklist is already complete for this property!\n\n"
+                f"✅ Inspection results ALREADY SAVED:\n"
+                f"• Repair Estimate: ${prop['repair_estimate']}\n"
+                f"• Title Status: {prop.get('title_status')}\n"
+                f"• Acquisition Stage: {prop.get('acquisition_stage')}\n\n"
+                f"⚠️ YOU MUST:\n"
+                f"1. Call get_property({property_id}) to read current data\n"
+                f"2. Acknowledge the inspection is complete\n"
+                f"3. Ask for the ARV (After Repair Value) to proceed to Step 4\n\n"
+                f"❌ DO NOT call get_inspection_checklist() again - it will confuse the user!"
+            )
+    
     logger.info("[get_inspection_checklist] Returning standard Maninos checklist")
     return {
         "checklist": MANINOS_INSPECTION_CHECKLIST,

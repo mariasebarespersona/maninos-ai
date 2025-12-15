@@ -89,7 +89,7 @@ Debe ser MAYOR que el Market Value actual ($[market_value]).
 
 **Escenario A: `repair_estimate = 0` o `None`**
 → Checklist NO completado
-→ Llama: `get_inspection_checklist()`
+→ Llama: `get_inspection_checklist(property_id)`  ⚠️ SIEMPRE pasa property_id
 → Responde con el formato de "Usa el checklist interactivo" (ver arriba)
 
 **Escenario B: `repair_estimate > 0` Y `title_status` existe Y `arv = 0`**

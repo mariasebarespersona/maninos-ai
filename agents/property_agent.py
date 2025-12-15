@@ -45,7 +45,7 @@ class PropertyAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="PropertyAgent", model="gpt-4o-mini", temperature=0.0)  # Use gpt-4o-mini to avoid rate limiting
     
-    def get_system_prompt(self, intent: str = None, property_name: str = None) -> str:
+    def get_system_prompt(self, intent: str = None, property_name: str = None, context: dict = None) -> str:
         """Get system prompt using modular prompt loader."""
         import sys
         import os
@@ -67,7 +67,49 @@ class PropertyAgent(BaseAgent):
         else:
             property_context = "\n\n⚠️ No hay propiedad activa seleccionada. Pide al usuario los datos para comenzar.\n"
         
-        return base_prompt + property_context
+        # === CRITICAL: ADD FLOW VALIDATOR GUIDANCE ===
+        # This gives the LLM EXPLICIT instructions from the flow validator
+        # The flow validator analyzes current state and tells the agent exactly what to do next
+        flow_guidance = ""
+        if context:
+            next_step = context.get("next_step_guidance")
+            flow_validation = context.get("flow_validation")
+            user_intent = context.get("user_intent_analysis")
+            
+            if next_step or flow_validation:
+                flow_guidance = "\n\n" + "=" * 80 + "\n"
+                flow_guidance += "## 🎯 FLOW VALIDATOR GUIDANCE - FOLLOW THIS EXACTLY\n"
+                flow_guidance += "=" * 80 + "\n\n"
+                
+                if flow_validation:
+                    flow_guidance += f"**Current Step**: {flow_validation.get('current_step', 'Unknown')}\n"
+                    flow_guidance += f"**Status**: {'✅ Complete' if flow_validation.get('is_complete') else '⏳ Incomplete'}\n"
+                    
+                    missing_data = flow_validation.get('missing_data', [])
+                    if missing_data:
+                        flow_guidance += f"**Missing Data**: {', '.join(missing_data)}\n"
+                    
+                    flow_guidance += f"**Recommended Agent**: {flow_validation.get('recommended_agent', 'PropertyAgent')}\n\n"
+                
+                if user_intent:
+                    flow_guidance += f"**User Intent Detected**: {user_intent.get('intent', 'unknown')}\n"
+                    flow_guidance += f"**Intent Confidence**: {user_intent.get('confidence', 0):.2f}\n"
+                    flow_guidance += f"**Reasoning**: {user_intent.get('reason', 'N/A')}\n\n"
+                
+                if next_step:
+                    flow_guidance += "**🚨 MANDATORY ACTION**:\n"
+                    flow_guidance += f"{next_step}\n\n"
+                
+                flow_guidance += "⚠️ **CRITICAL RULES**:\n"
+                flow_guidance += "- You MUST follow the Flow Validator's guidance above\n"
+                flow_guidance += "- Do NOT call tools that contradict the current step\n"
+                flow_guidance += "- Do NOT show UI components (checklist, documents) that are already complete\n"
+                flow_guidance += "- If repair_estimate > 0 exists, do NOT call get_inspection_checklist()\n"
+                flow_guidance += "- If arv is missing and repair_estimate exists, ask for ARV\n"
+                flow_guidance += "- ALWAYS call get_property(property_id) FIRST to validate current state\n"
+                flow_guidance += "\n" + "=" * 80 + "\n\n"
+        
+        return base_prompt + property_context + flow_guidance
     
     # Modular prompt system now used - see prompts/agents/property_agent/_base.md
     

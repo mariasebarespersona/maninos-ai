@@ -1142,15 +1142,22 @@ def generate_buy_contract_tool(
 # ==================== INSPECTION TOOLS (MANINOS AI) ====================
 
 @tool("get_inspection_checklist")
-def get_inspection_checklist_tool() -> Dict:
+def get_inspection_checklist_tool(property_id: Optional[str] = None) -> Dict:
     """Get the standard Maninos mobile home inspection checklist.
     
     Returns a list of inspection categories (Roof, HVAC, Plumbing, etc.) with their keys,
     plus the standard repair costs for each defect type.
     
+    Args:
+        property_id: Property UUID to validate if checklist is already complete.
+                    CRITICAL: Always provide this to prevent showing completed checklists again.
+    
     Use this in Step 2 of the acquisition flow to show the user what to inspect.
+    
+    WARNING: This tool will raise an error if the inspection is already complete (repair_estimate > 0)
+    for the given property. In that case, call get_property() instead to read the saved results.
     """
-    return _get_inspection_checklist()
+    return _get_inspection_checklist(property_id=property_id)
 
 class SaveInspectionResultsInput(BaseModel):
     property_id: str = Field(..., description="UUID of the property being inspected")
