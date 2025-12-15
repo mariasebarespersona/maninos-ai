@@ -260,6 +260,45 @@ class ActiveRouter:
                 return ("property.acquisition", 0.95, "PropertyAgent")
         
         # ========== PROPERTY OPERATIONS ==========
+        
+        # 🚨 CRITICAL: DELETE must be checked BEFORE CREATE to avoid interpreting "Elimina Casa X" as a property name
+        # Delete property - intelligent detection
+        delete_verbs = ["elimina", "eliminar", "borra", "borrar", "quita", "quitar", "delete", "remove"]
+        
+        # Check if starts with delete verb (strong indicator)
+        starts_with_delete = any(s.startswith(verb + " ") or s == verb for verb in delete_verbs)
+        
+        # Property context words (including common property name patterns)
+        property_context = [
+            "propiedad", "casa", "piso", "villa", "mobile", "home", "esta", "la", "mi", "property",
+            # Common property name prefixes/words
+            "sebares", "oak", "sunny", "valle", "park", "ronda", "calle", "avenida"
+        ]
+        
+        # Document exclusions (to avoid false positives)
+        document_words = [
+            "documento", "archivo", "fichero", "file", "pdf", "title status", "listing", 
+            "photo", "contrato", "factura", "certificado"
+        ]
+        
+        # Check for property context
+        has_property_context = any(word in s for word in property_context)
+        is_about_documents = any(doc in s for doc in document_words)
+        
+        # RULE: If starts with delete verb + has property context + NOT about documents = property.delete
+        if starts_with_delete and has_property_context and not is_about_documents:
+            logger.info(f"[active_router] 🗑️ Detected property.delete (verb at start): '{s[:50]}'")
+            return ("property.delete", 0.92, "PropertyAgent")
+        
+        # Also catch explicit "elimina propiedad" phrases
+        delete_property_explicit = any(phrase in s for phrase in [
+            "elimina propiedad", "eliminar propiedad", "borra propiedad", "borrar propiedad",
+            "quita propiedad", "quitar propiedad", "elimina la propiedad", "borra la propiedad"
+        ])
+        if delete_property_explicit:
+            logger.info(f"[active_router] 🗑️ Detected property.delete (explicit phrase): '{s[:50]}'")
+            return ("property.delete", 0.90, "PropertyAgent")
+        
         # Create property - context-aware detection
         # Keywords for property types
         property_types = [
@@ -327,14 +366,6 @@ class ActiveRouter:
             if any(w in s for w in list_property_keywords):
                 if not any(x in s for x in ["trabajar", "usar", "crear", "nueva"]):
                     return ("property.list", 0.92, "PropertyAgent")
-        
-        # Delete property - expanded synonyms
-        delete_property_phrases = [
-            "elimina propiedad", "eliminar propiedad", "borra propiedad", "borrar propiedad",
-            "quita propiedad", "quitar propiedad", "elimina la propiedad", "borra la propiedad"
-        ]
-        if any(phrase in s for phrase in delete_property_phrases):
-            return ("property.delete", 0.90, "PropertyAgent")
         
         # ========== DOCUMENT STRATEGY SELECTION (HIGH PRIORITY - BEFORE NUMBERS) ==========
         # CRITICAL: Detect when user wants to change document strategy (R2B vs Promoción)
