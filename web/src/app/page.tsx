@@ -32,8 +32,18 @@ function RichMessageRenderer({ content, propertyId, property, onPropertyUpdate }
   
   if (isChecklistMessage) {
     if (propertyId) {
-        // ONLY show the InteractiveChecklist, NOT the agent's text (to avoid duplication)
-        return <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />;
+        // Show agent's message/summary FIRST, then the InteractiveChecklist below
+        // This allows the agent to provide context and summary before showing the interactive UI
+        return (
+          <div className="space-y-4">
+            {/* Agent's message/summary */}
+            <div className="prose prose-sm max-w-none">
+              <div className="whitespace-pre-wrap">{content}</div>
+            </div>
+            {/* Interactive Checklist */}
+            <InteractiveChecklist propertyId={propertyId} onUpdate={onPropertyUpdate} />
+          </div>
+        );
     }
     
     // Fallback if no propertyId (shouldn't happen in normal flow)

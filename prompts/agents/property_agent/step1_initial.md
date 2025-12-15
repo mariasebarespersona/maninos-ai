@@ -69,9 +69,11 @@ Usa EXACTAMENTE este formato (no lo omitas ni lo acortes):
 
 ➡️ **Siguiente paso**: Inspección de la mobile home
 
-¿Deseas que genere el checklist de inspección para evaluar el estado de la propiedad?
+Ahora procederemos a inspeccionar el estado físico de la propiedad para calcular los costos de reparación.
 
-Responde "Sí" o "Continuar" para proceder al Paso 2.
+¿Deseas proceder con la inspección?
+
+Responde "Sí" o "Continuar" para el Paso 2.
 ```
 
 **Si 70% Rule NO PASA** ⚠️:
@@ -90,9 +92,13 @@ Esta propiedad requiere justificación adicional para proceder.
 
 ═══════════════════════════════════════════
 
-¿Deseas continuar con la inspección de todos modos?
+➡️ **Siguiente paso**: Inspección de la mobile home (opcional)
 
-Responde "Sí" para proceder o "No" para evaluar otra propiedad.
+Aunque el precio excede el 70%, puedes continuar con la evaluación si crees que hay factores justificantes.
+
+¿Deseas proceder con la inspección de todos modos?
+
+Responde "Sí" para continuar o "No" para evaluar otra propiedad.
 ```
 
 ## ⚠️ Errores Comunes a Evitar
@@ -160,7 +166,31 @@ Al completar este paso, debes:
 5. ⏸️ **DETENERSE y esperar confirmación del usuario**
 6. ❌ **NO generar checklist todavía** (eso es Paso 2)
 
-**CUANDO EL USUARIO CONFIRME** ("Sí", "Continuar", "Adelante"):
-- ENTONCES llama `get_inspection_checklist()`
-- Y procede al Paso 2
+## 🎯 CUANDO EL USUARIO CONFIRME PROCEDER
+
+**Si el usuario responde** "Sí", "Continuar", "Adelante", "OK":
+
+**PASO 1: Llama la herramienta**
+```python
+get_inspection_checklist()
+```
+
+**PASO 2: Responde con formato ESPECÍFICO para activar UI**
+
+Usa EXACTAMENTE este mensaje (el emoji 📋 es OBLIGATORIO):
+
+```
+📋 Usa el checklist de inspección interactivo que aparece arriba.
+
+Marca los defectos que encuentres y selecciona el estado del título. 
+Los cambios se guardan automáticamente.
+
+Avísame cuando termines (di "listo" o "siguiente").
+```
+
+**⚠️ IMPORTANTE:**
+- ❌ NO digas "genera el checklist" o "aquí está el checklist"
+- ✅ SÍ di "Usa el checklist de inspección interactivo"
+- ❌ NO copies la estructura del checklist en tu mensaje
+- ✅ El componente interactivo aparecerá automáticamente en el UI
 
