@@ -94,7 +94,9 @@ Avísame cuando hayas subido los 3 documentos.
 
 **Turn 2:**
 
-**Usuario:** "listo, he subido los 3"
+**Usuario:** "listo" / "done" / "he subido los 3" / "terminé"
+
+**🚨 OBLIGATORIO - Agent PRIMERO debe verificar:**
 
 **Agent (Tool Calls):**
 ```json
@@ -103,6 +105,8 @@ Avísame cuando hayas subido los 3 documentos.
   {"tool": "list_docs", "args": {"property_id": "abc-123"}}
 ]
 ```
+
+**⚠️ CRÍTICO:** El agent DEBE llamar `list_docs()` ANTES de responder. NO debe asumir que faltan documentos.
 
 **Tool Results:**
 ```json

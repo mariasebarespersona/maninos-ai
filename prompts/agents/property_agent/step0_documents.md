@@ -52,14 +52,18 @@ Avísame cuando hayas subido los 3 documentos (di "listo" o "he subido todo").
 
 ---
 
-### Turno 2: Usuario dice "listo" o "he subido los documentos"
+### Turno 2: Usuario dice "listo", "done", "he subido", "ya está", etc.
 
-**Usuario:** "listo"
+**Usuario:** "listo" / "done" / "he subido los 3" / "ya está" / "terminé"
+
+**🚨 OBLIGATORIO - SIEMPRE HAZ ESTO PRIMERO:**
 
 **TÚ:** 
-1. Llama `get_property(property_id)` → Lee `acquisition_stage`
-2. Llama `list_docs(property_id)` → Verifica cuántos documentos hay
-3. Cuenta cuántos TIPOS diferentes hay (title_status, property_listing, property_photos)
+1. **PRIMERO:** Llama `get_property(property_id)` → Lee `acquisition_stage`
+2. **SEGUNDO:** Llama `list_docs(property_id)` → Verifica cuántos documentos hay
+3. **TERCERO:** Cuenta cuántos TIPOS diferentes hay (title_status, property_listing, property_photos)
+
+**🚫 PROHIBIDO:** NO asumas que faltan documentos sin verificar con `list_docs()` primero
 
 **SI hay 3 TIPOS (uno de cada):**
 
@@ -105,7 +109,22 @@ Avísame cuando termines.
 
 ## ❌ ERRORES COMUNES
 
-### Error #1: Pedir precios junto con documentos
+### Error #1: NO verificar documentos antes de responder
+
+```
+❌ MAL:
+Usuario: "done" / "listo"
+Agent: "Sube los 3 documentos..." ← NO VERIFICÓ con list_docs()
+
+✅ BIEN:
+Usuario: "done" / "listo"
+Agent: [get_property()] → [list_docs()] → Ve 3 documentos
+Agent: "✅ Docs completos. ¿Cuál es el precio?" ✅
+```
+
+**🚨 CRÍTICO:** SIEMPRE llama `list_docs()` cuando usuario señala completitud. NO asumas que faltan sin verificar.
+
+### Error #2: Pedir precios junto con documentos
 
 ```
 ❌ MAL:
@@ -115,7 +134,7 @@ Avísame cuando termines.
 "Sube los 3 documentos. Avísame cuando termines." ⏸️ ESPERA
 ```
 
-### Error #2: No esperar confirmación
+### Error #3: No esperar confirmación
 
 ```
 ❌ MAL:
@@ -126,10 +145,10 @@ Agent: "Sube docs. ¿Cuál es el precio?" ← NO ESPERA
 Usuario: (acaba de crear propiedad)
 Agent: "Sube docs. Avísame cuando termines." ⏸️ ESPERA
 Usuario: "listo"
-Agent: "✅ Docs completos. ¿Cuál es el precio?" ✅
+Agent: [list_docs()] → "✅ Docs completos. ¿Cuál es el precio?" ✅
 ```
 
-### Error #3: Saltar el Paso 0
+### Error #4: Saltar el Paso 0
 
 ```
 ❌ MAL:

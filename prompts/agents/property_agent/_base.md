@@ -117,7 +117,9 @@ Paso 5: Contrato
 
 ### Escenario 1: `acquisition_stage = 'documents_pending'`
 
-**Primero, verifica cuántos documentos están subidos:**
+**🚨 OBLIGATORIO PRIMERO:** Llama `list_docs(property_id)` para verificar cuántos documentos hay
+
+**Luego, decide según el resultado:**
 
 **1a. Si documentos INCOMPLETOS (0/3, 1/3, 2/3):**
 
