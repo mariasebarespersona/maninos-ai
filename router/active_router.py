@@ -76,10 +76,19 @@ INTENTS DISPONIBLES:
 {intent_list}
 
 REGLAS CRÍTICAS:
-1. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status", "generar contrato", "purchase agreement" → property.acquisition
-2. Si el usuario pregunta sobre el CONTENIDO de un documento → docs.qa
-3. Si el usuario quiere LISTAR documentos → docs.list
-4. Si el usuario quiere CAMBIAR de propiedad → property.switch
+1. **ELIMINAR vs CREAR propiedad:**
+   - "Elimina Casa X" / "Borra Casa Y" = property.delete (comando de eliminación)
+   - "Casa Elimina" / "Propiedad Borra" = property.create (nombre de propiedad)
+   - Si empieza con verbo de eliminación (elimina/borra/quita) + nombre = property.delete
+   - Si es solo un nombre sin verbo de acción = property.create
+
+2. Si el usuario habla de "checklist", "defectos", "reparaciones", "arv", "título", "title status", "generar contrato", "purchase agreement" → property.acquisition
+
+3. Si el usuario pregunta sobre el CONTENIDO de un documento → docs.qa
+
+4. Si el usuario quiere LISTAR documentos → docs.list
+
+5. Si el usuario quiere CAMBIAR de propiedad → property.switch
 
 MENSAJE DEL USUARIO:
 "{user_text}"
@@ -261,43 +270,37 @@ class ActiveRouter:
         
         # ========== PROPERTY OPERATIONS ==========
         
-        # 🚨 CRITICAL: DELETE must be checked BEFORE CREATE to avoid interpreting "Elimina Casa X" as a property name
-        # Delete property - intelligent detection
+        # Delete property - with AMBIGUITY DETECTION
+        # When there's ambiguity (e.g., "Elimina Casa X" could be delete OR property name),
+        # return LOW confidence to trigger LLM fallback for intelligent decision
+        
         delete_verbs = ["elimina", "eliminar", "borra", "borrar", "quita", "quitar", "delete", "remove"]
         
-        # Check if starts with delete verb (strong indicator)
+        # Check if starts with delete verb
         starts_with_delete = any(s.startswith(verb + " ") or s == verb for verb in delete_verbs)
         
-        # Property context words (including common property name patterns)
-        property_context = [
-            "propiedad", "casa", "piso", "villa", "mobile", "home", "esta", "la", "mi", "property",
-            # Common property name prefixes/words
-            "sebares", "oak", "sunny", "valle", "park", "ronda", "calle", "avenida"
-        ]
-        
-        # Document exclusions (to avoid false positives)
-        document_words = [
-            "documento", "archivo", "fichero", "file", "pdf", "title status", "listing", 
-            "photo", "contrato", "factura", "certificado"
-        ]
-        
-        # Check for property context
-        has_property_context = any(word in s for word in property_context)
-        is_about_documents = any(doc in s for doc in document_words)
-        
-        # RULE: If starts with delete verb + has property context + NOT about documents = property.delete
-        if starts_with_delete and has_property_context and not is_about_documents:
-            logger.info(f"[active_router] 🗑️ Detected property.delete (verb at start): '{s[:50]}'")
-            return ("property.delete", 0.92, "PropertyAgent")
-        
-        # Also catch explicit "elimina propiedad" phrases
+        # EXPLICIT phrases with "propiedad" word (HIGH confidence - no ambiguity)
         delete_property_explicit = any(phrase in s for phrase in [
             "elimina propiedad", "eliminar propiedad", "borra propiedad", "borrar propiedad",
-            "quita propiedad", "quitar propiedad", "elimina la propiedad", "borra la propiedad"
+            "quita propiedad", "quitar propiedad", "elimina la propiedad", "borra la propiedad",
+            "elimina esta", "borra esta", "quita esta", "elimina la", "borra la", "quita la"
         ])
         if delete_property_explicit:
             logger.info(f"[active_router] 🗑️ Detected property.delete (explicit phrase): '{s[:50]}'")
             return ("property.delete", 0.90, "PropertyAgent")
+        
+        # AMBIGUOUS cases: "Elimina Casa X" could be delete OR property name
+        # Return LOW confidence (0.65) to trigger LLM fallback for smart decision
+        if starts_with_delete:
+            # Check if it looks like a property name (capitalized words after verb)
+            words = s.split()
+            if len(words) >= 2:
+                # If there are capitalized words after the verb, it's AMBIGUOUS
+                has_capitalized = any(word[0].isupper() for word in words[1:] if len(word) > 0)
+                
+                if has_capitalized:
+                    logger.info(f"[active_router] ⚠️ AMBIGUOUS delete/create: '{s[:50]}' → LLM fallback")
+                    return ("property.delete", 0.65, "PropertyAgent")  # LOW confidence → LLM decides
         
         # Create property - context-aware detection
         # Keywords for property types
