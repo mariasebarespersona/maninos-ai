@@ -213,8 +213,8 @@ class PropertyAgent(BaseAgent):
         # This ensures we never skip the document collection step
         if property_id:
             try:
-                from tools.property_tools import get_property as _get_property
-                from tools.docs_tools import list_docs as _list_docs, update_property_fields as _update_property_fields
+                from tools.property_tools import get_property as _get_property, update_property_fields as _update_property_fields
+                from tools.docs_tools import list_docs as _list_docs
                 
                 property_data = _get_property(property_id)
                 full_context = context or {}
@@ -227,9 +227,8 @@ class PropertyAgent(BaseAgent):
                     
                     if required_types.issubset(doc_types):
                         logger.info(f"[PropertyAgent] 🎯 AUTO-UPDATE: All 3 document types present → Updating stage to 'initial'")
-                        from tools.property_tools import update_property_fields as _update_fields
-                        _update_fields(property_id, {"acquisition_stage": "initial"})
-                        logger.info(f"[PropertyAgent] ✅ Stage updated successfully")
+                        _update_property_fields(property_id, {"acquisition_stage": "initial"})
+                        logger.info(f"[PropertyAgent] ✅ Stage updated to 'initial' successfully")
                         
                         # Update result to propagate new stage to UI
                         result["property_id"] = property_id
@@ -239,6 +238,8 @@ class PropertyAgent(BaseAgent):
                         logger.info(f"[PropertyAgent] ⏳ Documents incomplete. Missing types: {missing}")
             except Exception as e:
                 logger.error(f"[PropertyAgent] ❌ Error in post-processing: {e}")
+                import traceback
+                logger.error(f"[PropertyAgent] Traceback: {traceback.format_exc()}")
         
         return result
     
