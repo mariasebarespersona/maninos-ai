@@ -99,16 +99,25 @@ function RichMessageRenderer({ content, propertyId, property, onPropertyUpdate }
 
   // 3. Detect 70% Rule Pass/Fail
   if (content.includes('Regla del 70%') || content.includes('70% Rule')) {
-      // FIXED: More robust detection - check for explicit PASS/FAIL or failure keywords
+      // Robust detection based on keywords
       const contentLower = content.toLowerCase();
+      
+      // FAIL indicators
       const hasFail = contentLower.includes('no cumple') || 
                       contentLower.includes('excede el 70%') || 
                       contentLower.includes('excede el límite') ||
                       contentLower.includes('70% rule fail') ||
+                      contentLower.includes('precio de venta excede') ||
+                      contentLower.includes('supera el 70%') ||
                       contentLower.includes('no pasa');
-      const hasPass = (contentLower.includes('70% rule pass') || 
-                       contentLower.includes('regla del 70%: pass') ||
-                       contentLower.includes('cumple la regla')) && !hasFail;
+      
+      // PASS indicators
+      const hasPass = (contentLower.includes('cumplió con la regla del 70%') ||
+                       contentLower.includes('cumple con la regla del 70%') ||
+                       contentLower.includes('está dentro del 70%') ||
+                       contentLower.includes('dentro del 70% del valor') ||
+                       contentLower.includes('70% rule: pass') ||
+                       contentLower.includes('pasó la regla del 70%')) && !hasFail;
       
       const isPass = hasPass && !hasFail;
       

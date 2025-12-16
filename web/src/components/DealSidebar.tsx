@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MobileHomeProperty } from '@/types/maninos';
 import { 
   Building2, MapPin, DollarSign, Hammer, TrendingUp, 
-  FileText, AlertTriangle, CheckCircle, XCircle,
+  FileText, AlertTriangle, CheckCircle, XCircle, Circle,
   Download, Eye, FileCheck, Image, Loader2, Mail
 } from 'lucide-react';
 
@@ -172,15 +172,18 @@ export function DealSidebar({ property, className = '', onSendEmailRequest }: De
   const projectedProfit = (arv > 0) ? (arv - totalInvestment) : 0;
   const roi = (totalInvestment > 0) ? ((projectedProfit / totalInvestment) * 100).toFixed(1) : '0.0';
 
-  // Badges Logic
-  const isTitleClean = property.title_status === 'Clean/Blue';
-  const isTitleRisk = property.title_status && !isTitleClean;
+  // Badges Logic - support pending state (null = grey, true = green, false = red)
+  const hasTitleData = property.title_status !== null && property.title_status !== undefined;
+  const isTitleClean = hasTitleData ? property.title_status === 'Clean/Blue' : null;
+  const isTitleRisk = hasTitleData && !isTitleClean;
 
   const maxOffer70 = marketValue * 0.70;
-  const passed70 = askingPrice > 0 && marketValue > 0 && askingPrice <= maxOffer70;
+  const has70Data = askingPrice > 0 && marketValue > 0;
+  const passed70 = has70Data ? (askingPrice <= maxOffer70) : null;
   
   const maxInvestment80 = arv * 0.80;
-  const passed80 = totalInvestment > 0 && arv > 0 && totalInvestment <= maxInvestment80;
+  const has80Data = totalInvestment > 0 && arv > 0;
+  const passed80 = has80Data ? (totalInvestment <= maxInvestment80) : null;
 
   return (
     <div className={`w-96 border-l border-slate-200 bg-white flex flex-col h-full shadow-xl z-20 ${className}`}>
@@ -368,19 +371,38 @@ function MetricCard({ label, value, icon: Icon, color, valueClass, subValue }: a
 }
 
 function HealthRow({ label, passed, detail, failColor, icon: Icon }: any) {
+    // Support null = pending (grey), true = passed (green), false = failed (red)
+    const isPending = passed === null || passed === undefined;
+    const isPass = passed === true;
+    const isFail = passed === false;
+    
     return (
         <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
             <div className="flex items-center">
                 {Icon ? (
-                    <Icon size={16} className={`mr-2 ${passed ? 'text-emerald-500' : (failColor || 'text-rose-500')}`} />
+                    <Icon size={16} className={`mr-2 ${
+                        isPending ? 'text-slate-400' : 
+                        isPass ? 'text-emerald-500' : 
+                        (failColor || 'text-rose-500')
+                    }`} />
                 ) : (
-                    passed ? 
+                    isPending ? 
+                    <Circle size={16} className="text-slate-400 mr-2" /> :
+                    isPass ? 
                     <CheckCircle size={16} className="text-emerald-500 mr-2" /> : 
                     <XCircle size={16} className="text-rose-500 mr-2" />
                 )}
-                <span className={`text-sm font-medium ${passed ? 'text-slate-700' : (failColor || 'text-rose-700')}`}>{label}</span>
+                <span className={`text-sm font-medium ${
+                    isPending ? 'text-slate-500' :
+                    isPass ? 'text-slate-700' : 
+                    (failColor || 'text-rose-700')
+                }`}>{label}</span>
             </div>
-            <span className={`text-xs ${passed ? 'text-slate-500' : 'text-rose-600 font-medium'}`}>{detail}</span>
+            <span className={`text-xs ${
+                isPending ? 'text-slate-400' :
+                isPass ? 'text-slate-500' : 
+                'text-rose-600 font-medium'
+            }`}>{detail}</span>
         </div>
     );
 }
