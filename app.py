@@ -2,7 +2,7 @@ from __future__ import annotations
 import env_loader  # loads .env first
 import base64, os, uuid, re, unicodedata, json
 from typing import Dict, Any
-from fastapi import FastAPI, UploadFile, Form, File
+from fastapi import FastAPI, UploadFile, Form, File, HTTPException
 import time
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -3798,7 +3798,7 @@ async def upload_document_endpoint(
                 "property_id": property_id,
                 "document_name": filename,
                 "document_type": document_type,
-                "storage_key": storage_key,
+                "storage_path": storage_key,  # Changed from storage_key to storage_path
                 "content_type": content_type,
                 "signed_url": signed_url,
                 "uploaded_at": datetime.utcnow().isoformat()
