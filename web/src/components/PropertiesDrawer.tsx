@@ -91,6 +91,16 @@ export function PropertiesDrawer({
                             : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md'
                         }`}
                     >
+                        {/* Delete button - positioned absolutely to avoid button nesting */}
+                        <button
+                            onClick={(e) => handleDeleteClick(e, prop)}
+                            className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100 z-10"
+                            title="Delete property"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+
+                        {/* Main content button */}
                         <button
                             onClick={() => {
                                 onSelectProperty(prop.id);
@@ -102,19 +112,12 @@ export function PropertiesDrawer({
                                 <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
                                     <Home size={18} />
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 pr-8">
                                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${
                                         isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
                                     }`}>
                                         {stage.label}
                                     </span>
-                                    <button
-                                        onClick={(e) => handleDeleteClick(e, prop)}
-                                        className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
-                                        title="Delete property"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
                                 </div>
                             </div>
                         

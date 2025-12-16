@@ -3915,14 +3915,18 @@ async def download_document(doc_id: str):
         # Download file from Supabase Storage
         file_bytes = sb.storage.from_(BUCKET).download(storage_path)
         
-        logger.info(f"[download_document] Downloaded {document_name} ({len(file_bytes)} bytes)")
+        # Detect content type from document
+        import mimetypes
+        content_type = doc.get("content_type") or mimetypes.guess_type(document_name)[0] or "application/octet-stream"
+        
+        logger.info(f"[download_document] Downloaded {document_name} ({len(file_bytes)} bytes, type: {content_type})")
         
         return Response(
             content=file_bytes,
-            media_type="application/pdf",
+            media_type=content_type,
             headers={
                 "Content-Disposition": f"attachment; filename={document_name}",
-                "Content-Type": "application/pdf"
+                "Content-Type": content_type
             }
         )
         
@@ -3967,14 +3971,18 @@ async def preview_document(doc_id: str):
         # Download file from Supabase Storage
         file_bytes = sb.storage.from_(BUCKET).download(storage_path)
         
-        logger.info(f"[preview_document] Previewing {document_name} ({len(file_bytes)} bytes)")
+        # Detect content type from document
+        import mimetypes
+        content_type = doc.get("content_type") or mimetypes.guess_type(document_name)[0] or "application/octet-stream"
+        
+        logger.info(f"[preview_document] Previewing {document_name} ({len(file_bytes)} bytes, type: {content_type})")
         
         return Response(
             content=file_bytes,
-            media_type="application/pdf",
+            media_type=content_type,
             headers={
                 "Content-Disposition": f"inline; filename={document_name}",
-                "Content-Type": "application/pdf"
+                "Content-Type": content_type
             }
         )
         

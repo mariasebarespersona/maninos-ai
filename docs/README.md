@@ -1,12 +1,99 @@
-# RAMA AI Documentation
+# MANINOS AI Documentation
 
-**Welcome to the RAMA AI documentation hub!**
+**Welcome to the MANINOS AI documentation hub!**
 
-This directory contains comprehensive documentation for developers, stakeholders, and operators.
+This directory contains comprehensive documentation for developers, stakeholders, and operators working on the mobile home acquisition AI assistant.
 
 ---
 
-## 📚 Documentation Index
+## ⭐ **START HERE - Essential Reading**
+
+### 📖 **[DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md)** (🔥 MUST READ FIRST)
+**~7,500 lines | For: ALL Developers**
+
+**⚠️ READ THIS ENTIRE DOCUMENT BEFORE CODING**
+
+The definitive guide to understanding MANINOS AI. Covers:
+- **Philosophy & Core Principles** (data-driven, not keyword-driven)
+- **System Architecture Overview** (FastAPI → Orchestrator → FlowValidator → PropertyAgent → Tools)
+- **The 6-Step Acquisition Workflow** (documents → 70% → inspection → 80% → contract)
+- **Agent System Deep Dive** (BaseAgent ReAct loop, PropertyAgent)
+- **Routing System** (FlowValidator, ActiveRouter, Orchestrator)
+- **Tool System & Registry** (22 tools, auto-stage updates)
+- **Prompt System** (modular architecture, dynamic composition)
+- **State Management** (LangGraph, PostgreSQL checkpointing)
+- **Database Schema** (10 acquisition stages, enforced workflow)
+- **Critical Design Patterns** (always read property first, one tool per turn)
+- **Anti-Patterns** (what NOT to do)
+- **Testing & Validation** (complete flow tests)
+- **Debugging Guide** (common issues and fixes)
+- **Common Gotchas** (repair_estimate=0 vs None, etc.)
+
+**Use this when:**
+- Joining the team (mandatory reading)
+- Before making ANY code changes
+- Debugging complex issues
+- Conducting code reviews
+- Planning new features
+
+**Estimated Reading Time:** 3-4 hours (worth every minute)
+
+---
+
+### ⚡ **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** (For Daily Use)
+**Quick lookup guide | For: Developers who read the Bible**
+
+Fast reference for:
+- Architecture cheat sheet
+- File structure map
+- 6 steps copy-paste reference
+- Common code patterns
+- Tool reference (with signatures)
+- Stage transition table
+- FlowValidator usage
+- Defect costs
+- Database queries
+- Testing commands
+- Debugging commands
+
+**Use this when:**
+- Need quick code snippets
+- Forgot a tool signature
+- Need to check stage transitions
+- Looking up defect costs
+- Running tests
+
+**Reading Time:** 15 minutes
+
+---
+
+### 🏛️ **[ARCHITECTURAL_DECISIONS.md](./ARCHITECTURAL_DECISIONS.md)** (The "Why")
+**10 ADRs | For: Architects, Senior Developers**
+
+Explains the "why" behind key architectural choices:
+- **ADR-001:** One Agent for Linear Workflow (vs multi-agent)
+- **ADR-002:** Data-Driven Routing Over Keywords
+- **ADR-003:** Modular Prompt System
+- **ADR-004:** FlowValidator as Routing Brain
+- **ADR-005:** Tools Auto-Update Stages
+- **ADR-006:** Blocking Stages for Human Review
+- **ADR-007:** PostgreSQL Checkpointing
+- **ADR-008:** No Intermediate Agent Consolidation
+- **ADR-009:** UI Components Not in Chat
+- **ADR-010:** One Tool Per Turn in Critical Steps
+
+**Use this when:**
+- Understanding architectural decisions
+- Proposing system changes
+- Conducting architecture reviews
+- Onboarding senior developers
+- Planning future enhancements
+
+**Reading Time:** 1 hour
+
+---
+
+## 📚 Additional Documentation
 
 ### **🏗️ Architecture & Design**
 
@@ -155,43 +242,89 @@ How to configure Logfire for LLM tracing and monitoring.
 
 | Goal | Document |
 |------|----------|
+| **🔥 Start coding (mandatory)** | [DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md) |
+| **Quick lookup (daily use)** | [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) |
+| **Understand "why" decisions** | [ARCHITECTURAL_DECISIONS.md](./ARCHITECTURAL_DECISIONS.md) |
 | **Understand the full system** | [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) |
 | **Prepare a presentation** | [ARCHITECTURE_VISUAL_GUIDE.md](./ARCHITECTURE_VISUAL_GUIDE.md) |
 | **Deploy to production** | [DEPLOY_RENDER.md](./DEPLOY_RENDER.md) + [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md) |
-| **Debug an issue** | [ARCHITECTURE_VISUAL_GUIDE.md](./ARCHITECTURE_VISUAL_GUIDE.md) (Debugging Tips section) |
-| **Onboard a developer** | [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) + [ARCHITECTURE_VISUAL_GUIDE.md](./ARCHITECTURE_VISUAL_GUIDE.md) |
+| **Debug an issue** | [DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md) (Debugging Guide section) |
+| **Onboard a developer** | [DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md) → [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) |
 | **Set up evaluation** | [EVALUATION_QUICK_START.md](./EVALUATION_QUICK_START.md) |
 | **Monitor production** | [OPS.md](./OPS.md) + [LOGFIRE_SETUP.md](./LOGFIRE_SETUP.md) |
-| **Understand user flows** | [USER_FLOWS.md](../USER_FLOWS.md) |
-| **Add new feature** | [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) (Modular Prompt System section) |
+| **Add new feature** | [DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md) + [ARCHITECTURAL_DECISIONS.md](./ARCHITECTURAL_DECISIONS.md) |
 
 ---
 
 ## 📖 Reading Order for New Developers
 
-1. **Start:** [ARCHITECTURE_VISUAL_GUIDE.md](./ARCHITECTURE_VISUAL_GUIDE.md) (30 min)
-   - Get high-level overview
-   - Understand key components
-   - See visual diagrams
+### 🚀 Day 1: Essential Understanding (4-5 hours)
 
-2. **Deep Dive:** [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) (2-3 hours)
-   - Read section by section
-   - Understand implementation details
-   - Follow code references
+1. **📖 MANDATORY:** [DEVELOPER_BIBLE.md](./DEVELOPER_BIBLE.md) (3-4 hours)
+   - ⚠️ **CRITICAL:** Read this FIRST before touching any code
+   - Understand philosophy (data-driven, not keyword-driven)
+   - Learn the 6-step workflow
+   - Understand agent system (BaseAgent, PropertyAgent)
+   - Learn routing (FlowValidator, ActiveRouter, Orchestrator)
+   - Master tool system
+   - Study design patterns and anti-patterns
+   - Review debugging guide
 
-3. **Setup:** [DEPLOY_RENDER.md](./DEPLOY_RENDER.md) + [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md) (1 hour)
+2. **⚡ Reference:** [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) (15 min)
+   - Bookmark for daily use
+   - Quick code patterns
+   - Tool signatures
+   - Database queries
+
+3. **🏛️ Context:** [ARCHITECTURAL_DECISIONS.md](./ARCHITECTURAL_DECISIONS.md) (1 hour)
+   - Understand why decisions were made
+   - Learn from past mistakes
+   - Prepare for future changes
+
+---
+
+### 🏗️ Day 2: Setup & Practice (3-4 hours)
+
+4. **🔧 Setup:** [DEPLOY_RENDER.md](./DEPLOY_RENDER.md) + [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md) (1 hour)
    - Set up local environment
+   - Run tests: `python tests/test_maninos_flow.py`
    - Deploy to staging
 
-4. **Practice:** [USER_FLOWS.md](../USER_FLOWS.md) (30 min)
-   - Test common workflows
-   - Understand expected behavior
+5. **🎨 Visual Reference:** [ARCHITECTURE_VISUAL_GUIDE.md](./ARCHITECTURE_VISUAL_GUIDE.md) (30 min)
+   - See system diagrams
+   - Understand component interactions
+   - Use for presentations
 
-5. **Advanced:** [MULTI_AGENT_TOPOLOGY.md](./MULTI_AGENT_TOPOLOGY.md) + [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md) (1 hour)
-   - Understand advanced features
-   - Learn about evaluation pipeline
+6. **✅ Testing:** Run complete flow test (30 min)
+   ```bash
+   python tests/test_maninos_flow.py
+   # Expected: ✅ ALL TESTS PASSED
+   ```
 
-**Total Time:** ~5-6 hours for complete onboarding
+7. **💬 Practice:** Test in UI (1-2 hours)
+   - Create a test property
+   - Go through complete 6-step workflow
+   - Understand what users see
+
+---
+
+### 📚 Day 3+: Deep Dive (as needed)
+
+8. **🏗️ Technical Deep Dive:** [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) (2-3 hours)
+   - In-depth implementation details
+   - Performance considerations
+   - Security analysis
+
+9. **🔬 Advanced:** [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md) (1 hour)
+   - Evaluation pipeline
+   - Quality metrics
+   - Continuous improvement
+
+---
+
+**Total Onboarding Time:** 8-12 hours over 2-3 days
+
+**Key Principle:** Read → Understand → Test → Code
 
 ---
 
@@ -287,14 +420,38 @@ graph TB
 
 | Document | Pages | Words | Last Updated | Status |
 |----------|-------|-------|--------------|--------|
+| 🔥 **DEVELOPER_BIBLE.md** | **120+** | **30,000+** | **Dec 2024** | **✅ Complete** |
+| ⚡ **QUICK_REFERENCE.md** | **20+** | **5,000+** | **Dec 2024** | **✅ Complete** |
+| 🏛️ **ARCHITECTURAL_DECISIONS.md** | **35+** | **10,000+** | **Dec 2024** | **✅ Complete** |
 | TECHNICAL_ARCHITECTURE.md | 100+ | 15,000+ | Nov 2024 | ✅ Complete |
 | ARCHITECTURE_VISUAL_GUIDE.md | 40+ | 8,000+ | Nov 2024 | ✅ Complete |
+| CONSOLIDATED_ARCHITECTURE.md | 15+ | 3,000+ | Dec 2024 | ✅ Complete |
+| INTELLIGENT_ROUTING.md | 20+ | 4,000+ | Dec 2024 | ✅ Complete |
 | DEPLOY_RENDER.md | 5 | 1,000+ | Nov 2024 | ✅ Complete |
 | DEPLOY_VERCEL.md | 5 | 1,000+ | Nov 2024 | ✅ Complete |
 | EVALUATION_*.md | 20+ | 5,000+ | Nov 2024 | ✅ Complete |
-| USER_FLOWS.md | 10+ | 2,000+ | Nov 2024 | ✅ Complete |
 
-**Total Documentation:** ~180 pages, ~30,000 words
+**Total Documentation:** ~375 pages, ~82,000+ words
+
+### New Documentation Highlights (v1.0 - Dec 2024)
+
+**🔥 DEVELOPER_BIBLE.md** - The definitive guide
+- 14 major sections
+- 100+ code examples
+- Complete system coverage
+- Must-read for all developers
+
+**⚡ QUICK_REFERENCE.md** - Daily use companion
+- Fast lookup for common patterns
+- Tool signatures
+- Testing commands
+- Debugging tips
+
+**🏛️ ARCHITECTURAL_DECISIONS.md** - The "why" explained
+- 10 detailed ADRs
+- Trade-off analysis
+- Lessons learned
+- Future considerations
 
 ---
 
@@ -306,9 +463,12 @@ graph TB
 - ✅ **Practical:** Real examples and use cases
 - ✅ **Up-to-date:** Reflect current implementation
 - ✅ **Scalable:** Easy to extend as system grows
+- ✅ **Educational:** Explain "why" not just "how"
+- ✅ **Reference:** Quick lookup for daily use
 
 ---
 
-**Last Updated:** November 2024  
-**Maintained By:** RAMA AI Team  
+**Last Updated:** December 16, 2024  
+**Maintained By:** MANINOS AI Team  
+**Version:** 1.0  
 **License:** Proprietary
