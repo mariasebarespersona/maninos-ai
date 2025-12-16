@@ -56,11 +56,11 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
         const res = await fetch(`http://127.0.0.1:8080/api/property/${propertyId}/documents`);
         if (res.ok) {
           const data = await res.json();
-          console.log('[DocumentsCollector] Loaded documents from backend:', data.documents);
-          if (data.documents && data.documents.length > 0) {
+          console.log('[DocumentsCollector] Loaded documents from backend:', data.uploaded_documents);
+          if (data.uploaded_documents && data.uploaded_documents.length > 0) {
             // Mark documents as uploaded based on document_type from backend
             setDocuments(prev => prev.map(doc => {
-              const isUploaded = data.documents.some((d: any) => d.document_type === doc.id);
+              const isUploaded = data.uploaded_documents.some((d: any) => d.document_type === doc.id);
               console.log(`[DocumentsCollector] Document ${doc.id}: uploaded = ${isUploaded}`);
               return {
                 ...doc,
