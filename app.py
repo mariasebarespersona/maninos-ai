@@ -3808,6 +3808,23 @@ async def upload_document_endpoint(
             insert_result = sb.table("maninos_documents").insert(doc_record).execute()
             logger.info(f"[upload_document] Document record saved to database")
             
+            # Auto-index document for RAG (Fase 2 - Step 2)
+            try:
+                if insert_result.data and len(insert_result.data) > 0:
+                    document_id = insert_result.data[0]["id"]
+                    logger.info(f"[upload_document] Starting RAG indexing for document {document_id}")
+                    
+                    from tools.rag_maninos import index_document_maninos
+                    index_result = index_document_maninos(property_id, document_id)
+                    
+                    if index_result.get("indexed", 0) > 0:
+                        logger.info(f"✅ [upload_document] RAG indexed: {index_result['chunks']} chunks for {filename}")
+                    else:
+                        logger.warning(f"⚠️ [upload_document] RAG indexing failed: {index_result.get('error', 'Unknown error')}")
+            except Exception as index_error:
+                # Don't fail the upload if indexing fails
+                logger.error(f"❌ [upload_document] RAG indexing error: {index_error}", exc_info=True)
+            
         except Exception as db_error:
             # If table doesn't exist, just log warning and continue
             # The file is still uploaded to storage, which is the main goal

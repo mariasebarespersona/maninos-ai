@@ -138,6 +138,38 @@ class ActiveRouter:
             logger.info(f"[active_router] 🔄 Switch property detected")
             return ("property.switch", 0.88, "PropertyAgent")
         
+        # 5. DOCUMENT QUERY (RAG)
+        # Detect questions about document CONTENT (not listing/uploading)
+        doc_query_keywords = [
+            # Title status questions
+            "título", "title", "estado del título", "title status", "clean title", "blue title",
+            "lien", "gravamen", "gravámenes",
+            # Listing questions
+            "listing", "precio", "price", "asking price", "cuánto", "cuesta", "valor",
+            "park name", "nombre del parque", "año", "year", "construida", "built",
+            # Photos/inspection questions
+            "fotos", "photos", "defectos", "defects", "daños", "damage", "estado",
+            # General document questions
+            "documento", "document", "dice el", "menciona", "según el", "aparece en",
+            "qué dice", "what does it say", "what's in", "qué hay en"
+        ]
+        
+        # Must have question indicators
+        question_indicators = [
+            "qué", "que", "cuál", "cual", "cómo", "como", "cuánto", "cuanto",
+            "dónde", "donde", "cuándo", "cuando", "por qué", "porque",
+            "what", "which", "how", "how much", "where", "when", "why",
+            "¿", "?"  # Question marks
+        ]
+        
+        has_doc_keyword = any(kw in s for kw in doc_query_keywords)
+        has_question = any(q in s for q in question_indicators)
+        
+        # Only trigger if it's a question AND mentions documents
+        if has_doc_keyword and has_question:
+            logger.info(f"[active_router] 📄 Document query detected (RAG)")
+            return ("docs.query", 0.85, "PropertyAgent")
+        
         # ==========================================================
         # DEFAULT: GENERAL CONVERSATION
         # ==========================================================

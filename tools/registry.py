@@ -66,6 +66,7 @@ from .email_tool import send_email as _send_email
 from .voice_tool import transcribe_google_wav as _transcribe_google_wav, tts_google as _tts_google, process_voice_input as _process_voice_input, create_voice_response as _create_voice_response
 from .rag_tool import summarize_document as _summarize_document, qa_document as _qa_document, qa_payment_schedule as _qa_payment_schedule
 from .rag_index import index_document as _index_document, qa_with_citations as _qa_with_citations, index_all_documents as _index_all_documents
+from .rag_maninos import query_documents_maninos as _query_documents_maninos, index_document_maninos as _index_document_maninos, index_all_documents_maninos as _index_all_documents_maninos
 from .reminders_tools import create_reminder as _create_reminder, extract_payment_date_from_document as _extract_payment_date, list_reminders as _list_reminders, cancel_reminder as _cancel_reminder
 # ---------- Set current property (LLM-controlled) ----------
 class SetCurrentPropertyInput(BaseModel):
@@ -1055,6 +1056,67 @@ def rag_index_all_documents_tool(property_id: str) -> Dict:
 
 # ==================== MANINOS AI TOOLS ====================
 
+# RAG Tools for MANINOS
+@tool("query_documents")
+def query_documents_tool(property_id: str, question: str, document_type: str = None) -> Dict:
+    """
+    Query documents using RAG (Retrieval Augmented Generation) for this property.
+    
+    Use this when the user asks questions about uploaded documents, such as:
+    - "¿Cuál es el estado del título?" / "What's the title status?"
+    - "¿Qué precio menciona el listing?" / "What price does the listing mention?"
+    - "¿Qué defectos mencionan las fotos?" / "What defects are mentioned in the photos?"
+    - "¿Cuándo fue construida la propiedad?" / "When was the property built?"
+    - "¿Cuál es el nombre del parque?" / "What's the park name?"
+    
+    The tool will:
+    1. Search for relevant information in ALL uploaded documents (or specific document_type if provided)
+    2. Use semantic search to find the most relevant content
+    3. Generate an answer using the document content as context
+    4. Provide citations showing which documents were used
+    
+    Args:
+        property_id: UUID of the property
+        question: The user's question about the documents
+        document_type: Optional filter - 'title_status', 'property_listing', or 'property_photos'
+    
+    Returns:
+        {
+            "answer": "...",  # The answer to the question
+            "citations": [{"document_type": "...", "document_name": "...", "chunk_index": 0}],
+            "context_used": True/False
+        }
+    
+    IMPORTANT:
+    - Only use this for questions about document CONTENT
+    - For listing documents, use list_docs instead
+    - Documents must be indexed first (happens automatically on upload)
+    """
+    return _query_documents_maninos(property_id, question, document_type=document_type)
+
+@tool("index_all_documents_maninos")
+def index_all_documents_maninos_tool(property_id: str) -> Dict:
+    """
+    Index (or re-index) all documents for a property to enable RAG queries.
+    
+    Use this when:
+    - User reports that document queries are not working
+    - New documents were just uploaded
+    - You suspect the index is out of sync
+    
+    This creates text chunks and embeddings for all uploaded documents,
+    storing them in the rag_chunks table for fast semantic search.
+    
+    Returns:
+        {
+            "total_chunks": int,
+            "documents_indexed": int,
+            "total_documents": int,
+            "details": [...]
+        }
+    """
+    return _index_all_documents_maninos(property_id)
+
 class CalculateRepairCostsInput(BaseModel):
     defects: List[str] = Field(..., description="List of defects found (e.g., ['roof', 'hvac'])")
 
@@ -1246,7 +1308,9 @@ TOOLS = [
     process_voice_input_tool,
     create_voice_response_tool,
     
-    # Maninos Acquisition Flow (6 tools)
+    # Maninos Acquisition Flow (8 tools)
+    query_documents_tool,  # NEW: RAG query for documents
+    index_all_documents_maninos_tool,  # NEW: Re-index documents
     calculate_repair_costs_tool,
     calculate_maninos_deal_tool,
     generate_buy_contract_tool,
