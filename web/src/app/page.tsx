@@ -8,7 +8,7 @@ import { PropertiesDrawer } from '@/components/PropertiesDrawer'
 import { ContractViewer } from '@/components/ContractViewer'
 import { DocumentsCollector } from '@/components/DocumentsCollector'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
-import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle } from 'lucide-react'
+import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle, Search, PenTool, Zap } from 'lucide-react'
 
 // --- Rich UI Components ---
 
@@ -99,7 +99,19 @@ function RichMessageRenderer({ content, propertyId, property, onPropertyUpdate }
 
   // 3. Detect 70% Rule Pass/Fail
   if (content.includes('Regla del 70%') || content.includes('70% Rule')) {
-      const isPass = content.includes('✅') || content.includes('PASS');
+      // FIXED: More robust detection - check for explicit PASS/FAIL or failure keywords
+      const contentLower = content.toLowerCase();
+      const hasFail = contentLower.includes('no cumple') || 
+                      contentLower.includes('excede el 70%') || 
+                      contentLower.includes('excede el límite') ||
+                      contentLower.includes('70% rule fail') ||
+                      contentLower.includes('no pasa');
+      const hasPass = (contentLower.includes('70% rule pass') || 
+                       contentLower.includes('regla del 70%: pass') ||
+                       contentLower.includes('cumple la regla')) && !hasFail;
+      
+      const isPass = hasPass && !hasFail;
+      
       return (
           <div>
               <div className={`mb-4 p-3 rounded-lg border-l-4 ${isPass ? 'bg-emerald-50 border-emerald-500' : 'bg-rose-50 border-rose-500'}`}>
@@ -109,7 +121,7 @@ function RichMessageRenderer({ content, propertyId, property, onPropertyUpdate }
                       </div>
                       <div>
                           <h4 className={`font-bold text-sm ${isPass ? 'text-emerald-800' : 'text-rose-800'}`}>
-                              {isPass ? '70% Rule Passed' : '70% Rule Warning'}
+                              {isPass ? '70% Rule Passed' : '70% Rule Failed'}
                           </h4>
                           <p className="text-xs opacity-80 mt-1">
                               {isPass ? 'Price is within safe margin.' : 'Price exceeds recommended offer.'}
@@ -452,15 +464,48 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
             {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
-                <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
-                    <Bot size={32} className="text-slate-500" />
-                  </div>
-                <h3 className="text-xl font-semibold text-slate-700">Maninos AI</h3>
-                <p className="text-sm text-slate-500 max-w-xs mt-2">
-                    Start by entering a property address to begin the evaluation process.
-                    </p>
-                  </div>
+            <div className="h-full flex flex-col items-center justify-center p-8 animate-fade-in">
+                {/* Hero Icon */}
+                <div className="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-slate-200">
+                    <Bot size={40} className="text-slate-600" />
+                </div>
+                
+                {/* Welcome Text */}
+                <h3 className="text-2xl font-bold text-slate-800 mb-2">Welcome to Maninos AI</h3>
+                <p className="text-slate-500 max-w-md text-center mb-10 leading-relaxed">
+                    Your expert assistant for mobile home acquisitions. Start by entering a property address or uploading documents.
+                </p>
+
+                {/* Feature Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl w-full">
+                    {/* Card 1: Doc Analysis - Blue Theme (Brand) */}
+                    <div className="p-4 bg-white border border-blue-200 rounded-xl shadow-sm transition-all cursor-default group">
+                        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center mb-3">
+                            <FileText size={20} className="text-blue-700" />
+                        </div>
+                        <h4 className="font-semibold text-slate-800 mb-1">Doc Analysis</h4>
+                        <p className="text-xs text-slate-500">Extracts data from PDFs and listings instantly.</p>
+                    </div>
+
+                    {/* Card 2: Inspection - Slate/Navy Theme (Professional) */}
+                    <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm transition-all cursor-default group">
+                        <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center mb-3">
+                            <Search size={20} className="text-slate-700" />
+                        </div>
+                        <h4 className="font-semibold text-slate-800 mb-1">Inspection</h4>
+                        <p className="text-xs text-slate-500">Evaluates repairs and estimates renovation costs.</p>
+                    </div>
+
+                    {/* Card 3: Contracts - Indigo/Dark Blue Theme (Trust) */}
+                    <div className="p-4 bg-white border border-indigo-200 rounded-xl shadow-sm transition-all cursor-default group">
+                        <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3">
+                            <PenTool size={20} className="text-indigo-700" />
+                        </div>
+                        <h4 className="font-semibold text-slate-800 mb-1">Contracts</h4>
+                        <p className="text-xs text-slate-500">Generates purchase agreements ready to sign.</p>
+                    </div>
+                </div>
+            </div>
           ) : (
             messages.map((m) => (
               <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''} max-w-4xl mx-auto`}>

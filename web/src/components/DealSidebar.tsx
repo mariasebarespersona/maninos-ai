@@ -372,15 +372,15 @@ function HealthRow({ label, passed, detail, failColor, icon: Icon }: any) {
         <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
             <div className="flex items-center">
                 {Icon ? (
-                    <Icon size={16} className={`mr-2 ${passed ? 'text-emerald-500' : 'text-rose-500'}`} />
+                    <Icon size={16} className={`mr-2 ${passed ? 'text-emerald-500' : (failColor || 'text-rose-500')}`} />
                 ) : (
                     passed ? 
                     <CheckCircle size={16} className="text-emerald-500 mr-2" /> : 
-                    <XCircle size={16} className="text-slate-300 mr-2" />
+                    <XCircle size={16} className="text-rose-500 mr-2" />
                 )}
-                <span className={`text-sm font-medium ${!passed && failColor ? failColor : 'text-slate-700'}`}>{label}</span>
+                <span className={`text-sm font-medium ${passed ? 'text-slate-700' : (failColor || 'text-rose-700')}`}>{label}</span>
             </div>
-            <span className="text-xs text-slate-500">{detail}</span>
+            <span className={`text-xs ${passed ? 'text-slate-500' : 'text-rose-600 font-medium'}`}>{detail}</span>
         </div>
     );
 }
