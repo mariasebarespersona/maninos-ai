@@ -32,10 +32,10 @@ from tools.registry import (
     list_docs_tool,
     delete_document_tool,
     signed_url_for_tool,
-    rag_qa_with_citations_tool,
-    qa_document_tool,
-    summarize_document_tool,
-    send_email_tool
+    send_email_tool,
+    # NEW: RAG tools for MANINOS (Fase 2)
+    query_documents_tool,
+    index_all_documents_maninos_tool,
 )
 
 
@@ -309,8 +309,8 @@ class PropertyAgent(BaseAgent):
             list_docs_tool,
             delete_document_tool,
             signed_url_for_tool,
-            rag_qa_with_citations_tool,
-            qa_document_tool,
-            summarize_document_tool,
-            send_email_tool
+            send_email_tool,
+            # RAG Tools (Fase 2 - MANINOS AI)
+            query_documents_tool,  # NEW: Query documents using RAG
+            index_all_documents_maninos_tool,  # NEW: Re-index documents
         ]
