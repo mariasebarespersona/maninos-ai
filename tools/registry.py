@@ -67,6 +67,7 @@ from .voice_tool import transcribe_google_wav as _transcribe_google_wav, tts_goo
 from .rag_tool import summarize_document as _summarize_document, qa_document as _qa_document, qa_payment_schedule as _qa_payment_schedule
 from .rag_index import index_document as _index_document, qa_with_citations as _qa_with_citations, index_all_documents as _index_all_documents
 from .rag_maninos import query_documents_maninos as _query_documents_maninos, index_document_maninos as _index_document_maninos, index_all_documents_maninos as _index_all_documents_maninos
+from .extraction_tools import get_extracted_data as _get_extracted_data
 from .reminders_tools import create_reminder as _create_reminder, extract_payment_date_from_document as _extract_payment_date, list_reminders as _list_reminders, cancel_reminder as _cancel_reminder
 # ---------- Set current property (LLM-controlled) ----------
 class SetCurrentPropertyInput(BaseModel):
@@ -1170,6 +1171,90 @@ def index_all_documents_maninos_tool(property_id: str) -> Dict:
     """
     return _index_all_documents_maninos(property_id)
 
+@tool("get_extracted_values")
+def get_extracted_values_tool(property_id: str) -> Dict:
+    """
+    Get auto-extracted values from uploaded documents.
+    
+    🎯 USE THIS TOOL AT THE START OF STEP 1 (70% Rule Check)
+    
+    When user reaches Step 1 and you need asking_price + market_value:
+    1. FIRST: Call this tool to check if values were auto-extracted
+    2. IF values exist: Propose them to user for confirmation
+    3. IF no values: Ask user manually (current behavior)
+    
+    ═══════════════════════════════════════════════════════════════════
+    WHEN TO USE:
+    ═══════════════════════════════════════════════════════════════════
+    
+    ✅ USE when:
+    - User reaches Step 1 (needs asking_price + market_value)
+    - You're about to ask for pricing information
+    - acquisition_stage = 'initial' or 'documents_pending'
+    
+    ❌ DON'T USE when:
+    - Values already exist in property.asking_price (use get_property instead)
+    - User is modifying existing values
+    - Not in pricing-related steps
+    
+    ═══════════════════════════════════════════════════════════════════
+    RETURNS:
+    ═══════════════════════════════════════════════════════════════════
+    
+    {
+        "asking_price": {
+            "value": 32500,
+            "confidence": 0.95,
+            "source": "property_listing.pdf",
+            "extracted_at": "2025-12-16T12:00:00Z"
+        },
+        "market_value": {
+            "value": 45000,
+            "confidence": 0.90,
+            "source": "property_listing.pdf",
+            "extracted_at": "2025-12-16T12:00:00Z"
+        }
+    }
+    
+    If no data extracted, returns: {}
+    
+    ═══════════════════════════════════════════════════════════════════
+    USAGE EXAMPLE:
+    ═══════════════════════════════════════════════════════════════════
+    
+    # Scenario: User ready for Step 1
+    agent: [get_property(property_id)]
+    # → acquisition_stage = 'initial', asking_price = None
+    
+    agent: [get_extracted_values(property_id)]
+    # → Returns: {"asking_price": {"value": 32500, ...}, "market_value": {...}}
+    
+    agent: "✨ Encontré estos valores en el listing que subiste:
+           • Precio de venta: $32,500
+           • Valor de mercado: $45,000
+           
+           ¿Son correctos estos valores o quieres modificarlos?"
+    
+    user: "Sí, son correctos"
+    agent: [update_property_fields(property_id, asking_price=32500, market_value=45000)]
+           [calculate_maninos_deal(property_id, asking_price=32500, market_value=45000)]
+    
+    ═══════════════════════════════════════════════════════════════════
+    CONFIDENCE INTERPRETATION:
+    ═══════════════════════════════════════════════════════════════════
+    
+    - 0.90 - 1.00: High confidence → Present directly
+    - 0.70 - 0.89: Medium confidence → "Creo que es X, ¿correcto?"
+    - 0.50 - 0.69: Low confidence → "Parece ser X, pero no estoy seguro"
+    - < 0.50: Very low → Don't use, ask user instead
+    
+    ═══════════════════════════════════════════════════════════════════
+    
+    IMPORTANT: This tool returns PROPOSED values, NOT confirmed values.
+    You MUST ask user to confirm before using them in calculations.
+    """
+    return _get_extracted_data(property_id)
+
 class CalculateRepairCostsInput(BaseModel):
     defects: List[str] = Field(..., description="List of defects found (e.g., ['roof', 'hvac'])")
 
@@ -1361,9 +1446,10 @@ TOOLS = [
     process_voice_input_tool,
     create_voice_response_tool,
     
-    # Maninos Acquisition Flow (8 tools)
-    query_documents_tool,  # NEW: RAG query for documents
-    index_all_documents_maninos_tool,  # NEW: Re-index documents
+    # Maninos Acquisition Flow (9 tools)
+    query_documents_tool,  # RAG query for documents
+    index_all_documents_maninos_tool,  # Re-index documents
+    get_extracted_values_tool,  # Get auto-extracted values from documents
     calculate_repair_costs_tool,
     calculate_maninos_deal_tool,
     generate_buy_contract_tool,

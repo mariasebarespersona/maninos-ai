@@ -33,9 +33,10 @@ from tools.registry import (
     delete_document_tool,
     signed_url_for_tool,
     send_email_tool,
-    # NEW: RAG tools for MANINOS (Fase 2)
+    # RAG tools for MANINOS (Fase 2)
     query_documents_tool,
     index_all_documents_maninos_tool,
+    get_extracted_values_tool,  # Auto-extracted values from documents
 )
 
 
@@ -311,6 +312,7 @@ class PropertyAgent(BaseAgent):
             signed_url_for_tool,
             send_email_tool,
             # RAG Tools (Fase 2 - MANINOS AI)
-            query_documents_tool,  # NEW: Query documents using RAG
-            index_all_documents_maninos_tool,  # NEW: Re-index documents
+            query_documents_tool,  # Query documents using RAG
+            index_all_documents_maninos_tool,  # Re-index documents
+            get_extracted_values_tool,  # Get auto-extracted values
         ]

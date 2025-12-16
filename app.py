@@ -3818,9 +3818,33 @@ async def upload_document_endpoint(
                     index_result = index_document_maninos(property_id, document_id)
                     
                     if index_result.get("indexed", 0) > 0:
-                        logger.info(f"✅ [upload_document] RAG indexed: {index_result['chunks']} chunks for {filename}")
+                        logger.info(f"✅ [upload_document] RAG indexed: {index_result.get('indexed', 0)} chunks for {filename}")
                     else:
                         logger.warning(f"⚠️ [upload_document] RAG indexing failed: {index_result.get('error', 'Unknown error')}")
+                    
+                    # Auto-extract data from property listing (Fase 2 - Step 3)
+                    if document_type == "property_listing" and index_result.get("indexed", 0) > 0:
+                        try:
+                            logger.info(f"[upload_document] Starting data extraction for property listing")
+                            
+                            from tools.extraction_tools import extract_listing_data
+                            extract_result = extract_listing_data(property_id, document_id)
+                            
+                            if extract_result.get("success"):
+                                extracted = extract_result.get("extracted", {})
+                                logger.info(f"✅ [upload_document] Extracted {len(extracted)} fields: {list(extracted.keys())}")
+                                
+                                # Log extracted values
+                                for field, data in extracted.items():
+                                    logger.info(f"   • {field}: ${data['value']} (confidence: {data['confidence']})")
+                            else:
+                                errors = extract_result.get("errors", [])
+                                logger.warning(f"⚠️ [upload_document] Extraction completed with errors: {errors}")
+                        
+                        except Exception as extract_error:
+                            # Don't fail the upload if extraction fails
+                            logger.error(f"❌ [upload_document] Data extraction error: {extract_error}", exc_info=True)
+            
             except Exception as index_error:
                 # Don't fail the upload if indexing fails
                 logger.error(f"❌ [upload_document] RAG indexing error: {index_error}", exc_info=True)

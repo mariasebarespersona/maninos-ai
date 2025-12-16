@@ -230,14 +230,100 @@ Es mejor hacer una búsqueda de más que inventar información o decir "no sé" 
 
 ---
 
+## ✨ AUTO-EXTRACTED VALUES (Fase 2 - Step 3)
+
+**NUEVO TOOL:** `get_extracted_values(property_id)`
+
+### ¿Qué hace?
+
+Cuando el usuario sube un **Property Listing**, el sistema automáticamente:
+1. Extrae `asking_price` + `market_value` usando RAG
+2. Guarda en `property.extracted_data` (NO confirma automáticamente)
+3. Espera tu confirmación en Step 1
+
+### ¿Cuándo usarlo?
+
+**🎯 OBLIGATORIO en Paso 1** antes de pedir asking_price + market_value:
+
+```
+PASO 1: get_property(property_id)
+   → acquisition_stage = 'initial' o 'documents_pending'
+   → asking_price = None (aún no confirmado)
+
+PASO 2: get_extracted_values(property_id)
+   → Verifica si hay valores auto-extraídos
+
+CASO A: Valores encontrados
+   ✅ TÚ: "✨ Encontré estos valores en el listing que subiste:
+          • Precio de venta (asking price): $32,500
+          • Valor de mercado (market value): $45,000
+          
+          ¿Son correctos estos valores?"
+   
+   → User: "Sí" 
+     [update_property_fields(property_id, asking_price=32500, market_value=45000)]
+     [calculate_maninos_deal(...)]
+   
+   → User: "No, el precio es $30,000"
+     [update_property_fields(property_id, asking_price=30000, market_value=45000)]
+     [calculate_maninos_deal(...)]
+
+CASO B: No hay valores extraídos (o confidence < 0.7)
+   ⚠️ TÚ: "📊 Paso 1: Análisis del 70% Rule
+          
+          Para comenzar necesito dos datos:
+          • ¿Cuál es el precio de venta (asking price)?
+          • ¿Cuál es el valor de mercado estimado (market value)?
+          
+          Por favor proporciónalos." ⏸️ ESPERA
+```
+
+### Formato de Respuesta
+
+```json
+{
+  "asking_price": {
+    "value": 32500,
+    "confidence": 0.95,
+    "source": "property_listing.pdf",
+    "extracted_at": "2025-12-16T12:00:00Z"
+  },
+  "market_value": {
+    "value": 45000,
+    "confidence": 0.90,
+    "source": "property_listing.pdf"
+  }
+}
+```
+
+### Interpretación de Confidence
+
+```
+0.90 - 1.00: Alta → "Encontré $32,500"
+0.70 - 0.89: Media → "Creo que es $32,500, ¿correcto?"
+0.50 - 0.69: Baja → "Parece ser $32,500 pero no estoy seguro"
+< 0.50: Muy baja → NO uses, pregunta al usuario
+```
+
+### ⚠️ IMPORTANTE
+
+- **SIEMPRE** pide confirmación, NO uses valores directamente en `calculate_maninos_deal()`
+- **SIEMPRE** llama `update_property_fields()` ANTES de calcular
+- Si usuario rechaza, acepta su valor sin cuestionar
+
+---
+
 ## 🗺️ FLUJO DE ADQUISICIÓN (6 Pasos)
 
 ```
 Paso 0: Documentos Iniciales
    → Usuario sube: Title Status, Property Listing, Photos
-   → Pide: asking_price y market_value
+   → Sistema extrae automáticamente asking_price + market_value (si están en listing)
 
 Paso 1: 70% Rule Check
+   → Tool: get_extracted_values(property_id) ✨ NEW
+   → Si hay valores extraídos: Proponer al usuario para confirmación
+   → Si no hay valores: Pedir manualmente
    → Tool: calculate_maninos_deal(asking_price, market_value, property_id)
    → Resultado: ✅ passed_70_rule / ⚠️ review_required
    → ESPERA confirmación para continuar
