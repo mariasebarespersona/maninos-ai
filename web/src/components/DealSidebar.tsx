@@ -1,9 +1,19 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MobileHomeProperty } from '@/types/maninos';
 import { 
   Building2, MapPin, DollarSign, Hammer, TrendingUp, 
-  FileText, AlertTriangle, CheckCircle, XCircle 
+  FileText, AlertTriangle, CheckCircle, XCircle,
+  Download, Eye, FileCheck, Image, Loader2
 } from 'lucide-react';
+
+interface Document {
+  id: string;
+  document_type: 'title_status' | 'property_listing' | 'property_photos';
+  document_name: string;
+  storage_path: string;
+  created_at: string;
+  download_url?: string;
+}
 
 interface DealSidebarProps {
   property: MobileHomeProperty | null;
@@ -11,6 +21,109 @@ interface DealSidebarProps {
 }
 
 export function DealSidebar({ property, className = '' }: DealSidebarProps) {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Fetch documents when property changes
+  useEffect(() => {
+    if (property?.id) {
+      fetchDocuments(property.id);
+    } else {
+      setDocuments([]);
+    }
+  }, [property?.id]);
+
+  const fetchDocuments = async (propertyId: string) => {
+    setLoadingDocs(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/property/${propertyId}/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.uploaded_documents || []);
+      } else {
+        console.error('[DealSidebar] Failed to fetch documents:', res.statusText);
+        setDocuments([]);
+      }
+    } catch (error) {
+      console.error('[DealSidebar] Error fetching documents:', error);
+      setDocuments([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const handleDownload = async (doc: Document) => {
+    setDownloadingId(doc.id);
+    try {
+      // Use the download_url if available (signed URL from backend)
+      if (doc.download_url) {
+        // Open in new tab to trigger download
+        const link = document.createElement('a');
+        link.href = doc.download_url;
+        link.download = doc.document_name;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Fallback: fetch from backend endpoint
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${doc.id}/download`);
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = doc.document_name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        } else {
+          console.error('[DealSidebar] Failed to download document');
+        }
+      }
+    } catch (error) {
+      console.error('[DealSidebar] Error downloading document:', error);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handlePreview = (doc: Document) => {
+    // Open preview in new tab
+    window.open(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/documents/${doc.id}/preview`,
+      '_blank'
+    );
+  };
+
+  const getDocIcon = (type: string) => {
+    switch (type) {
+      case 'title_status':
+        return <FileCheck className="text-blue-500" size={18} />;
+      case 'property_listing':
+        return <FileText className="text-green-500" size={18} />;
+      case 'property_photos':
+        return <Image className="text-purple-500" size={18} />;
+      default:
+        return <FileText className="text-gray-500" size={18} />;
+    }
+  };
+
+  const getDocLabel = (type: string) => {
+    switch (type) {
+      case 'title_status':
+        return 'Title Status';
+      case 'property_listing':
+        return 'Property Listing';
+      case 'property_photos':
+        return 'Photos/Inspection';
+      default:
+        return 'Document';
+    }
+  };
+
   if (!property) {
     return (
       <div className={`w-80 border-l border-slate-200 bg-slate-50 p-6 flex flex-col items-center justify-center text-slate-400 ${className}`}>
@@ -122,14 +235,68 @@ export function DealSidebar({ property, className = '' }: DealSidebarProps) {
             </div>
         </section>
 
-        {/* Documents Snippet */}
+        {/* Documents Section */}
         <section>
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Documents</h3>
-            {/* Placeholder for document list - in a real app this would map property.documents */}
-            <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-500 flex items-center justify-center border border-dashed border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <FileText size={14} />
+              Documentos Subidos
+              {loadingDocs && <Loader2 size={12} className="animate-spin text-slate-400" />}
+            </h3>
+            
+            {loadingDocs && documents.length === 0 ? (
+              <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-500 flex items-center justify-center border border-slate-200">
+                <Loader2 size={16} className="mr-2 animate-spin" />
+                <span>Loading documents...</span>
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-500 flex items-center justify-center border border-dashed border-slate-200">
                 <FileText size={16} className="mr-2 opacity-50" />
-                <span>No documents attached</span>
-            </div>
+                <span>No documents uploaded yet</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {documents.map(doc => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors border border-slate-100"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {getDocIcon(doc.document_type)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {getDocLabel(doc.document_type)}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {doc.document_name}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        disabled={downloadingId === doc.id}
+                        className="p-1.5 hover:bg-slate-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Download"
+                      >
+                        {downloadingId === doc.id ? (
+                          <Loader2 size={14} className="text-slate-600 animate-spin" />
+                        ) : (
+                          <Download size={14} className="text-slate-600" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handlePreview(doc)}
+                        className="p-1.5 hover:bg-slate-200 rounded transition-colors"
+                        title="Preview"
+                      >
+                        <Eye size={14} className="text-slate-600" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
         </section>
 
       </div>

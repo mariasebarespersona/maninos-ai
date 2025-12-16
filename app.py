@@ -3832,20 +3832,39 @@ async def upload_document_endpoint(
 @app.get("/api/property/{property_id}/documents")
 async def get_property_documents(property_id: str):
     """
-    Get all documents for a property (for Paso 0 - Documents Collection).
-    Returns a list of documents with their upload status.
+    Get all documents for a property with signed download URLs.
+    Returns a list of documents with their metadata and download links.
     """
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        from tools.supabase_client import sb
+        from tools.supabase_client import sb, BUCKET
         
-        # Try to get from maninos_documents table (simplified approach)
+        # Get documents from maninos_documents table
         try:
-            result = sb.table("maninos_documents").select("*").eq("property_id", property_id).execute()
+            result = sb.table("maninos_documents")\
+                .select("*")\
+                .eq("property_id", property_id)\
+                .order("created_at", desc=True)\
+                .execute()
+            
             documents = result.data or []
             logger.info(f"[get_property_documents] Found {len(documents)} documents for property {property_id}")
+            
+            # Generate signed URLs for each document (24h expiry)
+            for doc in documents:
+                if doc.get("storage_path"):
+                    try:
+                        signed_url = sb.storage.from_(BUCKET).create_signed_url(
+                            doc["storage_path"],
+                            expires_in=86400  # 24 hours
+                        )
+                        doc["download_url"] = signed_url.get("signedURL") if signed_url else None
+                    except Exception as url_error:
+                        logger.warning(f"[get_property_documents] Failed to create signed URL for {doc['id']}: {url_error}")
+                        doc["download_url"] = None
+            
         except Exception as table_error:
             # Table doesn't exist yet - that's fine, return empty list
             logger.info(f"[get_property_documents] maninos_documents table not found (expected for first use): {table_error}")
@@ -3853,13 +3872,117 @@ async def get_property_documents(property_id: str):
         
         return JSONResponse({
             "success": True,
-            "documents": documents,
+            "uploaded_documents": documents,  # Frontend expects this key
             "count": len(documents)
         })
         
     except Exception as e:
         logger.error(f"❌ [get_property_documents] Error: {e}", exc_info=True)
         return JSONResponse({"error": str(e), "success": False}, status_code=500)
+
+
+@app.get("/api/documents/{doc_id}/download")
+async def download_document(doc_id: str):
+    """
+    Download a document by ID.
+    Returns the file as an attachment (triggers browser download).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from tools.supabase_client import sb, BUCKET
+        
+        # Get document metadata
+        doc_result = sb.table("maninos_documents")\
+            .select("*")\
+            .eq("id", doc_id)\
+            .single()\
+            .execute()
+        
+        if not doc_result.data:
+            logger.error(f"[download_document] Document {doc_id} not found")
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data
+        storage_path = doc.get("storage_path")
+        document_name = doc.get("document_name", "document.pdf")
+        
+        if not storage_path:
+            logger.error(f"[download_document] No storage_path for document {doc_id}")
+            raise HTTPException(status_code=400, detail="Document has no storage path")
+        
+        # Download file from Supabase Storage
+        file_bytes = sb.storage.from_(BUCKET).download(storage_path)
+        
+        logger.info(f"[download_document] Downloaded {document_name} ({len(file_bytes)} bytes)")
+        
+        return Response(
+            content=file_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={document_name}",
+                "Content-Type": "application/pdf"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [download_document] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/{doc_id}/preview")
+async def preview_document(doc_id: str):
+    """
+    Preview a document by ID.
+    Returns the file inline (displays in browser, not download).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from tools.supabase_client import sb, BUCKET
+        
+        # Get document metadata
+        doc_result = sb.table("maninos_documents")\
+            .select("*")\
+            .eq("id", doc_id)\
+            .single()\
+            .execute()
+        
+        if not doc_result.data:
+            logger.error(f"[preview_document] Document {doc_id} not found")
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data
+        storage_path = doc.get("storage_path")
+        document_name = doc.get("document_name", "document.pdf")
+        
+        if not storage_path:
+            logger.error(f"[preview_document] No storage_path for document {doc_id}")
+            raise HTTPException(status_code=400, detail="Document has no storage path")
+        
+        # Download file from Supabase Storage
+        file_bytes = sb.storage.from_(BUCKET).download(storage_path)
+        
+        logger.info(f"[preview_document] Previewing {document_name} ({len(file_bytes)} bytes)")
+        
+        return Response(
+            content=file_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename={document_name}",
+                "Content-Type": "application/pdf"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [preview_document] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
