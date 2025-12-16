@@ -130,6 +130,8 @@ export function DealSidebar({ property, className = '', onSendEmailRequest }: De
         return <FileText className="text-green-500" size={18} />;
       case 'property_photos':
         return <Image className="text-purple-500" size={18} />;
+      case 'buy_contract':
+        return <FileText className="text-orange-500" size={18} />;
       default:
         return <FileText className="text-gray-500" size={18} />;
     }
@@ -143,6 +145,8 @@ export function DealSidebar({ property, className = '', onSendEmailRequest }: De
         return 'Property Listing';
       case 'property_photos':
         return 'Photos/Inspection';
+      case 'buy_contract':
+        return 'Buy Contract';
       default:
         return 'Document';
     }

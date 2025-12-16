@@ -225,6 +225,42 @@ Please have this reviewed by a licensed attorney before signing.
         # Don't fail if contracts table doesn't exist yet
         logger.warning(f"⚠️ [generate_buy_contract] Could not save contract to DB (table might not exist): {e}")
     
+    # SAVE CONTRACT TO MANINOS_DOCUMENTS (for sidebar display)
+    try:
+        from .supabase_client import sb
+        
+        # Generate contract filename
+        contract_filename = f"Buy_Contract_{property_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        storage_path = f"property/{property_id}/documents/{contract_filename}"
+        
+        # Upload contract text to Supabase Storage
+        logger.info(f"📤 [generate_buy_contract] Uploading contract to storage: {storage_path}")
+        contract_bytes = contract_text.strip().encode('utf-8')
+        
+        upload_result = sb.storage.from_("property-docs").upload(
+            path=storage_path,
+            file=contract_bytes,
+            file_options={"content-type": "text/plain"}
+        )
+        
+        logger.info(f"✅ [generate_buy_contract] Contract uploaded to storage successfully")
+        
+        # Create entry in maninos_documents table
+        document_record = sb.table("maninos_documents").insert({
+            "property_id": property_id,
+            "document_name": contract_filename,
+            "document_type": "buy_contract",
+            "storage_path": storage_path,
+            "content_type": "text/plain"
+        }).execute()
+        
+        if document_record.data:
+            result["document_id"] = document_record.data[0]["id"]
+            logger.info(f"✅ [generate_buy_contract] Contract saved to maninos_documents (ID: {result['document_id']})")
+    except Exception as e:
+        # Don't fail contract generation if document storage fails
+        logger.warning(f"⚠️ [generate_buy_contract] Could not save contract to maninos_documents: {e}")
+    
     # UPDATE ACQUISITION STAGE TO 'contract_generated'
     try:
         from .property_tools import update_property_fields

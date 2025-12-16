@@ -116,6 +116,13 @@ Turno 2: get_inspection_checklist() → Mensaje corto → ESPERA ⏸️
 - Document: "Send me the title status"
 - Summary: "Email me the inspection summary"
 - Multiple: "Send all documents to my colleague"
+- **Contract: "Send me the contract" / "Send me the buy contract"**
+
+**CRITICAL - Document Types:**
+- `title_status` → For title/status reports
+- `property_listing` → For property listings/descriptions
+- `property_photos` → For photos/inspection reports
+- `buy_contract` → **FOR CONTRACTS** (use this when user requests contract!)
 
 **STEP 2: Get email address if not provided**
 ```
@@ -148,11 +155,17 @@ send_email(
     <p>Best regards,<br>MANINOS AI</p>
     """,
     property_id=property_id,
-    document_type="title_status"  # or "property_listing" or "property_photos"
+    document_type="title_status"  # Options: "title_status", "property_listing", "property_photos", "buy_contract"
 )
 
 # CRITICAL: Do NOT call get_document_for_email separately!
 # Just pass property_id and document_type to send_email
+
+# DOCUMENT TYPES:
+# - "title_status" → Title status report
+# - "property_listing" → Property listing/description
+# - "property_photos" → Photos or inspection report
+# - "buy_contract" → Generated purchase contract (use this for contracts!)
 ```
 
 **For Summaries:**
