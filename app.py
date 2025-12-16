@@ -3919,6 +3919,10 @@ async def download_document(doc_id: str):
         import mimetypes
         content_type = doc.get("content_type") or mimetypes.guess_type(document_name)[0] or "application/octet-stream"
         
+        # Add charset for text files to prevent encoding issues
+        if content_type.startswith("text/"):
+            content_type = f"{content_type}; charset=utf-8"
+        
         logger.info(f"[download_document] Downloaded {document_name} ({len(file_bytes)} bytes, type: {content_type})")
         
         return Response(
@@ -3974,6 +3978,10 @@ async def preview_document(doc_id: str):
         # Detect content type from document
         import mimetypes
         content_type = doc.get("content_type") or mimetypes.guess_type(document_name)[0] or "application/octet-stream"
+        
+        # Add charset for text files to prevent encoding issues
+        if content_type.startswith("text/"):
+            content_type = f"{content_type}; charset=utf-8"
         
         logger.info(f"[preview_document] Previewing {document_name} ({len(file_bytes)} bytes, type: {content_type})")
         
