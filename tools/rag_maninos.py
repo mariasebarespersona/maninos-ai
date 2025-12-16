@@ -13,26 +13,93 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_text(s: str) -> str:
-    """Normalize text for chunking"""
-    s = (s or "").replace("\r", " ").replace("\n", "\n")
-    s = re.sub(r"\s+", " ", s)
+    """Normalize text for chunking - preserves structure"""
+    s = (s or "").replace("\r\n", "\n").replace("\r", "\n")
+    # Don't collapse all whitespace - preserve paragraph structure
+    # Just clean up excessive blank lines
+    s = re.sub(r"\n{4,}", "\n\n\n", s)
     return s.strip()
 
 
-def _split_into_chunks(text: str, max_chars: int = 2500, overlap: int = 200) -> List[str]:
-    """Split text into overlapping chunks"""
+def _split_into_chunks(text: str, max_chars: int = 1500, overlap: int = 200) -> List[str]:
+    """
+    Intelligent text chunking with multiple strategies.
+    
+    Strategies (in order of preference):
+    1. Split on natural boundaries (paragraphs, sections)
+    2. Split on sentence boundaries
+    3. Split on word boundaries (fallback)
+    
+    This preserves context better than simple character splitting.
+    """
     text = text or ""
     if len(text) <= max_chars:
         return [text]
+    
     chunks: List[str] = []
-    start = 0
-    while start < len(text):
-        end = min(len(text), start + max_chars)
-        chunk = text[start:end]
-        chunks.append(chunk)
-        if end == len(text):
-            break
-        start = max(0, end - overlap)
+    
+    # Strategy 1: Split on double newlines (paragraphs/sections)
+    paragraphs = text.split("\n\n")
+    
+    current_chunk = ""
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        
+        # If adding this paragraph would exceed max_chars
+        if len(current_chunk) + len(para) + 2 > max_chars:
+            # If current chunk is not empty, save it
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                # Start new chunk with overlap from previous
+                if overlap > 0 and len(current_chunk) > overlap:
+                    current_chunk = current_chunk[-overlap:] + "\n\n" + para
+                else:
+                    current_chunk = para
+            else:
+                # Paragraph itself is too long, need to split it
+                if len(para) > max_chars:
+                    # Strategy 2: Split on sentences
+                    sentences = re.split(r'(?<=[.!?])\s+', para)
+                    sent_chunk = ""
+                    for sent in sentences:
+                        if len(sent_chunk) + len(sent) + 1 > max_chars:
+                            if sent_chunk:
+                                chunks.append(sent_chunk.strip())
+                                if overlap > 0 and len(sent_chunk) > overlap:
+                                    sent_chunk = sent_chunk[-overlap:] + " " + sent
+                                else:
+                                    sent_chunk = sent
+                            else:
+                                # Single sentence too long, force split on words
+                                words = sent.split()
+                                word_chunk = ""
+                                for word in words:
+                                    if len(word_chunk) + len(word) + 1 > max_chars:
+                                        if word_chunk:
+                                            chunks.append(word_chunk.strip())
+                                        word_chunk = word
+                                    else:
+                                        word_chunk += (" " if word_chunk else "") + word
+                                sent_chunk = word_chunk
+                        else:
+                            sent_chunk += (" " if sent_chunk else "") + sent
+                    current_chunk = sent_chunk
+                else:
+                    current_chunk = para
+        else:
+            current_chunk += ("\n\n" if current_chunk else "") + para
+    
+    # Don't forget the last chunk
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    # Filter out very short chunks (likely just overlap fragments)
+    chunks = [c for c in chunks if len(c) > 50]
+    
+    logger.info(f"[_split_into_chunks] Created {len(chunks)} chunks (avg size: {sum(len(c) for c in chunks) / len(chunks) if chunks else 0:.0f} chars)")
+    
     return chunks
 
 
@@ -158,26 +225,84 @@ def index_document_maninos(property_id: str, document_id: str) -> Dict[str, Any]
         return {"indexed": 0, "error": str(e)}
 
 
+def _rerank_chunks(query: str, chunks: List[Dict[str, Any]], top_k: int = 10) -> List[Dict[str, Any]]:
+    """
+    Rerank chunks using LLM for better relevance.
+    
+    This is computationally expensive but dramatically improves relevance
+    for complex queries. Only used on top candidates from hybrid search.
+    """
+    if not chunks or len(chunks) <= top_k:
+        return chunks
+    
+    logger.info(f"[_rerank_chunks] Reranking {len(chunks)} chunks to top {top_k}")
+    
+    try:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        
+        # Build reranking prompt
+        chunks_text = ""
+        for i, chunk in enumerate(chunks[:30], 1):  # Only rerank top 30 to save tokens
+            chunks_text += f"\n[{i}] {chunk['document_name']} (parte {chunk['chunk_index']+1}):\n"
+            chunks_text += f"{chunk['text'][:300]}...\n"  # First 300 chars only
+        
+        prompt = (
+            f"Pregunta del usuario: {query}\n\n"
+            "A continuación hay fragmentos de documentos. "
+            f"Clasifica los {min(top_k, len(chunks))} fragmentos MÁS RELEVANTES para responder esta pregunta.\n"
+            "Responde SOLO con los números de los fragmentos, separados por comas, en orden de relevancia.\n"
+            "Ejemplo: 5,12,3,18,1\n\n"
+            f"Fragmentos:\n{chunks_text}\n\n"
+            f"Los {min(top_k, len(chunks))} más relevantes (solo números):"
+        )
+        
+        response = llm.invoke(prompt).content.strip()
+        
+        # Parse response
+        try:
+            indices = [int(x.strip()) - 1 for x in response.split(",") if x.strip().isdigit()]
+            reranked = [chunks[i] for i in indices if 0 <= i < len(chunks)]
+            
+            # If reranking returned fewer than top_k, append remaining by original score
+            if len(reranked) < top_k:
+                remaining = [c for c in chunks if c not in reranked]
+                reranked.extend(remaining[:top_k - len(reranked)])
+            
+            logger.info(f"[_rerank_chunks] Reranking successful, top indices: {indices[:5]}")
+            return reranked[:top_k]
+        
+        except Exception as parse_error:
+            logger.warning(f"[_rerank_chunks] Failed to parse reranking response: {parse_error}")
+            return chunks[:top_k]
+    
+    except Exception as e:
+        logger.warning(f"[_rerank_chunks] Reranking failed: {e}, using original order")
+        return chunks[:top_k]
+
+
 def search_chunks_maninos(
     property_id: str, 
     query: str, 
-    limit: int = 30,
-    document_type: str | None = None
+    limit: int = 50,  # Increased from 30 to get more candidates for reranking
+    document_type: str | None = None,
+    use_reranking: bool = True  # NEW: Enable/disable reranking
 ) -> List[Dict[str, Any]]:
     """
-    Search for relevant chunks using hybrid search (semantic + lexical).
+    Search for relevant chunks using hybrid search (semantic + lexical) + reranking.
     
     Args:
         property_id: UUID of the property
         query: User's question
-        limit: Max number of chunks to return
+        limit: Max number of chunks to retrieve initially
         document_type: Optional filter by document type
+        use_reranking: Whether to use LLM reranking (default True)
     
     Returns:
         List of {property_id, document_type, document_name, chunk_index, text, score}
         sorted by relevance
     """
-    MAX_CHUNK_LENGTH = 800
+    MAX_CHUNK_LENGTH = 1200  # Increased to preserve more context
     
     try:
         # 1. Query rag_chunks
@@ -221,7 +346,7 @@ def search_chunks_maninos(
         logger.warning(f"[search_chunks_maninos] Query embedding failed: {e}")
         qvec = None
     
-    # 4. Score each chunk
+    # 4. Score each chunk - IMPROVED HYBRID ALGORITHM
     def cosine(a: List[float], b: List[float]) -> float:
         if not a or not b:
             return 0.0
@@ -231,13 +356,29 @@ def search_chunks_maninos(
         return s / (na * nb) if na and nb else 0.0
     
     def lexical_score(text: str, tokens: List[str]) -> float:
+        """Enhanced lexical scoring with term frequency"""
         t = text.lower()
-        return sum(1.0 for tok in tokens if tok in t)
+        score = 0.0
+        for tok in tokens:
+            # Count occurrences (not just presence)
+            occurrences = t.count(tok)
+            if occurrences > 0:
+                # Diminishing returns for multiple occurrences (log scale)
+                score += 1.0 + (0.3 * min(occurrences - 1, 3))
+        return score
     
     scored: List[Dict[str, Any]] = []
+    no_embedding_count = 0
+    
     for r in rows:
-        # Lexical score
-        lex = lexical_score(r.get("text", ""), query_tokens)
+        text = r.get("text", "")
+        
+        # Skip very short chunks (likely incomplete)
+        if len(text.strip()) < 20:
+            continue
+        
+        # Lexical score (enhanced with term frequency)
+        lex = lexical_score(text, query_tokens)
         lex_normalized = lex / (len(query_tokens) or 1)
         
         # Semantic score
@@ -249,115 +390,258 @@ def search_chunks_maninos(
             except Exception:
                 emb = None
         
-        vec = cosine(qvec, emb) if qvec and emb and isinstance(emb, list) else 0.0
+        has_embedding = bool(emb and isinstance(emb, list) and len(emb) > 0)
+        vec = cosine(qvec, emb) if qvec and has_embedding else 0.0
         
-        # Hybrid score: 70% semantic, 30% lexical
-        score = 0.7 * vec + 0.3 * lex_normalized
+        if not has_embedding:
+            no_embedding_count += 1
         
-        if score > 0:
+        # Adaptive hybrid scoring
+        if has_embedding and vec > 0:
+            # Both semantic and lexical available - semantic is primary
+            score = 0.75 * vec + 0.25 * lex_normalized
+        else:
+            # Only lexical available - penalize for missing embedding
+            score = 0.5 * lex_normalized
+        
+        # Boost for exact phrase matches
+        if query.lower() in text.lower():
+            score += 0.15
+        
+        # Minimum relevance threshold to filter noise
+        if score > 0.01:
             rr = dict(r)
             rr["score"] = score
-            # Truncate long chunks
-            if len(rr.get("text", "")) > MAX_CHUNK_LENGTH:
-                rr["text"] = rr["text"][:MAX_CHUNK_LENGTH] + "...[truncated]"
+            rr["lex_score"] = lex_normalized
+            rr["vec_score"] = vec
+            rr["has_embedding"] = has_embedding
+            
+            # Truncate long chunks to save memory
+            if len(text) > MAX_CHUNK_LENGTH:
+                rr["text"] = text[:MAX_CHUNK_LENGTH] + "...[texto truncado para ahorrar espacio]"
+            
             scored.append(rr)
     
+    if no_embedding_count > 0:
+        logger.warning(f"[search_chunks_maninos] {no_embedding_count}/{len(rows)} chunks missing embeddings")
+    
+    logger.info(f"[search_chunks_maninos] Scored {len(scored)} chunks (filtered {len(rows) - len(scored)} low-relevance)")
+    
     scored.sort(key=lambda x: x["score"], reverse=True)
-    logger.info(f"[search_chunks_maninos] Returning top {min(limit, len(scored))} chunks")
-    return scored[:limit]
+    
+    # Apply reranking if enabled and we have enough candidates
+    if use_reranking and len(scored) > 10:
+        logger.info(f"[search_chunks_maninos] Applying reranking on top {min(30, len(scored))} chunks")
+        top_candidates = scored[:30]  # Only rerank top 30 to save tokens/time
+        reranked = _rerank_chunks(query, top_candidates, top_k=min(10, len(top_candidates)))
+        # Append remaining chunks after reranked ones
+        remaining = scored[30:]
+        final = reranked + remaining
+        logger.info(f"[search_chunks_maninos] Returning {min(limit, len(final))} chunks (reranked)")
+        return final[:limit]
+    else:
+        logger.info(f"[search_chunks_maninos] Returning top {min(limit, len(scored))} chunks (no reranking)")
+        return scored[:limit]
 
 
 def query_documents_maninos(
     property_id: str, 
     question: str, 
-    top_k: int = 5,
-    document_type: str | None = None
+    top_k: int = 8,  # Increased from 5 to 8 for better context
+    document_type: str | None = None,
+    use_reranking: bool = True
 ) -> Dict[str, Any]:
     """
     Answer a question using RAG over indexed documents.
     
+    This is the MAIN query function - optimized for maximum accuracy.
+    
     Args:
         property_id: UUID of the property
         question: User's question
-        top_k: Number of chunks to use as context
+        top_k: Number of chunks to use as context (default 8)
         document_type: Optional filter (e.g., 'title_status')
+        use_reranking: Whether to use LLM reranking (default True)
     
     Returns:
         {
             "answer": str,
             "citations": [{"document_type", "document_name", "chunk_index"}],
-            "context_used": bool
+            "context_used": bool,
+            "chunks_searched": int,
+            "chunks_used": int
         }
     """
-    logger.info(f"[query_documents_maninos] Question: {question}")
+    logger.info(f"[query_documents_maninos] Question: '{question}' (top_k={top_k}, reranking={use_reranking})")
     
-    # 1. Search for relevant chunks
-    hits = search_chunks_maninos(property_id, question, limit=60, document_type=document_type)
+    # 1. Search for relevant chunks (with reranking)
+    hits = search_chunks_maninos(
+        property_id, 
+        question, 
+        limit=100,  # Increased from 60 to get more candidates
+        document_type=document_type,
+        use_reranking=use_reranking
+    )
     
     if not hits:
+        logger.warning(f"[query_documents_maninos] No chunks found for property {property_id}")
         return {
-            "answer": "No he encontrado información relevante en los documentos subidos para esta propiedad.",
+            "answer": "No he encontrado información relevante en los documentos subidos para esta propiedad. "
+                     "Verifica que los documentos estén correctamente indexados.",
             "citations": [],
-            "context_used": False
+            "context_used": False,
+            "chunks_searched": 0,
+            "chunks_used": 0
         }
     
-    # 2. Build context from top K chunks
+    # 2. Build context from top K chunks - IMPROVED
     ctx_hits = hits[:top_k]
+    
+    # Log scores for debugging
+    if ctx_hits:
+        scores = [h.get('score', 0) for h in ctx_hits]
+        logger.info(f"[query_documents_maninos] Top {len(ctx_hits)} chunk scores: "
+                   f"min={min(scores):.3f}, max={max(scores):.3f}, avg={sum(scores)/len(scores):.3f}")
+    
+    # Build rich context with document metadata
     context_parts = []
+    docs_used = set()
+    
     for i, h in enumerate(ctx_hits, 1):
-        header = f"[#{i}] {h['document_name']} (parte {h.get('chunk_index', 0)+1})"
+        doc_name = h['document_name']
+        doc_type = h['document_type']
+        chunk_idx = h.get('chunk_index', 0)
         text = h['text']
+        score = h.get('score', 0)
+        
+        docs_used.add(f"{doc_type}:{doc_name}")
+        
+        # Rich header with metadata
+        header = f"[Fragmento #{i}] 📄 {doc_name}"
+        if doc_type:
+            type_labels = {
+                'title_status': 'Title Status',
+                'property_listing': 'Property Listing',
+                'property_photos': 'Photos/Inspection'
+            }
+            header += f" ({type_labels.get(doc_type, doc_type)})"
+        header += f" - Parte {chunk_idx + 1}"
+        
         context_parts.append(f"{header}:\n{text}")
     
-    context = "\n\n".join(context_parts)
+    context = "\n\n" + "═" * 70 + "\n\n".join(context_parts) + "\n\n" + "═" * 70
     
-    logger.info(f"[query_documents_maninos] Using {len(ctx_hits)} chunks as context")
+    logger.info(f"[query_documents_maninos] Using {len(ctx_hits)} chunks from {len(docs_used)} unique documents")
     
-    # 3. Generate answer with LLM
+    # 3. Generate answer with LLM - IMPROVED PROMPT
     prompt = (
-        "Eres un asistente experto en análisis de documentos inmobiliarios. "
-        "Responde en español de forma clara, completa y profesional.\n\n"
-        "INSTRUCCIONES:\n"
-        "- Lee cuidadosamente todos los fragmentos del contexto proporcionado\n"
-        "- Responde SOLO usando la información del contexto\n"
-        "- Si encuentras información relevante, responde de forma completa y natural\n"
-        "- Incluye detalles específicos como fechas, cantidades, condiciones, etc.\n"
-        "- Si la información no aparece en los documentos, di explícitamente 'No aparece en los documentos subidos'\n"
-        "- No inventes información que no esté en el contexto\n\n"
-        f"PREGUNTA DEL USUARIO: {question}\n\n"
-        f"CONTEXTO DE LOS DOCUMENTOS:\n{context}\n\n"
-        "TU RESPUESTA:"
+        "Eres un asistente experto en análisis de documentos inmobiliarios para mobile homes. "
+        "Tu trabajo es responder preguntas del usuario usando ÚNICAMENTE la información presente en los documentos proporcionados.\n\n"
+        
+        "═══════════════════════════════════════════════════════════════════\n"
+        "REGLAS CRÍTICAS:\n"
+        "═══════════════════════════════════════════════════════════════════\n\n"
+        
+        "1. PRECISIÓN:\n"
+        "   - Responde SOLO con información que aparece explícitamente en el contexto\n"
+        "   - Si un dato específico no está, di: 'No aparece en los documentos'\n"
+        "   - Si hay información parcial, menciónala pero aclara qué falta\n"
+        "   - Si hay contradicciones entre documentos, menciona ambas versiones\n\n"
+        
+        "2. COMPLETITUD:\n"
+        "   - Lee TODOS los fragmentos antes de responder\n"
+        "   - Sintetiza información de múltiples fragmentos si es necesario\n"
+        "   - Incluye TODOS los detalles relevantes (fechas, cantidades, nombres, condiciones)\n"
+        "   - Si hay listas o múltiples elementos, menciónalos todos\n\n"
+        
+        "3. CLARIDAD:\n"
+        "   - Responde de forma directa y estructurada\n"
+        "   - Usa bullets o listas cuando haya múltiples elementos\n"
+        "   - Usa números específicos (ej: $32,500, no 'alrededor de 30 mil')\n"
+        "   - Mantén un tono profesional pero accesible\n\n"
+        
+        "4. CONTEXTO:\n"
+        "   - Si la pregunta es ambigua, interpreta según el contexto inmobiliario\n"
+        "   - Para preguntas de 'estado': incluye condición física Y legal\n"
+        "   - Para preguntas de 'precio': incluye precio de venta, valor de mercado, etc.\n"
+        "   - Para preguntas de 'defectos': lista TODOS los problemas mencionados\n\n"
+        
+        "5. CASOS ESPECIALES:\n"
+        "   - Si pregunta por 'título': menciona tipo (Clean/Lien/Missing) + detalles\n"
+        "   - Si pregunta por 'precio': distingue asking price vs market value vs ARV\n"
+        "   - Si pregunta por 'año': menciona año de construcción/fabricación\n"
+        "   - Si pregunta por 'tamaño': menciona pies cuadrados, bedrooms, bathrooms\n"
+        "   - Si pregunta por 'ubicación': menciona dirección completa + park name\n\n"
+        
+        "═══════════════════════════════════════════════════════════════════\n"
+        f"PREGUNTA DEL USUARIO:\n{question}\n\n"
+        
+        "═══════════════════════════════════════════════════════════════════\n"
+        f"CONTEXTO DE LOS DOCUMENTOS:\n\n{context}\n\n"
+        
+        "═══════════════════════════════════════════════════════════════════\n"
+        "TU RESPUESTA (en español, profesional, basada SOLO en el contexto):\n"
     )
     
     try:
         from langchain_openai import ChatOpenAI
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        
+        # Use gpt-4o for complex/important queries, gpt-4o-mini for simple ones
+        # Heuristic: if query is short and simple, use mini; otherwise use full model
+        query_lower = question.lower()
+        simple_queries = ["cuál", "qué", "cuánto", "dónde", "cuándo", "quién"]
+        is_simple = len(question) < 50 and any(q in query_lower for q in simple_queries)
+        
+        model = "gpt-4o-mini" if is_simple else "gpt-4o"
+        logger.info(f"[query_documents_maninos] Using model: {model} (simple={is_simple})")
+        
+        llm = ChatOpenAI(model=model, temperature=0)
         answer = llm.invoke(prompt).content
+        
     except Exception as e:
         logger.error(f"[query_documents_maninos] LLM error: {e}")
         return {
-            "answer": f"Error al generar respuesta: {str(e)}",
+            "answer": f"Error al generar respuesta: {str(e)}. "
+                     f"Por favor, intenta reformular tu pregunta o contacta soporte.",
             "citations": [],
             "context_used": True,
+            "chunks_searched": len(hits),
+            "chunks_used": 0,
             "error": str(e)
         }
     
-    # 4. Build citations
-    citations = [
-        {
+    # 4. Build rich citations with metadata
+    citations = []
+    for h in ctx_hits:
+        citation = {
             "document_type": h["document_type"],
             "document_name": h["document_name"],
             "chunk_index": h["chunk_index"],
+            "relevance_score": round(h.get("score", 0), 3)
         }
-        for h in ctx_hits
-    ]
+        citations.append(citation)
     
-    logger.info(f"✅ [query_documents_maninos] Answer generated with {len(citations)} citations")
+    # 5. Add citation summary to answer
+    if citations:
+        unique_docs = set(c["document_name"] for c in citations)
+        citation_text = "\n\n" + "─" * 50 + "\n"
+        citation_text += f"📚 **Fuentes consultadas:** {len(unique_docs)} documento(s)\n"
+        for doc in unique_docs:
+            doc_citations = [c for c in citations if c["document_name"] == doc]
+            parts = [str(c["chunk_index"] + 1) for c in doc_citations]
+            citation_text += f"  • {doc} (partes: {', '.join(parts)})\n"
+        
+        answer += citation_text
+    
+    logger.info(f"✅ [query_documents_maninos] Answer generated: {len(answer)} chars, {len(citations)} citations")
     
     return {
         "answer": answer,
         "citations": citations,
-        "context_used": True
+        "context_used": True,
+        "chunks_searched": len(hits),
+        "chunks_used": len(ctx_hits),
+        "model_used": model
     }
 
 

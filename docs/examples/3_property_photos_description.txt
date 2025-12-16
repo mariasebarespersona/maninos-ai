@@ -1,150 +1,409 @@
-═══════════════════════════════════════════════════════
-        PROPERTY PHOTOS & INSPECTION NOTES
-═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
+           PROPERTY INSPECTION & PHOTO DOCUMENTATION
+                456 Oak Lane, Space #23
+            Sunset Mobile Home Park, Phoenix, AZ
+═══════════════════════════════════════════════════════════════════
 
-Property: Ronda de Sobradiel 16
-Date: December 11, 2025
-Inspector: MANINOS AI Team
+Inspection Date:       December 12, 2025
+Inspector:             David Chen, Certified Home Inspector
+License #:             AZ-CHI-98765
+Weather:               Clear, 72°F
+Property Occupied:     Yes (current owner present)
 
-EXTERIOR PHOTOS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+═══════════════════════════════════════════════════════════════════
+EXTERIOR INSPECTION
+═══════════════════════════════════════════════════════════════════
 
-📸 Photo 1: Front Exterior View
-   • Vinyl siding in good condition (white with blue trim)
-   • Covered porch with metal railing
-   • Two front steps (note: slight wobble detected)
-   • Front door - white vinyl with screen door
-   • Windows appear clean, frames in good shape
-   • Small garden area with plants
+ROOF & STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 1-4: Overall roof condition
 
-📸 Photo 2: Roof View (from ground level)
-   • Shingle roof, brown/gray color
-   • Appears mostly intact
-   • Note: One small area with visible wear near bathroom vent
-   • Gutters installed but need cleaning
-   • No major sagging or structural issues visible
+Observations:
+✅ Shingled roof appears to be 5-6 years old
+✅ No visible sagging or structural issues
+⚠️  RUST SPOTS visible on metal flashing around roof edges
+⚠️  Some rust on roof vents and exhaust pipes
+⚠️  Minor rust staining on drip edges
+✅ No active leaks detected (interior ceilings dry)
+✅ Gutters are functional but could use cleaning
 
-📸 Photo 3: Side/Service Area
-   • HVAC unit visible (Carrier brand, ~15 years old)
-   • Unit appears dusty, likely needs servicing
-   • Gas meter and electrical panel accessible
-   • Small storage shed (8x10) - wooden, painted green
-   • Landscaping needs minor maintenance
+Estimated Repair:
+- Rust treatment & resealing of flashing: $800 - $1,200
+- Replace rusted vents: $300 - $500
+- Gutter cleaning: $150
+Total: $1,250 - $1,850
 
-📸 Photo 4: Back Exterior
-   • Small patio area with concrete pad
-   • Back door with security screen
-   • Laundry utility hookups visible through window
-   • Privacy fence along rear property line
-   • Some rust stains on siding near water spigot
+EXTERIOR SIDING & WALLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 5-10: Siding condition, close-ups of damage
 
-INTERIOR PHOTOS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Observations:
+✅ Vinyl siding in fair condition overall
+⚠️  PAINT PEELING on window trim (especially south-facing windows)
+⚠️  MINOR CRACKS in siding on northwest corner (no structural damage)
+⚠️  UV FADING on south side (cosmetic only)
+✅ No signs of water damage or mold on exterior
+⚠️  Underpinning (skirting) has 2-3 loose panels
+✅ No visible pest damage or infestation
 
-📸 Photo 5: Living Room
-   • Open floor plan, approx 18x14 ft
-   • Laminate wood flooring (light oak color)
-   • Vaulted ceiling with ceiling fan
-   • Large window with blinds
-   • No visible damage to walls or ceiling
-   • Neutral paint (beige/cream)
+Estimated Repair:
+- Repaint all window trim: $600 - $900
+- Repair/replace cracked siding panels: $400 - $600
+- Pressure wash & UV protectant: $350 - $500
+- Fix underpinning: $200 - $300
+Total: $1,550 - $2,300
 
-📸 Photo 6: Kitchen
-   • U-shaped layout with breakfast bar
-   • White cabinets, laminate countertops
-   • Stainless appliances: refrigerator, stove, dishwasher
-   • Note: Kitchen faucet drips (visible water stains)
-   • Vinyl flooring in good condition
-   • Adequate lighting (recessed + pendant lights)
+FOUNDATION & UNDERCARRIAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 11-14: Foundation inspection (crawl space photos)
 
-📸 Photo 7: Master Bedroom
-   • Carpeted (beige, appears clean)
-   • Walk-in closet with sliding mirror doors
-   • Ceiling fan with light fixture
-   • Window with mini-blinds
-   • Walls in good condition
+Observations:
+✅ Concrete pier foundation appears solid
+✅ NO MAJOR SETTLING or shifting visible
+✅ Levelness within acceptable tolerances
+⚠️  Minor rust on steel support beams (surface rust only)
+✅ Vapor barrier appears intact
+✅ No standing water or moisture issues
+✅ No visible pest nests or activity
+✅ Plumbing connections appear sound (no active leaks)
 
-📸 Photo 8: Master Bathroom
-   • Shower/tub combo with tile surround
-   • Single sink vanity with storage
-   • Toilet in good condition
-   • Note: Small water stain on ceiling (roof leak area)
-   • Vinyl flooring
-   • Exhaust fan present
+Estimated Repair:
+- Rust treatment on support beams: $400 - $600
+Total: $400 - $600
 
-📸 Photo 9: Bedroom #2
-   • Carpeted, approximately 10x12 ft
-   • Ceiling fan
-   • Closet with bifold doors
-   • Window with good natural light
-   • Clean condition
+WINDOWS & DOORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 15-20: Window & door condition
 
-📸 Photo 10: Bedroom #3
-   • Similar to Bedroom #2
-   • Currently used as office/storage
-   • Built-in shelving on one wall
-   • Good condition overall
+Observations:
+✅ All windows are dual-pane (energy efficient)
+✅ Windows open and close properly
+✅ Screens are present and intact
+⚠️  WEATHERSTRIPPING needs replacement on 2 windows
+⚠️  One window lock is loose/sticky
+✅ Front door solid, locks securely
+✅ Sliding glass door operates smoothly
+⚠️  Back door frame shows minor wood rot (small area, bottom corner)
 
-📸 Photo 11: Guest Bathroom
-   • Tub/shower combo
-   • Pedestal sink
-   • Vinyl flooring
-   • All fixtures working
-   • Mirror cabinet above sink
+Estimated Repair:
+- Replace weatherstripping: $150 - $250
+- Fix window lock: $50 - $100
+- Repair back door frame: $300 - $450
+Total: $500 - $800
 
-📸 Photo 12: Utility/Laundry Room
-   • Washer/dryer hookups (standard 110V)
-   • Water heater (40 gallon, appears newer)
-   • Storage shelves
-   • Utility sink
-   • Access panel to crawl space
+PORCH & DECK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 21-24: Front & back porch
 
-HVAC & MECHANICAL:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Observations:
+⚠️  SOFT SPOTS detected in 3-4 front porch boards
+⚠️  Possible wood rot from water exposure
+✅ Porch supports appear solid
+⚠️  Handrail slightly loose (easy fix)
+✅ Back deck in better condition (composite material)
 
-📸 Photo 13: HVAC Unit Close-up
-   • Carrier brand, 3-ton unit
-   • Model: 38YDA
-   • Serial: K1234567890
-   • Age: ~15 years (2010 installation)
-   • Condition: Dusty, needs professional servicing
-   • Compressor runs but not cooling efficiently
+Estimated Repair:
+- Replace damaged porch boards: $400 - $650
+- Tighten/replace handrail: $100 - $200
+Total: $500 - $850
 
-📸 Photo 14: Electrical Panel
-   • 200 amp service
-   • Circuit breakers all labeled
-   • No signs of overheating or damage
-   • Properly grounded
+═══════════════════════════════════════════════════════════════════
+INTERIOR INSPECTION
+═══════════════════════════════════════════════════════════════════
 
-DETAILED CONDITION NOTES:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KITCHEN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 25-32: Kitchen overview & appliances
 
-✓ GOOD: Structure appears solid, no sagging or major issues
-✓ GOOD: Windows and doors open/close smoothly
-✓ GOOD: Electrical system appears up to code
-✓ GOOD: Plumbing (except kitchen faucet) no leaks
+Observations:
+✅ Kitchen in good condition overall
+✅ Countertops recently updated (laminate, looks new)
+✅ Oak cabinets in good shape
+✅ All appliances operational:
+   - Refrigerator: works, 5 years old
+   - Electric stove: works, 7 years old
+   - Dishwasher: works, 1 year old
+   - Microwave: works, 4 years old
+✅ Sink & faucet work properly
+⚠️  Minor chip in countertop near stove (cosmetic)
+✅ Adequate lighting
+✅ No signs of water damage or leaks
 
-⚠️ NEEDS ATTENTION:
-   • HVAC servicing required ($800 est.)
-   • Minor roof leak repair ($500 est.)
-   • Kitchen faucet replacement ($150 est.)
-   • Front steps stabilization ($300 est.)
-   • Exterior paint touch-up ($400 est.)
+Estimated Repair:
+- Touch up countertop chip: $50 - $100 (optional)
+Total: $0 - $100
 
-TOTAL ESTIMATED REPAIRS: $2,150
+BATHROOMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 33-40: Master & guest bathrooms
 
-OVERALL ASSESSMENT:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Property is in GOOD condition overall with only minor
-repairs needed. Structurally sound. Move-in ready after
-addressing the noted issues. Good investment potential.
+Master Bathroom:
+✅ Garden tub in excellent condition
+✅ Separate shower stall functional
+✅ Toilet works properly
+✅ Sink & faucet operational
+✅ No water damage visible
+✅ Exhaust fan works
 
-Rating: ⭐⭐⭐⭐ (4/5 stars)
+Guest Bathroom:
+✅ Tub/shower combo in good condition
+✅ Toilet works properly
+⚠️  FAUCET DRIPS occasionally (washer needs replacement)
+✅ Sink cabinet shows no water damage
+✅ Exhaust fan works
 
-═══════════════════════════════════════════════════════
-         END OF PROPERTY PHOTOS DOCUMENTATION
-═══════════════════════════════════════════════════════
+Estimated Repair:
+- Replace faucet washers: $80 - $150
+Total: $80 - $150
 
-Note: This is a sample document for demonstration purposes.
-In a real inspection, you would attach actual photos.
+LIVING AREAS & BEDROOMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 41-52: Living room, bedrooms, closets
 
+Observations:
+✅ Vaulted ceilings in living room (nice feature)
+✅ Laminate flooring throughout (no carpet)
+✅ Flooring in good condition (no major scratches)
+✅ Walls appear sound, no cracks
+✅ All bedroom closets spacious
+✅ Master walk-in closet excellent
+⚠️  ONE DOOR KNOB loose in bedroom #2
+✅ All ceiling fans work
+✅ Adequate electrical outlets
+✅ No signs of moisture or mold
+
+Estimated Repair:
+- Tighten/replace door knob: $30 - $60
+Total: $30 - $60
+
+HVAC SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 53-56: HVAC unit, thermostat, vents
+
+Observations:
+⚠️  HVAC UNIT IS 12 YEARS OLD (typical lifespan 12-15 years)
+✅ Unit currently operational (tested both heat & cool)
+✅ Air flows well from all vents
+✅ Thermostat works properly
+✅ Filters recently changed
+⚠️  Some rust on exterior unit cabinet (cosmetic)
+⚠️  Unit makes slight rattling sound (may need servicing)
+⚠️  RECOMMENDATION: Plan for replacement in next 1-3 years
+
+Estimated Repair:
+- HVAC service/tune-up: $150 - $250 (immediate)
+- FUTURE: HVAC replacement: $3,500 - $5,500 (within 1-3 years)
+Total: $150 - $250 (short-term)
+
+WATER HEATER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 57-58: Water heater
+
+Observations:
+✅ 50-gallon electric water heater
+✅ Only 3 years old (plenty of life left)
+✅ No leaks or corrosion
+✅ Pressure relief valve operational
+✅ Temperature setting appropriate
+
+Estimated Repair:
+- None needed
+Total: $0
+
+ELECTRICAL SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 59-62: Electrical panel, outlets, fixtures
+
+Observations:
+✅ 200-amp electrical panel (adequate capacity)
+✅ Circuit breakers properly labeled
+✅ No double-tapped breakers
+✅ GFCI outlets present in bathrooms & kitchen
+✅ All outlets tested and functional
+✅ All light fixtures work
+✅ No flickering or electrical issues detected
+✅ No visible wiring hazards
+
+Estimated Repair:
+- None needed
+Total: $0
+
+PLUMBING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 63-66: Under sinks, water connections
+
+Observations:
+✅ Water pressure adequate throughout
+✅ No active leaks detected
+✅ Drain systems work properly (no slow drains)
+⚠️  Guest bathroom faucet drips (as mentioned earlier)
+✅ Water heater connections secure
+✅ All shut-off valves accessible and functional
+
+Estimated Repair:
+- Fix dripping faucet: $80 - $150 (already counted above)
+Total: $0 (included above)
+
+═══════════════════════════════════════════════════════════════════
+EXTERIOR IMPROVEMENTS & STORAGE
+═══════════════════════════════════════════════════════════════════
+
+CARPORT & PARKING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 67-70: Carport structure
+
+Observations:
+✅ 10' x 20' metal carport in good condition
+✅ Metal roof secure (no rust)
+✅ Concrete parking pad level and crack-free
+✅ Space for 2 vehicles
+✅ Additional parking pad for RV/boat
+
+Estimated Repair:
+- None needed
+Total: $0
+
+STORAGE SHED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 71-73: Storage shed
+
+Observations:
+✅ 8' x 10' metal shed
+✅ Structurally sound
+⚠️  Door hinge slightly rusty (still functional)
+✅ Floor intact
+✅ Adequate storage space
+
+Estimated Repair:
+- Rust treatment on hinges: $50 - $100 (optional)
+Total: $0 - $100
+
+LANDSCAPING & YARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Photo 74-80: Yard, trees, fencing
+
+Observations:
+✅ Mature shade trees (3 trees, good condition)
+✅ Desert landscaping (low maintenance)
+✅ Small fenced patio area (6' privacy fence)
+✅ Fence in good condition
+✅ No dead/dying plants
+✅ Adequate drainage (no standing water)
+
+Estimated Repair:
+- None needed (optional: add decorative rock, $300-500)
+Total: $0
+
+═══════════════════════════════════════════════════════════════════
+SAFETY & CODE COMPLIANCE
+═══════════════════════════════════════════════════════════════════
+
+SMOKE & CO DETECTORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Smoke detectors present in all required locations (3 total)
+✅ All detectors tested and functional
+✅ CO detector in hallway (working)
+✅ Batteries recently replaced
+
+OTHER SAFETY ITEMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Fire extinguisher in kitchen (current inspection tag)
+✅ All exits clearly accessible
+✅ No trip hazards detected
+✅ Adequate lighting (interior & exterior)
+
+═══════════════════════════════════════════════════════════════════
+OVERALL CONDITION SUMMARY
+═══════════════════════════════════════════════════════════════════
+
+MAJOR SYSTEMS STATUS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Foundation:            ✅ GOOD - No major issues
+Roof:                  ⚠️  FAIR - Rust issues need attention
+Electrical:            ✅ GOOD - No issues found
+Plumbing:              ✅ GOOD - Minor drip only
+HVAC:                  ⚠️  FAIR - Aging, plan for replacement
+Structure:             ✅ GOOD - Solid overall
+Windows/Doors:         ✅ GOOD - Minor repairs needed
+Flooring:              ✅ EXCELLENT - Recently updated
+
+PROPERTY GRADE:        B+ (Good with minor repairs needed)
+
+═══════════════════════════════════════════════════════════════════
+ESTIMATED REPAIR COSTS SUMMARY
+═══════════════════════════════════════════════════════════════════
+
+IMMEDIATE REPAIRS (Recommended within 30 days):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Roof rust treatment:                   $1,250 - $1,850
+Window trim paint:                     $600 - $900
+Front porch board replacement:         $400 - $650
+Dripping faucet repair:                $80 - $150
+HVAC tune-up:                          $150 - $250
+────────────────────────────────────────────────────────────────
+SUBTOTAL (Immediate):                  $2,480 - $3,800
+
+SHORT-TERM REPAIRS (Within 6 months):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Siding repair/replacement:             $400 - $600
+Pressure wash exterior:                $350 - $500
+Foundation rust treatment:             $400 - $600
+Weatherstripping:                      $150 - $250
+Back door frame repair:                $300 - $450
+────────────────────────────────────────────────────────────────
+SUBTOTAL (Short-term):                 $1,600 - $2,400
+
+OPTIONAL COSMETIC:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Countertop chip repair:                $50 - $100
+Shed hinge treatment:                  $50 - $100
+Decorative landscaping:                $300 - $500
+────────────────────────────────────────────────────────────────
+SUBTOTAL (Optional):                   $400 - $700
+
+════════════════════════════════════════════════════════════════
+TOTAL ESTIMATED REPAIRS:               $4,480 - $6,900
+════════════════════════════════════════════════════════════════
+
+FUTURE CONSIDERATION (1-3 years):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HVAC replacement:                      $3,500 - $5,500
+
+═══════════════════════════════════════════════════════════════════
+INSPECTOR RECOMMENDATION
+═══════════════════════════════════════════════════════════════════
+
+This mobile home is in GOOD overall condition with no major structural
+or safety concerns. The property has been well-maintained by the current
+owner. The identified repairs are mostly cosmetic or preventive in nature.
+
+✅ RECOMMENDED FOR PURCHASE with the following conditions:
+  1. Address roof rust within 30 days to prevent future leaks
+  2. Budget $4,500-$7,000 for immediate/short-term repairs
+  3. Plan for HVAC replacement in next 1-3 years
+  4. All repairs are standard and can be handled by local contractors
+
+The asking price of $32,500 is BELOW MARKET VALUE considering the
+property's condition. With $5,000-7,000 in repairs, the total investment
+of $37,500-39,500 is still significantly below the $45k-48k market value,
+creating immediate equity for the buyer.
+
+This property would be:
+✅ Suitable for owner-occupancy (minimal move-in repairs needed)
+✅ Excellent for rental investment (strong rental demand in area)
+✅ Good for flip/resale (repair, rent out, or resell for profit)
+
+════════════════════════════════════════════════════════════════
+Inspector: David Chen, Certified Home Inspector
+License:   AZ-CHI-98765
+Date:      December 12, 2025
+Phone:     (602) 555-9876
+Email:     david@azinspections.com
+════════════════════════════════════════════════════════════════
+
+Total Photos: 80 high-resolution images included
+Report Pages: 8 pages
+
+═══════════════════════════════════════════════════════════════════
+                    END OF INSPECTION REPORT
+═══════════════════════════════════════════════════════════════════
