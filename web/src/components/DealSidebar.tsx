@@ -3,7 +3,7 @@ import { MobileHomeProperty } from '@/types/maninos';
 import { 
   Building2, MapPin, DollarSign, Hammer, TrendingUp, 
   FileText, AlertTriangle, CheckCircle, XCircle,
-  Download, Eye, FileCheck, Image, Loader2
+  Download, Eye, FileCheck, Image, Loader2, Mail
 } from 'lucide-react';
 
 interface Document {
@@ -18,9 +18,19 @@ interface Document {
 interface DealSidebarProps {
   property: MobileHomeProperty | null;
   className?: string;
+  onSendEmailRequest?: (data: EmailRequestData) => void;
 }
 
-export function DealSidebar({ property, className = '' }: DealSidebarProps) {
+interface EmailRequestData {
+  type: 'document';
+  documentId: string;
+  documentName: string;
+  documentType: string;
+  propertyId: string;
+  propertyName: string;
+}
+
+export function DealSidebar({ property, className = '', onSendEmailRequest }: DealSidebarProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -96,6 +106,20 @@ export function DealSidebar({ property, className = '' }: DealSidebarProps) {
       `${process.env.NEXT_PUBLIC_API_URL}/api/documents/${doc.id}/preview`,
       '_blank'
     );
+  };
+
+  const handleSendEmail = (doc: Document) => {
+    if (!onSendEmailRequest || !property) return;
+    
+    // Call parent callback to trigger email flow in chat
+    onSendEmailRequest({
+      type: 'document',
+      documentId: doc.id,
+      documentName: doc.document_name,
+      documentType: doc.document_type,
+      propertyId: property.id,
+      propertyName: property.name || 'Unnamed Property'
+    });
   };
 
   const getDocIcon = (type: string) => {
@@ -291,6 +315,13 @@ export function DealSidebar({ property, className = '' }: DealSidebarProps) {
                         title="Preview"
                       >
                         <Eye size={14} className="text-slate-600" />
+                      </button>
+                      <button
+                        onClick={() => handleSendEmail(doc)}
+                        className="p-1.5 hover:bg-blue-100 rounded transition-colors"
+                        title="Send by email"
+                      >
+                        <Mail size={14} className="text-blue-600" />
                       </button>
                     </div>
                   </div>

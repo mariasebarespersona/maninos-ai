@@ -33,6 +33,7 @@ from tools.registry import (
     delete_document_tool,
     signed_url_for_tool,
     send_email_tool,
+    get_document_for_email_tool,  # NEW - Get document for email attachment
     # RAG tools for MANINOS (Fase 2)
     query_documents_tool,
     index_all_documents_maninos_tool,
@@ -311,6 +312,7 @@ class PropertyAgent(BaseAgent):
             delete_document_tool,
             signed_url_for_tool,
             send_email_tool,
+            get_document_for_email_tool,  # NEW - Get document for email
             # RAG Tools (Fase 2 - MANINOS AI)
             query_documents_tool,  # Query documents using RAG
             index_all_documents_maninos_tool,  # Re-index documents

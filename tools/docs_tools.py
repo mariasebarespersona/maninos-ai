@@ -946,3 +946,110 @@ def delete_document(property_id: str, document_name: str, document_group: str = 
         "property_id": property_id,
         "message": f"✅ Documento '{full_name}' eliminado correctamente del grupo {display_path}."
     }
+
+
+# ============================================================
+# MANINOS AI: Email Document Tool
+# ============================================================
+
+def get_document_for_email(property_id: str, document_id: str = "", document_type: str = "") -> Dict:
+    """
+    Get document content (binary) for sending by email.
+    
+    For MANINOS AI: Retrieves documents from maninos_documents table.
+    
+    Args:
+        property_id: UUID of the property (REQUIRED)
+        document_id: UUID of the specific document (optional - use if you know the exact document ID)
+        document_type: Type of document ('title_status', 'property_listing', 'property_photos') - optional
+    
+    Returns:
+        {
+            "success": True,
+            "filename": "title_status.pdf",
+            "content": bytes,  # Binary content ready for email attachment
+            "content_type": "application/pdf",
+            "document_type": "title_status",
+            "document_name": "1_title_status_example.txt"
+        }
+        
+        OR on error:
+        {
+            "success": False,
+            "error": "Error message"
+        }
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not property_id:
+        return {"success": False, "error": "property_id is required"}
+    
+    logger.info(f"📧 [get_document_for_email] Fetching document for property {property_id}, document_id={document_id}, document_type={document_type}")
+    
+    try:
+        # Query maninos_documents table
+        query = sb.table("maninos_documents").select("*").eq("property_id", property_id)
+        
+        if document_id:
+            query = query.eq("id", document_id)
+        elif document_type:
+            query = query.eq("document_type", document_type)
+        else:
+            return {"success": False, "error": "Either document_id or document_type is required"}
+        
+        result = query.execute()
+        
+        if not result.data or len(result.data) == 0:
+            return {
+                "success": False,
+                "error": f"No document found for property_id={property_id}, document_id={document_id}, document_type={document_type}"
+            }
+        
+        # Get first matching document
+        doc = result.data[0]
+        # Try both storage_path (new) and storage_key (legacy) for compatibility
+        storage_path = doc.get("storage_path") or doc.get("storage_key")
+        document_name = doc.get("document_name", "document")
+        content_type = doc.get("content_type", "application/octet-stream")
+        doc_type = doc.get("document_type", "")
+        doc_id = doc.get("id", "")
+        
+        if not storage_path:
+            return {
+                "success": False,
+                "error": f"Document '{document_name}' has no storage_path (not uploaded yet)"
+            }
+        
+        logger.info(f"📥 [get_document_for_email] Downloading file from storage: {storage_path}")
+        
+        # Download file content from Supabase Storage
+        try:
+            file_bytes = sb.storage.from_(BUCKET).download(storage_path)
+            logger.info(f"✅ [get_document_for_email] Downloaded {len(file_bytes)} bytes")
+            
+            return {
+                "success": True,
+                "filename": document_name,
+                "content": file_bytes,
+                "content_type": content_type,
+                "document_type": doc_type,
+                "document_id": doc_id,
+                "document_name": document_name,
+                "size_bytes": len(file_bytes)
+            }
+        
+        except Exception as download_error:
+            logger.error(f"❌ [get_document_for_email] Failed to download from storage: {download_error}")
+            return {
+                "success": False,
+                "error": f"Failed to download document from storage: {str(download_error)}",
+                "storage_path": storage_path
+            }
+    
+    except Exception as e:
+        logger.error(f"❌ [get_document_for_email] Error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Database error: {str(e)}"
+        }

@@ -230,6 +230,26 @@ class ManinosFlowValidator:
         validation = self.validate_current_step(property_data)
         user_lower = user_input.lower().strip()
         
+        # ============================================================
+        # PRIORITY 1: Email intents (independent of workflow)
+        # ============================================================
+        # Detect if user wants to send something by email
+        # This bypasses the flow validator entirely
+        email_keywords = ["email", "enviar", "envía", "envia", "send", "mandar", "manda", "correo", "mándame", "mandame"]
+        document_keywords = ["documento", "document", "title", "listing", "photo", "foto", "resumen", "summary"]
+        
+        has_email_intent = any(kw in user_lower for kw in email_keywords)
+        has_document_ref = any(kw in user_lower for kw in document_keywords)
+        
+        if has_email_intent:
+            logger.info(f"[flow_validator] 📧 Email intent detected, bypassing flow validation")
+            return {
+                "intent": "send_email",
+                "confidence": 0.95,
+                "reason": "User wants to send something by email (independent of acquisition flow)",
+                "bypass_flow_validation": True  # Signal to orchestrator to not route via flow
+            }
+        
         # Common "next step" questions
         next_step_phrases = ["siguiente", "qué sigue", "que sigue", "ahora qué", "ahora que", "siguiente paso", "next", "what's next"]
         is_asking_next = any(phrase in user_lower for phrase in next_step_phrases)

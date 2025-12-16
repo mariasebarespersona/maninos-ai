@@ -288,6 +288,61 @@ export default function ChatPage() {
     }
   }, [input, propertyId, fetchProperty, sessionId])
 
+  // Handler for sending email requests from DealSidebar
+  const handleSendEmailRequest = useCallback((data: {
+    type: 'document';
+    documentId: string;
+    documentName: string;
+    documentType: string;
+    propertyId: string;
+    propertyName: string;
+  }) => {
+    // Construct a natural language message for the agent
+    const message = `Quiero enviar el documento "${data.documentName}" por email.`;
+    
+    // Set the message in input and trigger send
+    setInput(message);
+    
+    // Auto-send after a brief delay to let the UI update
+    setTimeout(() => {
+      if (message.trim()) {
+        const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: message };
+        setMessages(prev => [...prev, userMsg]);
+        setInput('');
+        setUploading(true);
+
+        const sendEmail = async () => {
+          try {
+            const form = new FormData();
+            form.append('text', message);
+            form.append('session_id', sessionId);
+            form.append('property_id', data.propertyId);
+
+            const resp = await fetch('/api/chat', { method: 'POST', body: form });
+            const respData = await resp.json();
+
+            const aiMsg: ChatMessage = { 
+              id: crypto.randomUUID(), 
+              role: 'assistant', 
+              content: String(respData?.answer || 'No response') 
+            };
+            setMessages(prev => [...prev, aiMsg]);
+          } catch (e) {
+            setMessages(prev => [...prev, { 
+              id: crypto.randomUUID(), 
+              role: 'assistant', 
+              content: 'Error al procesar tu solicitud de email.' 
+            }]);
+          } finally {
+            setUploading(false);
+          }
+        };
+
+        sendEmail();
+      }
+    }, 100);
+  }, [sessionId]);
+
   // --- Property Switching Handlers ---
   const handleSwitchProperty = async (newPropertyId: string) => {
       // Each property gets its own session ID for isolated memory/context
@@ -482,7 +537,11 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
       </main>
 
       {/* 3. RIGHT SIDEBAR (Deal Context) */}
-      <DealSidebar property={property} className="hidden lg:flex" />
+      <DealSidebar 
+        property={property} 
+        className="hidden lg:flex" 
+        onSendEmailRequest={handleSendEmailRequest}
+      />
 
     </div>
   )

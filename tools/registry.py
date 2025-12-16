@@ -27,6 +27,7 @@ from .docs_tools import (
     set_property_strategy as _set_property_strategy,
     get_property_strategy as _get_property_strategy,
     delete_document as _delete_document,  # NEW - Delete single document
+    get_document_for_email as _get_document_for_email,  # NEW - Get document for email attachment
 )
 from .numbers_tools import (
     set_number as _set_number, 
@@ -437,6 +438,47 @@ def delete_document_tool(property_id: str, document_name: str, document_group: s
     return _delete_document(property_id, document_name, document_group, document_subgroup, confirmed)
 
 
+# --- Get Document For Email (NEW - MANINOS AI) ---
+class GetDocumentForEmailInput(BaseModel):
+    property_id: str = Field(..., description="UUID of the property (REQUIRED)")
+    document_id: str = Field("", description="UUID of the specific document (optional - use if you know the exact document ID)")
+    document_type: str = Field("", description="Type of document: 'title_status', 'property_listing', or 'property_photos' (optional)")
+
+@tool("get_document_for_email")
+def get_document_for_email_tool(property_id: str, document_id: str = "", document_type: str = "") -> Dict:
+    """Get document content (binary) for sending by email attachment.
+    
+    For MANINOS AI: Retrieves documents from the uploaded documents collection.
+    
+    Args:
+        property_id: UUID of the property (REQUIRED)
+        document_id: UUID of the specific document (optional - use if you know the exact document ID)
+        document_type: Type of document - 'title_status', 'property_listing', or 'property_photos' (optional)
+    
+    Returns:
+        On success: {
+            "success": True,
+            "filename": "title_status.pdf",
+            "content": bytes,  # Binary content ready for email attachment
+            "content_type": "application/pdf",
+            "document_type": "title_status",
+            "size_bytes": 12345
+        }
+        
+        On error: {
+            "success": False,
+            "error": "Error message"
+        }
+    
+    Example usage:
+        1. User: "Send me the title status document by email"
+        2. You: get_document_for_email(property_id="...", document_type="title_status")
+        3. Tool returns: {"success": True, "filename": "1_title_status_example.txt", "content": bytes(...), ...}
+        4. You: send_email(to=["user@example.com"], subject="Title Status Document", html="<p>Attached is the title status document.</p>", attachments=[("1_title_status_example.txt", bytes(...))])
+    """
+    return _get_document_for_email(property_id, document_id, document_type)
+
+
 class SetNumberInput(BaseModel):
     property_id: str
     item_key: str
@@ -713,21 +755,50 @@ class SendEmailInput(BaseModel):
     to: List[str]
     subject: str
     html: str
+    property_id: Optional[str] = Field(default=None, description="Property ID (required if attaching a document)")
+    document_type: Optional[str] = Field(default=None, description="Document type to attach: 'title_status', 'property_listing', or 'property_photos'")
 
 @tool("send_email")
-def send_email_tool(to: List[str], subject: str, html: str) -> Dict:
-    """Send an email (no attachments by default).
+def send_email_tool(to: List[str], subject: str, html: str, property_id: Optional[str] = None, document_type: Optional[str] = None) -> Dict:
+    """Send an email with optional document attachment.
     
-    When sending a document link, the HTML should include a clickable link like:
-    <a href="https://signed-url-here" target="_blank">Descargar documento</a>
+    Args:
+        to: List of email addresses
+        subject: Email subject line
+        html: HTML email body
+        property_id: Optional - Property ID (required if attaching a document)
+        document_type: Optional - Document type to attach ('title_status', 'property_listing', 'property_photos')
     
-    Example HTML for document:
-    <html><body>
-      <p>Aquí está el documento que solicitaste: [document_name]</p>
-      <p><a href="[signed_url]" target="_blank" style="background-color: #3d7435; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Descargar documento</a></p>
-    </body></html>
+    Example WITHOUT attachment:
+        send_email(
+            to=["user@example.com"],
+            subject="Hello",
+            html="<p>This is a test email.</p>"
+        )
+    
+    Example WITH attachment:
+        send_email(
+            to=["user@example.com"],
+            subject="Document: Title Status - Mobile Home",
+            html="<p>Attached is the title status document you requested.</p>",
+            property_id="813036f4-...",
+            document_type="title_status"
+        )
+    
+    CRITICAL: If you want to attach a document:
+    1. Do NOT call get_document_for_email separately
+    2. Just pass property_id and document_type to this function
+    3. The backend will automatically fetch and attach the document
     """
-    return _send_email(to, subject, html)
+    # If document_type is provided, fetch and attach the document
+    attachments = None
+    if property_id and document_type:
+        from tools.docs_tools import get_document_for_email as _get_doc
+        doc_result = _get_doc(property_id, document_type=document_type)
+        if doc_result.get("success"):
+            attachments = [(doc_result["filename"], doc_result["content"])]
+    
+    return _send_email(to, subject, html, attachments)
 
 
 class SendNumbersTableEmailInput(BaseModel):

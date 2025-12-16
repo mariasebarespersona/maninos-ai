@@ -176,19 +176,32 @@ class OrchestrationRouter:
                     user_intent_analysis = full_context.get("user_intent_analysis", {})
                     recommended_agent = flow_validation.get("recommended_agent", "PropertyAgent")
                     
-                    # Simple, intelligent routing based on flow analysis
-                    routing = {
-                        "intent": user_intent_analysis.get("intent", "general_conversation"),
-                        "confidence": user_intent_analysis.get("confidence", 0.80),
-                        "target_agent": recommended_agent,
-                        "method": "flow_validator",
-                        "reason": user_intent_analysis.get("reason", "Flow-based routing")
-                    }
+                    # === CHECK FOR BYPASS FLAG (e.g., email intents) ===
+                    # Some intents (like sending email) are independent of the acquisition flow
+                    # and should bypass flow validation entirely
+                    if user_intent_analysis.get("bypass_flow_validation"):
+                        logger.info("[orchestrator] 📧 Bypassing flow validation (independent action like email)")
+                        routing = {
+                            "intent": user_intent_analysis.get("intent", "independent_action"),
+                            "confidence": user_intent_analysis.get("confidence", 0.95),
+                            "target_agent": "PropertyAgent",  # PropertyAgent handles email
+                            "method": "bypass",
+                            "reason": user_intent_analysis.get("reason", "Independent action, not part of acquisition flow")
+                        }
+                    else:
+                        # Normal flow-based routing
+                        routing = {
+                            "intent": user_intent_analysis.get("intent", "general_conversation"),
+                            "confidence": user_intent_analysis.get("confidence", 0.80),
+                            "target_agent": recommended_agent,
+                            "method": "flow_validator",
+                            "reason": user_intent_analysis.get("reason", "Flow-based routing")
+                        }
                     
                     logger.info(
-                        f"[orchestrator] 🧭 Flow-based routing → {recommended_agent} "
+                        f"[orchestrator] 🧭 Flow-based routing → {routing['target_agent']} "
                         f"(stage={full_context.get('acquisition_stage')}, "
-                        f"intent={routing['intent']})"
+                        f"intent={routing['intent']}, method={routing['method']})"
                     )
                 
                 # === PATH 2: ACTIVE ROUTER (no property or no flow validation) ===
