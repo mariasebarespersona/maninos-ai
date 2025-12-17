@@ -114,7 +114,11 @@ export function PropertiesDrawer({
                                 </div>
                                 <div className="flex items-center gap-2 pr-8">
                                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${
-                                        isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                                        prop.acquisition_stage === 'rejected'
+                                            ? 'bg-red-600 text-white'
+                                            : isActive 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-slate-100 text-slate-500'
                                     }`}>
                                         {stage.label}
                                     </span>

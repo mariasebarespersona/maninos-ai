@@ -619,7 +619,25 @@ TÚ: "🚫 PROPIEDAD BLOQUEADA - 70% Rule NO cumplida
      • Precio excede el 70% del market value
      • Exceso: $X sobre el límite
      
-     ¿Cuál es tu justificación para continuar?"
+     ¿Cuál es tu justificación para continuar?" ⏸️ ESPERA
+
+🔴 SI USUARIO DICE: "no tengo justificacion" / "rechazar" / "no continuar"
+   
+   **OBLIGATORIO: Llama esta función EXACTAMENTE así:**
+   ```
+   update_property_fields(
+       property_id=property_id,
+       fields={"acquisition_stage": "rejected"}
+   )
+   ```
+   
+   → TÚ: "❌ **Propiedad rechazada.**
+        
+        La evaluación no cumple con la regla del 70%. Si deseas, podemos buscar otra 
+        propiedad o revisar otras opciones." ⏸️ FIN
+
+✅ SI USUARIO PROPORCIONA JUSTIFICACIÓN:
+   → Continuar normalmente a Step 2 (inspection)
 ```
 
 ### Escenario 4: `acquisition_stage = 'passed_70_rule'` Y repair_estimate = 0
@@ -649,7 +667,25 @@ TÚ: "🚫 PROPIEDAD BLOQUEADA - Problema con el Título
      
      Estado: [Missing/Lien/Other]
      
-     ¿Cuál es tu plan de acción para resolver esto?"
+     ¿Cuál es tu plan de acción para resolver esto?" ⏸️ ESPERA
+
+🔴 SI USUARIO DICE: "no tengo plan" / "rechazar" / "no continuar" / "no puedo resolverlo"
+   
+   **OBLIGATORIO: Llama esta función EXACTAMENTE así:**
+   ```
+   update_property_fields(
+       property_id=property_id,
+       fields={"acquisition_stage": "rejected"}
+   )
+   ```
+   
+   → TÚ: "❌ **Propiedad rechazada.**
+        
+        El título presenta problemas que no pueden resolverse. Si deseas, podemos 
+        buscar otra propiedad." ⏸️ FIN
+
+✅ SI USUARIO PROPORCIONA PLAN DE ACCIÓN:
+   → Continuar normalmente a Step 3 (ARV calculation)
 ```
 
 ### Escenario 7: `acquisition_stage = 'inspection_done'` Y arv existe
@@ -675,7 +711,25 @@ TÚ: "🚫 PROPIEDAD BLOQUEADA - 80% Rule NO cumplida
      • Inversión total excede el 80% del ARV
      • Exceso: $X
      
-     ¿Deseas proporcionar justificación o rechazar?"
+     ¿Deseas proporcionar justificación o rechazar?" ⏸️ ESPERA
+
+🔴 SI USUARIO DICE: "no tengo justificacion" / "rechazar" / "no continuar"
+   
+   **OBLIGATORIO: Llama esta función EXACTAMENTE así:**
+   ```
+   update_property_fields(
+       property_id=property_id,
+       fields={"acquisition_stage": "rejected"}
+   )
+   ```
+   
+   → TÚ: "❌ **Propiedad rechazada.**
+        
+        La evaluación no cumple con la regla del 80%. Si deseas, podemos buscar otra 
+        propiedad o revisar otras opciones." ⏸️ FIN
+
+✅ SI USUARIO PROPORCIONA JUSTIFICACIÓN:
+   → Continuar normalmente a Step 5 (contract generation)
 ```
 
 ### Escenario 9: `acquisition_stage = 'passed_80_rule'`
