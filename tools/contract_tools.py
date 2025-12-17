@@ -257,6 +257,18 @@ Please have this reviewed by a licensed attorney before signing.
         if document_record.data:
             result["document_id"] = document_record.data[0]["id"]
             logger.info(f"✅ [generate_buy_contract] Contract saved to maninos_documents (ID: {result['document_id']})")
+            
+            # AUTO-INDEX CONTRACT IN RAG_CHUNKS for semantic search
+            try:
+                from .rag_maninos import index_all_documents_maninos
+                logger.info(f"📇 [generate_buy_contract] Auto-indexing contract for RAG search...")
+                index_result = index_all_documents_maninos(property_id)
+                if index_result.get("success"):
+                    logger.info(f"✅ [generate_buy_contract] Contract indexed successfully: {index_result.get('chunks_created', 0)} chunks")
+                else:
+                    logger.warning(f"⚠️ [generate_buy_contract] Contract indexing failed: {index_result.get('error')}")
+            except Exception as e:
+                logger.warning(f"⚠️ [generate_buy_contract] Could not auto-index contract: {e}")
     except Exception as e:
         # Don't fail contract generation if document storage fails
         logger.warning(f"⚠️ [generate_buy_contract] Could not save contract to maninos_documents: {e}")
