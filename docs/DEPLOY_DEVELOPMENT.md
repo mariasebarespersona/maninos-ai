@@ -2,7 +2,7 @@
 
 **MANINOS AI v2.0 - Development Deployment**
 
-Esta guía te llevará paso a paso para hacer un deployment de **development** usando Render (backend) + Vercel (frontend), igual que en RAMA.
+Esta guía te llevará paso a paso para hacer un deployment de **development** usando Railway (backend) + Vercel (frontend), igual que en RAMA.
 
 ---
 
@@ -17,7 +17,7 @@ Esta guía te llevará paso a paso para hacer un deployment de **development** u
 
 **Después de dev (Production):**
 - Nueva base de datos (o schema separado)
-- Mismos servicios (Render + Vercel)
+- Mismos servicios (Railway + Vercel)
 - Variables de entorno diferentes
 - Fácil de hacer después de verificar dev
 
@@ -28,7 +28,7 @@ Esta guía te llevará paso a paso para hacer un deployment de **development** u
 Antes de empezar, necesitas:
 
 - [x] Cuenta GitHub (ya tienes, con el repo)
-- [ ] Cuenta Render (https://render.com - usa tu GitHub)
+- [ ] Cuenta Railway (https://railway.app - usa tu GitHub)
 - [ ] Cuenta Vercel (https://vercel.com - usa tu GitHub)
 - [ ] Supabase Project (ya tienes)
 - [ ] OpenAI API Key (ya tienes)
@@ -71,7 +71,7 @@ CREATE SCHEMA development;
 
 ---
 
-## 🔧 PARTE 1: Backend Deployment (Render)
+## 🔧 PARTE 1: Backend Deployment (Railway)
 
 ### **Paso 1.1: Preparar el Proyecto**
 
@@ -90,32 +90,38 @@ uvicorn app:app --host 0.0.0.0 --port 8080
 git status
 ```
 
-### **Paso 1.2: Crear Web Service en Render**
+### **Paso 1.2: Crear Proyecto en Railway**
 
-1. **Ve a Render Dashboard:** https://dashboard.render.com
-2. **Click "New +"** → **"Web Service"**
-3. **Connect GitHub Repository:**
-   - Autoriza Render a acceder a GitHub
+1. **Ve a Railway Dashboard:** https://railway.app/dashboard
+2. **Click "New Project"**
+3. **Selecciona "Deploy from GitHub repo"**
+4. **Connect GitHub Repository:**
+   - Autoriza Railway a acceder a GitHub (si no lo has hecho)
    - Selecciona: `mariasebarespersona/maninos-ai`
-4. **Configuración Básica:**
+5. **Railway auto-detectará Python** ✅
+
+**Railway detecta automáticamente:**
+- ✅ `requirements.txt` → Instala dependencies
+- ✅ Puerto automático con `$PORT`
+- ✅ Build y deploy en ~1-2 minutos
+
+### **Paso 1.3: Configurar Start Command**
+
+Railway normalmente auto-detecta, pero para asegurar:
+
+1. **Click en tu servicio** (aparece después de conectar repo)
+2. **Settings → Deploy**
+3. **Start Command:** Agregar si no está:
+   ```bash
+   uvicorn app:app --host 0.0.0.0 --port $PORT
    ```
-   Name: maninos-ai-dev
-   Region: Oregon (US West) - o el más cercano
-   Branch: main
-   Root Directory: (dejar vacío)
-   Runtime: Python 3
-   Build Command: pip install -r requirements.txt
-   Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
-   ```
+4. **Root Directory:** (dejar vacío)
+5. **Watch Paths:** `/**` (dejar por defecto)
 
-5. **Plan:** Free (para development)
-   - ⚠️ Free tier duerme después de 15 min de inactividad
-   - ⚠️ Primera request toma ~30s en despertar
-   - ✅ Suficiente para testing
+### **Paso 1.4: Variables de Entorno (Railway)**
 
-### **Paso 1.3: Variables de Entorno (Render)**
-
-En Render, ve a **"Environment"** tab y agrega:
+1. **En tu servicio, click en "Variables" tab**
+2. **Agregar una por una** (o usar "Raw Editor" para pegar todas):
 
 ```bash
 # Supabase
@@ -142,29 +148,45 @@ PYTHONUNBUFFERED=1
 
 **⚠️ IMPORTANTE:** NO incluyas Redis para dev deployment. La app funciona perfectamente sin cache.
 
-### **Paso 1.4: Deploy Backend**
+**Tip:** Railway auto-genera `PORT` y otras variables internas.
 
-1. Click **"Create Web Service"**
-2. Render empezará a build (~2-3 minutos)
-3. **Logs aparecerán en tiempo real:**
+### **Paso 1.5: Generar Domain Público**
+
+1. **Settings → Networking**
+2. **Click "Generate Domain"**
+3. Railway te dará algo como:
+   ```
+   maninos-ai-dev-production.up.railway.app
+   ```
+4. **Opcional:** Puedes editar el nombre:
+   ```
+   maninos-ai-dev.up.railway.app
+   ```
+
+**Guarda esta URL** - la necesitas para Vercel.
+
+### **Paso 1.6: Deploy Backend**
+
+1. **Railway hace auto-deploy** al conectar el repo
+2. **Ver logs en tiempo real:** Click "View Logs"
    ```
    ==> Building...
    ==> Installing dependencies from requirements.txt
-   ==> Starting service with command: uvicorn app:app...
-   INFO: Uvicorn running on http://0.0.0.0:10000
+   ==> Starting service...
+   INFO: Uvicorn running on http://0.0.0.0:PORT
+   INFO: Application startup complete.
    ```
 
-4. **Cuando veas:** `INFO: Application startup complete.`
+3. **Cuando veas "Application startup complete":**
    - ✅ Backend está live!
 
-5. **URL del backend:** `https://maninos-ai-dev.onrender.com`
-   - Guarda esta URL, la necesitas para frontend
+**Ventaja Railway:** ✅ Trial incluye $5 gratis, NO duerme (a diferencia de Render)
 
-### **Paso 1.5: Verificar Backend**
+### **Paso 1.7: Verificar Backend**
 
-Abre en navegador:
+Abre en navegador tu Railway domain:
 ```
-https://maninos-ai-dev.onrender.com/
+https://maninos-ai-dev.up.railway.app/
 ```
 
 Deberías ver:
@@ -179,10 +201,10 @@ Deberías ver:
 **Test endpoints:**
 ```bash
 # Test API health
-curl https://maninos-ai-dev.onrender.com/
+curl https://maninos-ai-dev.up.railway.app/
 
 # Test properties endpoint (requiere auth, debería dar error o lista vacía)
-curl https://maninos-ai-dev.onrender.com/api/properties
+curl https://maninos-ai-dev.up.railway.app/api/properties
 ```
 
 ---
@@ -224,11 +246,11 @@ cat package.json
 En Vercel, **antes de hacer deploy**, ve a "Environment Variables":
 
 ```bash
-# Backend API URL (tu URL de Render)
-NEXT_PUBLIC_API_URL=https://maninos-ai-dev.onrender.com
+# Backend API URL (tu URL de Railway)
+NEXT_PUBLIC_API_URL=https://maninos-ai-dev.up.railway.app
 ```
 
-**⚠️ IMPORTANTE:** Usa la URL de Render sin trailing slash.
+**⚠️ IMPORTANTE:** Usa la URL de Railway sin trailing slash.
 
 ### **Paso 2.4: Deploy Frontend**
 
@@ -258,7 +280,7 @@ Deberías ver:
 - ✅ Properties drawer
 - ✅ Visual stepper
 
-**⚠️ Primera vez puede tardar 30s** (Render free tier despierta)
+**✅ Railway NO duerme** (con trial de $5, a diferencia de Render free tier)
 
 ---
 
@@ -293,7 +315,7 @@ Si necesitas agregar tu dominio:
    git commit -m "feat: Add Vercel dev URL to CORS"
    git push origin main
    ```
-3. **Render redeploy automático** (~2 min)
+3. **Railway redeploy automático** (~1-2 min)
 
 ### **Paso 3.2: Test Integración Completa**
 
@@ -335,14 +357,14 @@ https://maninos-ai-dev.vercel.app
 
 **Síntoma:** Frontend muestra "Error connecting to backend"
 
-**Causa:** Render free tier está dormido (primer request)
+**Causa:** Railway puede estar reiniciando o error de conexión
 
 **Solución:**
-1. Espera 30 segundos
-2. Refresh página
-3. Debería funcionar
+1. Check Railway logs: Dashboard → Tu servicio → "View Logs"
+2. Verifica que el deployment fue exitoso
+3. Asegura que domain está generado correctamente
 
-**Para evitar:** Upgrade Render a plan Starter ($7/mes) - nunca duerme
+**Nota:** Railway con trial NO duerme (ventaja sobre Render free)
 
 ### **Error: CORS policy blocked**
 
@@ -351,14 +373,14 @@ https://maninos-ai-dev.vercel.app
 **Solución:**
 1. Verifica `app.py` tiene tu URL Vercel en `allow_origins`
 2. Push cambios a GitHub
-3. Render redeploy automático
+3. Railway redeploy automático (~1-2 min)
 
 ### **Error: OpenAI API rate limit**
 
 **Síntoma:** Agente no responde, logs muestran "rate_limit_exceeded"
 
 **Solución:**
-1. Verifica que OPENAI_API_KEY es correcto en Render
+1. Verifica que OPENAI_API_KEY es correcto en Railway Variables
 2. Revisa tu billing en OpenAI (https://platform.openai.com/account/billing)
 3. Agrega créditos si necesario
 
@@ -367,8 +389,8 @@ https://maninos-ai-dev.vercel.app
 **Síntoma:** Properties no se guardan
 
 **Solución:**
-1. Verifica SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Render
-2. Verifica que Render IP está permitido en Supabase (Network Restrictions)
+1. Verifica SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Railway Variables
+2. Verifica que Railway IP está permitido en Supabase (Network Restrictions)
 3. En Supabase → Settings → Database → Connection pooling → permitir todas las IPs
 
 ### **Frontend build fails en Vercel**
@@ -384,9 +406,9 @@ https://maninos-ai-dev.vercel.app
 
 ## 📊 Monitoreo Development
 
-### **Render Logs (Backend)**
+### **Railway Logs (Backend)**
 ```
-https://dashboard.render.com/web/YOUR_SERVICE/logs
+https://railway.app/dashboard → Tu Proyecto → View Logs
 ```
 
 Ver en tiempo real:
@@ -394,6 +416,7 @@ Ver en tiempo real:
 - Errores de Python
 - Database queries
 - OpenAI API calls
+- Deploy history
 
 ### **Vercel Logs (Frontend)**
 ```
@@ -421,13 +444,15 @@ Ver:
 
 | Servicio | Plan | Costo | Límites |
 |----------|------|-------|---------|
-| **Render** | Free | $0/mes | 750 horas/mes, duerme después 15 min |
+| **Railway** | Trial | $0 (primeros $5 gratis) | NO duerme, ~500 horas |
 | **Vercel** | Hobby | $0/mes | 100GB bandwidth/mes |
 | **Supabase** | Free | $0/mes | 500MB database, 2GB bandwidth/mes |
 | **OpenAI** | Pay-as-you-go | ~$5-10/mes | Depende de uso (voice + GPT-4o) |
 | **Resend** | Free | $0/mes | 100 emails/mes |
 
 **Total estimado:** $5-10/mes (solo OpenAI)
+
+**Ventaja Railway:** Los primeros $5 son gratis en trial, suficiente para 1-2 meses de testing.
 
 ---
 
@@ -445,9 +470,10 @@ Cuando estés listo para production:
    -- etc.
    ```
 
-2. **Crear nuevo deployment en Render:**
+2. **Crear nuevo deployment en Railway:**
    - Name: `maninos-ai-prod`
    - Same settings, diferentes variables
+   - Plan: Developer ($5/mes) o Team ($20/mes)
 
 3. **Crear nuevo deployment en Vercel:**
    - Name: `maninos-ai-prod`
@@ -460,11 +486,12 @@ Cuando estés listo para production:
    - Name: "maninos-ai-production"
    - Ejecutar todas las migrations
 
-2. **Render production:**
+2. **Railway production:**
    - Nuevas variables con nuevo SUPABASE_URL
+   - Plan pagado (Developer $5/mes)
 
 3. **Vercel production:**
-   - Nueva URL de backend
+   - Nueva URL de backend Railway
 
 **Ventaja:** Dev y prod completamente separados
 **Desventaja:** Mantener 2 bases de datos
@@ -475,9 +502,10 @@ Cuando estés listo para production:
 
 Antes de considerar deployment exitoso:
 
-### **Backend (Render)**
-- [ ] Service está "Live" (verde)
+### **Backend (Railway)**
+- [ ] Service está "Active" (deployed exitosamente)
 - [ ] Logs muestran "Application startup complete"
+- [ ] Domain público generado
 - [ ] `GET /` devuelve JSON con version 2.0
 - [ ] `GET /api/properties` funciona (aunque esté vacío)
 - [ ] Variables de entorno configuradas
@@ -507,7 +535,7 @@ Antes de considerar deployment exitoso:
 
 **Si algo no funciona:**
 
-1. **Check Render logs:** Errores backend
+1. **Check Railway logs:** Errores backend (Dashboard → View Logs)
 2. **Check Vercel logs:** Errores frontend
 3. **Check Browser Console (F12):** Errores JavaScript/Network
 4. **Check Supabase logs:** Errores database
@@ -519,17 +547,19 @@ Antes de considerar deployment exitoso:
 ## 🎯 Resumen Rápido
 
 ```bash
-# 1. BACKEND (Render)
-1. New Web Service → Connect GitHub repo
-2. Configure: Python, uvicorn start command
-3. Add environment variables (Supabase, OpenAI)
-4. Deploy → Wait 2-3 min
-5. Test: https://maninos-ai-dev.onrender.com
+# 1. BACKEND (Railway)
+1. New Project → Deploy from GitHub repo
+2. Connect: mariasebarespersona/maninos-ai
+3. Settings → Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
+4. Add environment variables (Supabase, OpenAI, Resend)
+5. Settings → Generate Domain
+6. Deploy → Wait 1-2 min
+7. Test: https://maninos-ai-dev.up.railway.app
 
 # 2. FRONTEND (Vercel)
 1. New Project → Import from GitHub
 2. Root Directory: web
-3. Environment: NEXT_PUBLIC_API_URL=<render-url>
+3. Environment: NEXT_PUBLIC_API_URL=<railway-url>
 4. Deploy → Wait 1-2 min
 5. Test: https://maninos-ai-dev.vercel.app
 
@@ -556,7 +586,7 @@ Antes de considerar deployment exitoso:
 git add .
 git commit -m "feat: new feature"
 git push origin main
-# Render redeploy automático (2-3 min)
+# Railway redeploy automático (1-2 min)
 
 # Frontend
 git push origin main

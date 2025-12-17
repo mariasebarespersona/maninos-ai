@@ -25,10 +25,10 @@ Antes de hacer production deployment:
 | Aspecto | Development | Production |
 |---------|------------|------------|
 | **Base de Datos** | Supabase compartido | Supabase dedicado (o nuevo proyecto) |
-| **Render Plan** | Free (duerme) | Starter ($7/mes, siempre activo) |
+| **Railway Plan** | Trial ($5 gratis) | Developer ($5/mes) o Team ($20/mes) |
 | **Vercel Plan** | Hobby (gratis) | Pro ($20/mes, más recursos) |
-| **Redis** | No requerido | ✅ Recomendado (Render Redis $10/mes) |
-| **Domain** | .onrender.com / .vercel.app | Custom domain |
+| **Redis** | No requerido | ✅ Recomendado (Railway Redis $5/mes) |
+| **Domain** | .up.railway.app / .vercel.app | Custom domain |
 | **Monitoring** | Básico | Completo (Logfire, Sentry) |
 | **Backups** | Manual | Automático diario |
 | **Error Tracking** | Logs | Sentry |
@@ -95,20 +95,24 @@ CREATE TABLE production.maninos_documents (LIKE public.maninos_documents INCLUDI
 
 ---
 
-## 🚀 Backend Production (Render)
+## 🚀 Backend Production (Railway)
 
-### **Paso 1: Nuevo Web Service**
+### **Paso 1: Nuevo Proyecto**
 
-1. **Dashboard Render** → "New +" → "Web Service"
-2. **Config:**
+1. **Dashboard Railway** → "New Project"
+2. **Deploy from GitHub repo** → Selecciona `maninos-ai`
+3. **Config:**
    ```
    Name: maninos-ai-prod
    Branch: main
-   Region: Same as dev
-   Instance Type: Starter ($7/mes)
+   Region: us-west1 (o el más cercano)
    ```
 
-**⚠️ IMPORTANTE:** Usa **Starter plan**, NO Free. Free duerme y da mala experiencia a usuarios.
+**Plan Recomendado:**
+- **Developer ($5/mes):** Para 1-50 usuarios
+- **Team ($20/mes):** Para 50-500 usuarios
+
+**✅ Ventaja Railway:** Pricing más económico que Render, mejor performance.
 
 ### **Paso 2: Environment Variables**
 
@@ -138,21 +142,25 @@ ENVIRONMENT=production
 
 ### **Paso 3: Configurar Redis (Recomendado)**
 
-1. **En Render:** "New +" → "Redis"
+1. **En Railway:** Click "New" dentro de tu proyecto → "Database" → "Add Redis"
 2. **Config:**
    ```
-   Name: maninos-ai-redis-prod
-   Plan: Starter ($10/mes, 256MB)
+   Name: redis-prod
+   Plan: $5/mes (512MB)
    ```
-3. **Copy connection details** → Agregar a environment variables
+3. **Railway auto-genera variables:** `REDIS_URL`
+4. **Copiar a variables de tu servicio principal**
 
 **Beneficio:** Cache mejora performance 3-5x para queries frecuentes
 
+**Ventaja Railway:** Redis interno más barato ($5/mes vs $10/mes en Render)
+
 ### **Paso 4: Deploy**
 
-1. Click "Create Web Service"
-2. Wait for deployment (~3 min)
-3. **URL:** `https://maninos-ai-prod.onrender.com`
+1. Railway auto-deploya al conectar repo
+2. Wait for deployment (~1-2 min)
+3. **Generate Domain:** Settings → Networking → Generate Domain
+4. **URL:** `https://maninos-ai-prod.up.railway.app`
 
 ---
 
@@ -299,10 +307,12 @@ O usa Supabase Dashboard → Database → Backups
 
 Cuando tengas muchos usuarios:
 
-### **Backend Scaling (Render)**
-- **Starter ($7/mes):** 512MB RAM, suficiente para 100-500 users
-- **Standard ($25/mes):** 2GB RAM, hasta 2000-5000 users
-- **Pro ($85/mes):** 4GB RAM, 10k+ users
+### **Backend Scaling (Railway)**
+- **Developer ($5/mes):** 512MB RAM, 1 vCPU, 50-200 users
+- **Team ($20/mes):** 8GB RAM, 8 vCPU compartidos, 200-1000 users
+- **Enterprise:** Custom pricing para 10k+ users
+
+**Railway permite vertical + horizontal scaling fácilmente**
 
 ### **Database Scaling (Supabase)**
 - **Free:** Hasta 500MB, suficiente para 100-200 properties
@@ -390,10 +400,10 @@ Antes de anunciar a usuarios:
 Si algo sale mal en production:
 
 ### **Rollback Backend:**
-1. **Render Dashboard** → Service → Manual Deploy
-2. Select previous successful deployment
-3. Click "Redeploy"
-4. ~2 minutes to rollback
+1. **Railway Dashboard** → Tu servicio → Deployments
+2. Find previous successful deployment
+3. Click "..." → "Redeploy"
+4. ~1-2 minutes to rollback
 
 ### **Rollback Frontend:**
 1. **Vercel Dashboard** → Deployments
@@ -412,17 +422,19 @@ Si algo sale mal en production:
 
 | Servicio | Plan | Costo/mes | Capacidad |
 |----------|------|-----------|-----------|
-| **Render (Backend)** | Starter | $7 | 100-500 users |
-| **Render (Redis)** | Starter | $10 | 256MB cache |
+| **Railway (Backend)** | Developer | $5 | 50-200 users |
+| **Railway (Redis)** | Database | $5 | 512MB cache |
 | **Vercel** | Pro | $20 | 1TB bandwidth |
 | **Supabase** | Pro | $25 | 8GB database, 100GB storage |
 | **OpenAI API** | Usage | $50-200 | Depends on volume |
 | **Logfire** | Free/Paid | $0-20 | Monitoring |
 | **Domain** | Namecheap/etc | $12/año | app.maninos.com |
 
-**Total:** ~$120-280/mes (depends on OpenAI usage)
+**Total:** ~$110-275/mes (depends on OpenAI usage)
 
-**Por usuario:** $1-3/mes si tienes 100 usuarios
+**Por usuario:** $0.5-2.75/mes si tienes 100 usuarios
+
+**✅ Railway ahorra ~$7/mes vs Render** (mismo backend + Redis)
 
 ---
 
