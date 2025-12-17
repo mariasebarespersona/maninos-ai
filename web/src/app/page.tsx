@@ -8,7 +8,8 @@ import { PropertiesDrawer } from '@/components/PropertiesDrawer'
 import { ContractViewer } from '@/components/ContractViewer'
 import { DocumentsCollector } from '@/components/DocumentsCollector'
 import { MobileHomeProperty, ChatMessage } from '@/types/maninos'
-import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle, Search, PenTool, Zap } from 'lucide-react'
+import { Send, Paperclip, Mic, Bot, User, Menu, CheckSquare, FileText, AlertCircle, Search, PenTool, Zap, MicOff } from 'lucide-react'
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 
 // --- Rich UI Components ---
 
@@ -178,6 +179,19 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
+  // Voice Recording State
+  const { 
+    isRecording, 
+    isProcessing, 
+    audioBlob, 
+    error: voiceError, 
+    recordingTime,
+    startRecording, 
+    stopRecording, 
+    cancelRecording,
+    clearAudio 
+  } = useVoiceRecorder();
+
   // --- Configuration ---
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
 
@@ -307,7 +321,77 @@ export default function ChatPage() {
     } finally {
       setUploading(false)
     }
-  }, [input, propertyId, fetchProperty, sessionId])
+  }, [input, propertyId, fetchProperty, sessionId, fetchPropertiesList])
+
+  // Voice Handler - Send audio to backend for transcription
+  const handleVoiceSubmit = useCallback(async (blob: Blob) => {
+    setUploading(true);
+    
+    try {
+      const form = new FormData();
+      form.append('audio', blob, 'recording.webm');
+      form.append('session_id', sessionId);
+      form.append('property_id', propertyId || '');
+      form.append('text', ''); // Empty text for voice-only
+      
+      const resp = await fetch('/api/chat', { method: 'POST', body: form });
+      const data = await resp.json();
+      
+      // Add transcribed text as user message (if available)
+      if (data.transcript) {
+        const userMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: data.transcript
+        };
+        setMessages(prev => [...prev, userMsg]);
+      }
+      
+      // Update Property Context
+      if (data.property_id) {
+        if (data.property_id !== propertyId) setPropertyId(data.property_id);
+        fetchProperty(data.property_id);
+      } else if (data.property_id === null && propertyId) {
+        // Property was deleted
+        setPropertyId(null);
+        setProperty(null);
+        fetchPropertiesList();
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('maninos_property_id');
+          localStorage.removeItem('maninos_session_id');
+        }
+      }
+      
+      // Add agent response
+      const aiMsg: ChatMessage = { 
+        id: crypto.randomUUID(), 
+        role: 'assistant', 
+        content: String(data?.answer || 'No response') 
+      };
+      setMessages(prev => [...prev, aiMsg]);
+      
+      // Clear audio blob after successful send
+      clearAudio();
+      
+    } catch (err) {
+      console.error('Voice submission error:', err);
+      setMessages(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'assistant', 
+        content: 'Error procesando el audio. Por favor, intenta de nuevo o escribe tu mensaje.' 
+      }]);
+      clearAudio();
+    } finally {
+      setUploading(false);
+    }
+  }, [sessionId, propertyId, fetchProperty, fetchPropertiesList, clearAudio]);
+
+  // Auto-submit when recording stops
+  useEffect(() => {
+    if (audioBlob && !isRecording) {
+      handleVoiceSubmit(audioBlob);
+    }
+  }, [audioBlob, isRecording, handleVoiceSubmit]);
 
   // Handler for sending email requests from DealSidebar
   const handleSendEmailRequest = useCallback((data: {
@@ -560,6 +644,34 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
               
         {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-slate-200">
+            {/* Recording Indicator */}
+            {isRecording && (
+              <div className="max-w-4xl mx-auto mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between animate-in slide-in-from-bottom duration-200">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                    <div className="absolute inset-0 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                  </div>
+                  <span className="text-sm font-medium text-red-900">Grabando...</span>
+                  <span className="text-sm text-red-700 font-mono">{recordingTime}s</span>
+                </div>
+                <button
+                  onClick={cancelRecording}
+                  className="text-red-700 hover:text-red-900 text-xs font-medium px-3 py-1 hover:bg-red-100 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            {/* Voice Error Message */}
+            {voiceError && (
+              <div className="max-w-4xl mx-auto mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 flex items-center gap-2 animate-in slide-in-from-bottom duration-200">
+                <AlertCircle size={16} className="text-amber-600" />
+                <span className="text-xs text-amber-900">{voiceError}</span>
+              </div>
+            )}
+
             <div className="max-w-4xl mx-auto relative flex items-center gap-3">
                 <div className="flex-1 relative">
                     <input
@@ -568,17 +680,41 @@ Por ejemplo: "Quiero evaluar una mobile home en 123 Main St, Sunny Park"`,
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && onSend()}
-                        placeholder="Type a message..."
+                        placeholder={isRecording ? "Grabando..." : "Type a message..."}
                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
-                        disabled={uploading}
+                        disabled={uploading || isRecording}
                     />
                     <button className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1">
                         <Paperclip size={18} />
                     </button>
                 </div>
+              
+              {/* Mic Button - ChatGPT Style */}
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={uploading || isProcessing}
+                className={`p-3.5 rounded-xl transition-all shadow-md ${
+                  isRecording 
+                    ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30 animate-pulse' 
+                    : uploading || isProcessing
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                    : 'bg-slate-700 hover:bg-slate-800 text-white shadow-slate-700/20'
+                }`}
+                title={isRecording ? "Detener grabación" : "Grabar mensaje de voz"}
+              >
+                {isProcessing ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : isRecording ? (
+                  <MicOff size={18} className="text-white" />
+                ) : (
+                  <Mic size={18} />
+                )}
+              </button>
+
               <button
                 onClick={onSend}
-                    disabled={!input.trim() || uploading}
+                    disabled={!input.trim() || uploading || isRecording}
                     className="p-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors shadow-md shadow-blue-600/20"
               >
                     <Send size={18} />
