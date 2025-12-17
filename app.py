@@ -4043,6 +4043,29 @@ async def preview_document(doc_id: str):
 
 
 # ============================================================================
+# CACHE STATISTICS ENDPOINT (OPTIONAL - for monitoring)
+# ============================================================================
+
+@app.get("/api/cache/stats")
+async def get_cache_stats():
+    """
+    Get cache statistics.
+    
+    Returns cache hits/misses and configuration if Redis is available.
+    Returns disabled status if Redis is not available.
+    
+    This endpoint is useful for monitoring cache performance.
+    """
+    try:
+        from tools.cache import cache
+        stats = cache.get_stats()
+        return JSONResponse(content=stats)
+    except Exception as e:
+        logger.error(f"[cache_stats] Error: {e}")
+        return JSONResponse(content={"enabled": False, "error": str(e)})
+
+
+# ============================================================================
 # REMOVED: EVALUATION / FEEDBACK ENDPOINTS
 # All observability is now handled by Logfire automatically
 # ============================================================================

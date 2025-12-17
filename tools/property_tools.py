@@ -4,6 +4,9 @@ from .supabase_client import sb
 from .utils import docs_schema, nums_schema, sum_schema
 import logging
 
+# Import cache manager (optional - app works without Redis)
+from .cache import cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,9 +56,28 @@ def list_frameworks(property_id: str) -> Dict:
 # ---- Verification helpers ----
 
 def get_property(property_id: str) -> Optional[Dict]:
-    """Fetch a property by its UUID from the database."""
+    """
+    Fetch a property by its UUID from the database.
+    
+    PERFORMANCE: Uses Redis cache when available (5 min TTL).
+    Falls back to database if cache unavailable.
+    """
+    # Try cache first (no-op if Redis unavailable)
+    cached = cache.get("property", property_id)
+    if cached is not None:
+        logger.debug(f"[get_property] 🎯 Cache HIT for {property_id[:8]}...")
+        return cached
+    
+    # Cache miss - fetch from database
     rows = (sb.table("properties").select("*").eq("id", property_id).limit(1).execute()).data
-    return rows[0] if rows else None
+    result = rows[0] if rows else None
+    
+    # Cache result (no-op if Redis unavailable)
+    if result is not None:
+        cache.set("property", property_id, result)
+        logger.debug(f"[get_property] 💾 Cached property {property_id[:8]}...")
+    
+    return result
 
 
 def find_property(name: str, address: Optional[str] = None) -> Optional[Dict]:
@@ -232,6 +254,10 @@ def delete_property(property_id: str, purge_docs_first: bool = True) -> Dict:
         # Hard delete from database
         try:
             result = sb.table("properties").delete().eq("id", property_id).execute()
+            
+            # CACHE INVALIDATION: Clear cache for deleted property
+            cache.invalidate("property", property_id)
+            
             logger.info(f"[delete_property] ✅ Deleted property '{cur_name}' ({property_id})")
             return {"deleted": True, "property_id": property_id, "name": cur_name}
         except Exception as e:
@@ -307,6 +333,9 @@ def update_acquisition_stage(property_id: str, new_stage: str) -> Dict:
             "updated_at": "NOW()"
         }).eq("id", property_id).execute()
         
+        # CACHE INVALIDATION: Clear cache for this property
+        cache.invalidate("property", property_id)
+        
         logger.info(f"✅ [update_acquisition_stage] Property {property_id[:8]}... → {new_stage}")
         return {
             "ok": True,
@@ -336,17 +365,32 @@ def get_acquisition_stage(property_id: str) -> Optional[Dict]:
         return None
 
 
-def update_property_fields(property_id: str, fields: Dict) -> Dict:
+def update_property_fields(property_id: str, fields: Optional[Dict] = None) -> Dict:
     """
     Update multiple fields of a property at once.
     
+    IMPORTANT: You MUST provide the 'fields' parameter with at least one field to update.
+    Example: fields={"asking_price": 32500, "market_value": 75000}
+    
+    DO NOT call this function if you don't have specific fields to update.
+    Instead, use calculate_maninos_deal() which handles field updates automatically.
+    
     Args:
         property_id: UUID of the property
-        fields: Dictionary of field_name: value pairs to update
+        fields: Dictionary of field_name: value pairs to update (REQUIRED, cannot be empty)
     
     Returns:
         Dict with ok status and updated property data or error
     """
+    # Validate that fields parameter was provided and is not empty
+    if fields is None or not fields:
+        logger.warning(f"⚠️ [update_property_fields] Called without fields parameter for property {property_id[:8]}... - skipping")
+        return {
+            "ok": False, 
+            "error": "No fields provided. Use calculate_maninos_deal() instead for automatic field updates.",
+            "hint": "This function requires specific fields to update. Example: fields={'asking_price': 32500}"
+        }
+    
     try:
         # Add updated_at timestamp
         fields_copy = fields.copy()
@@ -355,6 +399,9 @@ def update_property_fields(property_id: str, fields: Dict) -> Dict:
         r = sb.table("properties").update(fields_copy).eq("id", property_id).execute()
         
         if r.data and len(r.data) > 0:
+            # CACHE INVALIDATION: Clear cache for this property
+            cache.invalidate("property", property_id)
+            
             logger.info(f"✅ [update_property_fields] Updated property {property_id} with fields: {list(fields.keys())}")
             return {"ok": True, "property": r.data[0]}
         else:

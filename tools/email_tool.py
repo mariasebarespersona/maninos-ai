@@ -7,7 +7,7 @@ import logfire  # Logfire for event tracking
 
 # Resend API Configuration
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "RAMA AI <noreply@tumai.app>")
+EMAIL_FROM = os.getenv("RESEND_EMAIL_FROM")
 
 def send_email(to: List[str], subject: str, html: str, attachments: List[tuple[str, bytes]] = None):
     import logging

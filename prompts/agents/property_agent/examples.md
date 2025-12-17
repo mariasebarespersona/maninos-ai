@@ -127,6 +127,72 @@ Ejemplos: "listo", "done", "ya está", "ahora qué sigue", "terminé", etc.
 [{"tool": "update_property_fields", "args": {"property_id": "abc-123", "updates": {"acquisition_stage": "initial"}}}]
 ```
 
+**Agent (Tool Calls) - 🚨 DEBE verificar valores extraídos:**
+```json
+[{"tool": "get_extracted_values", "args": {"property_id": "abc-123"}}]
+```
+
+**Tool Result (CASO A - Valores encontrados):**
+```json
+{
+  "asking_price": {"value": 32500, "confidence": 0.8, "source": "property_listing.pdf"},
+  "market_value": {"value": 75000, "confidence": 0.8, "source": "property_listing.pdf"}
+}
+```
+
+**Agent (Response) ✅ CORRECTO - PIDE CONFIRMACIÓN:**
+```
+✅ PASO 0 COMPLETADO - Documentos Recopilados
+
+📋 Documentos subidos:
+• Title Status Document ✅
+• Property Listing ✅
+• Property Photos ✅
+
+═══════════════════════════════════════════
+
+✨ Encontré estos valores en el listing que subiste:
+- **Precio de venta (asking price)**: $32,500
+- **Valor de mercado (market value)**: $75,000
+
+¿Son correctos estos valores?
+```
+
+**⏸️ TERMINA Y ESPERA CONFIRMACIÓN. NO CALCULA TODAVÍA.**
+
+---
+
+**Turn 3 (CONFIRMACIÓN):**
+
+**Usuario:** "sí"
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "calculate_maninos_deal", "args": {"asking_price": 32500, "market_value": 75000, "property_id": "abc-123"}}]
+```
+
+**Agent (Response):**
+```
+✅ PASO 1 COMPLETADO - Regla del 70%
+
+📊 Análisis Financiero:
+• Precio: $32,500
+• Valor de mercado: $75,000
+• Máximo (70%): $52,500
+✅ CUMPLE
+
+═══════════════════════════════════════════
+
+➡️ Siguiente paso: Inspección
+```
+
+---
+
+**ALTERNATIVA - Tool Result (CASO B - No hay valores):**
+```json
+{}
+```
+
 **Agent (Response) ✅ CORRECTO:**
 ```
 ✅ PASO 0 COMPLETADO - Documentos Recopilados
@@ -149,7 +215,69 @@ Ahora necesito dos datos:
 
 ---
 
+## 🚨 ERROR CRÍTICO #-1: Saltar directamente a calcular sin confirmación
+
+### ❌ NUNCA HAGAS ESTO:
+
+**Turn 2:**
+
+**Usuario:** "listo" / "todo subido"
+
+**Agent (Tool Calls) ❌ INCORRECTO:**
+```json
+[
+  {"tool": "get_property", "args": {"property_id": "abc-123"}},
+  {"tool": "calculate_maninos_deal", "args": {"asking_price": 32500, "market_value": 75000, "property_id": "abc-123"}}
+]
+```
+
+**Por qué está MAL:**
+- 🚫 Usa valores de `extracted_data` SIN pedir confirmación
+- 🚫 Salta directamente a calcular el 70% rule
+- 🚫 Usuario nunca confirmó si los valores son correctos
+- 🚫 No da oportunidad al usuario de corregir valores incorrectos
+
+**RESULTADO:** Usuario confundido, valores potencialmente incorrectos en la BD
+
+---
+
+### ✅ SIEMPRE HAZ ESTO:
+
+**Turn 2:**
+
+**Usuario:** "listo" / "todo subido"
+
+**Agent (Tool Calls) ✅ CORRECTO:**
+```json
+[
+  {"tool": "get_property", "args": {"property_id": "abc-123"}},
+  {"tool": "get_extracted_values", "args": {"property_id": "abc-123"}}
+]
+```
+
+**Agent (Response):**
+```
+✨ Encontré estos valores en el listing:
+- asking_price: $32,500
+- market_value: $75,000
+
+¿Son correctos estos valores?  ⏸️ ESPERA
+```
+
 **Turn 3:**
+
+**Usuario:** "sí"
+
+**Agent (Tool Calls):**
+```json
+[{"tool": "calculate_maninos_deal", "args": {"asking_price": 32500, "market_value": 75000, "property_id": "abc-123"}}]
+```
+
+**RESULTADO:** Usuario confirma valores, todo está correcto
+
+---
+
+**Turn 3 (usuario valores manuales):**
 
 **Usuario:** "precio 20,000 y market value 30,000"
 

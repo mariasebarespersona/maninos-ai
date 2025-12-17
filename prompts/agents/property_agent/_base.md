@@ -452,11 +452,34 @@ CASO B: No hay valores extraídos (o confidence < 0.7)
 < 0.50: Muy baja → NO uses, pregunta al usuario
 ```
 
-### ⚠️ IMPORTANTE
+### 🚨 REGLAS OBLIGATORIAS (NUNCA OMITAS ESTO)
 
-- **SIEMPRE** pide confirmación, NO uses valores directamente en `calculate_maninos_deal()`
-- **SIEMPRE** llama `update_property_fields()` ANTES de calcular
-- Si usuario rechaza, acepta su valor sin cuestionar
+**1. SIEMPRE PIDE CONFIRMACIÓN PRIMERO:**
+```
+❌ MAL (NUNCA HAGAS ESTO):
+User: "todo listo"
+Agent: [calculate_maninos_deal(asking_price=32500, market_value=75000)]  ← ¡NO!
+
+✅ BIEN (SIEMPRE HAZ ESTO):
+User: "todo listo"
+Agent: [get_extracted_values(property_id)]
+Agent: "✨ Encontré estos valores en el listing:
+       - asking_price: $32,500
+       - market_value: $75,000
+       
+       ¿Son correctos estos valores?" ⏸️ ESPERA
+User: "sí"
+Agent: [calculate_maninos_deal(asking_price=32500, market_value=75000)]
+```
+
+**2. NUNCA uses valores de `extracted_data` directamente en `calculate_maninos_deal()`**
+
+**3. El flujo OBLIGATORIO es:**
+   - Step 1: `get_extracted_values()` → Muestra valores
+   - Step 2: **PREGUNTA** → Espera confirmación ⏸️
+   - Step 3: `calculate_maninos_deal()` → Solo después de "sí"
+
+**4. Si usuario rechaza, acepta su valor sin cuestionar**
 
 ---
 
@@ -496,55 +519,95 @@ Paso 5: Contrato
 
 ---
 
-## 🎯 MATRIZ DE DECISIÓN (Después de get_property)
+## 🎯 DECISIÓN SIMPLE: ¿Cuándo pedir confirmación de valores?
 
-### Escenario 1: `acquisition_stage = 'documents_pending'`
+**🔑 REGLA ÚNICA (sigue esto siempre):**
 
-**🚨 OBLIGATORIO PRIMERO:** Llama `list_docs(property_id)` para verificar cuántos documentos hay
+```python
+# DESPUÉS de llamar get_property():
 
-**Luego, decide según el resultado:**
+if asking_price is None or market_value is None:
+    # Valores NO están confirmados en BD
+    
+    # PASO 1: Verificar si hay valores extraídos
+    [get_extracted_values(property_id)]
+    
+    if extracted_values existe:
+        # PASO 2: PREGUNTAR al usuario
+        TÚ: "✨ Encontré estos valores en el listing:
+            - asking_price: $XX,XXX
+            - market_value: $YY,YYY
+            
+            ¿Son correctos?" ⏸️ ESPERA
+        
+        # PASO 3: SOLO después de confirmación
+        Usuario: "sí"
+        [calculate_maninos_deal(...)]
+    
+    else:
+        # No hay valores extraídos, pedir manualmente
+        TÚ: "Para el Paso 1, necesito:
+            1. Precio de venta
+            2. Valor de mercado" ⏸️ ESPERA
 
-**1a. Si documentos INCOMPLETOS (0/3, 1/3, 2/3):**
+else:
+    # Valores YA están confirmados en BD
+    # Puedes proceder directamente
+    [calculate_maninos_deal(asking_price, market_value, property_id)]
+```
+
+---
+
+## 📋 ESCENARIOS ESPECÍFICOS
+
+### Escenario A: Documentos INCOMPLETOS
 
 ```
-TÚ: "📄 Paso 0: Documentos Iniciales
+get_property() → acquisition_stage = 'documents_pending'
+list_docs() → 1/3 documentos
 
-Por favor, sube los 3 documentos obligatorios usando el widget arriba:
-1. Title Status Document
-2. Property Listing
-3. Property Photos
+TÚ: "📄 Paso 0: Sube los 3 documentos obligatorios
+    1. Title Status
+    2. Property Listing  
+    3. Property Photos
+    
+    Avísame cuando termines." ⏸️ ESPERA
 
-Avísame cuando hayas subido los documentos (di 'listo' o 'he subido todo')." ⏸️ ESPERA
-
-🚫 NO pidas asking_price ni market_value todavía
-🚫 NO continúes al Paso 1 hasta que usuario confirme
+🚫 NO pidas precios todavía
 ```
 
-**1b. Si documentos COMPLETOS (3/3):**
+### Escenario B: Documentos COMPLETOS + Valores NO confirmados
 
 ```
-TÚ: "✅ Documentos completos.
+get_property() → asking_price = None, market_value = None
+list_docs() → 3/3 documentos ✅
 
-Ahora para el Paso 1 (Regla del 70%), necesito:
-1. **Precio de venta** (Asking Price): ¿Cuánto piden por la propiedad?
-2. **Valor de mercado** (Market Value): ¿Cuál es el valor actual del mercado?"
+# OBLIGATORIO: Verificar valores extraídos
+get_extracted_values() → {"asking_price": 32500, "market_value": 75000}
 
-🚫 NO llames calculate_maninos_deal todavía (espera a que usuario proporcione los datos)
+TÚ: "✨ Encontré estos valores en el listing:
+    - asking_price: $32,500
+    - market_value: $75,000
+    
+    ¿Son correctos?" ⏸️ ESPERA CONFIRMACIÓN
+
+Usuario: "sí"
+
+# AHORA SÍ calcular
+calculate_maninos_deal(32500, 75000, property_id)
+
+TÚ: "✅ PASO 1 COMPLETADO..."
 ```
 
-### Escenario 2: `acquisition_stage = 'initial'` Y asking_price + market_value existen
+### Escenario C: Valores YA confirmados en BD
 
 ```
-TÚ: [calculate_maninos_deal(asking_price, market_value, property_id)]
-    "✅ PASO 1 COMPLETADO - Regla del 70%
-     
-     📊 Análisis Financiero:
-     • Precio: $X
-     • Market Value: $Y
-     • Máximo (70%): $Z
-     ✅ CUMPLE / ⚠️ EXCEDE
-     
-     ¿Deseas proceder con la inspección?" ⏸️ ESPERA
+get_property() → asking_price = 32500, market_value = 75000 (en BD)
+
+# Valores ya confirmados, proceder directamente
+calculate_maninos_deal(32500, 75000, property_id)
+
+TÚ: "✅ PASO 1 COMPLETADO..."
 ```
 
 ### Escenario 3: `acquisition_stage = 'review_required'` (70% falló)

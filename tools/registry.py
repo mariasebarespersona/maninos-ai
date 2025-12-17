@@ -130,8 +130,11 @@ def delete_properties_tool(property_ids: List[str], purge_docs_first: bool = Tru
 
 
 @tool("update_property_fields")
-def update_property_fields_tool(property_id: str, fields: Dict) -> Dict:
+def update_property_fields_tool(property_id: str, fields: Optional[Dict] = None) -> Dict:
     """Update one or more fields of a property.
+    
+    IMPORTANT: You MUST provide the 'fields' parameter with at least one field to update.
+    If you don't have specific fields to update, use calculate_maninos_deal() instead.
     
     Common use cases:
     - Update acquisition_stage: update_property_fields(property_id, {"acquisition_stage": "initial"})
