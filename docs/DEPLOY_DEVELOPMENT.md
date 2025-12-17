@@ -107,14 +107,18 @@ git status
 
 ### **Paso 1.3: Configurar Start Command**
 
-Railway normalmente auto-detecta, pero para asegurar:
+**✅ IMPORTANTE:** El repo ya incluye un `Procfile` que Railway detecta automáticamente:
 
+```
+web: uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+**NO necesitas configurar Start Command manualmente** - Railway lo detecta del Procfile.
+
+Si quieres verificar:
 1. **Click en tu servicio** (aparece después de conectar repo)
 2. **Settings → Deploy**
-3. **Start Command:** Agregar si no está:
-   ```bash
-   uvicorn app:app --host 0.0.0.0 --port $PORT
-   ```
+3. **Start Command:** Debería mostrar el comando del Procfile automáticamente
 4. **Root Directory:** (dejar vacío)
 5. **Watch Paths:** `/**` (dejar por defecto)
 
@@ -352,6 +356,23 @@ https://maninos-ai-dev.vercel.app
 ---
 
 ## 🐛 Troubleshooting
+
+### **Error: '$PORT' is not a valid integer**
+
+**Síntoma:** Railway logs muestran:
+```
+Error: Invalid value for '--port': '$PORT' is not a valid integer.
+```
+
+**Causa:** Railway no está interpretando la variable de entorno `$PORT` correctamente.
+
+**Solución:**
+1. **Verifica que tienes el `Procfile` en la raíz** (ya incluido en el repo)
+2. **Borra el Start Command manual** en Railway Settings si lo configuraste
+3. **Railway auto-detectará el Procfile** y usará el comando correcto
+4. **Redeploy:** Settings → Click "Redeploy" o push nuevo commit
+
+✅ El repo ya incluye `Procfile`, Railway debería detectarlo automáticamente.
 
 ### **Error: Backend no responde (504)**
 
