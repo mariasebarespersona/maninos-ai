@@ -325,14 +325,6 @@ export default function ChatPage() {
 
   // Voice Handler - Send audio to backend for transcription
   const handleVoiceSubmit = useCallback(async (blob: Blob) => {
-    // Add placeholder message immediately for instant feedback
-    const placeholderId = crypto.randomUUID();
-    const placeholderMsg: ChatMessage = {
-      id: placeholderId,
-      role: 'user',
-      content: '🎤 Transcribiendo...'
-    };
-    setMessages(prev => [...prev, placeholderMsg]);
     setUploading(true);
     
     try {
@@ -345,16 +337,14 @@ export default function ChatPage() {
       const resp = await fetch('/api/chat', { method: 'POST', body: form });
       const data = await resp.json();
       
-      // Replace placeholder with actual transcribed text
+      // Add transcribed text as user message (if available)
       if (data.transcript) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === placeholderId 
-            ? { ...msg, content: data.transcript }
-            : msg
-        ));
-      } else {
-        // Remove placeholder if no transcript
-        setMessages(prev => prev.filter(msg => msg.id !== placeholderId));
+        const userMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: data.transcript
+        };
+        setMessages(prev => [...prev, userMsg]);
       }
       
       // Update Property Context
@@ -385,8 +375,6 @@ export default function ChatPage() {
       
     } catch (err) {
       console.error('Voice submission error:', err);
-      // Remove placeholder on error
-      setMessages(prev => prev.filter(msg => msg.id !== placeholderId));
       setMessages(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'assistant', 
