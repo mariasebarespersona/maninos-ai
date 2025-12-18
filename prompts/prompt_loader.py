@@ -174,6 +174,9 @@ def _get_property_agent_modules(intent: str) -> list[str]:
         "property.final": ["step4_final"],
         "property.contract": ["step5_contract"],
         
+        # Email functionality
+        "send_email": ["send_email"],
+        
         # Property CRUD (base only)
         "property.create": [],
         "property.list": [],
