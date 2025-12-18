@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react'
 import { FileText, Upload, CheckCircle2, Circle, AlertCircle } from 'lucide-react'
 
+// Backend URL for API calls (deployment or localhost)
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080';
+
 interface Document {
   id: string;
   name: string;
@@ -53,7 +56,7 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
   useEffect(() => {
     const loadDocuments = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8080/api/property/${propertyId}/documents`);
+        const res = await fetch(`${BACKEND_URL}/api/property/${propertyId}/documents`);
         if (res.ok) {
           const data = await res.json();
           console.log('[DocumentsCollector] Loaded documents from backend:', data.uploaded_documents);
@@ -88,7 +91,7 @@ export function DocumentsCollector({ propertyId, onComplete }: DocumentsCollecto
       formData.append('property_id', propertyId);
       formData.append('document_type', docId);
 
-      const res = await fetch('http://127.0.0.1:8080/upload_document', {
+      const res = await fetch(`${BACKEND_URL}/upload_document`, {
         method: 'POST',
         body: formData
       });
