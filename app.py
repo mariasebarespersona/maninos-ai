@@ -1146,12 +1146,26 @@ logfire.instrument_fastapi(app)
 
 cors_env = os.getenv("WEB_BASE", "http://localhost:3000,http://localhost:3001,http://localhost:3004,http://localhost:3005,http://localhost:3006")
 allow_all = os.getenv("ALLOW_ALL_CORS", "0") == "1" or cors_env.strip() == "*"
+
+# Build CORS origins list
+cors_origins = ["*"] if allow_all else cors_env.split(",")
+
+# Add Vercel preview/production domains if not using allow_all
+if not allow_all:
+    # Support for Vercel preview and production deployments
+    vercel_patterns = [
+        "https://maninos-1vgno0orm-mariasebarespersonas-projects.vercel.app",  # Preview
+        "https://*.vercel.app",  # All Vercel preview deploys
+    ]
+    cors_origins.extend(vercel_patterns)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if allow_all else cors_env.split(","),
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Regex for Vercel subdomains
 )
 
 # Request ID middleware for tracing
