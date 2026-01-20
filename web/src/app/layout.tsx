@@ -1,76 +1,26 @@
 import './globals.css'
 import React from 'react'
 import type { Metadata } from 'next'
-import { Inter, Lora } from 'next/font/google'
 import { AuthProvider } from '@/components/Auth/AuthProvider'
-import { UserMenu } from '@/components/Auth/UserMenu'
-
-const inter = Inter({ 
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-})
-
-const lora = Lora({
-  subsets: ['latin'],
-  variable: '--font-lora',
-  display: 'swap',
-})
 
 export const metadata: Metadata = {
-  title: 'MANINOS AI',
-  description: 'Asistente inteligente para adquisición de Mobile Homes.',
+  title: 'MANINOS AI - Tu hogar, nuestro compromiso',
+  description: 'Plataforma inteligente de gestión para casas móviles rent-to-own. Maninos Capital LLC.',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${lora.variable}`}>
-      <body className="min-h-screen bg-[color:var(--bg-app)] font-sans text-[color:var(--text-primary)] selection:bg-[color:var(--brand-100)] selection:text-[color:var(--brand-900)]">
+    <html lang="es">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
+      <body className="min-h-screen overflow-hidden">
         <AuthProvider>
-        {/* Modern Header - Clean & Professional */}
-        <header className="sticky top-0 z-50 w-full border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-surface-glass)] backdrop-blur-md transition-all duration-300">
-          <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-6">
-            
-            {/* Brand Identity */}
-            <div className="flex items-center gap-3 group cursor-pointer">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm font-bold text-lg">
-                 M
-              </div>
-              <div className="flex flex-col justify-center">
-                <h1 className="font-sans text-xl font-bold leading-none tracking-tight text-[color:var(--text-primary)]">
-                  MANINOS
-                </h1>
-                <span className="text-[10px] font-medium uppercase tracking-widest text-[color:var(--text-secondary)] opacity-80 group-hover:opacity-100 transition-opacity">
-                  AI Platform
-                </span>
-              </div>
-            </div>
-
-            {/* Status + User Menu */}
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-white/50 px-3 py-1 text-xs font-medium text-[color:var(--text-secondary)] shadow-sm backdrop-blur-sm">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-                </span>
-                Online
-              </div>
-              <UserMenu />
-            </div>
-            
-          </div>
-        </header>
-
-        {/* Main Workspace - Full Width for Tools */}
-        <main className="mx-auto max-w-[1600px] px-4 py-6 md:px-6">
           {children}
-        </main>
-
-        <footer className="mt-auto py-6 text-center">
-          <p className="font-sans text-xs text-[color:var(--text-tertiary)]">
-            © 2026 Maninos Capital LLC
-          </p>
-        </footer>
         </AuthProvider>
       </body>
     </html>

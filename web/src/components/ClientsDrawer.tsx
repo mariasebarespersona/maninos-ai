@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, Users, Mail, Phone, CheckCircle, Clock, AlertCircle, RefreshCw, DollarSign } from 'lucide-react'
+import { X, Users, Mail, Phone, CheckCircle, Clock, AlertCircle, RefreshCw, DollarSign, ChevronRight, UserPlus, Shield, TrendingUp } from 'lucide-react'
 
 interface Client {
   id: string
@@ -12,6 +12,7 @@ interface Client {
   process_stage?: string
   monthly_income?: number
   dti_score?: number
+  risk_profile?: string
   referral_code?: string
   created_at?: string
 }
@@ -53,47 +54,43 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
     }
   }, [isOpen])
 
-  const getKycStatusIcon = (status?: string) => {
+  const getKycConfig = (status?: string) => {
     switch (status) {
-      case 'verified': return <CheckCircle size={14} className="text-emerald-400" />
-      case 'pending': return <Clock size={14} className="text-amber-400" />
-      case 'rejected': return <AlertCircle size={14} className="text-red-400" />
-      default: return <Clock size={14} className="text-slate-400" />
+      case 'verified': return { icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/20', label: 'Verificado' }
+      case 'pending': return { icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/20', label: 'Pendiente' }
+      case 'rejected': return { icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/20', label: 'Rechazado' }
+      case 'processing': return { icon: RefreshCw, color: 'text-blue-400', bg: 'bg-blue-500/20', label: 'Procesando' }
+      default: return { icon: Clock, color: 'text-slate-400', bg: 'bg-slate-500/20', label: status || 'Sin KYC' }
     }
   }
 
-  const getKycStatusLabel = (status?: string) => {
-    switch (status) {
-      case 'verified': return 'Verificado'
-      case 'pending': return 'Pendiente'
-      case 'rejected': return 'Rechazado'
-      case 'processing': return 'Procesando'
-      default: return status || 'Sin KYC'
-    }
-  }
-
-  const getStageColor = (stage?: string) => {
+  const getStageConfig = (stage?: string) => {
     switch (stage) {
-      case 'datos_basicos': return 'bg-slate-500/20 text-slate-400'
-      case 'kyc_pending': return 'bg-amber-500/20 text-amber-400'
-      case 'kyc_verified': return 'bg-emerald-500/20 text-emerald-400'
-      case 'dti_calculated': return 'bg-blue-500/20 text-blue-400'
-      case 'contract_pending': return 'bg-purple-500/20 text-purple-400'
-      case 'active': return 'bg-emerald-500/20 text-emerald-400'
-      default: return 'bg-slate-500/20 text-slate-400'
+      case 'datos_basicos': return { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'Datos Básicos' }
+      case 'kyc_pending': return { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'KYC Pendiente' }
+      case 'kyc_verified': return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'KYC Verificado' }
+      case 'dti_calculated': return { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'DTI Calculado' }
+      case 'prequalified': return { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Precalificado' }
+      case 'contract_pending': return { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Contrato Pendiente' }
+      case 'active': return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'Activo' }
+      default: return { bg: 'bg-slate-500/20', text: 'text-slate-400', label: stage || 'Sin etapa' }
     }
   }
 
-  const getStageLabel = (stage?: string) => {
-    switch (stage) {
-      case 'datos_basicos': return 'Datos Básicos'
-      case 'kyc_pending': return 'KYC Pendiente'
-      case 'kyc_verified': return 'KYC Verificado'
-      case 'dti_calculated': return 'DTI Calculado'
-      case 'prequalified': return 'Precalificado'
-      case 'contract_pending': return 'Contrato Pendiente'
-      case 'active': return 'Activo'
-      default: return stage || 'Sin etapa'
+  const getDtiColor = (dti?: number) => {
+    if (!dti) return 'text-slate-400'
+    if (dti <= 30) return 'text-emerald-400'
+    if (dti <= 36) return 'text-blue-400'
+    if (dti <= 43) return 'text-amber-400'
+    return 'text-red-400'
+  }
+
+  const getRiskLabel = (risk?: string) => {
+    switch (risk?.toLowerCase()) {
+      case 'bajo': return { color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
+      case 'medio': return { color: 'text-amber-400', bg: 'bg-amber-500/10' }
+      case 'alto': return { color: 'text-red-400', bg: 'bg-red-500/10' }
+      default: return { color: 'text-slate-400', bg: 'bg-slate-500/10' }
     }
   }
 
@@ -103,121 +100,170 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-fade-in"
         onClick={onClose}
       />
       
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-96 bg-slate-900 border-l border-white/10 shadow-2xl z-50 flex flex-col">
+      <div className="fixed right-0 top-0 h-full w-full sm:w-[420px] bg-[color:var(--bg-surface-glass)] backdrop-blur-xl border-l border-white/10 shadow-2xl z-50 flex flex-col animate-slide-in">
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-              <Users size={20} className="text-blue-400" />
+        <div className="p-5 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="absolute -inset-1 bg-gradient-to-br from-blue-400/30 to-indigo-500/30 rounded-xl blur" />
+                <div className="relative w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Users size={22} className="text-white" />
+                </div>
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-display)' }}>
+                  Clientes
+                </h2>
+                <p className="text-slate-400 text-sm">{clients.length} registrados</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-white font-semibold">Clientes</h2>
-              <p className="text-slate-500 text-xs">{clients.length} registrados</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchClients}
+                disabled={loading}
+                className="btn-icon"
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              </button>
+              <button onClick={onClose} className="btn-icon">
+                <X size={18} />
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={fetchClients}
-              disabled={loading}
-              className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-            >
-              <X size={18} />
-            </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
           {loading && clients.length === 0 ? (
-            <div className="flex items-center justify-center h-40">
-              <div className="text-slate-500">Cargando clientes...</div>
+            <div className="flex flex-col items-center justify-center h-64">
+              <div className="w-12 h-12 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin mb-4" />
+              <p className="text-slate-400">Cargando clientes...</p>
             </div>
           ) : error ? (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 text-sm">
-              {error}
+            <div className="card p-4 bg-red-500/10 border-red-500/20">
+              <p className="text-red-400 text-sm">{error}</p>
             </div>
           ) : clients.length === 0 ? (
-            <div className="text-center py-12">
-              <Users size={48} className="text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">No hay clientes registrados</p>
-              <p className="text-slate-600 text-sm mt-1">Usa el chat para registrar un nuevo cliente</p>
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+                <UserPlus size={36} className="text-slate-600" />
+              </div>
+              <h3 className="text-white font-medium mb-1">Sin clientes</h3>
+              <p className="text-slate-500 text-sm max-w-[250px]">
+                Usa el chat para registrar nuevos clientes en el sistema
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {clients.map((client) => (
-                <div
-                  key={client.id}
-                  onClick={() => onSelectClient?.(client)}
-                  className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 cursor-pointer transition-colors"
-                >
-                  {/* Stage Badge */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStageColor(client.process_stage)}`}>
-                      {getStageLabel(client.process_stage)}
-                    </span>
-                    <div className="flex items-center gap-1 text-xs">
-                      {getKycStatusIcon(client.kyc_status)}
-                      <span className="text-slate-400">{getKycStatusLabel(client.kyc_status)}</span>
+              {clients.map((client, index) => {
+                const stage = getStageConfig(client.process_stage)
+                const kyc = getKycConfig(client.kyc_status)
+                const KycIcon = kyc.icon
+                const riskStyle = getRiskLabel(client.risk_profile)
+                
+                return (
+                  <div
+                    key={client.id}
+                    onClick={() => onSelectClient?.(client)}
+                    className={`
+                      card-elevated p-4 cursor-pointer group
+                      animate-fade-in stagger-${Math.min(index + 1, 6)}
+                    `}
+                  >
+                    {/* Header with badges */}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`badge ${stage.bg} ${stage.text}`}>
+                        {stage.label}
+                      </span>
+                      <div className={`badge ${kyc.bg} ${kyc.color}`}>
+                        <KycIcon size={12} />
+                        {kyc.label}
+                      </div>
+                    </div>
+
+                    {/* Name */}
+                    <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-amber-400 transition-colors">
+                      {client.full_name}
+                    </h3>
+                    
+                    {/* Contact Info */}
+                    <div className="space-y-1.5 mb-4">
+                      {client.email && (
+                        <div className="flex items-center gap-2 text-slate-400 text-sm">
+                          <Mail size={14} className="text-slate-500" />
+                          <span className="truncate">{client.email}</span>
+                        </div>
+                      )}
+                      {client.phone && (
+                        <div className="flex items-center gap-2 text-slate-400 text-sm">
+                          <Phone size={14} className="text-slate-500" />
+                          <span>{client.phone}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Financial Info Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {client.monthly_income && (
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10">
+                          <DollarSign size={16} className="text-emerald-400" />
+                          <div>
+                            <p className="text-emerald-400 font-semibold text-sm">
+                              ${client.monthly_income.toLocaleString()}
+                            </p>
+                            <p className="text-slate-500 text-[10px]">Ingreso/mes</p>
+                          </div>
+                        </div>
+                      )}
+                      {client.dti_score !== undefined && client.dti_score !== null && (
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-500/10">
+                          <TrendingUp size={16} className={getDtiColor(client.dti_score)} />
+                          <div>
+                            <p className={`font-semibold text-sm ${getDtiColor(client.dti_score)}`}>
+                              {client.dti_score.toFixed(1)}%
+                            </p>
+                            <p className="text-slate-500 text-[10px]">DTI</p>
+                          </div>
+                        </div>
+                      )}
+                      {client.risk_profile && (
+                        <div className={`flex items-center gap-2 p-2 rounded-lg ${riskStyle.bg}`}>
+                          <Shield size={16} className={riskStyle.color} />
+                          <div>
+                            <p className={`font-semibold text-sm capitalize ${riskStyle.color}`}>
+                              {client.risk_profile}
+                            </p>
+                            <p className="text-slate-500 text-[10px]">Riesgo</p>
+                          </div>
+                        </div>
+                      )}
+                      {client.referral_code && (
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-500/10">
+                          <span className="text-purple-400 text-lg">🎁</span>
+                          <div>
+                            <p className="text-purple-400 font-mono text-xs">
+                              {client.referral_code}
+                            </p>
+                            <p className="text-slate-500 text-[10px]">Código</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action hint */}
+                    <div className="mt-4 flex items-center justify-end text-slate-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span>Ver detalles</span>
+                      <ChevronRight size={14} />
                     </div>
                   </div>
-
-                  {/* Name */}
-                  <h3 className="text-white font-medium mb-2 truncate">
-                    {client.full_name}
-                  </h3>
-                  
-                  {/* Contact Info */}
-                  <div className="space-y-1 mb-3">
-                    {client.email && (
-                      <div className="flex items-center gap-2 text-slate-400 text-sm">
-                        <Mail size={14} />
-                        <span className="truncate">{client.email}</span>
-                      </div>
-                    )}
-                    {client.phone && (
-                      <div className="flex items-center gap-2 text-slate-400 text-sm">
-                        <Phone size={14} />
-                        <span>{client.phone}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Financial Info */}
-                  <div className="flex items-center gap-4 text-sm">
-                    {client.monthly_income && (
-                      <div className="flex items-center gap-1.5 text-slate-300">
-                        <DollarSign size={14} className="text-emerald-400" />
-                        <span>${client.monthly_income.toLocaleString()}/mes</span>
-                      </div>
-                    )}
-                    {client.dti_score && (
-                      <div className="text-slate-300">
-                        DTI: <span className={client.dti_score < 36 ? 'text-emerald-400' : client.dti_score < 43 ? 'text-amber-400' : 'text-red-400'}>
-                          {client.dti_score.toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Referral Code */}
-                  {client.referral_code && (
-                    <div className="mt-2 text-xs text-slate-500">
-                      Código: {client.referral_code}
-                    </div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -225,4 +271,3 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
     </>
   )
 }
-

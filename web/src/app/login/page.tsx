@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Home } from 'lucide-react'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -11,6 +12,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [message, setMessage] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -29,7 +31,9 @@ function LoginForm() {
     })
 
     if (error) {
-      setError(error.message)
+      setError(error.message === 'Invalid login credentials' 
+        ? 'Credenciales incorrectas. Verifica tu email y contraseña.'
+        : error.message)
       setLoading(false)
       return
     }
@@ -81,180 +85,271 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMyMDI1MzAiIGZpbGwtb3BhY2l0eT0iMC40Ij48cGF0aCBkPSJNMzYgMzRjMC0yIDItNCAyLTRzLTItMi00LTItNC0yIDItNCAyLTQgNC0yIDQtMiAyIDQgMiA0cy0yIDItNCAyLTQgMi0yIDQtMiA0LTQgMi00IDItMi00LTItNHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-20"></div>
-      
-      <div className="relative w-full max-w-md px-6">
-        {/* Logo & Title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white text-3xl font-bold shadow-lg shadow-amber-500/25 mb-4">
-            M
+    <div className="min-h-screen flex bg-grid">
+      {/* Background Effects */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[150px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-500/8 rounded-full blur-[120px]" />
+      </div>
+
+      {/* Left Panel - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 relative flex-col justify-between p-12 bg-glow">
+        {/* Logo */}
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div className="absolute -inset-2 bg-gradient-to-r from-amber-400/40 to-orange-500/40 rounded-2xl blur-xl" />
+            <div className="relative w-14 h-14 bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-2xl shadow-xl">
+              M
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            MANINOS AI
-          </h1>
-          <p className="text-slate-400 mt-2">
-            {mode === 'login' && 'Inicia sesión para continuar'}
-            {mode === 'signup' && 'Crea tu cuenta de empleado'}
-            {mode === 'forgot' && 'Recupera tu contraseña'}
-          </p>
+          <div>
+            <h1 className="text-white font-bold text-2xl tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+              MANINOS
+            </h1>
+            <p className="text-amber-400/80 text-xs font-medium uppercase tracking-widest">
+              AI Platform
+            </p>
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 shadow-2xl">
-          {message ? (
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+        {/* Hero Content */}
+        <div className="max-w-lg">
+          <h2 
+            className="text-4xl xl:text-5xl font-bold text-white mb-6 leading-tight"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Tu hogar,{' '}
+            <span className="gradient-text">nuestro compromiso</span>
+          </h2>
+          <p className="text-slate-400 text-lg leading-relaxed mb-8">
+            Plataforma inteligente para la gestión de casas móviles rent-to-own. 
+            Automatiza tus procesos con el poder de la inteligencia artificial.
+          </p>
+
+          {/* Features */}
+          <div className="space-y-4">
+            {[
+              { icon: Home, text: '6 Agentes especializados para cada proceso' },
+              { icon: Lock, text: 'Verificación KYC automatizada con Stripe' },
+              { icon: Phone, text: 'Soporte 24/7 vía WhatsApp: 832-745-9600' },
+            ].map((feature, i) => (
+              <div key={i} className="flex items-center gap-4 text-slate-300">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <feature.icon size={18} className="text-amber-400" />
+                </div>
+                <span className="text-sm">{feature.text}</span>
               </div>
-              <p className="text-white mb-4">{message}</p>
-              <button
-                onClick={() => { setMessage(null); setMode('login'); }}
-                className="text-amber-400 hover:text-amber-300 font-medium"
-              >
-                Volver al login
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword}>
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
-                    Correo electrónico
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
-                    placeholder="tu@email.com"
-                  />
-                </div>
-
-                {mode !== 'forgot' && (
-                  <div>
-                    <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
-                      Contraseña
-                    </label>
-                    <input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
-                      placeholder="••••••••"
-                    />
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold shadow-lg shadow-amber-500/25 hover:from-amber-400 hover:to-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Procesando...
-                    </span>
-                  ) : (
-                    <>
-                      {mode === 'login' && 'Iniciar sesión'}
-                      {mode === 'signup' && 'Crear cuenta'}
-                      {mode === 'forgot' && 'Enviar enlace'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Footer links */}
-          {!message && (
-            <div className="mt-6 text-center text-sm">
-              {mode === 'login' && (
-                <>
-                  <button
-                    onClick={() => setMode('forgot')}
-                    className="text-slate-400 hover:text-white transition-colors"
-                  >
-                    ¿Olvidaste tu contraseña?
-                  </button>
-                  <div className="mt-4 text-slate-500">
-                    ¿No tienes cuenta?{' '}
-                    <button
-                      onClick={() => setMode('signup')}
-                      className="text-amber-400 hover:text-amber-300 font-medium"
-                    >
-                      Regístrate
-                    </button>
-                  </div>
-                </>
-              )}
-              {mode === 'signup' && (
-                <div className="text-slate-500">
-                  ¿Ya tienes cuenta?{' '}
-                  <button
-                    onClick={() => setMode('login')}
-                    className="text-amber-400 hover:text-amber-300 font-medium"
-                  >
-                    Inicia sesión
-                  </button>
-                </div>
-              )}
-              {mode === 'forgot' && (
-                <button
-                  onClick={() => setMode('login')}
-                  className="text-slate-400 hover:text-white transition-colors"
-                >
-                  ← Volver al login
-                </button>
-              )}
-            </div>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-slate-500 text-xs mt-8">
-          © 2026 Maninos Capital LLC. Todos los derechos reservados.
-        </p>
+        <div className="flex items-center gap-6 text-slate-500 text-sm">
+          <a href="https://www.maninoshomes.com" target="_blank" rel="noopener noreferrer" className="hover:text-amber-400 transition-colors">
+            maninoshomes.com
+          </a>
+          <span>•</span>
+          <span className="flex items-center gap-2">
+            <MapPin size={14} />
+            Conroe, Texas
+          </span>
+        </div>
+      </div>
+
+      {/* Right Panel - Form */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+        <div className="w-full max-w-md">
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
+            <div className="w-12 h-12 bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+              M
+            </div>
+            <div>
+              <h1 className="text-white font-bold text-xl tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+                MANINOS AI
+              </h1>
+            </div>
+          </div>
+
+          {/* Card */}
+          <div className="card p-8 shadow-2xl border-white/10">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h3 
+                className="text-2xl font-bold text-white mb-2"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {mode === 'login' && '¡Bienvenido de vuelta!'}
+                {mode === 'signup' && 'Crear cuenta'}
+                {mode === 'forgot' && 'Recuperar contraseña'}
+              </h3>
+              <p className="text-slate-400 text-sm">
+                {mode === 'login' && 'Ingresa a tu cuenta para continuar'}
+                {mode === 'signup' && 'Regístrate como empleado de Maninos'}
+                {mode === 'forgot' && 'Te enviaremos un enlace de recuperación'}
+              </p>
+            </div>
+
+            {message ? (
+              /* Success Message */
+              <div className="text-center py-8 animate-fade-in">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-6">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-white text-lg mb-6">{message}</p>
+                <button
+                  onClick={() => { setMessage(null); setMode('login'); }}
+                  className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                >
+                  Volver al login
+                </button>
+              </div>
+            ) : (
+              /* Form */
+              <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword}>
+                {error && (
+                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-fade-in">
+                    {error}
+                  </div>
+                )}
+
+                <div className="space-y-5">
+                  {/* Email */}
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+                      Correo electrónico
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                      <input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="input pl-12"
+                        placeholder="tu@email.com"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  {mode !== 'forgot' && (
+                    <div>
+                      <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+                        Contraseña
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                        <input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          minLength={6}
+                          className="input pl-12 pr-12"
+                          placeholder="••••••••"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="btn-primary w-full h-12 text-base"
+                  >
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Procesando...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        {mode === 'login' && 'Iniciar sesión'}
+                        {mode === 'signup' && 'Crear cuenta'}
+                        {mode === 'forgot' && 'Enviar enlace'}
+                        <ArrowRight size={18} />
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Footer links */}
+            {!message && (
+              <div className="mt-8 text-center text-sm">
+                {mode === 'login' && (
+                  <>
+                    <button
+                      onClick={() => setMode('forgot')}
+                      className="text-slate-400 hover:text-white transition-colors"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                    <div className="mt-6 pt-6 border-t border-white/10 text-slate-500">
+                      ¿No tienes cuenta?{' '}
+                      <button
+                        onClick={() => setMode('signup')}
+                        className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                      >
+                        Regístrate
+                      </button>
+                    </div>
+                  </>
+                )}
+                {mode === 'signup' && (
+                  <div className="text-slate-500">
+                    ¿Ya tienes cuenta?{' '}
+                    <button
+                      onClick={() => setMode('login')}
+                      className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                    >
+                      Inicia sesión
+                    </button>
+                  </div>
+                )}
+                {mode === 'forgot' && (
+                  <button
+                    onClick={() => setMode('login')}
+                    className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 mx-auto"
+                  >
+                    ← Volver al login
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Copyright */}
+          <p className="text-center text-slate-600 text-xs mt-8">
+            © 2026 Maninos Capital LLC. Todos los derechos reservados.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
-// Loading fallback for Suspense
-function LoginLoading() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="animate-spin w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full"></div>
-    </div>
-  )
-}
-
-// Main page component with Suspense boundary
 export default function LoginPage() {
   return (
-    <Suspense fallback={<LoginLoading />}>
+    <Suspense>
       <LoginForm />
     </Suspense>
   )
 }
-
-
