@@ -19,3 +19,4 @@ const nextConfig = {
 };
 
 module.exports = nextConfig;
+// v4.0 Luxury Light Theme

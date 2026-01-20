@@ -26,8 +26,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError(error.message === 'Invalid login credentials' 
-        ? 'Credenciales incorrectas' : error.message)
+      setError(error.message === 'Invalid login credentials' ? 'Credenciales inválidas' : error.message)
       setLoading(false)
       return
     }
@@ -53,7 +52,7 @@ function LoginForm() {
       return
     }
 
-    setMessage('Revisa tu correo para confirmar tu cuenta')
+    setMessage('Revisa tu correo para confirmar.')
     setLoading(false)
   }
 
@@ -72,241 +71,124 @@ function LoginForm() {
       return
     }
 
-    setMessage('Revisa tu correo para restablecer tu contraseña')
+    setMessage('Correo de recuperación enviado.')
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen flex relative overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-[#09090b]">
-        {/* Large gradient orbs */}
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-amber-500/20 rounded-full blur-[120px] animate-pulse-glow" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-orange-600/15 rounded-full blur-[100px]" />
-        <div className="absolute top-[40%] right-[20%] w-[300px] h-[300px] bg-amber-400/10 rounded-full blur-[80px]" />
+    <div className="min-h-screen flex bg-white font-sans">
+      
+      {/* Left Panel - Brand Identity (Navy) */}
+      <div className="hidden lg:flex w-5/12 bg-navy-900 relative overflow-hidden flex-col justify-between p-12 text-white">
+        {/* Subtle Pattern Overlay */}
+        <div className="absolute inset-0 opacity-10" 
+             style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+        </div>
         
-        {/* Grid pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.02]"
-          style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-            backgroundSize: '60px 60px'
-          }}
-        />
-      </div>
+        {/* Gold Glow */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gold-500/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2"></div>
 
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative z-10 flex-col justify-between p-12">
-        {/* Logo */}
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl blur-xl opacity-50" />
-            <div className="relative w-14 h-14 bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-2xl">
-              <span className="text-black text-2xl font-black">M</span>
-            </div>
+        <div className="relative z-10">
+          <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-lg flex items-center justify-center border border-white/20 mb-6">
+            <span className="text-2xl font-serif font-bold text-gold-400">M</span>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">MANINOS</h1>
-            <p className="text-amber-400/80 text-xs font-medium tracking-[0.2em]">CAPITAL</p>
-          </div>
-        </div>
-
-        {/* Hero Text */}
-        <div className="max-w-md">
-          <h2 className="text-5xl font-bold text-white leading-[1.1] mb-6">
-            Tu hogar,
-            <br />
-            <span className="text-gradient">nuestro compromiso</span>
-          </h2>
-          <p className="text-zinc-400 text-lg leading-relaxed mb-10">
-            La plataforma de inteligencia artificial que transforma la gestión de casas móviles rent-to-own.
+          <h1 className="text-4xl font-serif font-bold leading-tight mb-4">
+            Tu hogar,<br/>
+            <span className="text-gold-400">nuestro compromiso.</span>
+          </h1>
+          <p className="text-navy-200 text-lg max-w-sm leading-relaxed">
+            Plataforma de inteligencia artificial para la gestión inmobiliaria de excelencia.
           </p>
-
-          {/* Stats */}
-          <div className="flex gap-8">
-            <div>
-              <div className="text-3xl font-bold text-gradient">6</div>
-              <div className="text-sm text-zinc-500">Agentes IA</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-gradient">24/7</div>
-              <div className="text-sm text-zinc-500">Disponible</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-gradient">100%</div>
-              <div className="text-sm text-zinc-500">Automatizado</div>
-            </div>
-          </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-zinc-600 text-sm">
-          Conroe, Texas • 832-745-9600
+        <div className="relative z-10 text-xs tracking-widest uppercase text-navy-400 font-medium">
+          © 2026 Maninos Capital LLC
         </div>
       </div>
 
-      {/* Right Side - Form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 relative z-10">
-        <div className="w-full max-w-[420px]">
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex justify-center mb-10">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
-                <span className="text-black text-xl font-black">M</span>
-              </div>
-              <span className="text-xl font-bold text-white">MANINOS</span>
-            </div>
+      {/* Right Panel - Form (White) */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
+        <div className="w-full max-w-[400px] bg-white p-8 rounded-2xl shadow-soft border border-navy-50 animate-fade-in">
+          
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-serif font-bold text-navy-900 mb-2">
+              {mode === 'login' && 'Bienvenido'}
+              {mode === 'signup' && 'Crear Cuenta'}
+              {mode === 'forgot' && 'Recuperar'}
+            </h2>
+            <p className="text-navy-500 text-sm">
+              {mode === 'login' && 'Ingresa a tu panel de control'}
+              {mode === 'signup' && 'Registra una nueva cuenta de empleado'}
+              {mode === 'forgot' && 'Ingresa tu correo para continuar'}
+            </p>
           </div>
 
-          {/* Card */}
-          <div className="card p-8 animate-fade-in">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <h3 className="text-2xl font-bold text-white mb-2">
-                {mode === 'login' && 'Bienvenido'}
-                {mode === 'signup' && 'Crear cuenta'}
-                {mode === 'forgot' && 'Recuperar acceso'}
-              </h3>
-              <p className="text-zinc-500">
-                {mode === 'login' && 'Ingresa tus credenciales'}
-                {mode === 'signup' && 'Registra tu cuenta de empleado'}
-                {mode === 'forgot' && 'Te enviaremos instrucciones'}
-              </p>
+          {message ? (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <p className="text-navy-800 font-medium mb-4">{message}</p>
+              <button onClick={() => {setMessage(null); setMode('login')}} className="text-gold-600 hover:text-gold-700 font-medium text-sm underline">
+                Volver al inicio
+              </button>
             </div>
-
-            {message ? (
-              <div className="text-center py-6 animate-fade-in">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+          ) : (
+            <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword} className="space-y-5">
+              
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
+                  {error}
                 </div>
-                <p className="text-white mb-6">{message}</p>
-                <button
-                  onClick={() => { setMessage(null); setMode('login'); }}
-                  className="text-amber-400 hover:text-amber-300 font-medium"
-                >
-                  Volver al login
-                </button>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-navy-500 uppercase tracking-wider mb-1.5">Correo Electrónico</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="input-luxury"
+                  placeholder="nombre@empresa.com"
+                  required
+                />
               </div>
-            ) : (
-              <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword}>
-                {error && (
-                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-fade-in">
-                    {error}
-                  </div>
-                )}
 
-                <div className="space-y-5">
-                  {/* Email */}
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">
-                      Correo electrónico
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="input"
-                      placeholder="tu@email.com"
-                    />
-                  </div>
-
-                  {/* Password */}
-                  {mode !== 'forgot' && (
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        Contraseña
-                      </label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        className="input"
-                        placeholder="••••••••"
-                      />
-                    </div>
-                  )}
-
-                  {/* Submit */}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="btn-primary w-full h-12"
-                  >
-                    {loading ? (
-                      <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                    ) : (
-                      <>
-                        {mode === 'login' && 'Iniciar sesión'}
-                        {mode === 'signup' && 'Crear cuenta'}
-                        {mode === 'forgot' && 'Enviar instrucciones'}
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
+              {mode !== 'forgot' && (
+                <div>
+                  <label className="block text-xs font-bold text-navy-500 uppercase tracking-wider mb-1.5">Contraseña</label>
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input-luxury"
+                    placeholder="••••••••"
+                    required
+                  />
                 </div>
-              </form>
-            )}
+              )}
 
-            {/* Links */}
-            {!message && (
-              <div className="mt-8 text-center text-sm">
-                {mode === 'login' && (
-                  <>
-                    <button
-                      onClick={() => setMode('forgot')}
-                      className="text-zinc-500 hover:text-white transition-colors"
-                    >
-                      ¿Olvidaste tu contraseña?
-                    </button>
-                    <div className="mt-6 pt-6 border-t border-zinc-800 text-zinc-500">
-                      ¿No tienes cuenta?{' '}
-                      <button
-                        onClick={() => setMode('signup')}
-                        className="text-amber-400 hover:text-amber-300 font-semibold"
-                      >
-                        Regístrate
-                      </button>
-                    </div>
-                  </>
-                )}
-                {mode === 'signup' && (
-                  <div className="text-zinc-500">
-                    ¿Ya tienes cuenta?{' '}
-                    <button
-                      onClick={() => setMode('login')}
-                      className="text-amber-400 hover:text-amber-300 font-semibold"
-                    >
-                      Inicia sesión
-                    </button>
-                  </div>
-                )}
-                {mode === 'forgot' && (
-                  <button
-                    onClick={() => setMode('login')}
-                    className="text-zinc-500 hover:text-white transition-colors"
-                  >
-                    ← Volver al login
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+              <button type="submit" disabled={loading} className="btn-primary w-full shadow-lg shadow-navy-900/10">
+                {loading ? 'Procesando...' : (mode === 'login' ? 'Iniciar Sesión' : mode === 'signup' ? 'Registrarse' : 'Enviar Enlace')}
+              </button>
 
-          {/* Copyright */}
-          <p className="text-center text-zinc-700 text-xs mt-8">
-            © 2026 Maninos Capital LLC
-          </p>
+            </form>
+          )}
+
+          {!message && (
+            <div className="mt-8 pt-6 border-t border-navy-50 text-center text-sm text-navy-500 flex flex-col gap-3">
+              {mode === 'login' && (
+                <>
+                  <button onClick={() => setMode('forgot')} className="hover:text-gold-600 transition-colors">¿Olvidaste tu contraseña?</button>
+                  <button onClick={() => setMode('signup')} className="hover:text-gold-600 transition-colors">¿No tienes cuenta? <span className="font-bold text-navy-700">Regístrate</span></button>
+                </>
+              )}
+              {mode !== 'login' && (
+                <button onClick={() => setMode('login')} className="hover:text-gold-600 transition-colors">← Volver al inicio de sesión</button>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
     </div>
