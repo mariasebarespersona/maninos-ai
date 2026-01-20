@@ -684,27 +684,28 @@ def calculate_acquisition_offer(
                 "message": f"{'✅ CUMPLE' if kpi_passes else '❌ NO CUMPLE'} KPI del 70%"
             }
         
-        # Save calculation to logs
-        sb.table("process_logs").insert({
-            "entity_type": "property",
-            "entity_id": property_id,
-            "process": "ADQUIRIR",
-            "action": "offer_calculated",
-            "details": offer_calculations
-        }).execute()
+        # Save calculation to logs (only if property_id exists)
+        if property_id:
+            sb.table("process_logs").insert({
+                "entity_type": "property",
+                "entity_id": property_id,
+                "process": "ADQUIRIR",
+                "action": "offer_calculated",
+                "details": offer_calculations
+            }).execute()
+            
+            # Update property stage
+            sb.table("properties").update({
+                "acquisition_stage": "negociacion",
+                "updated_at": datetime.now().isoformat()
+            }).eq("id", property_id).execute()
         
-        # Update property stage
-        sb.table("properties").update({
-            "acquisition_stage": "negociacion",
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", property_id).execute()
-        
-        logger.info(f"[calculate_acquisition_offer] Offer calculated for {property_id}: ${offer_calculations['recommended_offer']:,.2f}")
+        logger.info(f"[calculate_acquisition_offer] Offer calculated: ${offer_calculations['recommended_offer']:,.2f}")
         
         return {
             "ok": True,
             "property_id": property_id,
-            "property_name": prop.get("name"),
+            "property_name": property_name,
             "max_offer": offer_calculations["max_offer"],
             "recommended_offer": offer_calculations["recommended_offer"],
             "asking_price": asking_price,
