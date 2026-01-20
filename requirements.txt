@@ -25,6 +25,9 @@ websockets>=13.0,<14.0
 # Email - Resend API (cloud-friendly, no SMTP port blocking)
 resend>=2.4.0
 
+# Stripe - Payments and Identity verification (KYC)
+stripe>=7.0.0
+
 # the rest of your deps
 python-dotenv
 pypdf

@@ -2,7 +2,7 @@ from __future__ import annotations
 import env_loader  # loads .env first
 import base64, os, uuid, re, unicodedata, json
 from typing import Dict, Any
-from fastapi import FastAPI, UploadFile, Form, File, HTTPException
+from fastapi import FastAPI, UploadFile, Form, File, HTTPException, Request, Header
 import time
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -4083,4 +4083,71 @@ async def get_cache_stats():
 # REMOVED: EVALUATION / FEEDBACK ENDPOINTS
 # All observability is now handled by Logfire automatically
 # ============================================================================
+
+
+# ============================================================================
+# STRIPE IDENTITY WEBHOOKS - KYC Verification
+# ============================================================================
+
+@app.post("/api/webhooks/stripe-identity")
+async def stripe_identity_webhook(
+    request: Request,
+    stripe_signature: str = Header(None, alias="Stripe-Signature")
+):
+    """
+    Webhook endpoint for Stripe Identity verification events.
+    
+    Events handled:
+    - identity.verification_session.verified
+    - identity.verification_session.requires_input
+    - identity.verification_session.canceled
+    """
+    try:
+        # Get raw body for signature verification
+        payload = await request.body()
+        
+        # Process the webhook
+        from tools.stripe_identity import process_identity_webhook
+        result = process_identity_webhook(payload, stripe_signature or "")
+        
+        if not result.get("ok"):
+            logger.error(f"[stripe_identity_webhook] Error: {result.get('error')}")
+            return JSONResponse(
+                status_code=400,
+                content={"error": result.get("error")}
+            )
+        
+        # If verification was successful, update client in database
+        if result.get("event_type") == "identity.verification_session.verified":
+            client_id = result.get("client_id")
+            if client_id:
+                try:
+                    sb.table("clients").update({
+                        "kyc_status": "verified",
+                        "process_stage": "kyc_verified"
+                    }).eq("id", client_id).execute()
+                    logger.info(f"[stripe_identity_webhook] Client {client_id} KYC verified")
+                except Exception as db_err:
+                    logger.error(f"[stripe_identity_webhook] DB update error: {db_err}")
+        
+        elif result.get("event_type") == "identity.verification_session.canceled":
+            client_id = result.get("client_id")
+            if client_id:
+                try:
+                    sb.table("clients").update({
+                        "kyc_status": "canceled"
+                    }).eq("id", client_id).execute()
+                    logger.info(f"[stripe_identity_webhook] Client {client_id} KYC canceled")
+                except Exception as db_err:
+                    logger.error(f"[stripe_identity_webhook] DB update error: {db_err}")
+        
+        logger.info(f"[stripe_identity_webhook] Processed: {result.get('event_type')}")
+        return JSONResponse(content={"received": True, "event": result.get("event_type")})
+        
+    except Exception as e:
+        logger.error(f"[stripe_identity_webhook] Exception: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 

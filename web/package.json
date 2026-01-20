@@ -13,8 +13,10 @@
     "lint": "echo \"No ESLint configured\""
   },
   "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.47.10",
     "lucide-react": "^0.263.1",
-    "next": "14.2.5",
+    "next": "^14.2.35",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "recharts": "^3.4.1"
