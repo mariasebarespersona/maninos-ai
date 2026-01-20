@@ -31,7 +31,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage
 
 from agents.base_agent import BaseAgent
-from prompts.prompt_loader import PromptLoader
+from prompts.prompt_loader import build_agent_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,7 @@ class IncorporarAgent(BaseAgent):
             model: Modelo LLM a utilizar
         """
         # Load prompt
-        prompt_loader = PromptLoader()
-        self.system_prompt = prompt_loader.load_agent_prompt("incorporar_agent")
+        self.system_prompt = build_agent_prompt("incorporar_agent")
         
         # Initialize base agent
         super().__init__(
