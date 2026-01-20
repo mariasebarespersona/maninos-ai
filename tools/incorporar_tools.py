@@ -145,40 +145,51 @@ def create_client_profile(
                 "updated_at": datetime.now().isoformat()
             }
             
-            # Add optional fields if provided
+            # Add optional fields if provided - using correct column names from migration
             optional_fields = {
                 "date_of_birth": date_of_birth,
                 "ssn_itin": ssn_itin,
                 "marital_status": marital_status,
                 "current_address": address,
-                "city": city,
-                "state": state,
-                "zip_code": zip_code,
+                "current_city": city,
+                "current_state": state,
+                "current_zip": zip_code,
                 "residence_type": residence_type,
-                "employer": employer,
+                "employer_name": employer,
                 "occupation": occupation,
                 "employer_address": employer_address,
                 "employer_phone": employer_phone,
                 "monthly_income": monthly_income,
-                "years_at_employer": years_at_employer,
-                "months_at_employer": months_at_employer,
-                "other_income_source": other_income_source,
+                "employment_years": years_at_employer,
+                "employment_months": months_at_employer,
+                "has_other_income": other_income_source,
                 "other_income_amount": other_income_amount,
-                "credit_requested_amount": credit_requested_amount,
-                "credit_purpose": credit_purpose,
+                "requested_amount": credit_requested_amount,
+                "loan_purpose": credit_purpose,
                 "desired_term_months": desired_term_months,
                 "preferred_payment_method": preferred_payment_method,
-                "reference1_name": reference1_name,
-                "reference1_phone": reference1_phone,
-                "reference1_relationship": reference1_relationship,
-                "reference2_name": reference2_name,
-                "reference2_phone": reference2_phone,
-                "reference2_relationship": reference2_relationship,
             }
             
             for key, value in optional_fields.items():
                 if value is not None:
                     update_data[key] = value
+            
+            # Build personal_references JSONB array
+            references = []
+            if reference1_name:
+                references.append({
+                    "name": reference1_name,
+                    "phone": reference1_phone,
+                    "relationship": reference1_relationship
+                })
+            if reference2_name:
+                references.append({
+                    "name": reference2_name,
+                    "phone": reference2_phone,
+                    "relationship": reference2_relationship
+                })
+            if references:
+                update_data["personal_references"] = references
             
             sb.table("clients").update(update_data).eq("id", client_id).execute()
             
@@ -200,40 +211,51 @@ def create_client_profile(
             "process_stage": "datos_basicos"
         }
         
-        # Add optional fields
+        # Add optional fields - using correct column names from migration
         optional_fields = {
             "date_of_birth": date_of_birth,
             "ssn_itin": ssn_itin,
             "marital_status": marital_status,
             "current_address": address,
-            "city": city,
-            "state": state,
-            "zip_code": zip_code,
+            "current_city": city,  # Matches migration
+            "current_state": state,  # Matches migration
+            "current_zip": zip_code,  # Matches migration
             "residence_type": residence_type,
-            "employer": employer,
+            "employer_name": employer,  # Matches migration
             "occupation": occupation,
             "employer_address": employer_address,
             "employer_phone": employer_phone,
             "monthly_income": monthly_income,
-            "years_at_employer": years_at_employer,
-            "months_at_employer": months_at_employer,
-            "other_income_source": other_income_source,
+            "employment_years": years_at_employer,  # Matches migration
+            "employment_months": months_at_employer,  # Matches migration
+            "has_other_income": other_income_source,  # Matches migration
             "other_income_amount": other_income_amount,
-            "credit_requested_amount": credit_requested_amount,
-            "credit_purpose": credit_purpose,
+            "requested_amount": credit_requested_amount,  # Matches migration
+            "loan_purpose": credit_purpose,  # Matches migration
             "desired_term_months": desired_term_months,
             "preferred_payment_method": preferred_payment_method,
-            "reference1_name": reference1_name,
-            "reference1_phone": reference1_phone,
-            "reference1_relationship": reference1_relationship,
-            "reference2_name": reference2_name,
-            "reference2_phone": reference2_phone,
-            "reference2_relationship": reference2_relationship,
         }
         
         for key, value in optional_fields.items():
             if value is not None:
                 client_data[key] = value
+        
+        # Build personal_references JSONB array (matches migration structure)
+        references = []
+        if reference1_name:
+            references.append({
+                "name": reference1_name,
+                "phone": reference1_phone,
+                "relationship": reference1_relationship
+            })
+        if reference2_name:
+            references.append({
+                "name": reference2_name,
+                "phone": reference2_phone,
+                "relationship": reference2_relationship
+            })
+        if references:
+            client_data["personal_references"] = references
         
         result = sb.table("clients").insert(client_data).execute()
         
