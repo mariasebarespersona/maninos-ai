@@ -130,6 +130,32 @@ def create_client_profile(
     """
     from .supabase_client import sb
     
+    # Normalize values to match database CHECK constraints (Spanish values)
+    marital_status_map = {
+        "single": "soltero", "soltero": "soltero",
+        "married": "casado", "casado": "casado",
+        "other": "otro", "otro": "otro"
+    }
+    residence_type_map = {
+        "owned": "propia", "propia": "propia",
+        "rented": "rentada", "rentada": "rentada", "alquilada": "rentada",
+        "other": "otra", "otra": "otra"
+    }
+    loan_purpose_map = {
+        "home_purchase": "compra_vivienda", "compra_vivienda": "compra_vivienda",
+        "compra vivienda": "compra_vivienda", "home": "compra_vivienda",
+        "remodel": "remodelacion", "remodelacion": "remodelacion", "remodelación": "remodelacion",
+        "other": "otro", "otro": "otro"
+    }
+    
+    # Apply normalization
+    if marital_status:
+        marital_status = marital_status_map.get(marital_status.lower(), marital_status)
+    if residence_type:
+        residence_type = residence_type_map.get(residence_type.lower(), residence_type)
+    if credit_purpose:
+        credit_purpose = loan_purpose_map.get(credit_purpose.lower(), credit_purpose)
+    
     try:
         # Check if client already exists by email
         existing = sb.table("clients").select("id, full_name").eq("email", email).execute()
