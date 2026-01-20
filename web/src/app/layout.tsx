@@ -26,3 +26,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
+// v2.1 - Redesign
