@@ -680,6 +680,44 @@ INSTRUCCIONES CRÍTICAS:
                 "success": False
             }
     
+    def process(self, user_input: str, session_id: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Process a user request. Wrapper for run() with session support.
+        
+        Args:
+            user_input: User's message
+            session_id: Session ID for tracking
+            context: Additional context
+        
+        Returns:
+            Dict with response and metadata
+        """
+        try:
+            logger.info(f"[{self.name}] Processing (session={session_id}): {user_input[:50]}...")
+            
+            # Extract property_id from context if available
+            property_id = context.get("property_id") if context else None
+            
+            # Call the underlying run method
+            result = self.run(user_input, property_id=property_id, context=context)
+            
+            return {
+                "ok": True,
+                "response": result.get("response", "No response generated"),
+                "agent": self.name,
+                "action": result.get("action", "complete"),
+                "latency_ms": result.get("latency_ms", 0)
+            }
+            
+        except Exception as e:
+            logger.error(f"[{self.name}] Process error: {e}", exc_info=True)
+            return {
+                "ok": False,
+                "error": str(e),
+                "agent": self.name,
+                "response": f"Error: {str(e)}"
+            }
+    
     def __repr__(self):
         return f"<{self.name} model={self.model}>"
 

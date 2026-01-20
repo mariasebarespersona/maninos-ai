@@ -28,10 +28,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage
 
 from agents.base_agent import BaseAgent
-from prompts.prompt_loader import build_agent_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -45,24 +43,42 @@ class IncorporarAgent(BaseAgent):
     generación de contrato y seguimiento.
     """
     
-    def __init__(self, model: str = "gpt-4o"):
+    def __init__(self, model: str = "gpt-4o", temperature: float = 0.3):
         """
         Inicializa el IncorporarAgent.
         
         Args:
             model: Modelo LLM a utilizar
+            temperature: Temperatura para el LLM
         """
-        # Load prompt
-        self.system_prompt = build_agent_prompt("incorporar_agent")
-        
-        # Initialize base agent
-        super().__init__(
-            name="incorporar_agent",
-            model=model,
-            tools=self._create_tools()
-        )
-        
+        super().__init__(name="IncorporarAgent", model=model, temperature=temperature)
         logger.info("[IncorporarAgent] Initialized with 6 tools (Stripe Identity KYC)")
+    
+    def get_system_prompt(self, **kwargs) -> str:
+        """Get system prompt for IncorporarAgent from file."""
+        from prompts.prompt_loader import load_prompt
+        
+        try:
+            prompt = load_prompt("agents/incorporar_agent/_base.md")
+            return prompt
+        except Exception as e:
+            logger.warning(f"[IncorporarAgent] Could not load prompt file: {e}")
+            # Fallback prompt
+            return """Eres el asistente de INCORPORACIÓN de Maninos Capital LLC.
+
+Manejas los 6 procedimientos del proceso INCORPORAR:
+1. Perfilar cliente (Anexo 1) - Capturar información personal y financiera
+2. Iniciar KYC - Crear sesión de verificación con Stripe Identity
+3. Consultar KYC - Verificar estado de la verificación
+4. Evaluar DTI - Calcular relación deuda/ingreso
+5. Generar contrato RTO - Personalizar contrato rent-to-own (Anexo 3)
+6. Comunicar al cliente - Enviar actualizaciones y calendarios
+
+Responde siempre en español."""
+    
+    def get_tools(self) -> List:
+        """Get tools for IncorporarAgent (6 tools con Stripe Identity)."""
+        return self._create_tools()
     
     def _create_tools(self) -> List:
         """
@@ -375,60 +391,3 @@ class IncorporarAgent(BaseAgent):
             tool_generate_rto_contract,
             tool_send_client_update
         ]
-    
-    def get_system_message(self) -> SystemMessage:
-        """
-        Retorna el mensaje de sistema para el agente.
-        
-        Returns:
-            SystemMessage con el prompt del agente
-        """
-        return SystemMessage(content=self.system_prompt)
-    
-    def process(self, user_input: str, session_id: str, context: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        Procesa una solicitud del usuario relacionada con INCORPORAR.
-        
-        Args:
-            user_input: Mensaje del usuario
-            session_id: ID de sesión
-            context: Contexto adicional (client_id, property_id, etc.)
-        
-        Returns:
-            Respuesta del agente
-        """
-        try:
-            logger.info(f"[IncorporarAgent] Processing: {user_input[:100]}...")
-            
-            # Build context message if available
-            context_info = ""
-            if context:
-                if context.get("client_id"):
-                    context_info += f"\nCliente actual: {context['client_id']}"
-                if context.get("property_id"):
-                    context_info += f"\nPropiedad de interés: {context['property_id']}"
-                if context.get("process_stage"):
-                    context_info += f"\nEtapa actual: {context['process_stage']}"
-            
-            full_input = user_input
-            if context_info:
-                full_input = f"{user_input}\n\n[CONTEXTO]{context_info}"
-            
-            # Invoke the agent
-            result = self.invoke(full_input, session_id)
-            
-            return {
-                "ok": True,
-                "response": result,
-                "agent": "incorporar_agent",
-                "process": "INCORPORAR"
-            }
-            
-        except Exception as e:
-            logger.error(f"[IncorporarAgent] Error: {e}")
-            return {
-                "ok": False,
-                "error": str(e),
-                "agent": "incorporar_agent"
-            }
-
