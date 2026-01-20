@@ -418,7 +418,7 @@ def start_kyc_verification(
         sb.table("clients").update({
             "kyc_status": "pending",
             "stripe_verification_session_id": session_id,
-            "process_stage": "kyc_pendiente",
+            "process_stage": "kyc_pending",
             "updated_at": datetime.now().isoformat()
         }).eq("id", client_id).execute()
         
@@ -684,7 +684,7 @@ def calculate_client_dti(
         sb.table("clients").update({
             "dti_score": round(current_dti, 2),
             "risk_profile": risk_level,
-            "process_stage": "dti_calculado",
+            "process_stage": "dti_calculated",
             "updated_at": datetime.now().isoformat()
         }).eq("id", client_id).execute()
         
@@ -867,7 +867,7 @@ def generate_rto_contract(
         
         # Update client stage
         sb.table("clients").update({
-            "process_stage": "contrato_generado",
+            "process_stage": "contract_pending",
             "updated_at": datetime.now().isoformat()
         }).eq("id", client_id).execute()
         
