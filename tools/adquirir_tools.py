@@ -547,7 +547,7 @@ def create_inspection_record(
 # ============================================================================
 
 def calculate_acquisition_offer(
-    property_id: str,
+    property_id: Optional[str] = None,
     market_value: Optional[float] = None,
     arv: Optional[float] = None,
     repair_estimate: Optional[float] = None,
@@ -564,10 +564,10 @@ def calculate_acquisition_offer(
     KPI: Precio promedio de compra ≤70% del valor de mercado
     
     Args:
-        property_id: UUID de la propiedad
-        market_value: Valor de mercado (opcional si se obtiene de BD)
+        property_id: UUID de la propiedad (OPCIONAL - si se omite, calcula solo con valores)
+        market_value: Valor de mercado (requerido si no hay property_id)
         arv: After Repair Value (opcional)
-        repair_estimate: Estimado de reparaciones (opcional si se obtiene de BD)
+        repair_estimate: Estimado de reparaciones (opcional)
         asking_price: Precio de venta actual
         target_margin: Margen objetivo (default 0.70 = 70%)
         include_closing_costs: Si incluir costos de cierre
@@ -579,29 +579,40 @@ def calculate_acquisition_offer(
     from .supabase_client import sb
     
     try:
-        # Get property data from DB
-        prop_result = sb.table("properties").select(
-            "id, name, address, market_value, arv, repair_estimate, asking_price"
-        ).eq("id", property_id).execute()
+        prop = None
+        property_name = None
+        property_address = None
         
-        if not prop_result.data:
-            return {"ok": False, "error": "Propiedad no encontrada"}
+        # If property_id provided, try to get data from DB
+        if property_id:
+            prop_result = sb.table("properties").select(
+                "id, name, address, market_value, arv, repair_estimate, asking_price"
+            ).eq("id", property_id).execute()
+            
+            if prop_result.data:
+                prop = prop_result.data[0]
+                property_name = prop.get("name")
+                property_address = prop.get("address")
+                
+                # Use provided values or fall back to DB values
+                market_value = market_value or prop.get("market_value") or 0
+                arv = arv or prop.get("arv") or 0
+                repair_estimate = repair_estimate or prop.get("repair_estimate") or 0
+                asking_price = asking_price or prop.get("asking_price") or 0
         
-        prop = prop_result.data[0]
-        
-        # Use provided values or fall back to DB values
-        market_value = market_value or prop.get("market_value") or 0
-        arv = arv or prop.get("arv") or 0
-        repair_estimate = repair_estimate or prop.get("repair_estimate") or 0
-        asking_price = asking_price or prop.get("asking_price") or 0
+        # Ensure we have at least market_value or arv
+        market_value = market_value or 0
+        arv = arv or 0
+        repair_estimate = repair_estimate or 0
+        asking_price = asking_price or 0
         
         if market_value == 0 and arv == 0:
             return {"ok": False, "error": "Se requiere market_value o ARV para calcular oferta"}
         
         offer_calculations = {
             "property_id": property_id,
-            "property_name": prop.get("name"),
-            "property_address": prop.get("address"),
+            "property_name": property_name,
+            "property_address": property_address,
             "target_margin": target_margin,
             "calculations": {},
             "recommended_offer": 0,

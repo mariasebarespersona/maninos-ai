@@ -67,8 +67,8 @@ class CreateInspectionRecordInput(BaseModel):
 
 class CalculateAcquisitionOfferInput(BaseModel):
     """Input for calculate_acquisition_offer tool."""
-    property_id: str = Field(..., description="UUID de la propiedad")
-    market_value: Optional[float] = Field(None, description="Valor de mercado")
+    property_id: Optional[str] = Field(None, description="UUID de la propiedad (opcional - si se omite, calcula solo con valores)")
+    market_value: Optional[float] = Field(None, description="Valor de mercado (requerido si no hay property_id)")
     arv: Optional[float] = Field(None, description="After Repair Value")
     repair_estimate: Optional[float] = Field(None, description="Estimado de reparaciones")
     asking_price: Optional[float] = Field(None, description="Precio de venta actual")
@@ -179,7 +179,7 @@ def create_inspection_record_tool(
 
 @tool("calculate_acquisition_offer", args_schema=CalculateAcquisitionOfferInput)
 def calculate_acquisition_offer_tool(
-    property_id: str,
+    property_id: Optional[str] = None,
     market_value: Optional[float] = None,
     arv: Optional[float] = None,
     repair_estimate: Optional[float] = None,
@@ -192,6 +192,9 @@ def calculate_acquisition_offer_tool(
     Calcula la oferta de adquisición usando la regla del 70%.
     Procedimiento 4: Establecer condiciones de adquisición.
     KPI: Precio promedio de compra ≤70% del valor de mercado.
+    
+    NOTA: property_id es OPCIONAL. Si se proporciona, obtiene datos de BD.
+    Si no, calcula solo con los valores proporcionados (market_value requerido).
     """
     from tools.adquirir_tools import calculate_acquisition_offer
     return calculate_acquisition_offer(

@@ -46,6 +46,111 @@ ANEXO_1_FIELDS = {
 
 
 # ============================================================================
+# HERRAMIENTA 0: get_client_info (CONSULTA)
+# Permite consultar información de un cliente existente
+# ============================================================================
+
+def get_client_info(
+    client_id: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    full_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Consulta información de un cliente existente.
+    
+    Puede buscar por ID, email, teléfono o nombre.
+    
+    Args:
+        client_id: UUID del cliente (búsqueda exacta)
+        email: Email del cliente (búsqueda exacta)
+        phone: Teléfono del cliente (búsqueda exacta)
+        full_name: Nombre del cliente (búsqueda parcial)
+    
+    Returns:
+        Dict con información del cliente o lista de clientes encontrados
+    """
+    from .supabase_client import sb
+    
+    try:
+        query = sb.table("clients").select("*")
+        
+        if client_id:
+            query = query.eq("id", client_id)
+        elif email:
+            query = query.eq("email", email)
+        elif phone:
+            query = query.eq("phone", phone)
+        elif full_name:
+            query = query.ilike("full_name", f"%{full_name}%")
+        else:
+            # Return recent clients if no filter
+            query = query.order("created_at", desc=True).limit(10)
+        
+        result = query.execute()
+        
+        if not result.data:
+            return {
+                "ok": False,
+                "error": "No se encontró ningún cliente con esos criterios",
+                "suggestion": "Verifica el ID, email o nombre del cliente"
+            }
+        
+        clients = result.data
+        
+        if len(clients) == 1:
+            client = clients[0]
+            
+            # Format response with key info
+            return {
+                "ok": True,
+                "client": {
+                    "id": client["id"],
+                    "full_name": client["full_name"],
+                    "email": client.get("email"),
+                    "phone": client.get("phone"),
+                    "marital_status": client.get("marital_status"),
+                    "address": f"{client.get('current_address', '')} {client.get('current_city', '')}, {client.get('current_state', '')} {client.get('current_zip', '')}".strip(),
+                    "employer": client.get("employer_name"),
+                    "occupation": client.get("occupation"),
+                    "monthly_income": client.get("monthly_income"),
+                    "kyc_status": client.get("kyc_status"),
+                    "process_stage": client.get("process_stage"),
+                    "dti_score": client.get("dti_score"),
+                    "risk_profile": client.get("risk_profile"),
+                    "referral_code": client.get("referral_code"),
+                    "created_at": client.get("created_at"),
+                },
+                "summary": f"Cliente: {client['full_name']} | KYC: {client.get('kyc_status', 'pending')} | Etapa: {client.get('process_stage', 'datos_basicos')}",
+                "message": f"Información del cliente '{client['full_name']}' encontrada exitosamente."
+            }
+        else:
+            # Multiple clients found
+            client_list = [
+                {
+                    "id": c["id"],
+                    "full_name": c["full_name"],
+                    "email": c.get("email"),
+                    "phone": c.get("phone"),
+                    "kyc_status": c.get("kyc_status"),
+                    "process_stage": c.get("process_stage")
+                }
+                for c in clients
+            ]
+            
+            return {
+                "ok": True,
+                "count": len(clients),
+                "clients": client_list,
+                "message": f"Se encontraron {len(clients)} clientes. Especifica el ID para ver detalles completos."
+            }
+            
+    except Exception as e:
+        logger.error(f"[get_client_info] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
 # HERRAMIENTA 1: create_client_profile
 # Procedimiento: Perfilar cliente (Agente de éxito)
 # ============================================================================

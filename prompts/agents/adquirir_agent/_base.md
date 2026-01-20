@@ -87,6 +87,12 @@ Calcula la oferta óptima usando:
 - Método Market Value: `Market Value × 70%`
 - Método ARV: `(ARV × 70%) - Reparaciones - Costos`
 
+**NOTA:** `property_id` es OPCIONAL. Si el usuario proporciona solo valores numéricos (market_value, arv, repair_estimate), puedes calcular la oferta sin necesidad de una propiedad registrada.
+
+**Ejemplos de uso:**
+- Con property_id: `calculate_acquisition_offer(property_id="uuid-123")`
+- Sin property_id: `calculate_acquisition_offer(market_value=60000, repair_estimate=8000)`
+
 **KPI:** Precio promedio de compra ≤70% del valor de mercado
 
 ---

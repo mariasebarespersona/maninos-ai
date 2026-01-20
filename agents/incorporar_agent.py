@@ -52,7 +52,7 @@ class IncorporarAgent(BaseAgent):
             temperature: Temperatura para el LLM
         """
         super().__init__(name="IncorporarAgent", model=model, temperature=temperature)
-        logger.info("[IncorporarAgent] Initialized with 6 tools (Stripe Identity KYC)")
+        logger.info("[IncorporarAgent] Initialized with 7 tools (includes get_client_info + Stripe Identity KYC)")
     
     def get_system_prompt(self, **kwargs) -> str:
         """Get system prompt for IncorporarAgent from file."""
@@ -82,12 +82,13 @@ Responde siempre en español."""
     
     def _create_tools(self) -> List:
         """
-        Crea las 6 herramientas del proceso INCORPORAR (con Stripe Identity KYC).
+        Crea las 7 herramientas del proceso INCORPORAR (con Stripe Identity KYC).
         
         Returns:
             Lista de herramientas LangChain
         """
         from tools.incorporar_tools import (
+            get_client_info,
             create_client_profile,
             start_kyc_verification,
             check_kyc_status,
@@ -95,6 +96,37 @@ Responde siempre en español."""
             generate_rto_contract,
             send_client_update
         )
+        
+        # Tool 0: Consultar cliente
+        @tool
+        def tool_get_client_info(
+            client_id: Optional[str] = None,
+            email: Optional[str] = None,
+            phone: Optional[str] = None,
+            full_name: Optional[str] = None
+        ) -> str:
+            """
+            Consulta información de un cliente existente.
+            
+            Puede buscar por ID, email, teléfono o nombre (búsqueda parcial).
+            Usa esta herramienta cuando el usuario quiera ver información de un cliente.
+            
+            Args:
+                client_id: UUID del cliente (búsqueda exacta)
+                email: Email del cliente (búsqueda exacta)
+                phone: Teléfono del cliente (búsqueda exacta)
+                full_name: Nombre del cliente (búsqueda parcial)
+            
+            Returns:
+                Información del cliente encontrado
+            """
+            result = get_client_info(
+                client_id=client_id,
+                email=email,
+                phone=phone,
+                full_name=full_name
+            )
+            return str(result)
         
         # Tool 1: Perfilar cliente
         @tool
@@ -384,6 +416,7 @@ Responde siempre en español."""
             return str(result)
         
         return [
+            tool_get_client_info,
             tool_create_client_profile,
             tool_start_kyc_verification,
             tool_check_kyc_status,
