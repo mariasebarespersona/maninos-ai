@@ -472,120 +472,135 @@ class IntelligentRouter:
         }
     
     # =========================================================================
-    # INTENT-BASED ROUTING (FALLBACK)
+    # INTENT-BASED ROUTING WITH LLM (FALLBACK)
+    # Developer Bible compliant: NOT keyword-based, uses LLM for understanding
     # =========================================================================
     
     def _route_by_intent(self, user_input: str, context: Dict) -> Dict[str, Any]:
         """
-        Fallback routing based on intent detection.
+        Fallback routing using LLM for intent classification.
         Used when no entity context or session state is available.
         
-        This is still somewhat keyword-based, but as a fallback only.
+        Developer Bible compliant:
+        - NOT keyword-based
+        - Uses LLM to understand semantic meaning
+        - Provides reasoning for the decision
         """
-        input_lower = user_input.lower()
-        
-        # Intent patterns with confidence scores
-        intent_patterns = [
-            # COMERCIALIZAR - Marketing, leads, portfolio management, loyalty
-            {
-                "process": "COMERCIALIZAR",
-                "patterns": [
-                    (r"lead|prospecto|interesado.{0,10}(comprar|rto)", 0.85),
-                    (r"acta.{0,10}comité|committee.{0,10}record", 0.9),
-                    (r"promover|promocionar|activar.{0,10}catálogo", 0.85),
-                    (r"crédito.{0,10}riesgo|evaluar.{0,10}crédito|dictamen", 0.9),
-                    (r"formalizar.{0,10}venta|mesa.{0,10}control", 0.9),
-                    (r"cartera.{0,10}(morosidad|clasificar)|recuperar.{0,10}cartera", 0.9),
-                    (r"fidelizar|fidelización|título.{0,10}transferir|tdhca", 0.9),
-                    (r"marketing|campaña.{0,10}marketing", 0.8),
-                    (r"desembolso|finiquitar.{0,10}activo", 0.85),
-                ],
-            },
-            # INCORPORAR - Client onboarding
-            {
-                "process": "INCORPORAR",
-                "patterns": [
-                    (r"regist\w*.{0,10}cliente|nuev\w*.{0,10}cliente|crear.{0,10}cliente", 0.95),
-                    (r"info\w*.{0,10}cliente|datos.{0,10}cliente|perfil.{0,10}cliente", 0.9),
-                    (r"kyc|verificación.{0,10}identidad|verificar.{0,10}(cliente|identidad)", 0.9),
-                    (r"dti|debt.?to.?income|deuda.{0,10}ingreso|ratio.{0,10}deuda|capacidad.{0,10}pago", 0.9),
-                    (r"contrato.{0,10}rto|generar.{0,10}contrato|arrendamiento|rent.?to.?own", 0.9),
-                    (r"referido|código.{0,10}referido|estadísticas.{0,10}referido", 0.85),
-                    (r"bienvenida|email.{0,10}cliente|comunicar.{0,10}cliente", 0.8),
-                ],
-            },
-            # ADQUIRIR - Property acquisition
-            {
-                "process": "ADQUIRIR",
-                "patterns": [
-                    (r"busc\w*.{0,15}propiedad|busc\w*.{0,15}casa|busc\w*.{0,15}mobile.?home", 0.95),
-                    (r"propiedad.{0,15}(houston|texas|tx)|houston.{0,15}propiedad", 0.9),
-                    (r"evaluar.{0,10}propiedad|evaluación|checklist.{0,10}(26|propiedad)", 0.85),
-                    (r"oferta.{0,10}(adquisición|compra)|calcular.{0,10}oferta|regla.{0,10}70", 0.9),
-                    (r"registrar?.{0,10}propiedad|nueva.{0,10}propiedad|añadir.{0,10}propiedad", 0.85),
-                    (r"inventario.{0,10}propiedad|propiedades.{0,10}inventario", 0.8),
-                    (r"inspección|inspeccionar|due.?diligence", 0.85),
-                    (r"arv|valor.{0,10}mercado|precio.{0,10}(compra|venta|máximo)", 0.8),
-                    (r"mobile\s*home|manufactured\s*home|trailer", 0.75),
-                ],
-            },
-            # FONDEAR - Investor management (Week 2)
-            {
-                "process": "FONDEAR",
-                "patterns": [
-                    (r"inversionista|inversor|investor", 0.9),
-                    (r"capital|fondos|inversión", 0.8),
-                    (r"rendimiento|retorno|roi", 0.75),
-                ],
-            },
-            # GESTIONAR CARTERA - Portfolio management (Week 2)
-            {
-                "process": "GESTIONAR_CARTERA",
-                "patterns": [
-                    (r"cartera|portfolio|portafolio", 0.85),
-                    (r"pago|cobro|mensualidad", 0.8),
-                    (r"morosidad|delinquent|atrasado", 0.85),
-                ],
-            },
-            # ENTREGAR - Property delivery (Week 2)
-            {
-                "process": "ENTREGAR",
-                "patterns": [
-                    (r"entregar|entrega.{0,10}propiedad", 0.9),
-                    (r"título|transferir.{0,10}título", 0.85),
-                    (r"cierre.{0,10}venta|finalizar.{0,10}venta", 0.8),
-                ],
-            },
-        ]
-        
-        best_match = {
-            "process": "COMERCIALIZAR",  # Default entry point
-            "confidence": 0.3,
-            "matched_pattern": None
-        }
-        
-        for intent in intent_patterns:
-            for pattern, confidence in intent["patterns"]:
-                if re.search(pattern, input_lower):
-                    if confidence > best_match["confidence"]:
-                        best_match = {
-                            "process": intent["process"],
-                            "confidence": confidence,
-                            "matched_pattern": pattern
-                        }
-        
-        process = best_match["process"]
-        agent = PROCESS_TO_AGENT.get(process, "ComercializarAgent")
-        
-        return {
-            "agent": agent,
-            "process": process,
-            "confidence": best_match["confidence"],
-            "reason": f"Intent detected: {best_match.get('matched_pattern', 'default')}",
-            "context": {
-                "routing_method": "intent_fallback"
+        try:
+            # Use LLM to classify intent
+            classification = self._classify_intent_with_llm(user_input)
+            
+            process = classification.get("process", "INCORPORAR")
+            confidence = classification.get("confidence", 0.7)
+            reasoning = classification.get("reasoning", "LLM classification")
+            
+            agent = PROCESS_TO_AGENT.get(process, "IncorporarAgent")
+            
+            logger.info(f"[IntelligentRouter] LLM classified '{user_input[:50]}...' as {process} ({confidence})")
+            
+            return {
+                "agent": agent,
+                "process": process,
+                "confidence": confidence,
+                "reason": f"LLM classification: {reasoning}",
+                "context": {
+                    "routing_method": "llm_classification"
+                }
             }
-        }
+            
+        except Exception as e:
+            logger.error(f"[IntelligentRouter] LLM classification failed: {e}")
+            # Ultimate fallback: default to INCORPORAR (most common entry point)
+            return {
+                "agent": "IncorporarAgent",
+                "process": "INCORPORAR",
+                "confidence": 0.3,
+                "reason": f"Default fallback (LLM error: {str(e)[:50]})",
+                "context": {
+                    "routing_method": "error_fallback"
+                }
+            }
+    
+    def _classify_intent_with_llm(self, user_input: str) -> Dict[str, Any]:
+        """
+        Use LLM to classify user intent into one of the 6 macroprocesses.
+        
+        This is the Developer Bible-compliant approach:
+        - Semantic understanding, not keyword matching
+        - Context-aware classification
+        - Provides confidence and reasoning
+        """
+        from langchain_openai import ChatOpenAI
+        import json
+        
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        
+        classification_prompt = f"""Eres un clasificador de intenciones para Maninos Capital LLC, una empresa de rent-to-own de mobile homes en Texas.
+
+Clasifica el siguiente mensaje del usuario en UNO de estos 6 procesos:
+
+1. **ADQUIRIR** - Buscar, evaluar, inspeccionar o registrar PROPIEDADES para comprar
+   - Ejemplos: buscar casas, evaluar propiedad, calcular oferta, regla del 70%, inspección, registrar en inventario
+   
+2. **INCORPORAR** - Todo lo relacionado con CLIENTES: registro, KYC, DTI, contratos RTO, referidos
+   - Ejemplos: registrar cliente, verificar identidad, calcular DTI, generar contrato, código de referido
+   
+3. **COMERCIALIZAR** - Marketing, promoción, evaluación de crédito, formalizar ventas, administrar cartera, fidelización
+   - Ejemplos: promover propiedad, evaluar riesgo crediticio, formalizar venta, clasificar cartera, transferir título
+
+4. **FONDEAR** - Gestión de INVERSIONISTAS y capital (Semana 2 - no disponible aún)
+   - Ejemplos: registrar inversionista, capital, rendimientos
+
+5. **GESTIONAR_CARTERA** - Gestión de PAGOS y cobranza (Semana 2 - no disponible aún)
+   - Ejemplos: pagos, cobros, morosidad
+
+6. **ENTREGAR** - Cierre de venta y entrega de propiedad (Semana 2 - no disponible aún)
+   - Ejemplos: entregar propiedad, transferir título final
+
+---
+
+Mensaje del usuario: "{user_input}"
+
+---
+
+Responde SOLO con un JSON válido (sin markdown):
+{{"process": "NOMBRE_PROCESO", "confidence": 0.0-1.0, "reasoning": "breve explicación"}}
+
+Ejemplos de respuesta:
+{{"process": "ADQUIRIR", "confidence": 0.95, "reasoning": "Usuario quiere buscar propiedades en Houston"}}
+{{"process": "INCORPORAR", "confidence": 0.9, "reasoning": "Usuario quiere registrar un nuevo cliente"}}
+"""
+        
+        response = llm.invoke(classification_prompt)
+        content = response.content.strip()
+        
+        # Parse JSON response
+        try:
+            # Remove markdown code blocks if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
+            
+            result = json.loads(content)
+            
+            # Validate process name
+            valid_processes = ["ADQUIRIR", "INCORPORAR", "COMERCIALIZAR", "FONDEAR", "GESTIONAR_CARTERA", "ENTREGAR"]
+            if result.get("process") not in valid_processes:
+                result["process"] = "INCORPORAR"
+                result["confidence"] = 0.5
+            
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"[IntelligentRouter] Could not parse LLM response: {content}")
+            # Extract process name from text if JSON parsing fails
+            for proc in ["ADQUIRIR", "INCORPORAR", "COMERCIALIZAR", "FONDEAR", "GESTIONAR_CARTERA", "ENTREGAR"]:
+                if proc in content.upper():
+                    return {"process": proc, "confidence": 0.6, "reasoning": "Extracted from LLM text"}
+            
+            return {"process": "INCORPORAR", "confidence": 0.4, "reasoning": "Could not parse LLM response"}
     
     # =========================================================================
     # HELPER METHODS - DATABASE LOOKUPS
