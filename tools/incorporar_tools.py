@@ -1049,21 +1049,25 @@ def generate_rto_contract(
             "updated_at": datetime.now().isoformat()
         }).eq("id", client_id).execute()
         
-        # Log contract generation
-        sb.table("process_logs").insert({
-            "entity_type": "contract",
-            "entity_id": contract_id,
-            "process": "INCORPORAR",
-            "action": "contract_generated",
-            "details": {
-                "client_name": client["full_name"],
-                "property_address": prop["address"],
-                "term_months": term_months,
-                "monthly_rent": monthly_rent,
-                "purchase_price": purchase_option_price,
-                "notes": notes
-            }
-        }).execute()
+        # Log contract generation (non-blocking - don't fail if logging fails)
+        try:
+            sb.table("process_logs").insert({
+                "entity_type": "client",  # Use 'client' instead of 'contract' to match CHECK constraint
+                "entity_id": client_id,   # Link to client instead of contract
+                "process": "INCORPORAR",
+                "action": "contract_generated",
+                "details": {
+                    "contract_id": contract_id,
+                    "client_name": client["full_name"],
+                    "property_address": prop["address"],
+                    "term_months": term_months,
+                    "monthly_rent": monthly_rent,
+                    "purchase_price": purchase_option_price,
+                    "notes": notes
+                }
+            }).execute()
+        except Exception as log_error:
+            logger.warning(f"[generate_rto_contract] Logging failed (non-critical): {log_error}")
         
         logger.info(f"[generate_rto_contract] Contract {contract_id} generated for client {client_id}")
         
