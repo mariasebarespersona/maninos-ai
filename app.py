@@ -133,20 +133,53 @@ async def chat(request: Request):
         # Simple intent detection (to be enhanced with proper routing)
         message_lower = message.lower()
         
-        # Detect which agent to use
-        if any(word in message_lower for word in ["buscar propiedad", "evaluar propiedad", "inspección", "oferta", "inventario", "adquirir"]):
-            agent = agents["adquirir"]
-            agent_name = "AdquirirAgent"
-        elif any(word in message_lower for word in ["cliente", "perfil", "kyc", "dti", "contrato rto", "verificar identidad", "incorporar"]):
-            agent = agents["incorporar"]
-            agent_name = "IncorporarAgent"
-        elif any(word in message_lower for word in ["comité", "desembolso", "promoción", "crédito", "venta", "fidelización", "comercializar"]):
+        # Detect which agent to use based on keywords
+        # Priority order matters: more specific patterns first
+        
+        # COMERCIALIZAR: Marketing, referrals, leads, catalog, visits, metrics
+        comercializar_keywords = [
+            "referido", "referral", "código de referido", "genera código",
+            "lead", "prospecto", "registra lead", "nuevo lead",
+            "catálogo", "catalogo", "mostrar catálogo", "ver catálogo",
+            "agendar visita", "agenda visita", "programar visita", "visita a propiedad",
+            "marketing", "métricas", "metricas", "enviar material", "enviar información",
+            "comercializar", "promoción", "fidelización", "campaña"
+        ]
+        
+        # INCORPORAR: Client profiles, KYC, DTI, contracts
+        incorporar_keywords = [
+            "cliente", "registra cliente", "nuevo cliente", "perfil cliente",
+            "kyc", "verificación", "verificar identidad", "stripe identity",
+            "dti", "deuda", "ingreso", "calcular dti", "ratio deuda",
+            "contrato rto", "genera contrato", "contrato", "arrendamiento",
+            "notificación cliente", "enviar notificación", "actualización cliente",
+            "incorporar", "onboarding", "info cliente", "consulta cliente"
+        ]
+        
+        # ADQUIRIR: Property search, evaluation, offers, inventory
+        adquirir_keywords = [
+            "buscar propiedad", "busca propiedad", "buscar casa", "busca casa",
+            "evaluar propiedad", "evalúa propiedad", "evaluación", "checklist",
+            "calcular oferta", "calcula oferta", "oferta de adquisición", "regla 70",
+            "registrar propiedad", "registra propiedad", "nueva propiedad",
+            "estado propiedad", "actualizar estado", "inventario",
+            "adquirir", "adquisición", "comprar", "inspección"
+        ]
+        
+        # Check each agent in order of specificity
+        if any(kw in message_lower for kw in comercializar_keywords):
             agent = agents["comercializar"]
             agent_name = "ComercializarAgent"
-        else:
-            # Default to AdquirirAgent for now
+        elif any(kw in message_lower for kw in incorporar_keywords):
+            agent = agents["incorporar"]
+            agent_name = "IncorporarAgent"
+        elif any(kw in message_lower for kw in adquirir_keywords):
             agent = agents["adquirir"]
             agent_name = "AdquirirAgent"
+        else:
+            # Default to ComercializarAgent (entry point for most interactions)
+            agent = agents["comercializar"]
+            agent_name = "ComercializarAgent"
         
         logger.info(f"[chat] Routing to {agent_name}")
         
