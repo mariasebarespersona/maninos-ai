@@ -135,11 +135,33 @@ class IntelligentRouter:
         # Step 1: Get session state from database
         session_state = self._get_session_state(session_id)
         
+        # =====================================================================
+        # CRITICAL FIX: Handle short/ambiguous responses
+        # When user says "sí", "no", "ok", etc., KEEP the current agent
+        # because these are continuations, not new intents
+        # =====================================================================
+        if self._is_ambiguous_response(user_input) and session_state.get("active_agent"):
+            logger.info(f"[IntelligentRouter] Ambiguous response '{user_input}' - keeping agent {session_state['active_agent']}")
+            routing = {
+                "agent": session_state["active_agent"],
+                "process": session_state.get("active_process", "INCORPORAR"),
+                "confidence": 0.95,
+                "reason": f"Continuing conversation (ambiguous response: '{user_input}')",
+                "context": {
+                    "entity_id": session_state.get("entity_id"),
+                    "continuation": True
+                }
+            }
+            # Session state already exists, no need to update
+            return routing
+        
         # Step 2: Check if user is in an active process
         if session_state.get("active_process"):
             # User is already in a process - check if they want to continue or switch
             routing = self._route_within_process(user_input, session_state, context)
             if routing["confidence"] > 0.6:
+                # Update session state before returning
+                self._update_session_state(session_id, routing)
                 return routing
         
         # Step 3: Detect entity references (client, property)
@@ -149,15 +171,58 @@ class IntelligentRouter:
         if entity_context.get("entity_type"):
             routing = self._route_by_entity_state(user_input, entity_context, context)
             if routing["confidence"] > 0.5:
+                # Update session state before returning
+                self._update_session_state(session_id, routing)
                 return routing
         
         # Step 5: Detect intent from message content (fallback)
         routing = self._route_by_intent(user_input, context)
         
-        # Step 6: Update session state
+        # Step 6: Update session state (ALWAYS, for all routing paths)
         self._update_session_state(session_id, routing)
         
         return routing
+    
+    def _ensure_session_state_updated(self, session_id: str, routing: Dict):
+        """Helper to ensure session state is always updated after routing."""
+        self._update_session_state(session_id, routing)
+    
+    def _is_ambiguous_response(self, user_input: str) -> bool:
+        """
+        Check if user input is a short/ambiguous response that requires context.
+        
+        These responses don't indicate intent on their own:
+        - Affirmations: "sí", "si", "yes", "ok", "dale", "claro", "adelante"
+        - Negations: "no", "nope", "nel"
+        - Continuations: "siguiente", "continuar", "listo"
+        - Very short inputs (< 15 chars) without specific action words
+        """
+        input_clean = user_input.lower().strip()
+        
+        # Explicit ambiguous phrases (require context to understand)
+        ambiguous_phrases = [
+            "sí", "si", "yes", "ok", "okay", "dale", "claro", "adelante",
+            "no", "nope", "nel", "nah",
+            "siguiente", "continuar", "listo", "done", "next",
+            "perfecto", "bien", "bueno", "va", "vale",
+            "continúa", "sigue", "procede", "avanza",
+            "eso", "así", "correcto", "exacto"
+        ]
+        
+        # If exact match with ambiguous phrase
+        if input_clean in ambiguous_phrases:
+            return True
+        
+        # If very short (< 15 chars) and no specific action verbs
+        action_verbs = [
+            "buscar", "evaluar", "calcular", "registrar", "crear", "generar",
+            "verificar", "iniciar", "promover", "formalizar", "clasificar"
+        ]
+        
+        if len(input_clean) < 15 and not any(verb in input_clean for verb in action_verbs):
+            return True
+        
+        return False
     
     # =========================================================================
     # SESSION STATE MANAGEMENT
