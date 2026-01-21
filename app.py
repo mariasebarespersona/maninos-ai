@@ -48,8 +48,8 @@ except Exception as e:
 # Supabase client
 from tools.supabase_client import sb
 
-# Agents
-from agents import ComercializarAgent, AdquirirAgent, IncorporarAgent
+# ManinosGraph - Single LangGraph with shared memory across all agents
+from agents.maninos_graph import process_message as maninos_process
 
 # Intelligent Router (Data-Driven, Context-Aware)
 from router.intelligent_router import IntelligentRouter
@@ -146,12 +146,14 @@ async def chat(request: Request):
     """
     Main chat endpoint for AI interactions.
     
-    Uses IntelligentRouter for DATA-DRIVEN, CONTEXT-AWARE routing.
+    Uses:
+    1. IntelligentRouter for DATA-DRIVEN, CONTEXT-AWARE routing
+    2. ManinosGraph - SINGLE LangGraph with SHARED MEMORY across all agents
     
     Principles (from Developer Bible):
     1. DATABASE AS SOURCE OF TRUTH - check entity state before routing
     2. CONTEXT-AWARE - same message means different things at different stages
-    3. SESSION CONTINUITY - remember what process the user is in
+    3. SESSION CONTINUITY - SHARED MEMORY preserves context across agent switches
     """
     try:
         body = await request.json()
@@ -162,85 +164,54 @@ async def chat(request: Request):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
-        # DETAILED LOGGING for debugging session continuity
+        # DETAILED LOGGING
         logger.info(f"[chat] ========== NEW REQUEST ==========")
         logger.info(f"[chat] Session ID: {session_id}")
         logger.info(f"[chat] Message: {message[:100]}...")
-        logger.info(f"[chat] Message length: {len(message)} chars")
         
-        # Get router and agents
+        # Get router for process detection
         router = get_router()
-        agents = get_agents()
         
         # =====================================================================
         # INTELLIGENT ROUTING (Data-Driven)
         # =====================================================================
-        # The router checks:
-        # 1. Session state (what process is user in?)
-        # 2. Entity references (is user mentioning a client/property?)
-        # 3. Database state (what stage is that entity in?)
-        # 4. Intent (fallback if no context)
-        # =====================================================================
-        
         routing_decision = router.route(message, session_id, user_context)
         
-        agent_name = routing_decision["agent"]
         process = routing_decision["process"]
         confidence = routing_decision["confidence"]
         reason = routing_decision["reason"]
         routing_context = routing_decision.get("context", {})
         
-        logger.info(f"[chat] Routing: {agent_name} ({process}) - confidence: {confidence:.2f} - {reason}")
-        
-        # Get the agent
-        agent = agents.get(agent_name)
-        
-        if not agent:
-            # Agent not available (might be Week 2)
-            logger.warning(f"[chat] Agent {agent_name} not available, falling back to ComercializarAgent")
-            agent = agents["ComercializarAgent"]
-            agent_name = "ComercializarAgent"
+        logger.info(f"[chat] Routing: {process} - confidence: {confidence:.2f} - {reason}")
         
         # =====================================================================
-        # ENRICH CONTEXT WITH ROUTING INFORMATION
+        # PROCESS WITH MANINOS GRAPH (Single LangGraph with Shared Memory)
         # =====================================================================
-        # Pass flow guidance to the agent so it knows exactly what to do
+        # The ManinosGraph:
+        # - Has ALL tools from all agents
+        # - Uses SINGLE checkpointer (PostgresSaver)
+        # - Preserves conversation history across agent/process switches
+        # - Same thread_id = same conversation memory
         # =====================================================================
         
         enriched_context = {
             **user_context,
-            "routing": {
-                "process": process,
-                "confidence": confidence,
-                "reason": reason,
-            },
-            "flow_context": routing_context,
+            "routing": routing_context,
         }
         
-        # Add specific guidance for the agent
-        if routing_context.get("next_step_guidance"):
-            enriched_context["next_step_guidance"] = routing_context["next_step_guidance"]
-        
-        if routing_context.get("entity_id"):
-            enriched_context["entity_id"] = routing_context["entity_id"]
-            enriched_context["entity_type"] = routing_context.get("entity_type")
-        
-        if routing_context.get("missing_data"):
-            enriched_context["missing_data"] = routing_context["missing_data"]
-        
-        # =====================================================================
-        # PROCESS WITH AGENT
-        # =====================================================================
-        
-        result = agent.process(message, session_id, enriched_context)
+        result = maninos_process(
+            user_input=message,
+            session_id=session_id,
+            process=process,
+            context=enriched_context
+        )
         
         return JSONResponse(content={
-            "ok": True,
+            "ok": result.get("ok", True),
             "response": result.get("response", "No response generated"),
-            "agent": agent_name,
+            "agent": f"ManinosGraph-{process}",
             "process": process,
             "session_id": session_id,
-            # Include routing info for debugging
             "routing": {
                 "confidence": confidence,
                 "reason": reason[:100] if reason else None
