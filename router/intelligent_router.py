@@ -303,15 +303,45 @@ class IntelligentRouter:
         """
         Route user within their current active process.
         Check if they want to continue or explicitly switch.
+        
+        IMPROVED: Uses LLM to detect if user intent clearly belongs to a different process,
+        even if they don't use explicit switch keywords.
         """
         current_process = session_state.get("active_process")
         current_agent = session_state.get("active_agent")
         entity_id = session_state.get("entity_id")
         
-        # Check for explicit process switch requests
+        # Check for explicit process switch requests (keyword-based)
         switch_intent = self._detect_process_switch(user_input)
         if switch_intent:
             return switch_intent
+        
+        # =====================================================================
+        # CRITICAL: Use LLM to detect if message clearly belongs to another process
+        # This prevents "sticky" agent behavior when user changes topics
+        # =====================================================================
+        llm_classification = self._classify_intent_with_llm(user_input)
+        classified_process = llm_classification.get("process")
+        classification_confidence = llm_classification.get("confidence", 0)
+        
+        # If LLM is highly confident (>0.8) that this is a DIFFERENT process, switch!
+        if classified_process and classified_process != current_process and classification_confidence >= 0.8:
+            new_agent = PROCESS_TO_AGENT.get(classified_process)
+            if new_agent:
+                logger.info(
+                    f"[IntelligentRouter] 🔄 LLM detected process switch: {current_process} → {classified_process} "
+                    f"(confidence: {classification_confidence:.2f})"
+                )
+                return {
+                    "agent": new_agent,
+                    "process": classified_process,
+                    "confidence": classification_confidence,
+                    "reason": f"LLM detected intent for {classified_process} (was: {current_process})",
+                    "context": {
+                        "previous_process": current_process,
+                        "switch_detected_by": "llm_classification"
+                    }
+                }
         
         # Check for completion signals
         if self._is_completion_signal(user_input):
@@ -641,20 +671,20 @@ Clasifica el siguiente mensaje del usuario en UNO de estos 6 procesos:
 1. **ADQUIRIR** - Buscar, evaluar, inspeccionar o registrar PROPIEDADES para comprar
    - Ejemplos: buscar casas, evaluar propiedad, calcular oferta, regla del 70%, inspección, registrar en inventario
    
-2. **INCORPORAR** - Todo lo relacionado con CLIENTES: registro, KYC, DTI, contratos RTO, referidos
-   - Ejemplos: registrar cliente, verificar identidad, calcular DTI, generar contrato, código de referido
+2. **INCORPORAR** - Todo lo relacionado con CLIENTES: registro, KYC, DTI, contratos RTO
+   - Ejemplos: registrar cliente, verificar identidad (KYC), calcular DTI, generar contrato RTO
    
-3. **COMERCIALIZAR** - Marketing, promoción, evaluación de crédito, formalizar ventas, administrar cartera, fidelización
-   - Ejemplos: promover propiedad, evaluar riesgo crediticio, formalizar venta, clasificar cartera, transferir título
+3. **COMERCIALIZAR** - Marketing, promoción, evaluación de crédito, formalizar ventas, fidelización
+   - Ejemplos: promover propiedad, evaluar riesgo crediticio, formalizar venta, marketing
 
-4. **FONDEAR** - Gestión de INVERSIONISTAS y capital (Semana 2 - no disponible aún)
-   - Ejemplos: registrar inversionista, capital, rendimientos
+4. **FONDEAR** - Gestión de INVERSIONISTAS, capital, planes financieros, notas de deuda
+   - Ejemplos: crear plan financiero, registrar inversionista, onboarding inversionista, notas de deuda, SEC compliance, ratio de deuda, pipeline inversionistas, actualización a inversionistas
 
-5. **GESTIONAR_CARTERA** - Gestión de PAGOS y cobranza (Semana 2 - no disponible aún)
-   - Ejemplos: pagos, cobros, morosidad
+5. **GESTIONAR_CARTERA** - Gestión de PAGOS, cobranza, RIESGO de cartera, reportes mensuales
+   - Ejemplos: configurar pagos automáticos, monitorear pagos, evaluar riesgo cartera, evaluar riesgo de la cartera, generar reporte mensual, morosidad, cobranza, estado de pagos
 
-6. **ENTREGAR** - Cierre de venta y entrega de propiedad (Semana 2 - no disponible aún)
-   - Ejemplos: entregar propiedad, transferir título final
+6. **ENTREGAR** - Cierre de venta, transferencia de TÍTULO, opciones de upgrade, bonus de referidos
+   - Ejemplos: verificar elegibilidad de compra, transferir título, opciones upgrade, procesar bonus referido, entrega de propiedad, cliente termina contrato
 
 ---
 
@@ -668,6 +698,7 @@ Responde SOLO con un JSON válido (sin markdown):
 Ejemplos de respuesta:
 {{"process": "ADQUIRIR", "confidence": 0.95, "reasoning": "Usuario quiere buscar propiedades en Houston"}}
 {{"process": "INCORPORAR", "confidence": 0.9, "reasoning": "Usuario quiere registrar un nuevo cliente"}}
+{{"process": "GESTIONAR_CARTERA", "confidence": 0.92, "reasoning": "Usuario quiere evaluar el riesgo de la cartera de contratos"}}
 """
         
         response = llm.invoke(classification_prompt)
