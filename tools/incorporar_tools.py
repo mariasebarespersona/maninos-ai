@@ -1096,7 +1096,64 @@ def generate_rto_contract(
             "default_cure_period": "7 días"
         }
         
-        return {
+        # =====================================================================
+        # GENERATE PDF (Anexo 3 - 33 clauses)
+        # =====================================================================
+        pdf_url = None
+        try:
+            from .pdf_generator import generate_rto_contract_pdf, upload_pdf_to_storage
+            
+            # Prepare data for PDF
+            pdf_contract_data = {
+                "contract_id": contract_id,
+                "lease_term_months": term_months,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "monthly_rent": monthly_rent,
+                "down_payment": down_payment,
+                "purchase_option_price": purchase_option_price,
+                "payment_day": payment_day,
+                "late_fee_per_day": late_fee_per_day,
+                "nsf_fee": nsf_fee,
+                "status": "draft"
+            }
+            
+            # Generate PDF
+            pdf_result = generate_rto_contract_pdf(
+                contract_data=pdf_contract_data,
+                client_data=client,
+                property_data=prop
+            )
+            
+            if pdf_result.get("ok") and pdf_result.get("pdf_bytes"):
+                # Try to upload to Supabase Storage
+                try:
+                    upload_result = upload_pdf_to_storage(
+                        pdf_bytes=pdf_result["pdf_bytes"],
+                        filename=pdf_result["filename"],
+                        contract_id=contract_id
+                    )
+                    
+                    if upload_result.get("ok"):
+                        pdf_url = upload_result.get("public_url")
+                        
+                        # Update contract with PDF URL
+                        sb.table("rto_contracts").update({
+                            "pdf_url": pdf_url
+                        }).eq("id", contract_id).execute()
+                        
+                        logger.info(f"[generate_rto_contract] PDF uploaded: {pdf_url}")
+                    else:
+                        logger.warning(f"[generate_rto_contract] PDF upload failed: {upload_result.get('error')}")
+                except Exception as upload_error:
+                    logger.warning(f"[generate_rto_contract] PDF upload error (non-critical): {upload_error}")
+            else:
+                logger.warning(f"[generate_rto_contract] PDF generation failed: {pdf_result.get('error')}")
+                
+        except Exception as pdf_error:
+            logger.warning(f"[generate_rto_contract] PDF generation skipped: {pdf_error}")
+        
+        result = {
             "ok": True,
             "contract_id": contract_id,
             "client_id": client_id,
@@ -1109,6 +1166,12 @@ def generate_rto_contract(
             "kpi_check": "✅ Contrato generado",
             "message": f"Contrato RTO de {term_months} meses generado para '{client['full_name']}'"
         }
+        
+        if pdf_url:
+            result["pdf_url"] = pdf_url
+            result["message"] += f" | 📄 PDF disponible"
+        
+        return result
         
     except Exception as e:
         logger.error(f"[generate_rto_contract] Error: {e}")
