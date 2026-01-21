@@ -42,7 +42,7 @@ try:
             service_name="maninos-ai-backend",
             environment=settings.ENVIRONMENT,
         )
-    except Exception as e:
+except Exception as e:
     logger.warning("logfire_disabled", error=str(e))
 
 # Supabase client
