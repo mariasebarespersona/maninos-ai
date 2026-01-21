@@ -1002,12 +1002,14 @@ def generate_rto_contract(
         end_date = start_date + relativedelta(months=term_months)
         
         # Create contract record
+        # Note: purchase_price and purchase_option_price are the same (total sale price)
         contract_data = {
             "client_id": client_id,
             "property_id": property_id,
             "lease_term_months": term_months,
             "monthly_rent": monthly_rent,
             "down_payment": down_payment,
+            "purchase_price": purchase_option_price,  # Required NOT NULL field
             "purchase_option_price": purchase_option_price,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
