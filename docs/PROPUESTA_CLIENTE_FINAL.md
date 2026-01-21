@@ -478,10 +478,10 @@ Esta plataforma **reemplaza** los siguientes sistemas que actualmente usan o pen
 
 | Hito | Porcentaje | Monto | Cuándo |
 |------|------------|-------|--------|
-| Al firmar contrato | 30% | 16,666 | Inicio |
-| Al entregar v1.0 (Semana 3) | 30% | 16,666 | Portal Empleados listo |
-| Al entregar v3.0 (Semana 5) | 30% | 16,666 | Sistema completo |
-| Al cierre (Semana 10) | 10% | 16,666 | Proyecto cerrado |
+| Al firmar contrato | 30% | 15,000| Inicio |
+| Al entregar v1.0 (Semana 3) | 30% | 15,000| Portal Empleados listo |
+| Al entregar v3.0 (Semana 5) | 30% | 15,000| Sistema completo |
+| Al cierre (Semana 10) | 10% | 5 000 | Proyecto cerrado |
 
 ### Incluye:
 - ✅ 6 Asistentes de IA con 33 herramientas

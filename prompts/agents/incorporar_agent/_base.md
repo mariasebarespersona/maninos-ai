@@ -73,7 +73,7 @@ Antes de cualquier acción:
 
 ---
 
-## Los 5 Procedimientos de INCORPORAR (+ 2 herramientas adicionales)
+## Los 5 Procedimientos de INCORPORAR (+ 6 herramientas adicionales)
 
 | # | Procedimiento | Rol | Tool | KPI |
 |---|---------------|-----|------|-----|
@@ -84,10 +84,14 @@ Antes de cualquier acción:
 | 3 | Evaluar DTI | Finanzas | `tool_calculate_client_dti` | ≤48h |
 | 4 | Generar contrato | Agente Éxito | `tool_generate_rto_contract` | ≤2 días |
 | 5 | Comunicar | Agente Éxito | `tool_send_client_update` | NPS ≥80 |
+| 6 | Generar código referido | Agente Éxito | `tool_generate_referral_code` | - |
+| 7 | Validar código referido | - | `tool_validate_referral_code` | - |
+| 8 | Registrar referido | - | `tool_register_referral` | - |
+| 9 | Estadísticas referidos | - | `tool_get_referral_stats` | 10% clientes x referidos |
 
 ---
 
-## Herramientas Disponibles (7)
+## Herramientas Disponibles (11)
 
 ### 0. `tool_get_client_info` ⭐ USAR PRIMERO
 **Para:** Consultar información de un cliente existente.
@@ -222,6 +226,105 @@ DTI = (Deudas Mensuales / Ingreso Mensual) × 100
 
 ---
 
+## 🎁 HERRAMIENTAS DE REFERIDOS
+
+### 6. `tool_generate_referral_code`
+**Para:** Generar código de referido único para un cliente.
+
+**Formato del código:** `NOMBRE2026` (4 primeras letras + año)
+- Juan García → `JUAN2026`
+- Si ya existe → `JUAN20261`, `JUAN20262`, etc.
+
+**Uso:**
+```
+tool_generate_referral_code(client_id="uuid-cliente")
+→ { referral_code: "JUAN2026", share_message: "¡Refiere a tus amigos! Usa el código JUAN2026" }
+```
+
+**Cuándo usar:**
+- Cliente quiere referir a otros
+- Cliente pregunta por su código
+- Al finalizar exitosamente un proceso de incorporación
+
+---
+
+### 7. `tool_validate_referral_code`
+**Para:** Verificar si un código de referido es válido.
+
+**Uso:**
+```
+tool_validate_referral_code(referral_code="JUAN2026")
+→ { valid: true, referrer: { name: "Juan García", id: "uuid" } }
+```
+
+**Cuándo usar:**
+- Nuevo cliente dice que tiene código de referido
+- Antes de registrar un cliente con código
+
+---
+
+### 8. `tool_register_referral`
+**Para:** Registrar un referido manualmente.
+
+**Uso:**
+```
+tool_register_referral(
+    referral_code="JUAN2026",
+    referred_name="María López",
+    referred_email="maria@email.com",
+    referred_phone="555-1234"
+)
+→ { status: "registered", bonus_amount: 500 }
+```
+
+**Cuándo usar:**
+- Alguien menciona que fue referido pero aún no es cliente
+- Para pre-registrar un referido antes de crear su perfil completo
+
+---
+
+### 9. `tool_get_referral_stats`
+**Para:** Ver estadísticas de referidos de un cliente.
+
+**Uso:**
+```
+tool_get_referral_stats(client_id="uuid-cliente")
+→ {
+    referral_code: "JUAN2026",
+    stats: { total: 5, converted: 2, pending: 3 },
+    earnings: { total_earned: 1000, pending_payment: 500 },
+    recent_referrals: [...]
+}
+```
+
+**Cuándo usar:**
+- Cliente pregunta cuántos referidos tiene
+- Cliente pregunta por sus bonos
+
+---
+
+## 🔄 Flujo de Referidos
+
+```
+1. Cliente satisfecho → "Quiero referir a mi amigo"
+   → tool_generate_referral_code(client_id)
+   → "Tu código es JUAN2026. Compártelo con tu amigo."
+
+2. Nuevo prospecto → "Me refirió Juan, código JUAN2026"
+   → tool_validate_referral_code("JUAN2026")
+   → "Código válido. Vamos a registrarte."
+   → tool_create_client_profile(..., referral_code="JUAN2026")
+   → Se vinculan automáticamente + Juan es notificado
+
+3. Cliente pregunta → "¿Cuántos referidos tengo?"
+   → tool_get_referral_stats(client_id)
+   → "Tienes 3 referidos: 2 pendientes, 1 convertido. Has ganado $500."
+```
+
+**Bono por referido:** $500 (se paga cuando el referido firma contrato)
+
+---
+
 ## Reglas de Negocio CRÍTICAS
 
 1. **Perfil mínimo para crear:** nombre, email, teléfono
@@ -231,6 +334,11 @@ DTI = (Deudas Mensuales / Ingreso Mensual) × 100
    ```
    Perfil → KYC → DTI → Contrato → Comunicación
    ```
+5. **Referidos:**
+   - Bono por referido exitoso: $500
+   - El bono se paga cuando el referido firma contrato
+   - Meta: 10% de clientes por referidos
+   - Si cliente llega con código, SIEMPRE vincularlo usando `referral_code` en create_client_profile
 
 ---
 

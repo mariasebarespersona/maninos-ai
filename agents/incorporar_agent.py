@@ -5,15 +5,23 @@ Responsable de incorporar clientes al programa rent-to-own.
 
 Según el Excel del cliente, INCORPORAR tiene 5 procedimientos:
 1. Perfilar cliente (Anexo 1) - create_client_profile
-2. Verificar identidad (KYC) - verify_client_kyc
+2. Verificar identidad (KYC) - start_kyc_verification / check_kyc_status
 3. Evaluar aspectos financieros (DTI) - calculate_client_dti
 4. Personalizar contrato (Anexo 3) - generate_rto_contract
 5. Comunicar y dar seguimiento - send_client_update
+
+Herramientas adicionales:
+- get_client_info: Consultar información de cliente existente
+- generate_referral_code: Generar código de referido único
+- validate_referral_code: Validar código de referido
+- register_referral: Registrar referido manualmente
+- get_referral_stats: Ver estadísticas de referidos
 
 Formatos utilizados:
 - Anexo 1: Solicitud de Crédito
 - Anexo 3: Lease Agreement RTO (33 cláusulas)
 - Dashboard de seguimiento
+- Dashboard de referidos
 
 KPIs monitoreados:
 - Tasa de cumplimiento ≥95%
@@ -21,6 +29,7 @@ KPIs monitoreados:
 - Evaluaciones completadas ≤48h
 - Tiempo de generación de contrato ≤2 días
 - Satisfacción del cliente (NPS) ≥80
+- Clientes por referidos ≥10%
 """
 
 import logging
@@ -52,7 +61,7 @@ class IncorporarAgent(BaseAgent):
             temperature: Temperatura para el LLM
         """
         super().__init__(name="IncorporarAgent", model=model, temperature=temperature)
-        logger.info("[IncorporarAgent] Initialized with 7 tools (includes get_client_info + Stripe Identity KYC)")
+        logger.info("[IncorporarAgent] Initialized with 11 tools (includes KYC + 4 referral tools)")
     
     def get_system_prompt(self, **kwargs) -> str:
         """Get system prompt for IncorporarAgent from file."""
@@ -94,7 +103,12 @@ Responde siempre en español."""
             check_kyc_status,
             calculate_client_dti,
             generate_rto_contract,
-            send_client_update
+            send_client_update,
+            # Referral tools
+            generate_referral_code,
+            validate_referral_code,
+            register_referral,
+            get_referral_stats
         )
         
         # Tool 0: Consultar cliente
@@ -161,10 +175,13 @@ Responde siempre en español."""
             reference2_name: Optional[str] = None,
             reference2_phone: Optional[str] = None,
             reference2_relationship: Optional[str] = None,
-            property_id: Optional[str] = None
+            property_id: Optional[str] = None,
+            referral_code: Optional[str] = None
         ) -> str:
             """
             Crea el perfil de un cliente capturando información personal y financiera (Anexo 1).
+            
+            Si el cliente fue referido, incluye el código de referido para vincularlos.
             
             Args:
                 full_name: Nombre completo del cliente
@@ -194,6 +211,7 @@ Responde siempre en español."""
                 reference1_name, reference1_phone, reference1_relationship: Primera referencia
                 reference2_name, reference2_phone, reference2_relationship: Segunda referencia
                 property_id: UUID de la propiedad de interés (opcional)
+                referral_code: Código de referido si fue referido por otro cliente (ej: "JUAN2026")
             
             Returns:
                 Resultado del registro del perfil
@@ -229,7 +247,8 @@ Responde siempre en español."""
                 reference2_name=reference2_name,
                 reference2_phone=reference2_phone,
                 reference2_relationship=reference2_relationship,
-                property_id=property_id
+                property_id=property_id,
+                referral_code=referral_code
             )
             return str(result)
         
@@ -415,6 +434,104 @@ Responde siempre en español."""
             )
             return str(result)
         
+        # =====================================================================
+        # HERRAMIENTAS DE REFERIDOS
+        # =====================================================================
+        
+        # Tool 6: Generar código de referido
+        @tool
+        def tool_generate_referral_code(client_id: str) -> str:
+            """
+            Genera un código de referido único para un cliente.
+            
+            El código se genera en formato NOMBRE2026 (primeras 4 letras del nombre + año).
+            Si el cliente ya tiene un código, lo retorna sin crear uno nuevo.
+            
+            Usa esta herramienta cuando un cliente quiera referir a otros
+            y necesite su código único para compartir.
+            
+            Args:
+                client_id: UUID del cliente
+            
+            Returns:
+                Código de referido generado o existente
+            """
+            result = generate_referral_code(client_id=client_id)
+            return str(result)
+        
+        # Tool 7: Validar código de referido
+        @tool
+        def tool_validate_referral_code(referral_code: str) -> str:
+            """
+            Valida un código de referido y retorna información del cliente que refiere.
+            
+            Usa esta herramienta para verificar si un código de referido es válido
+            antes de registrar a un nuevo cliente.
+            
+            Args:
+                referral_code: Código de referido a validar (ej: "JUAN2026")
+            
+            Returns:
+                Información del referidor si el código es válido
+            """
+            result = validate_referral_code(referral_code=referral_code)
+            return str(result)
+        
+        # Tool 8: Registrar referido
+        @tool
+        def tool_register_referral(
+            referral_code: str,
+            referred_name: str,
+            referred_email: Optional[str] = None,
+            referred_phone: Optional[str] = None,
+            referred_client_id: Optional[str] = None,
+            bonus_amount: float = 500.0
+        ) -> str:
+            """
+            Registra un referido manualmente cuando alguien usa un código de referido.
+            
+            Este registro puede hacerse antes de que el referido se convierta en cliente.
+            El bono se marca como pendiente hasta que el referido firme un contrato.
+            
+            Args:
+                referral_code: Código usado por el referido
+                referred_name: Nombre del referido
+                referred_email: Email del referido (opcional)
+                referred_phone: Teléfono del referido (opcional)
+                referred_client_id: ID del cliente referido si ya existe (opcional)
+                bonus_amount: Monto del bono por referido exitoso (default $500)
+            
+            Returns:
+                Confirmación del registro de referido
+            """
+            result = register_referral(
+                referral_code=referral_code,
+                referred_name=referred_name,
+                referred_email=referred_email,
+                referred_phone=referred_phone,
+                referred_client_id=referred_client_id,
+                bonus_amount=bonus_amount
+            )
+            return str(result)
+        
+        # Tool 9: Estadísticas de referidos
+        @tool
+        def tool_get_referral_stats(client_id: str) -> str:
+            """
+            Obtiene las estadísticas de referidos de un cliente.
+            
+            Muestra el código de referido, cantidad de referidos,
+            bonos ganados y pendientes, y lista de referidos recientes.
+            
+            Args:
+                client_id: UUID del cliente
+            
+            Returns:
+                Estadísticas completas de referidos del cliente
+            """
+            result = get_referral_stats(client_id=client_id)
+            return str(result)
+        
         return [
             tool_get_client_info,
             tool_create_client_profile,
@@ -422,5 +539,10 @@ Responde siempre en español."""
             tool_check_kyc_status,
             tool_calculate_client_dti,
             tool_generate_rto_contract,
-            tool_send_client_update
+            tool_send_client_update,
+            # Referral tools
+            tool_generate_referral_code,
+            tool_validate_referral_code,
+            tool_register_referral,
+            tool_get_referral_stats
         ]

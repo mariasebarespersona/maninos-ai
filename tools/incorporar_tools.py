@@ -191,7 +191,9 @@ def create_client_profile(
     reference2_phone: Optional[str] = None,
     reference2_relationship: Optional[str] = None,
     # Propiedad de interés
-    property_id: Optional[str] = None
+    property_id: Optional[str] = None,
+    # Código de referido (si fue referido por otro cliente)
+    referral_code: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Crea el perfil de un cliente capturando información personal y financiera (Anexo 1).
@@ -388,6 +390,24 @@ def create_client_profile(
         if references:
             client_data["personal_references"] = references
         
+        # Handle referral code if provided
+        referrer_info = None
+        if referral_code:
+            code = referral_code.upper().strip()
+            referrer_result = sb.table("clients").select(
+                "id, full_name, email, referral_count"
+            ).eq("referral_code", code).execute()
+            
+            if referrer_result.data:
+                referrer = referrer_result.data[0]
+                client_data["referred_by_client_id"] = referrer["id"]
+                client_data["referred_by_code"] = code
+                referrer_info = {
+                    "id": referrer["id"],
+                    "name": referrer["full_name"],
+                    "code": code
+                }
+        
         result = sb.table("clients").insert(client_data).execute()
         
         if not result.data:
@@ -395,26 +415,70 @@ def create_client_profile(
         
         client_id = result.data[0]["id"]
         
+        # If referred, create referral history record and notify referrer
+        if referrer_info:
+            try:
+                # Create referral history record
+                sb.table("referral_history").insert({
+                    "referrer_client_id": referrer_info["id"],
+                    "referred_client_id": client_id,
+                    "referral_code": referrer_info["code"],
+                    "referred_name": full_name,
+                    "referred_email": email,
+                    "referred_phone": phone,
+                    "status": "registered",
+                    "bonus_amount": 500.0  # Default bonus
+                }).execute()
+                
+                # Update referrer's count
+                sb.table("clients").update({
+                    "referral_count": (referrer_result.data[0].get("referral_count") or 0) + 1,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", referrer_info["id"]).execute()
+                
+                # Notify referrer
+                try:
+                    from .email_tool import send_email
+                    send_email(
+                        to_email=referrer_result.data[0]["email"],
+                        subject="🎉 ¡Tu referido se registró!",
+                        body=f"Hola {referrer_info['name']},\n\n"
+                             f"¡Excelentes noticias! {full_name} usó tu código de referido.\n\n"
+                             f"Cuando {full_name} firme un contrato, recibirás tu bono de $500.\n\n"
+                             f"¡Gracias por referir a Maninos!\n\n"
+                             f"Equipo Maninos"
+                    )
+                except Exception as email_err:
+                    logger.warning(f"[create_client_profile] Referral email failed: {email_err}")
+                    
+            except Exception as ref_err:
+                logger.warning(f"[create_client_profile] Referral tracking failed: {ref_err}")
+        
         # Calculate profile completion
         total_fields = len(ANEXO_1_FIELDS["info_solicitante"]) + len(ANEXO_1_FIELDS["info_laboral"])
         filled_fields = sum(1 for v in client_data.values() if v is not None and v != "")
         completion_pct = (filled_fields / total_fields) * 100 if total_fields > 0 else 0
         
         # Log profile creation
+        log_details = {
+            "completion_pct": round(completion_pct, 1),
+            "property_of_interest": property_id
+        }
+        if referrer_info:
+            log_details["referred_by"] = referrer_info["name"]
+            log_details["referral_code_used"] = referrer_info["code"]
+            
         sb.table("process_logs").insert({
             "entity_type": "client",
             "entity_id": client_id,
             "process": "INCORPORAR",
             "action": "profile_created",
-            "details": {
-                "completion_pct": round(completion_pct, 1),
-                "property_of_interest": property_id
-            }
+            "details": log_details
         }).execute()
         
         logger.info(f"[create_client_profile] New client created: {client_id}")
         
-        return {
+        response = {
             "ok": True,
             "client_id": client_id,
             "is_new": True,
@@ -426,6 +490,13 @@ def create_client_profile(
             "kpi_check": f"{'✅' if completion_pct >= 95 else '⚠️'} Cumplimiento: {completion_pct:.1f}% (meta: ≥95%)",
             "message": f"Perfil de cliente '{full_name}' creado exitosamente"
         }
+        
+        if referrer_info:
+            response["referred_by"] = referrer_info["name"]
+            response["referral_code_used"] = referrer_info["code"]
+            response["message"] += f" (Referido por {referrer_info['name']})"
+        
+        return response
         
     except Exception as e:
         logger.error(f"[create_client_profile] Error: {e}")
@@ -1178,5 +1249,384 @@ def send_client_update(
         
     except Exception as e:
         logger.error(f"[send_client_update] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# HERRAMIENTA 7: generate_referral_code
+# Genera código de referido único para un cliente
+# ============================================================================
+
+def generate_referral_code(
+    client_id: str
+) -> Dict[str, Any]:
+    """
+    Genera un código de referido único para un cliente.
+    
+    El código se genera en formato NOMBRE2026 (primeras 4 letras del nombre + año).
+    Si ya existe, añade un número secuencial (JUAN20261, JUAN20262, etc.)
+    
+    Args:
+        client_id: UUID del cliente
+    
+    Returns:
+        Dict con el código de referido generado
+    """
+    from .supabase_client import sb
+    import re
+    
+    try:
+        # Get client info
+        client_result = sb.table("clients").select(
+            "id, full_name, email, referral_code"
+        ).eq("id", client_id).execute()
+        
+        if not client_result.data:
+            return {"ok": False, "error": f"Cliente {client_id} no encontrado"}
+        
+        client = client_result.data[0]
+        
+        # If client already has a code, return it
+        if client.get("referral_code"):
+            return {
+                "ok": True,
+                "client_id": client_id,
+                "client_name": client["full_name"],
+                "referral_code": client["referral_code"],
+                "is_new": False,
+                "message": f"El cliente ya tiene código de referido: {client['referral_code']}"
+            }
+        
+        # Generate base code: First 4 letters of name (uppercase) + year
+        name_clean = re.sub(r'[^a-zA-Z]', '', client["full_name"])  # Remove non-letters
+        base_name = name_clean[:4].upper() if len(name_clean) >= 4 else name_clean.upper().ljust(4, 'X')
+        year = datetime.now().year
+        base_code = f"{base_name}{year}"
+        
+        # Check if code exists and add counter if needed
+        final_code = base_code
+        counter = 0
+        
+        while True:
+            existing = sb.table("clients").select("id").eq("referral_code", final_code).execute()
+            if not existing.data:
+                break
+            counter += 1
+            final_code = f"{base_code}{counter}"
+        
+        # Update client with the new code
+        sb.table("clients").update({
+            "referral_code": final_code,
+            "updated_at": datetime.now().isoformat()
+        }).eq("id", client_id).execute()
+        
+        # Log the action
+        sb.table("process_logs").insert({
+            "entity_type": "client",
+            "entity_id": client_id,
+            "process": "INCORPORAR",
+            "action": "referral_code_generated",
+            "details": {
+                "referral_code": final_code,
+                "client_name": client["full_name"]
+            }
+        }).execute()
+        
+        logger.info(f"[generate_referral_code] Generated code {final_code} for client {client_id}")
+        
+        return {
+            "ok": True,
+            "client_id": client_id,
+            "client_name": client["full_name"],
+            "referral_code": final_code,
+            "is_new": True,
+            "share_message": f"¡Refiere a tus amigos! Usa el código {final_code} y ambos ganan.",
+            "message": f"Código de referido '{final_code}' generado para {client['full_name']}"
+        }
+        
+    except Exception as e:
+        logger.error(f"[generate_referral_code] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# HERRAMIENTA 8: validate_referral_code
+# Valida un código de referido y retorna info del referidor
+# ============================================================================
+
+def validate_referral_code(
+    referral_code: str
+) -> Dict[str, Any]:
+    """
+    Valida un código de referido y retorna información del cliente que refiere.
+    
+    Args:
+        referral_code: Código de referido a validar (ej: "JUAN2026")
+    
+    Returns:
+        Dict con información del referidor si el código es válido
+    """
+    from .supabase_client import sb
+    
+    try:
+        # Normalize code to uppercase
+        code = referral_code.upper().strip()
+        
+        # Search for client with this code
+        result = sb.table("clients").select(
+            "id, full_name, email, phone, referral_count, referral_bonus_earned"
+        ).eq("referral_code", code).execute()
+        
+        if not result.data:
+            return {
+                "ok": False,
+                "valid": False,
+                "referral_code": code,
+                "error": f"Código de referido '{code}' no encontrado",
+                "suggestion": "Verifica que el código esté escrito correctamente"
+            }
+        
+        referrer = result.data[0]
+        
+        logger.info(f"[validate_referral_code] Code {code} is valid, belongs to {referrer['full_name']}")
+        
+        return {
+            "ok": True,
+            "valid": True,
+            "referral_code": code,
+            "referrer": {
+                "id": referrer["id"],
+                "name": referrer["full_name"],
+                "referral_count": referrer.get("referral_count", 0),
+                "total_bonus_earned": referrer.get("referral_bonus_earned", 0)
+            },
+            "message": f"Código válido. Referido por: {referrer['full_name']}"
+        }
+        
+    except Exception as e:
+        logger.error(f"[validate_referral_code] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# HERRAMIENTA 9: register_referral
+# Registra un referido (cuando alguien usa un código al aplicar)
+# ============================================================================
+
+def register_referral(
+    referral_code: str,
+    referred_name: str,
+    referred_email: Optional[str] = None,
+    referred_phone: Optional[str] = None,
+    referred_client_id: Optional[str] = None,
+    bonus_amount: float = 500.0  # Default $500 bonus
+) -> Dict[str, Any]:
+    """
+    Registra un referido cuando alguien usa un código de referido.
+    
+    Este registro puede hacerse antes de que el referido se convierta en cliente.
+    El bono se marca como pendiente hasta que el referido firme un contrato.
+    
+    Args:
+        referral_code: Código usado por el referido
+        referred_name: Nombre del referido
+        referred_email: Email del referido (opcional)
+        referred_phone: Teléfono del referido (opcional)
+        referred_client_id: ID del cliente referido si ya existe (opcional)
+        bonus_amount: Monto del bono por referido exitoso (default $500)
+    
+    Returns:
+        Dict con información del registro de referido
+    """
+    from .supabase_client import sb
+    
+    try:
+        # First validate the code
+        code = referral_code.upper().strip()
+        referrer_result = sb.table("clients").select(
+            "id, full_name, email, referral_count"
+        ).eq("referral_code", code).execute()
+        
+        if not referrer_result.data:
+            return {
+                "ok": False,
+                "error": f"Código de referido '{code}' no válido"
+            }
+        
+        referrer = referrer_result.data[0]
+        
+        # Check if this referral already exists
+        existing = sb.table("referral_history").select("id, status").eq(
+            "referral_code", code
+        ).eq("referred_email", referred_email).execute() if referred_email else None
+        
+        if existing and existing.data:
+            return {
+                "ok": False,
+                "error": f"Este referido ya está registrado con código {code}",
+                "existing_status": existing.data[0].get("status")
+            }
+        
+        # Create referral history record
+        referral_data = {
+            "referrer_client_id": referrer["id"],
+            "referral_code": code,
+            "referred_name": referred_name,
+            "referred_email": referred_email,
+            "referred_phone": referred_phone,
+            "referred_client_id": referred_client_id,
+            "status": "registered" if referred_client_id else "pending",
+            "bonus_amount": bonus_amount
+        }
+        
+        result = sb.table("referral_history").insert(referral_data).execute()
+        
+        if not result.data:
+            return {"ok": False, "error": "Error al registrar referido"}
+        
+        referral_id = result.data[0]["id"]
+        
+        # Log the action
+        sb.table("process_logs").insert({
+            "entity_type": "referral",
+            "entity_id": referral_id,
+            "process": "INCORPORAR",
+            "action": "referral_registered",
+            "details": {
+                "referrer_id": referrer["id"],
+                "referrer_name": referrer["full_name"],
+                "referred_name": referred_name,
+                "referral_code": code,
+                "bonus_amount": bonus_amount
+            }
+        }).execute()
+        
+        # Try to notify referrer
+        try:
+            from .email_tool import send_email
+            send_email(
+                to_email=referrer["email"],
+                subject="🎉 ¡Tu referido se registró!",
+                body=f"Hola {referrer['full_name']},\n\n"
+                     f"¡Excelentes noticias! {referred_name} usó tu código de referido {code}.\n\n"
+                     f"Si {referred_name} firma un contrato, recibirás un bono de ${bonus_amount:,.2f}.\n\n"
+                     f"¡Gracias por referir a Maninos!\n\n"
+                     f"Equipo Maninos"
+            )
+        except Exception as email_error:
+            logger.warning(f"[register_referral] Email notification failed: {email_error}")
+        
+        logger.info(f"[register_referral] Registered referral: {referred_name} by {referrer['full_name']}")
+        
+        return {
+            "ok": True,
+            "referral_id": referral_id,
+            "referrer": {
+                "id": referrer["id"],
+                "name": referrer["full_name"]
+            },
+            "referred": {
+                "name": referred_name,
+                "email": referred_email,
+                "phone": referred_phone
+            },
+            "referral_code": code,
+            "bonus_amount": bonus_amount,
+            "status": "pending" if not referred_client_id else "registered",
+            "message": f"Referido '{referred_name}' registrado exitosamente. {referrer['full_name']} será notificado."
+        }
+        
+    except Exception as e:
+        logger.error(f"[register_referral] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# HERRAMIENTA 10: get_referral_stats
+# Obtiene estadísticas de referidos de un cliente
+# ============================================================================
+
+def get_referral_stats(
+    client_id: str
+) -> Dict[str, Any]:
+    """
+    Obtiene las estadísticas de referidos de un cliente.
+    
+    Args:
+        client_id: UUID del cliente
+    
+    Returns:
+        Dict con estadísticas de referidos
+    """
+    from .supabase_client import sb
+    
+    try:
+        # Get client info
+        client_result = sb.table("clients").select(
+            "id, full_name, referral_code, referral_count, referral_bonus_earned, referral_bonus_pending"
+        ).eq("id", client_id).execute()
+        
+        if not client_result.data:
+            return {"ok": False, "error": f"Cliente {client_id} no encontrado"}
+        
+        client = client_result.data[0]
+        
+        # Get referral history
+        history_result = sb.table("referral_history").select(
+            "id, referred_name, referred_email, status, bonus_amount, created_at, bonus_paid_at"
+        ).eq("referrer_client_id", client_id).order("created_at", desc=True).execute()
+        
+        referrals = history_result.data if history_result.data else []
+        
+        # Count by status
+        status_counts = {
+            "pending": 0,
+            "registered": 0,
+            "converted": 0,
+            "bonus_paid": 0,
+            "expired": 0
+        }
+        for r in referrals:
+            status = r.get("status", "pending")
+            if status in status_counts:
+                status_counts[status] += 1
+        
+        # Format referral list
+        referral_list = [
+            {
+                "name": r["referred_name"],
+                "email": r.get("referred_email"),
+                "status": r["status"],
+                "bonus": r.get("bonus_amount", 0),
+                "date": r["created_at"][:10] if r.get("created_at") else None
+            }
+            for r in referrals[:10]  # Last 10
+        ]
+        
+        logger.info(f"[get_referral_stats] Retrieved stats for client {client_id}")
+        
+        return {
+            "ok": True,
+            "client_id": client_id,
+            "client_name": client["full_name"],
+            "referral_code": client.get("referral_code"),
+            "stats": {
+                "total_referrals": len(referrals),
+                "pending": status_counts["pending"],
+                "registered": status_counts["registered"],
+                "converted": status_counts["converted"],
+                "bonus_paid": status_counts["bonus_paid"],
+                "expired": status_counts["expired"]
+            },
+            "earnings": {
+                "total_earned": client.get("referral_bonus_earned", 0),
+                "pending_payment": client.get("referral_bonus_pending", 0)
+            },
+            "recent_referrals": referral_list,
+            "message": f"{client['full_name']} tiene {len(referrals)} referidos. Código: {client.get('referral_code', 'No generado')}"
+        }
+        
+    except Exception as e:
+        logger.error(f"[get_referral_stats] Error: {e}")
         return {"ok": False, "error": str(e)}
 
