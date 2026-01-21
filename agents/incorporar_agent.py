@@ -38,14 +38,18 @@ from datetime import datetime
 
 from langchain_core.tools import tool
 
-from agents.base_agent import BaseAgent
+# Use LangGraphAgent for persistent conversation memory
+from agents.langgraph_agent import LangGraphAgent
 
 logger = logging.getLogger(__name__)
 
 
-class IncorporarAgent(BaseAgent):
+class IncorporarAgent(LangGraphAgent):
     """
     Agente especializado en el proceso INCORPORAR.
+    
+    Usa LangGraph con checkpointer para memoria persistente de conversación.
+    Esto permite que "sí" después de "¿iniciar KYC?" tenga contexto completo.
     
     Gestiona la incorporación de clientes al programa rent-to-own,
     incluyendo perfil del cliente, KYC, evaluación financiera (DTI),

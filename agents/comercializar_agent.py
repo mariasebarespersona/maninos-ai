@@ -16,7 +16,8 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import logging
 
-from .base_agent import BaseAgent
+# Use LangGraphAgent for persistent conversation memory
+from .langgraph_agent import LangGraphAgent
 
 logger = logging.getLogger(__name__)
 
@@ -286,9 +287,11 @@ def process_loyalty_program_tool(
 # COMERCIALIZAR AGENT
 # ============================================================================
 
-class ComercializarAgent(BaseAgent):
+class ComercializarAgent(LangGraphAgent):
     """
     Agente para el proceso COMERCIALIZAR de la Cadena de Valor Maninos.
+    
+    Usa LangGraph con checkpointer para memoria persistente de conversación.
     
     Según el Excel del cliente, maneja 7 procedimientos:
     1. Adquirir activos - Acta de comité de adquisición
