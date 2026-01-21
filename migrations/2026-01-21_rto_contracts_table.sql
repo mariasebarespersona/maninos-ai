@@ -73,6 +73,12 @@ CREATE INDEX IF NOT EXISTS idx_process_logs_process ON process_logs(process);
 ALTER TABLE rto_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE process_logs ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first (if they exist)
+DROP POLICY IF EXISTS "Service role can manage rto_contracts" ON rto_contracts;
+DROP POLICY IF EXISTS "Service role can manage process_logs" ON process_logs;
+DROP POLICY IF EXISTS "Authenticated users can view rto_contracts" ON rto_contracts;
+DROP POLICY IF EXISTS "Authenticated users can view process_logs" ON process_logs;
+
 -- Service role full access
 CREATE POLICY "Service role can manage rto_contracts"
     ON rto_contracts FOR ALL

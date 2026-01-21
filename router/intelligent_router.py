@@ -84,7 +84,7 @@ PROCESS_TO_AGENT = {
     "ADQUIRIR": "AdquirirAgent",
     "INCORPORAR": "IncorporarAgent",
     "FONDEAR": "FondearAgent",
-    "GESTIONAR_CARTERA": "GestionarCarteraAgent",
+    "GESTIONAR_CARTERA": "GestionarAgent",
     "ENTREGAR": "EntregarAgent",
 }
 
