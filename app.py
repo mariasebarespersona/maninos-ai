@@ -10,11 +10,9 @@ Cadena de Valor Maninos - 6 Macroprocesos:
 - ENTREGAR (Semana 2)
 """
 from __future__ import annotations
-import env_loader  # loads .env first
-import os
+import env_loader  # loads .env first (still needed for Railway compatibility)
 import uuid
 import json
-import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -22,28 +20,30 @@ from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Typed configuration
+from core.config import settings
+
+# Structured logging
+from core.logging import get_logger, bind_context, clear_context
+logger = get_logger(__name__)
 
 # Logfire: Observability (optional)
 try:
     import logfire
-    token = os.getenv("LOGFIRE_TOKEN")
-    if token:
+    if settings.LOGFIRE_TOKEN:
         logfire.configure(
-            token=token,
+            token=settings.LOGFIRE_TOKEN,
             service_name="maninos-ai-backend",
-            environment=os.getenv("ENVIRONMENT", "development"),
+            environment=settings.ENVIRONMENT,
         )
     else:
         logfire.configure(
             send_to_logfire=False,
             service_name="maninos-ai-backend",
-            environment=os.getenv("ENVIRONMENT", "development"),
+            environment=settings.ENVIRONMENT,
         )
 except Exception as e:
-    logger.warning(f"[LOGFIRE] Disabled: {e}")
+    logger.warning("logfire_disabled", error=str(e))
 
 # Supabase client
 from tools.supabase_client import sb
@@ -64,7 +64,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -164,10 +164,9 @@ async def chat(request: Request):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
-        # DETAILED LOGGING
-        logger.info(f"[chat] ========== NEW REQUEST ==========")
-        logger.info(f"[chat] Session ID: {session_id}")
-        logger.info(f"[chat] Message: {message[:100]}...")
+        # Bind session context for all subsequent logs
+        bind_context(session_id=session_id)
+        logger.info("chat_request_received", message_preview=message[:100])
         
         # Get router for process detection
         router = get_router()
@@ -182,7 +181,7 @@ async def chat(request: Request):
         reason = routing_decision["reason"]
         routing_context = routing_decision.get("context", {})
         
-        logger.info(f"[chat] Routing: {process} - confidence: {confidence:.2f} - {reason}")
+        logger.info("routing_decision", process=process, confidence=confidence, reason=reason[:100] if reason else None)
         
         # =====================================================================
         # PROCESS WITH MANINOS GRAPH (Single LangGraph with Shared Memory)
@@ -219,7 +218,8 @@ async def chat(request: Request):
         })
         
     except Exception as e:
-        logger.error(f"[chat] Error: {e}", exc_info=True)
+        logger.error("chat_error", error=str(e), exc_info=True)
+        clear_context()  # Clear session context on error
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": str(e)}

@@ -191,7 +191,7 @@ def get_client_info_tool(
     email: Optional[str] = None,
     phone: Optional[str] = None,
     full_name: Optional[str] = None
-) -> str:
+) -> dict:
     """
     Consulta información de un cliente existente.
     
@@ -204,7 +204,7 @@ def get_client_info_tool(
         phone=phone,
         full_name=full_name
     )
-    return str(result)
+    return result
 
 
 @tool("create_client_profile", args_schema=CreateClientProfileInput)
@@ -280,7 +280,7 @@ def create_client_profile_tool(
         property_id=property_id,
         referral_code=referral_code
     )
-    return str(result)
+    return result
 
 
 @tool("start_kyc_verification", args_schema=StartKYCInput)
@@ -303,11 +303,11 @@ def start_kyc_verification_tool(
         client_id=client_id,
         return_url=return_url
     )
-    return str(result)
+    return result
 
 
 @tool("check_kyc_status", args_schema=CheckKYCInput)
-def check_kyc_status_tool(client_id: str) -> str:
+def check_kyc_status_tool(client_id: str) -> dict:
     """
     Consulta el estado de verificación KYC de un cliente.
     
@@ -318,7 +318,7 @@ def check_kyc_status_tool(client_id: str) -> str:
     - canceled: Sesión cancelada
     """
     result = check_kyc_status(client_id=client_id)
-    return str(result)
+    return result
 
 
 @tool("calculate_client_dti", args_schema=CalculateDTIInput)
@@ -346,7 +346,7 @@ def calculate_client_dti_tool(
         monthly_other_expenses=monthly_other_expenses,
         proposed_monthly_payment=proposed_monthly_payment
     )
-    return str(result)
+    return result
 
 
 @tool("generate_rto_contract", args_schema=GenerateRTOContractInput)
@@ -380,7 +380,7 @@ def generate_rto_contract_tool(
         nsf_fee=nsf_fee,
         notes=notes
     )
-    return str(result)
+    return result
 
 
 @tool("send_client_update", args_schema=SendClientUpdateInput)
@@ -403,11 +403,11 @@ def send_client_update_tool(
         include_payment_calendar=include_payment_calendar,
         contract_id=contract_id
     )
-    return str(result)
+    return result
 
 
 @tool("generate_referral_code", args_schema=GenerateReferralCodeInput)
-def generate_referral_code_tool(client_id: str) -> str:
+def generate_referral_code_tool(client_id: str) -> dict:
     """
     Genera un código de referido único para un cliente.
     
@@ -415,17 +415,17 @@ def generate_referral_code_tool(client_id: str) -> str:
     Si el cliente ya tiene un código, lo retorna sin crear uno nuevo.
     """
     result = generate_referral_code(client_id=client_id)
-    return str(result)
+    return result
 
 
 @tool("validate_referral_code", args_schema=ValidateReferralCodeInput)
-def validate_referral_code_tool(referral_code: str) -> str:
+def validate_referral_code_tool(referral_code: str) -> dict:
     """
     Valida un código de referido y retorna información del cliente que refiere.
     Usa esta herramienta para verificar si un código de referido es válido.
     """
     result = validate_referral_code(referral_code=referral_code)
-    return str(result)
+    return result
 
 
 @tool("register_referral", args_schema=RegisterReferralInput)
@@ -449,17 +449,17 @@ def register_referral_tool(
         referred_client_id=referred_client_id,
         bonus_amount=bonus_amount
     )
-    return str(result)
+    return result
 
 
 @tool("get_referral_stats", args_schema=GetReferralStatsInput)
-def get_referral_stats_tool(client_id: str) -> str:
+def get_referral_stats_tool(client_id: str) -> dict:
     """
     Obtiene las estadísticas de referidos de un cliente.
     Muestra código de referido, cantidad de referidos, bonos ganados y pendientes.
     """
     result = get_referral_stats(client_id=client_id)
-    return str(result)
+    return result
 
 
 # =============================================================================

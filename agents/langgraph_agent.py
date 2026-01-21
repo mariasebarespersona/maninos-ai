@@ -7,11 +7,10 @@ This replaces the manual ReAct loop with LangGraph's built-in agent execution.
 Benefits:
 - Automatic conversation memory per session
 - "sí" after "¿calcular oferta?" will have full context
-- Persistent across server restarts (with PostgresSaver if available)
+- Persistent across server restarts (PostgresSaver in production)
 """
 
 import os
-import logging
 from typing import Dict, List, Any, Optional
 
 from langchain_openai import ChatOpenAI
@@ -19,21 +18,57 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 
-# Try to import PostgresSaver, fall back gracefully if not installed
+from core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Try to import PostgresSaver (for production)
 try:
     from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg_pool import ConnectionPool
     POSTGRES_AVAILABLE = True
 except ImportError:
     POSTGRES_AVAILABLE = False
+    logger.warning("postgres_unavailable", message="langgraph-checkpoint-postgres not installed, falling back to MemorySaver")
 
-# Try SQLite as alternative persistent storage
+# Try SQLite as alternative persistent storage (for development)
 try:
     from langgraph.checkpoint.sqlite import SqliteSaver
     SQLITE_AVAILABLE = True
 except ImportError:
     SQLITE_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+
+# Global connection pool for PostgresSaver (reused across checkpointer calls)
+_connection_pool: Optional[ConnectionPool] = None
+
+def get_connection_pool() -> Optional[ConnectionPool]:
+    """Get or create the global PostgreSQL connection pool."""
+    global _connection_pool
+    
+    if _connection_pool is not None:
+        return _connection_pool
+    
+    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    if not database_url:
+        return None
+    
+    # Ensure correct format for psycopg
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgres://", 1)
+    
+    try:
+        _connection_pool = ConnectionPool(
+            conninfo=database_url,
+            min_size=1,
+            max_size=10,
+            kwargs={"autocommit": True, "prepare_threshold": 0}
+        )
+        logger.info("postgres_pool_created", min_size=1, max_size=10)
+        return _connection_pool
+    except Exception as e:
+        logger.error("postgres_pool_failed", error=str(e))
+        return None
 
 
 def get_checkpointer():
@@ -41,38 +76,38 @@ def get_checkpointer():
     Get the appropriate checkpointer based on environment and available packages.
     
     Priority:
-    1. PostgresSaver (if package installed AND DATABASE_URL available)
-    2. SqliteSaver (persistent, file-based)
-    3. MemorySaver (in-memory, lost on restart)
+    1. PostgresSaver with connection pool (production)
+    2. SqliteSaver (development, persistent file)
+    3. MemorySaver (fallback, lost on restart)
     """
-    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    env = os.getenv("ENVIRONMENT", "production")
     
     # Try PostgresSaver first (production)
-    if POSTGRES_AVAILABLE and database_url and os.getenv("ENVIRONMENT") != "development":
-        try:
-            # The connection string needs to be in postgres:// format
-            if database_url.startswith("postgresql://"):
-                database_url = database_url.replace("postgresql://", "postgres://", 1)
-            
-            checkpointer = PostgresSaver.from_conn_string(database_url)
-            logger.info("[LangGraphAgent] ✅ Using PostgresSaver for checkpoints (production)")
-            return checkpointer
-        except Exception as e:
-            logger.warning(f"[LangGraphAgent] ⚠️ Failed to connect to Postgres: {e}")
+    if POSTGRES_AVAILABLE and env != "development":
+        pool = get_connection_pool()
+        if pool:
+            try:
+                checkpointer = PostgresSaver(pool)
+                # Setup tables if needed (idempotent)
+                checkpointer.setup()
+                logger.info("checkpointer_initialized", type="PostgresSaver", environment=env)
+                return checkpointer
+            except Exception as e:
+                logger.warning("postgres_checkpointer_failed", error=str(e))
     
-    # Try SqliteSaver second (persistent file)
+    # Try SqliteSaver second (development or fallback)
     if SQLITE_AVAILABLE:
         try:
             import tempfile
             db_path = os.path.join(tempfile.gettempdir(), "maninos_checkpoints.db")
-            checkpointer = SqliteSaver.from_conn_string(f"file:{db_path}")
-            logger.info(f"[LangGraphAgent] ✅ Using SqliteSaver for checkpoints: {db_path}")
+            checkpointer = SqliteSaver.from_conn_string(f"sqlite:///{db_path}")
+            logger.info("checkpointer_initialized", type="SqliteSaver", path=db_path)
             return checkpointer
         except Exception as e:
-            logger.warning(f"[LangGraphAgent] ⚠️ Failed to create SqliteSaver: {e}")
+            logger.warning("sqlite_checkpointer_failed", error=str(e))
     
     # Fallback to in-memory saver
-    logger.info("[LangGraphAgent] ⚠️ Using MemorySaver for checkpoints (memory only, lost on restart)")
+    logger.warning("checkpointer_fallback", type="MemorySaver", message="Data will be lost on restart")
     return MemorySaver()
 
 
@@ -94,6 +129,11 @@ class LangGraphAgent:
     Subclasses must implement:
     - get_system_prompt()
     - get_tools()
+    
+    Features:
+    - Automatic conversation persistence via LangGraph checkpointer
+    - Structured logging with structlog
+    - Connection pooling for PostgreSQL
     """
     
     def __init__(self, name: str, model: str = "gpt-4o-mini", temperature: float = 0.7):
@@ -107,6 +147,7 @@ class LangGraphAgent:
         self.name = name
         self.model = model
         self.temperature = temperature
+        self.logger = get_logger(self.name)
         
         # Initialize LLM
         self.llm = ChatOpenAI(
@@ -118,7 +159,7 @@ class LangGraphAgent:
         # Checkpointer will be set when graph is created
         self._graph = None
         
-        logger.info(f"[{self.name}] LangGraph agent initialized with model={model}")
+        self.logger.info("agent_initialized", model=model, temperature=temperature)
     
     def get_system_prompt(self, **kwargs) -> str:
         """Get the system prompt for this agent. Must be overridden."""
@@ -141,7 +182,7 @@ class LangGraphAgent:
                 checkpointer=checkpointer
             )
             
-            logger.info(f"[{self.name}] Created LangGraph ReAct agent with {len(tools)} tools")
+            self.logger.info("graph_created", tools_count=len(tools))
         
         return self._graph
     
@@ -157,8 +198,10 @@ class LangGraphAgent:
         Returns:
             Dict with response and metadata
         """
+        log = self.logger.bind(session_id=session_id, input_preview=user_input[:50])
+        
         try:
-            logger.info(f"[{self.name}] Processing (session={session_id}): {user_input[:50]}...")
+            log.info("processing_request")
             
             # Get the graph
             graph = self._get_graph()
@@ -176,7 +219,8 @@ class LangGraphAgent:
             config = {
                 "configurable": {
                     "thread_id": session_id
-                }
+                },
+                "recursion_limit": 15  # Prevent infinite loops
             }
             
             # Invoke the graph
@@ -193,7 +237,7 @@ class LangGraphAgent:
                         response_content = msg.content
                         break
             
-            logger.info(f"[{self.name}] Response: {response_content[:100]}...")
+            log.info("request_completed", response_preview=response_content[:100] if response_content else "empty")
             
             return {
                 "ok": True,
@@ -203,7 +247,7 @@ class LangGraphAgent:
             }
             
         except Exception as e:
-            logger.error(f"[{self.name}] Error: {e}", exc_info=True)
+            log.error("request_failed", error=str(e), exc_info=True)
             return {
                 "ok": False,
                 "error": str(e),
@@ -230,4 +274,3 @@ class LangGraphAgent:
     
     def __repr__(self):
         return f"<{self.name} (LangGraph) model={self.model}>"
-

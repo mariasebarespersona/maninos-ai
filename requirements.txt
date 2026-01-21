@@ -28,6 +28,12 @@ resend>=2.4.0
 # Stripe - Payments and Identity verification (KYC)
 stripe>=7.0.0
 
+# Structured logging (better than standard logging)
+structlog>=24.1.0
+
+# Typed configuration management (replaces python-dotenv for settings)
+pydantic-settings>=2.0.0
+
 # the rest of your deps
 python-dotenv
 pypdf
