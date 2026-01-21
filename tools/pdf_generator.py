@@ -519,6 +519,27 @@ def _get_contract_clauses(
     return clauses
 
 
+def _sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename for Supabase Storage.
+    Removes accents and special characters.
+    """
+    import unicodedata
+    import re
+    
+    # Normalize unicode and remove accents
+    normalized = unicodedata.normalize('NFKD', filename)
+    ascii_text = normalized.encode('ASCII', 'ignore').decode('ASCII')
+    
+    # Replace spaces with underscores and remove other special chars
+    sanitized = re.sub(r'[^\w\-_\.]', '_', ascii_text)
+    
+    # Remove multiple underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+    
+    return sanitized
+
+
 def upload_pdf_to_storage(
     pdf_bytes: bytes,
     filename: str,
@@ -538,8 +559,11 @@ def upload_pdf_to_storage(
     try:
         from .supabase_client import sb
         
+        # Sanitize filename to remove accents and special characters
+        safe_filename = _sanitize_filename(filename)
+        
         # Upload to contracts bucket
-        storage_path = f"contracts/{contract_id}/{filename}"
+        storage_path = f"contracts/{contract_id}/{safe_filename}"
         
         result = sb.storage.from_("documents").upload(
             storage_path,
@@ -550,13 +574,13 @@ def upload_pdf_to_storage(
         # Get public URL
         public_url = sb.storage.from_("documents").get_public_url(storage_path)
         
-        logger.info(f"[upload_pdf_to_storage] Uploaded {filename} to {storage_path}")
+        logger.info(f"[upload_pdf_to_storage] Uploaded {safe_filename} to {storage_path}")
         
         return {
             "ok": True,
             "storage_path": storage_path,
             "public_url": public_url,
-            "filename": filename
+            "filename": safe_filename
         }
         
     except Exception as e:
