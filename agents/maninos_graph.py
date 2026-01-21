@@ -13,54 +13,98 @@ Architecture:
 """
 
 import os
-import logging
 from typing import Dict, List, Any, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 
-logger = logging.getLogger(__name__)
+from core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Try to import PostgresSaver with connection pooling
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg_pool import ConnectionPool
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+    logger.warning("postgres_checkpointer_unavailable", message="langgraph-checkpoint-postgres not installed")
 
 
 # =============================================================================
-# CHECKPOINTER SINGLETON
+# CHECKPOINTER SINGLETON WITH CONNECTION POOLING
 # =============================================================================
 
 _checkpointer = None
+_connection_pool = None
+
+def get_connection_pool():
+    """Get or create the PostgreSQL connection pool."""
+    global _connection_pool
+    
+    if _connection_pool is not None:
+        return _connection_pool
+    
+    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    if not database_url:
+        logger.warning("no_database_url", message="DATABASE_URL not set")
+        return None
+    
+    # Ensure correct format for psycopg
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgres://", 1)
+    
+    try:
+        _connection_pool = ConnectionPool(
+            conninfo=database_url,
+            min_size=1,
+            max_size=10,
+            kwargs={"autocommit": True, "prepare_threshold": 0}
+        )
+        logger.info("postgres_pool_created", min_size=1, max_size=10)
+        return _connection_pool
+    except Exception as e:
+        logger.error("postgres_pool_failed", error=str(e))
+        return None
+
 
 def get_checkpointer():
     """
     Get the appropriate checkpointer based on environment.
     
-    - Production (Railway): PostgresSaver with Supabase
-    - Development: MemorySaver (in-memory)
+    Priority:
+    1. PostgresSaver with connection pool (production)
+    2. MemorySaver (fallback)
+    
+    IMPORTANT: Calls .setup() to create checkpoint tables if needed.
     """
     global _checkpointer
     
     if _checkpointer is not None:
         return _checkpointer
     
-    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    env = os.getenv("ENVIRONMENT", "production")
     
-    if database_url and os.getenv("ENVIRONMENT") != "development":
-        try:
-            # Use PostgresSaver for production
-            if database_url.startswith("postgresql://"):
-                database_url = database_url.replace("postgresql://", "postgres://", 1)
-            
-            _checkpointer = PostgresSaver.from_conn_string(database_url)
-            logger.info("[ManinosGraph] ✅ Using PostgresSaver for checkpoints")
-            return _checkpointer
-        except Exception as e:
-            logger.warning(f"[ManinosGraph] Failed to connect to Postgres: {e}")
+    # Try PostgresSaver first (production)
+    if POSTGRES_AVAILABLE and env != "development":
+        pool = get_connection_pool()
+        if pool:
+            try:
+                _checkpointer = PostgresSaver(pool)
+                # CRITICAL: Setup creates the checkpoint tables
+                _checkpointer.setup()
+                logger.info("checkpointer_initialized", type="PostgresSaver", environment=env)
+                return _checkpointer
+            except Exception as e:
+                logger.error("postgres_checkpointer_failed", error=str(e), exc_info=True)
     
     # Fallback to in-memory saver
     _checkpointer = MemorySaver()
-    logger.info("[ManinosGraph] Using MemorySaver for checkpoints (development)")
+    logger.warning("checkpointer_fallback", type="MemorySaver", message="Memory only - history lost on restart")
     return _checkpointer
 
 
