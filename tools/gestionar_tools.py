@@ -29,6 +29,13 @@ def setup_automatic_payment(
     
     KPI Target: Cobranza puntual ≥95%
     
+    Flujo:
+    1. Obtiene datos del contrato y cliente
+    2. Crea/obtiene cliente en Stripe
+    3. Crea precio para la renta mensual
+    4. Retorna URL para que el cliente agregue método de pago
+    5. Una vez tenga método de pago, se puede crear la suscripción
+    
     Args:
         client_id: UUID del cliente
         contract_id: UUID del contrato RTO
@@ -36,9 +43,15 @@ def setup_automatic_payment(
         payment_day: Día del mes para el cobro (default 15)
     
     Returns:
-        Dict con estado de configuración
+        Dict con estado de configuración y URLs para completar setup
     """
     from .supabase_client import sb
+    from .stripe_payments import (
+        setup_automatic_payment_full,
+        create_subscription,
+        get_customer_payment_methods
+    )
+    import os
     
     try:
         # Get contract details
@@ -52,44 +65,76 @@ def setup_automatic_payment(
         contract = contract_result.data[0]
         client = contract.get("clients", {})
         
-        # Check if auto-payment already enabled
-        if contract.get("auto_payment_enabled"):
+        # Check if auto-payment already enabled with active subscription
+        if contract.get("auto_payment_enabled") and contract.get("stripe_subscription_id"):
             return {
                 "ok": True,
                 "already_configured": True,
-                "message": f"Pago automático ya configurado para {client.get('full_name')}",
-                "payment_day": contract.get("payment_day", 15)
+                "message": f"✅ Pago automático ya configurado para {client.get('full_name')}",
+                "payment_day": contract.get("payment_day", 15),
+                "stripe_subscription_id": contract.get("stripe_subscription_id")
             }
         
-        # In production, this would create a Stripe SetupIntent/Subscription
-        # For now, we simulate the setup
-        stripe_customer_id = contract.get("stripe_customer_id") or f"cus_{contract_id[:8]}"
+        # Get monthly rent in cents
+        monthly_rent = float(contract.get("monthly_rent", 695))
+        monthly_rent_cents = int(monthly_rent * 100)
         
-        # Update contract with auto-payment settings
+        # Check if Stripe is configured
+        if not os.getenv("STRIPE_SECRET_KEY"):
+            # Fallback to simulation mode
+            logger.warning("[setup_automatic_payment] STRIPE_SECRET_KEY not configured - using simulation mode")
+            return _setup_automatic_payment_simulation(
+                client_id, contract_id, contract, client, payment_day
+            )
+        
+        # === REAL STRIPE INTEGRATION ===
+        
+        # Setup automatic payment via Stripe
+        stripe_result = setup_automatic_payment_full(
+            client_id=client_id,
+            client_email=client.get("email", ""),
+            client_name=client.get("full_name", ""),
+            contract_id=contract_id,
+            monthly_rent_cents=monthly_rent_cents,
+            payment_day=payment_day
+        )
+        
+        if not stripe_result.get("ok"):
+            return stripe_result
+        
+        stripe_customer_id = stripe_result["stripe_customer_id"]
+        price_id = stripe_result["price_id"]
+        
+        # Update contract with Stripe info
         update_data = {
-            "auto_payment_enabled": True,
-            "payment_day": payment_day,
             "stripe_customer_id": stripe_customer_id,
+            "stripe_price_id": price_id,
+            "payment_day": payment_day,
             "updated_at": datetime.now().isoformat()
         }
         
-        if payment_method_id:
-            update_data["stripe_payment_method_id"] = payment_method_id
+        # If client already has payment method, create subscription immediately
+        if stripe_result.get("ready_for_subscription"):
+            sub_result = create_subscription(
+                stripe_customer_id=stripe_customer_id,
+                price_id=price_id,
+                contract_id=contract_id
+            )
+            
+            if sub_result.get("ok"):
+                update_data["auto_payment_enabled"] = True
+                update_data["stripe_subscription_id"] = sub_result["subscription_id"]
+                
+                # Calculate next payment date
+                today = datetime.now()
+                if today.day >= payment_day:
+                    next_month = today.replace(day=1) + timedelta(days=32)
+                    next_payment = next_month.replace(day=payment_day)
+                else:
+                    next_payment = today.replace(day=payment_day)
+                update_data["next_payment_due"] = next_payment.date().isoformat()
         
         sb.table("rto_contracts").update(update_data).eq("id", contract_id).execute()
-        
-        # Calculate next payment date
-        today = datetime.now()
-        if today.day >= payment_day:
-            next_month = today.replace(day=1) + timedelta(days=32)
-            next_payment = next_month.replace(day=payment_day)
-        else:
-            next_payment = today.replace(day=payment_day)
-        
-        # Update next payment due date
-        sb.table("rto_contracts").update({
-            "next_payment_due": next_payment.date().isoformat()
-        }).eq("id", contract_id).execute()
         
         # Log action
         try:
@@ -97,33 +142,99 @@ def setup_automatic_payment(
                 "entity_type": "contract",
                 "entity_id": contract_id,
                 "process": "GESTIONAR_CARTERA",
-                "action": "auto_payment_configured",
+                "action": "auto_payment_setup_initiated",
                 "details": {
                     "client_name": client.get("full_name"),
                     "payment_day": payment_day,
-                    "monthly_rent": float(contract.get("monthly_rent", 0)),
-                    "stripe_customer_id": stripe_customer_id
+                    "monthly_rent": monthly_rent,
+                    "stripe_customer_id": stripe_customer_id,
+                    "ready_for_subscription": stripe_result.get("ready_for_subscription", False)
                 }
             }).execute()
         except Exception as log_error:
             logger.warning(f"[setup_automatic_payment] Failed to log: {log_error}")
         
-        logger.info(f"[setup_automatic_payment] Configured for contract {contract_id}")
+        logger.info(f"[setup_automatic_payment] Stripe setup for contract {contract_id}")
         
-        return {
+        # Build response
+        result = {
             "ok": True,
             "contract_id": contract_id,
             "client_name": client.get("full_name"),
             "payment_day": payment_day,
-            "monthly_rent": float(contract.get("monthly_rent", 0)),
-            "next_payment_date": next_payment.date().isoformat(),
+            "monthly_rent": monthly_rent,
             "stripe_customer_id": stripe_customer_id,
-            "message": f"✅ Pago automático configurado. Próximo cobro: día {payment_day} de cada mes (${contract.get('monthly_rent', 0):,.2f})"
         }
+        
+        if stripe_result.get("ready_for_subscription"):
+            result["auto_payment_enabled"] = True
+            result["stripe_subscription_id"] = update_data.get("stripe_subscription_id")
+            result["next_payment_date"] = update_data.get("next_payment_due")
+            result["message"] = f"✅ Pago automático ACTIVADO. Próximo cobro: día {payment_day} (${monthly_rent:,.2f}/mes)"
+        else:
+            result["auto_payment_enabled"] = False
+            result["checkout_url"] = stripe_result.get("checkout_url")
+            result["setup_intent_id"] = stripe_result.get("setup_intent_id")
+            result["client_secret"] = stripe_result.get("client_secret")
+            result["next_step"] = stripe_result.get("next_step")
+            result["message"] = f"⏳ El cliente debe agregar método de pago para activar cobros automáticos de ${monthly_rent:,.2f}/mes"
+        
+        return result
         
     except Exception as e:
         logger.error(f"[setup_automatic_payment] Error: {e}")
         return {"ok": False, "error": str(e)}
+
+
+def _setup_automatic_payment_simulation(
+    client_id: str,
+    contract_id: str,
+    contract: Dict,
+    client: Dict,
+    payment_day: int
+) -> Dict[str, Any]:
+    """
+    Modo simulación cuando Stripe no está configurado.
+    """
+    from .supabase_client import sb
+    
+    stripe_customer_id = contract.get("stripe_customer_id") or f"cus_sim_{contract_id[:8]}"
+    
+    # Update contract with simulated auto-payment settings
+    update_data = {
+        "auto_payment_enabled": True,
+        "payment_day": payment_day,
+        "stripe_customer_id": stripe_customer_id,
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    sb.table("rto_contracts").update(update_data).eq("id", contract_id).execute()
+    
+    # Calculate next payment date
+    today = datetime.now()
+    if today.day >= payment_day:
+        next_month = today.replace(day=1) + timedelta(days=32)
+        next_payment = next_month.replace(day=payment_day)
+    else:
+        next_payment = today.replace(day=payment_day)
+    
+    sb.table("rto_contracts").update({
+        "next_payment_due": next_payment.date().isoformat()
+    }).eq("id", contract_id).execute()
+    
+    logger.info(f"[setup_automatic_payment] Simulation mode for contract {contract_id}")
+    
+    return {
+        "ok": True,
+        "contract_id": contract_id,
+        "client_name": client.get("full_name"),
+        "payment_day": payment_day,
+        "monthly_rent": float(contract.get("monthly_rent", 0)),
+        "next_payment_date": next_payment.date().isoformat(),
+        "stripe_customer_id": stripe_customer_id,
+        "simulation_mode": True,
+        "message": f"✅ Pago automático configurado (SIMULACIÓN). Próximo cobro: día {payment_day} (${contract.get('monthly_rent', 0):,.2f}/mes)"
+    }
 
 
 def monitor_payment_status(

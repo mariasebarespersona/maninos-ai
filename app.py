@@ -42,7 +42,7 @@ try:
             service_name="maninos-ai-backend",
             environment=settings.ENVIRONMENT,
         )
-except Exception as e:
+    except Exception as e:
     logger.warning("logfire_disabled", error=str(e))
 
 # Supabase client
@@ -217,7 +217,7 @@ async def chat(request: Request):
             }
         })
         
-    except Exception as e:
+                except Exception as e:
         logger.error("chat_error", error=str(e), exc_info=True)
         clear_context()  # Clear session context on error
         return JSONResponse(
@@ -389,6 +389,99 @@ async def stripe_identity_webhook(
         
     except Exception as e:
         logger.error(f"[stripe_identity_webhook] Exception: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/api/webhooks/stripe-payments")
+async def stripe_payments_webhook(
+    request: Request,
+    stripe_signature: str = Header(None, alias="Stripe-Signature")
+):
+    """
+    Webhook endpoint for Stripe Payment events.
+    
+    Events handled:
+    - invoice.paid: Monthly rent paid successfully
+    - invoice.payment_failed: Payment failed
+    - customer.subscription.deleted: Subscription canceled
+    - payment_intent.succeeded: Single payment succeeded
+    - payment_intent.payment_failed: Single payment failed
+    """
+    try:
+        payload = await request.body()
+        
+        from tools.stripe_payments import process_payment_webhook
+        result = process_payment_webhook(payload, stripe_signature or "")
+        
+        if not result.get("ok"):
+            logger.error(f"[stripe_payments_webhook] Error: {result.get('error')}")
+            return JSONResponse(status_code=400, content={"error": result.get("error")})
+        
+        # Process based on action
+        action = result.get("action")
+        contract_id = result.get("contract_id")
+        event_type = result.get("event_type")
+        
+        if contract_id and action:
+            if action == "record_payment":
+                # Record successful payment
+                amount = result.get("amount", 0)
+                sb.table("payments").insert({
+                    "contract_id": contract_id,
+                    "amount": amount,
+                    "payment_date": datetime.now().isoformat(),
+                    "status": "completed",
+                    "payment_method": "stripe_auto",
+                    "stripe_invoice_id": result.get("invoice_id"),
+                    "notes": f"Pago automático Stripe: ${amount:.2f}"
+                }).execute()
+                
+                # Update contract
+                sb.table("rto_contracts").update({
+                    "last_payment_date": datetime.now().date().isoformat(),
+                    "payment_status": "current",
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", contract_id).execute()
+                
+                logger.info(f"[webhook] Payment ${amount:.2f} recorded for contract {contract_id}")
+                
+            elif action == "mark_payment_failed":
+                # Mark payment as failed, update delinquency
+                amount = result.get("amount", 0)
+                attempt = result.get("attempt_count", 1)
+                
+                sb.table("payments").insert({
+                    "contract_id": contract_id,
+                    "amount": amount,
+                    "payment_date": datetime.now().isoformat(),
+                    "status": "failed",
+                    "payment_method": "stripe_auto",
+                    "notes": f"Intento #{attempt} fallido"
+                }).execute()
+                
+                # Update contract status based on attempts
+                payment_status = "preventive" if attempt <= 2 else "administrative"
+                sb.table("rto_contracts").update({
+                    "payment_status": payment_status,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", contract_id).execute()
+                
+                logger.warning(f"[webhook] Payment FAILED for contract {contract_id} (attempt #{attempt})")
+                
+            elif action == "cancel_auto_payment":
+                # Subscription canceled
+                sb.table("rto_contracts").update({
+                    "auto_payment_enabled": False,
+                    "stripe_subscription_id": None,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", contract_id).execute()
+                
+                logger.info(f"[webhook] Auto-payment canceled for contract {contract_id}")
+        
+        return JSONResponse(content={"received": True, "event": event_type, "action": action})
+        
+    except Exception as e:
+        logger.error(f"[stripe_payments_webhook] Exception: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
