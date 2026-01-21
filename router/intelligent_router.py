@@ -486,38 +486,47 @@ class IntelligentRouter:
         
         # Intent patterns with confidence scores
         intent_patterns = [
-            # COMERCIALIZAR - Marketing, leads, referrals
+            # COMERCIALIZAR - Marketing, leads, portfolio management, loyalty
             {
                 "process": "COMERCIALIZAR",
                 "patterns": [
-                    (r"referido|referral|código.{0,10}referido", 0.9),
-                    (r"lead|prospecto|interesado", 0.85),
-                    (r"catálogo|catalogo|propiedades.{0,10}disponibles", 0.8),
-                    (r"visita|agendar|programar", 0.75),
-                    (r"marketing|promoción|campaña", 0.85),
-                    (r"métricas|metricas|estadísticas.{0,10}marketing", 0.8),
+                    (r"lead|prospecto|interesado.{0,10}(comprar|rto)", 0.85),
+                    (r"acta.{0,10}comité|committee.{0,10}record", 0.9),
+                    (r"promover|promocionar|activar.{0,10}catálogo", 0.85),
+                    (r"crédito.{0,10}riesgo|evaluar.{0,10}crédito|dictamen", 0.9),
+                    (r"formalizar.{0,10}venta|mesa.{0,10}control", 0.9),
+                    (r"cartera.{0,10}(morosidad|clasificar)|recuperar.{0,10}cartera", 0.9),
+                    (r"fidelizar|fidelización|título.{0,10}transferir|tdhca", 0.9),
+                    (r"marketing|campaña.{0,10}marketing", 0.8),
+                    (r"desembolso|finiquitar.{0,10}activo", 0.85),
                 ],
             },
             # INCORPORAR - Client onboarding
             {
                 "process": "INCORPORAR",
                 "patterns": [
-                    (r"cliente|registrar.{0,10}cliente|nuevo.{0,10}cliente", 0.9),
-                    (r"kyc|verificación.{0,10}identidad|verificar.{0,10}cliente", 0.9),
-                    (r"dti|deuda.{0,10}ingreso|ratio.{0,10}deuda", 0.85),
-                    (r"contrato.{0,10}rto|generar.{0,10}contrato|arrendamiento", 0.85),
-                    (r"perfil|información.{0,10}cliente|datos.{0,10}cliente", 0.8),
+                    (r"regist\w*.{0,10}cliente|nuev\w*.{0,10}cliente|crear.{0,10}cliente", 0.95),
+                    (r"info\w*.{0,10}cliente|datos.{0,10}cliente|perfil.{0,10}cliente", 0.9),
+                    (r"kyc|verificación.{0,10}identidad|verificar.{0,10}(cliente|identidad)", 0.9),
+                    (r"dti|debt.?to.?income|deuda.{0,10}ingreso|ratio.{0,10}deuda|capacidad.{0,10}pago", 0.9),
+                    (r"contrato.{0,10}rto|generar.{0,10}contrato|arrendamiento|rent.?to.?own", 0.9),
+                    (r"referido|código.{0,10}referido|estadísticas.{0,10}referido", 0.85),
+                    (r"bienvenida|email.{0,10}cliente|comunicar.{0,10}cliente", 0.8),
                 ],
             },
             # ADQUIRIR - Property acquisition
             {
                 "process": "ADQUIRIR",
                 "patterns": [
-                    (r"buscar.{0,10}propiedad|buscar.{0,10}casa|nueva.{0,10}propiedad", 0.9),
-                    (r"evaluar|evaluación|checklist.{0,10}propiedad", 0.85),
-                    (r"oferta|calcular.{0,10}oferta|regla.{0,10}70", 0.85),
-                    (r"inventario|propiedades.{0,10}disponibles", 0.75),
-                    (r"inspección|inspeccionar", 0.8),
+                    (r"busc\w*.{0,15}propiedad|busc\w*.{0,15}casa|busc\w*.{0,15}mobile.?home", 0.95),
+                    (r"propiedad.{0,15}(houston|texas|tx)|houston.{0,15}propiedad", 0.9),
+                    (r"evaluar.{0,10}propiedad|evaluación|checklist.{0,10}(26|propiedad)", 0.85),
+                    (r"oferta.{0,10}(adquisición|compra)|calcular.{0,10}oferta|regla.{0,10}70", 0.9),
+                    (r"registrar?.{0,10}propiedad|nueva.{0,10}propiedad|añadir.{0,10}propiedad", 0.85),
+                    (r"inventario.{0,10}propiedad|propiedades.{0,10}inventario", 0.8),
+                    (r"inspección|inspeccionar|due.?diligence", 0.85),
+                    (r"arv|valor.{0,10}mercado|precio.{0,10}(compra|venta|máximo)", 0.8),
+                    (r"mobile\s*home|manufactured\s*home|trailer", 0.75),
                 ],
             },
             # FONDEAR - Investor management (Week 2)

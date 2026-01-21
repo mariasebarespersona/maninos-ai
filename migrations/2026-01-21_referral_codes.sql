@@ -43,26 +43,19 @@ CREATE INDEX IF NOT EXISTS idx_referral_history_status ON referral_history(statu
 -- RLS para referral_history
 ALTER TABLE referral_history ENABLE ROW LEVEL SECURITY;
 
--- Empleados pueden ver todo
-CREATE POLICY "Employees can manage referral_history"
+-- Por ahora, permitir acceso completo al service role (backend)
+-- Las políticas más granulares se añadirán cuando exista la tabla profiles
+CREATE POLICY "Service role can manage referral_history"
     ON referral_history FOR ALL
-    USING (
-        EXISTS (
-            SELECT 1 FROM profiles
-            WHERE id = auth.uid() AND role IN ('employee', 'admin')
-        )
-    );
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
--- Clientes pueden ver sus propios referidos
-CREATE POLICY "Clients can view own referrals"
+-- Permitir lectura a usuarios autenticados (temporal hasta tener profiles)
+CREATE POLICY "Authenticated users can view referral_history"
     ON referral_history FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM clients
-            WHERE clients.id = referral_history.referrer_client_id
-            AND clients.user_id = auth.uid()
-        )
-    );
+    TO authenticated
+    USING (true);
 
 -- Función para generar código de referido único
 CREATE OR REPLACE FUNCTION generate_unique_referral_code(client_name TEXT)
