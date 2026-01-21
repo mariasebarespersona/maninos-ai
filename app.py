@@ -42,7 +42,7 @@ try:
             service_name="maninos-ai-backend",
             environment=os.getenv("ENVIRONMENT", "development"),
         )
-except Exception as e:
+    except Exception as e:
     logger.warning(f"[LOGFIRE] Disabled: {e}")
 
 # Supabase client
@@ -119,6 +119,24 @@ async def health_check():
     return {"status": "ok", "service": "maninos-ai-backend"}
 
 
+@app.get("/api/debug/session/{session_id}")
+async def debug_session(session_id: str):
+    """
+    DEBUG ENDPOINT - Shows current session state.
+    Useful for verifying that session context is being stored correctly.
+    """
+    router = get_router()
+    session_state = router._get_session_state(session_id)
+    cache_state = router._session_cache.get(session_id, {})
+    
+    return {
+        "session_id": session_id,
+        "session_state": session_state,
+        "cache_state": cache_state,
+        "all_cached_sessions": list(router._session_cache.keys())
+    }
+
+
 # ============================================================================
 # CHAT ENDPOINT - Main AI Interface
 # ============================================================================
@@ -144,7 +162,11 @@ async def chat(request: Request):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
-        logger.info(f"[chat] Session {session_id}: {message[:100]}...")
+        # DETAILED LOGGING for debugging session continuity
+        logger.info(f"[chat] ========== NEW REQUEST ==========")
+        logger.info(f"[chat] Session ID: {session_id}")
+        logger.info(f"[chat] Message: {message[:100]}...")
+        logger.info(f"[chat] Message length: {len(message)} chars")
         
         # Get router and agents
         router = get_router()
@@ -225,7 +247,7 @@ async def chat(request: Request):
             }
         })
         
-    except Exception as e:
+                except Exception as e:
         logger.error(f"[chat] Error: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
