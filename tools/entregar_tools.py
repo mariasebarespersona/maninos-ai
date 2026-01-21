@@ -402,7 +402,7 @@ def process_title_transfer(
         
         # Update client stage
         sb.table("clients").update({
-            "process_stage": "purchase_complete",
+            "process_stage": "completed",
             "updated_at": datetime.now().isoformat()
         }).eq("id", client.get("id")).execute()
         
@@ -569,7 +569,7 @@ def offer_upgrade_options(
             # Find all clients who completed their contracts
             result = sb.table("clients").select(
                 "id, full_name, email, phone, referral_code"
-            ).eq("process_stage", "purchase_complete").execute()
+            ).eq("process_stage", "completed").execute()
             clients_to_process = result.data or []
         elif client_id or client_name:
             if client_name:
@@ -794,7 +794,7 @@ def process_referral_bonus(
                 ).eq("status", "paid").execute()
                 should_pay = bool(payment_check.data)
             elif trigger_event == "purchase_complete":
-                should_pay = referred.get("process_stage") == "purchase_complete"
+                should_pay = referred.get("process_stage") == "completed"
         
         if should_pay:
             bonus_data["status"] = "paid"
