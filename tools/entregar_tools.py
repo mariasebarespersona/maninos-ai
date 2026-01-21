@@ -282,13 +282,101 @@ def process_title_transfer(
         total_paid = float(contract.get("total_paid", 0))
         down_payment = float(contract.get("down_payment", 0))
         
-        # Generate TDHCA document content (placeholder - in production this would be PDF)
-        tdhca_content = _generate_tdhca_document(client, property_data, purchase_price, transfer_date)
+        # =====================================================================
+        # GENERATE PDF DOCUMENTS
+        # =====================================================================
+        tdhca_pdf_url = None
+        irs_1099s_pdf_url = None
         
-        # Generate 1099-S if applicable
-        irs_1099s_content = None
-        if include_1099s and purchase_price >= 600:  # IRS threshold
-            irs_1099s_content = _generate_1099s(client, property_data, purchase_price, transfer_date)
+        try:
+            from .pdf_generator import generate_tdhca_title_pdf, generate_1099s_pdf, upload_pdf_to_storage
+            
+            # Prepare transfer data
+            transfer_pdf_data = {
+                "transfer_id": transfer["id"],
+                "transfer_date": transfer_date,
+                "closing_date": transfer_date,
+                "sale_price": purchase_price,
+                "down_payment": down_payment,
+                "lien_holder": "None",
+            }
+            
+            seller_pdf_data = {
+                "name": "Maninos Capital LLC",
+                "address": "Houston, TX",
+                "phone": "832-745-9600",
+                "email": "info@maninoscapital.com"
+            }
+            
+            buyer_pdf_data = {
+                "full_name": client.get("full_name", ""),
+                "current_address": client.get("current_address", ""),
+                "city": client.get("current_city", "Houston"),
+                "zip_code": client.get("current_zip", ""),
+                "phone": client.get("phone", ""),
+                "email": client.get("email", ""),
+                "ssn_itin": client.get("ssn_itin", "XXX-XX-XXXX"),
+            }
+            
+            property_pdf_data = {
+                "address": property_data.get("address", ""),
+                "city": property_data.get("city", "Houston"),
+                "county": "Harris",
+                "zip_code": property_data.get("zip_code", ""),
+                "park_name": property_data.get("park_name", ""),
+                "hud_number": property_data.get("hud_number", ""),
+                "year_built": property_data.get("year_built", ""),
+                "serial_number": property_data.get("hud_number", ""),
+            }
+            
+            # Generate TDHCA PDF
+            tdhca_result = generate_tdhca_title_pdf(
+                transfer_data=transfer_pdf_data,
+                seller_data=seller_pdf_data,
+                buyer_data=buyer_pdf_data,
+                property_data=property_pdf_data
+            )
+            
+            if tdhca_result.get("ok") and tdhca_result.get("pdf_bytes"):
+                upload_result = upload_pdf_to_storage(
+                    pdf_bytes=tdhca_result["pdf_bytes"],
+                    filename=tdhca_result["filename"],
+                    contract_id=contract_id
+                )
+                if upload_result.get("ok"):
+                    tdhca_pdf_url = upload_result.get("public_url")
+                    logger.info(f"[process_title_transfer] TDHCA PDF uploaded: {tdhca_pdf_url}")
+            
+            # Generate 1099-S PDF if applicable
+            if include_1099s and purchase_price >= 600:
+                transaction_data = {
+                    "tax_year": datetime.now().year,
+                    "closing_date": transfer_date,
+                    "gross_proceeds": purchase_price,
+                    "filer_tin": "XX-XXXXXXX",
+                    "account_number": contract_id[:12],
+                    "received_property": False,
+                    "buyer_tax": 0,
+                }
+                
+                irs_result = generate_1099s_pdf(
+                    transaction_data=transaction_data,
+                    seller_data=buyer_pdf_data,  # Client is the "seller" receiving 1099-S
+                    property_data=property_pdf_data
+                )
+                
+                if irs_result.get("ok") and irs_result.get("pdf_bytes"):
+                    upload_result = upload_pdf_to_storage(
+                        pdf_bytes=irs_result["pdf_bytes"],
+                        filename=irs_result["filename"],
+                        contract_id=contract_id
+                    )
+                    if upload_result.get("ok"):
+                        irs_1099s_pdf_url = upload_result.get("public_url")
+                        logger.info(f"[process_title_transfer] 1099-S PDF uploaded: {irs_1099s_pdf_url}")
+        
+        except Exception as pdf_error:
+            logger.warning(f"[process_title_transfer] PDF generation skipped: {pdf_error}")
         
         # Update title transfer record
         sb.table("title_transfers").update({
@@ -337,7 +425,8 @@ def process_title_transfer(
         
         logger.info(f"[process_title_transfer] Processed transfer for contract {contract_id}")
         
-        return {
+        # Build result with PDF links
+        result = {
             "ok": True,
             "transfer_id": transfer["id"],
             "contract_id": contract_id,
@@ -366,8 +455,24 @@ def process_title_transfer(
                 "3. Archivar expediente completo",
                 "4. Enviar 1099-S al IRS (si aplica)"
             ],
-            "message": f"✅ Transferencia de título procesada. {client.get('full_name')} ahora es propietario de {property_data.get('address')}. TDHCA confirmación pendiente."
         }
+        
+        # Add PDF URLs if generated
+        if tdhca_pdf_url:
+            result["tdhca_pdf_url"] = tdhca_pdf_url
+        if irs_1099s_pdf_url:
+            result["irs_1099s_pdf_url"] = irs_1099s_pdf_url
+        
+        # Build message with PDF links
+        message = f"✅ Transferencia de título procesada. {client.get('full_name')} ahora es propietario de {property_data.get('address')}."
+        if tdhca_pdf_url:
+            message += f"\n\n📄 **DESCARGAR DOCUMENTOS:**\n- TDHCA Title: {tdhca_pdf_url}"
+        if irs_1099s_pdf_url:
+            message += f"\n- IRS 1099-S: {irs_1099s_pdf_url}"
+        
+        result["message"] = message
+        
+        return result
         
     except Exception as e:
         logger.error(f"[process_title_transfer] Error: {e}")

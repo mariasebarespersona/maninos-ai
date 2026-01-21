@@ -589,3 +589,527 @@ def upload_pdf_to_storage(
         logger.error(f"[upload_pdf_to_storage] Error: {e}")
         return {"ok": False, "error": str(e)}
 
+
+# =============================================================================
+# TDHCA TITLE TRANSFER DOCUMENT
+# Texas Department of Housing and Community Affairs
+# Statement of Ownership and Location (SOL) for Mobile Homes
+# =============================================================================
+
+def generate_tdhca_title_pdf(
+    transfer_data: Dict[str, Any],
+    seller_data: Dict[str, Any],
+    buyer_data: Dict[str, Any],
+    property_data: Dict[str, Any],
+    output_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generates a TDHCA Statement of Ownership and Location (SOL) PDF.
+    
+    This is the Texas title document for mobile/manufactured homes.
+    Required when transferring ownership of a mobile home in Texas.
+    
+    Args:
+        transfer_data: Transfer details (date, sale price, etc.)
+        seller_data: Previous owner information
+        buyer_data: New owner information
+        property_data: Mobile home details (HUD, year, location)
+        output_path: Optional file path to save PDF
+    
+    Returns:
+        Dict with pdf_bytes or pdf_path
+    """
+    if not REPORTLAB_AVAILABLE:
+        return {"ok": False, "error": "reportlab not installed"}
+    
+    try:
+        if output_path:
+            buffer = output_path
+        else:
+            buffer = io.BytesIO()
+        
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=0.75*inch,
+            leftMargin=0.75*inch,
+            topMargin=0.5*inch,
+            bottomMargin=0.5*inch
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'TDHCATitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            alignment=TA_CENTER,
+            spaceAfter=6
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'TDHCASubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=12
+        )
+        
+        section_style = ParagraphStyle(
+            'TDHCASection',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            spaceBefore=12,
+            spaceAfter=6,
+            textColor=colors.Color(0.1, 0.2, 0.4)
+        )
+        
+        # === HEADER ===
+        story.append(Paragraph("TEXAS DEPARTMENT OF HOUSING AND COMMUNITY AFFAIRS", title_style))
+        story.append(Paragraph("MANUFACTURED HOUSING DIVISION", subtitle_style))
+        story.append(Paragraph("STATEMENT OF OWNERSHIP AND LOCATION", title_style))
+        story.append(Spacer(1, 0.2*inch))
+        story.append(HRFlowable(width="100%", thickness=2, color=colors.black))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # === DOCUMENT INFO ===
+        doc_info = [
+            ["Document Date:", transfer_data.get('transfer_date', datetime.now().strftime('%Y-%m-%d'))],
+            ["Transaction Type:", "SALE / TRANSFER OF OWNERSHIP"],
+            ["Document ID:", transfer_data.get('transfer_id', 'N/A')[:12]],
+        ]
+        doc_table = Table(doc_info, colWidths=[2*inch, 4*inch])
+        doc_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(doc_table)
+        story.append(Spacer(1, 0.2*inch))
+        
+        # === SECTION 1: MANUFACTURED HOME DESCRIPTION ===
+        story.append(Paragraph("SECTION 1: MANUFACTURED HOME DESCRIPTION", section_style))
+        
+        home_info = [
+            ["HUD Label Number:", property_data.get('hud_number', 'N/A')],
+            ["Serial Number:", property_data.get('serial_number', property_data.get('hud_number', 'N/A'))],
+            ["Year of Manufacture:", str(property_data.get('year_built', 'N/A'))],
+            ["Manufacturer:", property_data.get('manufacturer', 'Unknown')],
+            ["Model:", property_data.get('model', 'N/A')],
+            ["Size (Width x Length):", property_data.get('size', 'Single Wide')],
+            ["Number of Sections:", property_data.get('sections', '1')],
+        ]
+        home_table = Table(home_info, colWidths=[2.5*inch, 4*inch])
+        home_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        story.append(home_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # === SECTION 2: LOCATION ===
+        story.append(Paragraph("SECTION 2: LOCATION OF MANUFACTURED HOME", section_style))
+        
+        location_info = [
+            ["Street Address:", property_data.get('address', 'N/A')],
+            ["City:", property_data.get('city', 'Houston')],
+            ["County:", property_data.get('county', 'Harris')],
+            ["State:", "Texas"],
+            ["ZIP Code:", property_data.get('zip_code', 'N/A')],
+            ["Park/Community Name:", property_data.get('park_name', 'N/A')],
+            ["Lot/Space Number:", property_data.get('lot_number', 'N/A')],
+        ]
+        location_table = Table(location_info, colWidths=[2.5*inch, 4*inch])
+        location_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        story.append(location_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # === SECTION 3: SELLER (PREVIOUS OWNER) ===
+        story.append(Paragraph("SECTION 3: SELLER / PREVIOUS OWNER", section_style))
+        
+        seller_info = [
+            ["Name:", seller_data.get('name', 'Maninos Capital LLC')],
+            ["Address:", seller_data.get('address', 'Houston, TX')],
+            ["Phone:", seller_data.get('phone', '832-745-9600')],
+            ["Email:", seller_data.get('email', 'info@maninoscapital.com')],
+        ]
+        seller_table = Table(seller_info, colWidths=[2.5*inch, 4*inch])
+        seller_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        story.append(seller_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # === SECTION 4: BUYER (NEW OWNER) ===
+        story.append(Paragraph("SECTION 4: BUYER / NEW OWNER", section_style))
+        
+        buyer_info = [
+            ["Name:", buyer_data.get('full_name', 'N/A')],
+            ["Address:", buyer_data.get('current_address', 'N/A')],
+            ["Phone:", buyer_data.get('phone', 'N/A')],
+            ["Email:", buyer_data.get('email', 'N/A')],
+        ]
+        buyer_table = Table(buyer_info, colWidths=[2.5*inch, 4*inch])
+        buyer_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        story.append(buyer_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # === SECTION 5: TRANSACTION DETAILS ===
+        story.append(Paragraph("SECTION 5: TRANSACTION DETAILS", section_style))
+        
+        transaction_info = [
+            ["Sale Price:", f"${transfer_data.get('sale_price', 0):,.2f}"],
+            ["Down Payment:", f"${transfer_data.get('down_payment', 0):,.2f}"],
+            ["Date of Sale:", transfer_data.get('transfer_date', datetime.now().strftime('%Y-%m-%d'))],
+            ["Closing Date:", transfer_data.get('closing_date', 'N/A')],
+            ["Lien Holder:", transfer_data.get('lien_holder', 'None')],
+        ]
+        transaction_table = Table(transaction_info, colWidths=[2.5*inch, 4*inch])
+        transaction_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+        ]))
+        story.append(transaction_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # === CERTIFICATIONS ===
+        story.append(Paragraph("CERTIFICATIONS", section_style))
+        
+        cert_text = """
+        I/We, the undersigned, certify under penalty of perjury that the information provided 
+        in this Statement of Ownership and Location is true and correct to the best of my/our 
+        knowledge. I/We understand that providing false information may result in criminal 
+        prosecution under Texas law.
+        """
+        story.append(Paragraph(cert_text, styles['Normal']))
+        story.append(Spacer(1, 0.4*inch))
+        
+        # Signature lines
+        sig_data = [
+            ["SELLER SIGNATURE:", "", "BUYER SIGNATURE:", ""],
+            ["", "", "", ""],
+            ["_" * 30, "", "_" * 30, ""],
+            [seller_data.get('name', 'Maninos Capital LLC'), "", buyer_data.get('full_name', ''), ""],
+            ["Date: _______________", "", "Date: _______________", ""],
+        ]
+        sig_table = Table(sig_data, colWidths=[2.5*inch, 0.5*inch, 2.5*inch, 0.5*inch])
+        sig_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(sig_table)
+        
+        # === FOOTER ===
+        story.append(Spacer(1, 0.3*inch))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+        footer_text = """
+        <b>TDHCA Manufactured Housing Division</b><br/>
+        P.O. Box 12489, Austin, TX 78711-2489 | Phone: (800) 500-7074<br/>
+        <i>This document must be filed with TDHCA within 60 days of the transfer date.</i>
+        """
+        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER)
+        story.append(Paragraph(footer_text, footer_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Generate filename
+        buyer_name = _sanitize_filename(buyer_data.get('full_name', 'Unknown'))
+        transfer_id = transfer_data.get('transfer_id', 'unknown')[:8]
+        filename = f"TDHCA_Title_{buyer_name}_{transfer_id}.pdf"
+        
+        if output_path:
+            return {"ok": True, "pdf_path": output_path, "filename": filename}
+        else:
+            pdf_bytes = buffer.getvalue()
+            logger.info(f"[generate_tdhca_title_pdf] PDF generated: {len(pdf_bytes)} bytes")
+            return {"ok": True, "pdf_bytes": pdf_bytes, "filename": filename, "size_bytes": len(pdf_bytes)}
+        
+    except Exception as e:
+        logger.error(f"[generate_tdhca_title_pdf] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# =============================================================================
+# IRS FORM 1099-S
+# Proceeds From Real Estate Transactions
+# =============================================================================
+
+def generate_1099s_pdf(
+    transaction_data: Dict[str, Any],
+    seller_data: Dict[str, Any],
+    property_data: Dict[str, Any],
+    output_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generates an IRS Form 1099-S PDF for real estate transaction reporting.
+    
+    Form 1099-S is used to report proceeds from real estate transactions.
+    Must be filed when gross proceeds are $600 or more.
+    
+    Args:
+        transaction_data: Sale details (date, amount, closing info)
+        seller_data: Seller/transferor information
+        property_data: Property description
+        output_path: Optional file path to save PDF
+    
+    Returns:
+        Dict with pdf_bytes or pdf_path
+    """
+    if not REPORTLAB_AVAILABLE:
+        return {"ok": False, "error": "reportlab not installed"}
+    
+    try:
+        if output_path:
+            buffer = output_path
+        else:
+            buffer = io.BytesIO()
+        
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=0.5*inch,
+            leftMargin=0.5*inch,
+            topMargin=0.5*inch,
+            bottomMargin=0.5*inch
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Styles
+        header_style = ParagraphStyle(
+            'IRSHeader',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            alignment=TA_CENTER,
+            spaceAfter=3
+        )
+        
+        box_label_style = ParagraphStyle(
+            'BoxLabel',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=7,
+            textColor=colors.Color(0.3, 0.3, 0.3)
+        )
+        
+        box_value_style = ParagraphStyle(
+            'BoxValue',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=10
+        )
+        
+        # === HEADER ===
+        story.append(Paragraph("FORM 1099-S", header_style))
+        story.append(Paragraph(f"Tax Year {transaction_data.get('tax_year', datetime.now().year)}", 
+                              ParagraphStyle('Year', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER)))
+        story.append(Paragraph("Proceeds From Real Estate Transactions", header_style))
+        story.append(Spacer(1, 0.15*inch))
+        
+        # Copy indicator
+        story.append(Paragraph(
+            "<b>Copy B - For Transferor</b>",
+            ParagraphStyle('CopyB', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER, 
+                          textColor=colors.red)
+        ))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # === FILER INFO (Maninos Capital) ===
+        filer_box = [
+            ["FILER'S name, street address, city or town, state or province, country, ZIP or foreign postal code, and telephone no."],
+            [""],
+            ["Maninos Capital LLC"],
+            ["Houston, TX"],
+            ["Phone: 832-745-9600"],
+            [""],
+            [f"FILER'S TIN: {transaction_data.get('filer_tin', 'XX-XXXXXXX')}"],
+        ]
+        filer_table = Table(filer_box, colWidths=[3.5*inch])
+        filer_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (0, 0), 7),
+            ('TEXTCOLOR', (0, 0), (0, 0), colors.Color(0.3, 0.3, 0.3)),
+            ('FONTNAME', (0, 2), (0, 5), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 2), (0, 5), 10),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        
+        # === TRANSFEROR INFO (Seller/Client) ===
+        transferor_box = [
+            ["TRANSFEROR'S name"],
+            [seller_data.get('full_name', 'N/A')],
+            [""],
+            ["Street address (including apt. no.)"],
+            [seller_data.get('current_address', 'N/A')],
+            [""],
+            ["City or town, state or province, country, and ZIP or foreign postal code"],
+            [f"{seller_data.get('city', 'Houston')}, TX {seller_data.get('zip_code', '')}"],
+        ]
+        transferor_table = Table(transferor_box, colWidths=[3.5*inch])
+        transferor_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (0, 0), 7),
+            ('TEXTCOLOR', (0, 0), (0, 0), colors.Color(0.3, 0.3, 0.3)),
+            ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 1), (0, 1), 10),
+            ('FONTNAME', (0, 3), (0, 3), 'Helvetica'),
+            ('FONTSIZE', (0, 3), (0, 3), 7),
+            ('TEXTCOLOR', (0, 3), (0, 3), colors.Color(0.3, 0.3, 0.3)),
+            ('FONTNAME', (0, 4), (0, 4), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 4), (0, 4), 10),
+            ('FONTNAME', (0, 6), (0, 6), 'Helvetica'),
+            ('FONTSIZE', (0, 6), (0, 6), 7),
+            ('TEXTCOLOR', (0, 6), (0, 6), colors.Color(0.3, 0.3, 0.3)),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        
+        # Layout filer and transferor side by side
+        main_table = Table([[filer_table, transferor_table]], colWidths=[3.6*inch, 3.6*inch])
+        main_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(main_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # === FORM BOXES ===
+        # Box 1: Date of closing
+        # Box 2: Gross proceeds
+        # Box 3: Address
+        # Box 4: Transferor received property/services
+        # Box 5: Buyer's part of real estate tax
+        
+        gross_proceeds = transaction_data.get('gross_proceeds', 0)
+        closing_date = transaction_data.get('closing_date', datetime.now().strftime('%Y-%m-%d'))
+        
+        boxes_data = [
+            [
+                "1. Date of closing\n" + closing_date,
+                "2. Gross proceeds\n$" + f"{gross_proceeds:,.2f}",
+            ],
+            [
+                "3. Address or legal description (including city, state, and ZIP code)\n" + 
+                property_data.get('address', 'N/A') + ", " + 
+                property_data.get('city', 'Houston') + ", TX " + 
+                property_data.get('zip_code', ''),
+                "",
+            ],
+            [
+                "4. Transferor received or will receive property or services\n" +
+                ("☑ Yes" if transaction_data.get('received_property', False) else "☐ Yes") + "  " +
+                ("☐ No" if transaction_data.get('received_property', False) else "☑ No"),
+                "5. Buyer's part of real estate tax\n$" + f"{transaction_data.get('buyer_tax', 0):,.2f}",
+            ],
+        ]
+        
+        boxes_table = Table(boxes_data, colWidths=[3.6*inch, 3.6*inch])
+        boxes_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(boxes_table)
+        story.append(Spacer(1, 0.2*inch))
+        
+        # === TRANSFEROR'S TIN ===
+        tin_data = [
+            [f"TRANSFEROR'S TIN: {seller_data.get('ssn_itin', 'XXX-XX-XXXX')}", "Account number (see instructions): " + transaction_data.get('account_number', 'N/A')],
+        ]
+        tin_table = Table(tin_data, colWidths=[3.6*inch, 3.6*inch])
+        tin_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(tin_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # === INSTRUCTIONS ===
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+        instructions = """
+        <b>Instructions for Transferor (Seller)</b><br/><br/>
+        This form reports the gross proceeds from the sale or exchange of your real property. 
+        You should receive Copy B for your records.<br/><br/>
+        <b>Box 2 - Gross Proceeds:</b> This is the total amount paid for the property, 
+        including cash, notes, mortgages, or other property.<br/><br/>
+        <b>Tax Reporting:</b> You may need to report this transaction on your federal income tax return. 
+        Consult IRS Publication 523 (Selling Your Home) or a tax professional for guidance on 
+        reporting gains or losses from real estate transactions.<br/><br/>
+        <b>Record Retention:</b> Keep this form with your tax records for at least 3 years.
+        """
+        inst_style = ParagraphStyle('Instructions', parent=styles['Normal'], fontSize=8, leading=10)
+        story.append(Paragraph(instructions, inst_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Generate filename
+        seller_name = _sanitize_filename(seller_data.get('full_name', 'Unknown'))
+        year = transaction_data.get('tax_year', datetime.now().year)
+        filename = f"1099S_{seller_name}_{year}.pdf"
+        
+        if output_path:
+            return {"ok": True, "pdf_path": output_path, "filename": filename}
+        else:
+            pdf_bytes = buffer.getvalue()
+            logger.info(f"[generate_1099s_pdf] PDF generated: {len(pdf_bytes)} bytes")
+            return {"ok": True, "pdf_bytes": pdf_bytes, "filename": filename, "size_bytes": len(pdf_bytes)}
+        
+    except Exception as e:
+        logger.error(f"[generate_1099s_pdf] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
