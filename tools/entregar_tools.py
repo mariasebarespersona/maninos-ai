@@ -250,8 +250,8 @@ def process_title_transfer(
     try:
         # Get contract with related data
         contract_result = sb.table("rto_contracts").select(
-            "*, clients(id, full_name, email, ssn_itin, current_address, current_city, current_state, current_zip), "
-            "properties(id, address, hud_number, year_built, park_name, city, state)"
+            "*, clients(id, full_name, email, ssn_itin, current_address, phone), "
+            "properties(id, address, hud_number, year_built, park_name)"
         ).eq("id", contract_id).execute()
         
         if not contract_result.data:
