@@ -247,7 +247,7 @@ async def chat(request: Request):
             }
         })
         
-                except Exception as e:
+    except Exception as e:
         logger.error(f"[chat] Error: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
