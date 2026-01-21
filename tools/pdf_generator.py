@@ -80,8 +80,8 @@ def generate_rto_contract_pdf(
         
         # === HEADER ===
         story.append(Paragraph("MANINOS CAPITAL LLC", styles['CompanyName']))
-        story.append(Paragraph("Texas Residential Lease Agreement", styles['Title']))
-        story.append(Paragraph("With Purchase Option (Rent-to-Own)", styles['Subtitle']))
+        story.append(Paragraph("Texas Residential Lease Agreement", styles['ContractTitle']))
+        story.append(Paragraph("With Purchase Option (Rent-to-Own)", styles['ContractSubtitle']))
         story.append(Spacer(1, 0.3*inch))
         
         # === CONTRACT INFO TABLE ===
@@ -261,7 +261,7 @@ def _get_custom_styles():
     ))
     
     styles.add(ParagraphStyle(
-        name='Title',
+        name='ContractTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=14,
@@ -270,7 +270,7 @@ def _get_custom_styles():
     ))
     
     styles.add(ParagraphStyle(
-        name='Subtitle',
+        name='ContractSubtitle',
         parent=styles['Normal'],
         fontName='Helvetica-Oblique',
         fontSize=11,
