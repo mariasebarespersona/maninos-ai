@@ -65,27 +65,28 @@ def get_checkpointer():
 
 
 # =============================================================================
-# TOOL COLLECTION - All tools from all agents
+# TOOL COLLECTION - All tools from all agents (now ALL at module level)
 # =============================================================================
-
-# Cache for agent instances (to avoid re-instantiation)
-_agent_instances = {}
 
 def get_all_tools() -> List[BaseTool]:
     """
-    Collect ALL tools from all agents by INSTANTIATING them and calling get_tools().
+    Collect ALL tools from all agents.
     
-    This is necessary because:
-    - AdquirirAgent: tools defined at module level (can import directly)
-    - IncorporarAgent: tools defined inside _create_tools() method
-    - ComercializarAgent: tools defined inside class methods
+    ARCHITECTURE NOTE: All agents now define tools at MODULE LEVEL for consistency.
+    This means we can import them directly without instantiating agents.
     
-    So we need to instantiate each agent and call get_tools() to get the actual tools.
+    Pattern followed by all agents:
+        @tool("tool_name", args_schema=InputSchema)
+        def tool_name_tool(...):
+            ...
+        
+        class XAgent(LangGraphAgent):
+            def get_tools(self):
+                return [tool_name_tool, ...]
     """
-    global _agent_instances
     tools = []
     
-    # AdquirirAgent - tools at module level
+    # AdquirirAgent - 5 tools
     try:
         from agents.adquirir_agent import (
             search_property_sources_tool,
@@ -105,113 +106,39 @@ def get_all_tools() -> List[BaseTool]:
     except Exception as e:
         logger.error(f"[ManinosGraph] ❌ Could not load AdquirirAgent tools: {e}")
     
-    # IncorporarAgent - need to instantiate to get tools
+    # IncorporarAgent - 11 tools (now at module level!)
     try:
-        if "IncorporarAgent" not in _agent_instances:
-            # Import the BASE class (not LangGraphAgent version) to avoid circular deps
-            from agents.base_agent import BaseAgent
-            from tools.incorporar_tools import (
-                get_client_info,
-                create_client_profile,
-                calculate_client_dti,
-                generate_rto_contract,
-                send_client_update,
-                generate_referral_code,
-                validate_referral_code,
-                register_referral,
-                get_referral_stats,
-            )
-            from tools.stripe_identity import (
-                start_kyc_verification,
-                check_kyc_verification,
-            )
-            from langchain_core.tools import tool
-            
-            # Create tools at module level
-            @tool
-            def tool_get_client_info(client_id: str = None, email: str = None) -> dict:
-                """Obtiene información de un cliente por ID o email."""
-                return get_client_info(client_id, email)
-            
-            @tool
-            def tool_create_client_profile(full_name: str, email: str, phone: str, referral_code: str = None) -> dict:
-                """Crea o actualiza el perfil de un cliente."""
-                return create_client_profile(full_name, email, phone, referral_code)
-            
-            @tool
-            def tool_start_kyc_verification(client_id: str) -> dict:
-                """Inicia verificación KYC con Stripe Identity. Obtiene datos del cliente automáticamente."""
-                # Get client data first
-                client_result = get_client_info(client_id=client_id)
-                if not client_result.get("ok"):
-                    return {"ok": False, "error": f"Cliente no encontrado: {client_id}"}
-                client = client_result.get("client", {})
-                return start_kyc_verification(
-                    client_id=client_id,
-                    client_email=client.get("email", ""),
-                    client_name=client.get("full_name", "")
-                )
-            
-            @tool
-            def tool_check_kyc_status(session_id: str) -> dict:
-                """Verifica el estado de una verificación KYC por session_id de Stripe."""
-                return check_kyc_verification(session_id)
-            
-            @tool
-            def tool_calculate_dti(client_id: str, monthly_income: float = None, monthly_debts: float = None) -> dict:
-                """Calcula el DTI (Debt-to-Income) de un cliente."""
-                return calculate_client_dti(client_id, monthly_income, monthly_debts)
-            
-            @tool
-            def tool_generate_contract(client_id: str, property_id: str, term_months: int = 36) -> dict:
-                """Genera un contrato RTO para un cliente."""
-                return generate_rto_contract(client_id, property_id, term_months)
-            
-            @tool
-            def tool_send_update(client_id: str, update_type: str, message: str = None) -> dict:
-                """Envía una actualización/notificación al cliente."""
-                return send_client_update(client_id, update_type, message)
-            
-            @tool
-            def tool_gen_referral_code(client_id: str) -> dict:
-                """Genera código de referido para un cliente."""
-                return generate_referral_code(client_id)
-            
-            @tool
-            def tool_validate_referral(referral_code: str) -> dict:
-                """Valida un código de referido."""
-                return validate_referral_code(referral_code)
-            
-            @tool
-            def tool_register_ref(referrer_client_id: str, referred_email: str = None, referred_phone: str = None) -> dict:
-                """Registra un nuevo referido."""
-                return register_referral(referrer_client_id, None, referred_email, referred_phone)
-            
-            @tool
-            def tool_referral_stats(client_id: str) -> dict:
-                """Obtiene estadísticas de referidos de un cliente."""
-                return get_referral_stats(client_id)
-            
-            _agent_instances["IncorporarAgent"] = [
-                tool_get_client_info,
-                tool_create_client_profile,
-                tool_start_kyc_verification,
-                tool_check_kyc_status,
-                tool_calculate_dti,
-                tool_generate_contract,
-                tool_send_update,
-                tool_gen_referral_code,
-                tool_validate_referral,
-                tool_register_ref,
-                tool_referral_stats,
-            ]
-        
-        tools.extend(_agent_instances["IncorporarAgent"])
-        logger.info("[ManinosGraph] ✅ Loaded 11 tools for INCORPORAR")
+        from agents.incorporar_agent import (
+            get_client_info_tool,
+            create_client_profile_tool,
+            start_kyc_verification_tool,
+            check_kyc_status_tool,
+            calculate_client_dti_tool,
+            generate_rto_contract_tool,
+            send_client_update_tool,
+            generate_referral_code_tool,
+            validate_referral_code_tool,
+            register_referral_tool,
+            get_referral_stats_tool,
+        )
+        tools.extend([
+            get_client_info_tool,
+            create_client_profile_tool,
+            start_kyc_verification_tool,
+            check_kyc_status_tool,
+            calculate_client_dti_tool,
+            generate_rto_contract_tool,
+            send_client_update_tool,
+            generate_referral_code_tool,
+            validate_referral_code_tool,
+            register_referral_tool,
+            get_referral_stats_tool,
+        ])
+        logger.info("[ManinosGraph] ✅ Loaded 11 tools from IncorporarAgent")
     except Exception as e:
-        logger.error(f"[ManinosGraph] ❌ Could not load IncorporarAgent tools: {e}", exc_info=True)
+        logger.error(f"[ManinosGraph] ❌ Could not load IncorporarAgent tools: {e}")
     
-    # ComercializarAgent - tools at module level
+    # ComercializarAgent - 7 tools
     try:
         from agents.comercializar_agent import (
             create_acquisition_committee_record_tool,

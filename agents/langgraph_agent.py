@@ -7,7 +7,7 @@ This replaces the manual ReAct loop with LangGraph's built-in agent execution.
 Benefits:
 - Automatic conversation memory per session
 - "sí" after "¿calcular oferta?" will have full context
-- Persistent across server restarts (PostgresSaver)
+- Persistent across server restarts (with PostgresSaver if available)
 """
 
 import os
@@ -17,36 +17,62 @@ from typing import Dict, List, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
+
+# Try to import PostgresSaver, fall back gracefully if not installed
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
+# Try SQLite as alternative persistent storage
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    SQLITE_AVAILABLE = True
+except ImportError:
+    SQLITE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 
 def get_checkpointer():
     """
-    Get the appropriate checkpointer based on environment.
+    Get the appropriate checkpointer based on environment and available packages.
     
-    - Production (Railway): PostgresSaver with Supabase
-    - Development: MemorySaver (in-memory)
+    Priority:
+    1. PostgresSaver (if package installed AND DATABASE_URL available)
+    2. SqliteSaver (persistent, file-based)
+    3. MemorySaver (in-memory, lost on restart)
     """
     database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
     
-    if database_url and os.getenv("ENVIRONMENT") != "development":
+    # Try PostgresSaver first (production)
+    if POSTGRES_AVAILABLE and database_url and os.getenv("ENVIRONMENT") != "development":
         try:
-            # Use PostgresSaver for production
             # The connection string needs to be in postgres:// format
             if database_url.startswith("postgresql://"):
                 database_url = database_url.replace("postgresql://", "postgres://", 1)
             
             checkpointer = PostgresSaver.from_conn_string(database_url)
-            logger.info("[LangGraphAgent] Using PostgresSaver for checkpoints")
+            logger.info("[LangGraphAgent] ✅ Using PostgresSaver for checkpoints (production)")
             return checkpointer
         except Exception as e:
-            logger.warning(f"[LangGraphAgent] Failed to connect to Postgres, falling back to MemorySaver: {e}")
+            logger.warning(f"[LangGraphAgent] ⚠️ Failed to connect to Postgres: {e}")
+    
+    # Try SqliteSaver second (persistent file)
+    if SQLITE_AVAILABLE:
+        try:
+            import tempfile
+            db_path = os.path.join(tempfile.gettempdir(), "maninos_checkpoints.db")
+            checkpointer = SqliteSaver.from_conn_string(f"file:{db_path}")
+            logger.info(f"[LangGraphAgent] ✅ Using SqliteSaver for checkpoints: {db_path}")
+            return checkpointer
+        except Exception as e:
+            logger.warning(f"[LangGraphAgent] ⚠️ Failed to create SqliteSaver: {e}")
     
     # Fallback to in-memory saver
-    logger.info("[LangGraphAgent] Using MemorySaver for checkpoints (development mode)")
+    logger.info("[LangGraphAgent] ⚠️ Using MemorySaver for checkpoints (memory only, lost on restart)")
     return MemorySaver()
 
 
