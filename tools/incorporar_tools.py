@@ -1164,12 +1164,17 @@ def generate_rto_contract(
             "status": "draft",
             "next_step": "Revisar contrato y enviar para firma",
             "kpi_check": "✅ Contrato generado",
-            "message": f"Contrato RTO de {term_months} meses generado para '{client['full_name']}'"
         }
         
         if pdf_url:
             result["pdf_url"] = pdf_url
-            result["message"] += f" | 📄 PDF disponible"
+            result["pdf_download_link"] = pdf_url  # Explicit field for the link
+            result["message"] = (
+                f"✅ Contrato RTO de {term_months} meses generado para '{client['full_name']}'\n\n"
+                f"📄 **DESCARGAR CONTRATO PDF:**\n{pdf_url}"
+            )
+        else:
+            result["message"] = f"Contrato RTO de {term_months} meses generado para '{client['full_name']}'"
         
         return result
         

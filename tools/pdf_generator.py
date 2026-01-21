@@ -571,8 +571,10 @@ def upload_pdf_to_storage(
             {"content-type": "application/pdf"}
         )
         
-        # Get public URL
+        # Get public URL and clean it (remove trailing ? if present)
         public_url = sb.storage.from_("documents").get_public_url(storage_path)
+        if public_url.endswith('?'):
+            public_url = public_url[:-1]
         
         logger.info(f"[upload_pdf_to_storage] Uploaded {safe_filename} to {storage_path}")
         
