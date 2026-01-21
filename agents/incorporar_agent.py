@@ -65,11 +65,11 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class GetClientInfoInput(BaseModel):
-    """Schema for get_client_info tool."""
-    client_id: Optional[str] = Field(default=None, description="UUID del cliente (búsqueda exacta)")
-    email: Optional[str] = Field(default=None, description="Email del cliente (búsqueda exacta)")
-    phone: Optional[str] = Field(default=None, description="Teléfono del cliente (búsqueda exacta)")
-    full_name: Optional[str] = Field(default=None, description="Nombre del cliente (búsqueda parcial)")
+    """Schema for get_client_info tool - busca clientes en la base de datos."""
+    client_id: Optional[str] = Field(default=None, description="UUID del cliente (si lo conoces)")
+    email: Optional[str] = Field(default=None, description="Email del cliente")
+    phone: Optional[str] = Field(default=None, description="Teléfono del cliente")
+    full_name: Optional[str] = Field(default=None, description="Nombre del cliente - USAR SIEMPRE que el usuario mencione un nombre como 'María García', 'Juan Pérez', etc.")
 
 
 class CreateClientProfileInput(BaseModel):
@@ -193,10 +193,18 @@ def get_client_info_tool(
     full_name: Optional[str] = None
 ) -> dict:
     """
-    Consulta información de un cliente existente.
+    Busca y obtiene información de un cliente en la base de datos de Maninos.
     
-    Puede buscar por ID, email, teléfono o nombre (búsqueda parcial).
-    Usa esta herramienta cuando el usuario quiera ver información de un cliente.
+    IMPORTANTE: SIEMPRE usa esta herramienta PRIMERO cuando el usuario mencione 
+    un nombre de cliente como "María García", "Juan Pérez", etc.
+    
+    Ejemplos de cuándo usar:
+    - "Genera contrato para María García" → get_client_info(full_name="María García")
+    - "Información del cliente Juan" → get_client_info(full_name="Juan")
+    - "DTI para Ana López" → get_client_info(full_name="Ana López")
+    
+    La búsqueda por nombre es parcial y case-insensitive.
+    Retorna el client_id (UUID) necesario para otras operaciones.
     """
     result = get_client_info(
         client_id=client_id,
