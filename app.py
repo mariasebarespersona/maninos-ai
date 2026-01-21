@@ -51,6 +51,9 @@ from tools.supabase_client import sb
 # Agents
 from agents import ComercializarAgent, AdquirirAgent, IncorporarAgent
 
+# Intelligent Router (Data-Driven, Context-Aware)
+from router.intelligent_router import IntelligentRouter
+
 # Initialize FastAPI
 app = FastAPI(
     title="MANINOS AI Backend",
@@ -67,26 +70,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize agents
-comercializar_agent = None
-adquirir_agent = None
-incorporar_agent = None
+# Initialize agents and router
+_agents = None
+_router = None
 
 def get_agents():
     """Lazy initialization of agents."""
-    global comercializar_agent, adquirir_agent, incorporar_agent
+    global _agents
     
-    if comercializar_agent is None:
-        comercializar_agent = ComercializarAgent()
-        adquirir_agent = AdquirirAgent()
-        incorporar_agent = IncorporarAgent()
+    if _agents is None:
+        _agents = {
+            "ComercializarAgent": ComercializarAgent(),
+            "AdquirirAgent": AdquirirAgent(),
+            "IncorporarAgent": IncorporarAgent(),
+            # Week 2 agents (placeholders for now)
+            # "FondearAgent": FondearAgent(),
+            # "GestionarCarteraAgent": GestionarCarteraAgent(),
+            # "EntregarAgent": EntregarAgent(),
+        }
         logger.info("[app] Agents initialized")
     
-    return {
-        "comercializar": comercializar_agent,
-        "adquirir": adquirir_agent,
-        "incorporar": incorporar_agent
-    }
+    return _agents
+
+def get_router() -> IntelligentRouter:
+    """Lazy initialization of intelligent router."""
+    global _router
+    
+    if _router is None:
+        _router = IntelligentRouter(sb)
+        logger.info("[app] IntelligentRouter initialized")
+    
+    return _router
 
 
 # ============================================================================
@@ -114,87 +128,105 @@ async def chat(request: Request):
     """
     Main chat endpoint for AI interactions.
     
-    Routes to appropriate agent based on intent detection.
+    Uses IntelligentRouter for DATA-DRIVEN, CONTEXT-AWARE routing.
+    
+    Principles (from Developer Bible):
+    1. DATABASE AS SOURCE OF TRUTH - check entity state before routing
+    2. CONTEXT-AWARE - same message means different things at different stages
+    3. SESSION CONTINUITY - remember what process the user is in
     """
     try:
         body = await request.json()
         message = body.get("message", "")
         session_id = body.get("session_id", str(uuid.uuid4()))
-        context = body.get("context", {})
+        user_context = body.get("context", {})
         
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
         logger.info(f"[chat] Session {session_id}: {message[:100]}...")
         
-        # Get agents
+        # Get router and agents
+        router = get_router()
         agents = get_agents()
         
-        # Simple intent detection (to be enhanced with proper routing)
-        message_lower = message.lower()
+        # =====================================================================
+        # INTELLIGENT ROUTING (Data-Driven)
+        # =====================================================================
+        # The router checks:
+        # 1. Session state (what process is user in?)
+        # 2. Entity references (is user mentioning a client/property?)
+        # 3. Database state (what stage is that entity in?)
+        # 4. Intent (fallback if no context)
+        # =====================================================================
         
-        # Detect which agent to use based on keywords
-        # Priority order matters: more specific patterns first
+        routing_decision = router.route(message, session_id, user_context)
         
-        # COMERCIALIZAR: Marketing, referrals, leads, catalog, visits, metrics
-        comercializar_keywords = [
-            "referido", "referral", "código de referido", "genera código",
-            "lead", "prospecto", "registra lead", "nuevo lead",
-            "catálogo", "catalogo", "mostrar catálogo", "ver catálogo",
-            "agendar visita", "agenda visita", "programar visita", "visita a propiedad",
-            "marketing", "métricas", "metricas", "enviar material", "enviar información",
-            "comercializar", "promoción", "fidelización", "campaña"
-        ]
+        agent_name = routing_decision["agent"]
+        process = routing_decision["process"]
+        confidence = routing_decision["confidence"]
+        reason = routing_decision["reason"]
+        routing_context = routing_decision.get("context", {})
         
-        # INCORPORAR: Client profiles, KYC, DTI, contracts
-        incorporar_keywords = [
-            "cliente", "registra cliente", "nuevo cliente", "perfil cliente",
-            "kyc", "verificación", "verificar identidad", "stripe identity",
-            "dti", "deuda", "ingreso", "calcular dti", "ratio deuda",
-            "contrato rto", "genera contrato", "contrato", "arrendamiento",
-            "notificación cliente", "enviar notificación", "actualización cliente",
-            "incorporar", "onboarding", "info cliente", "consulta cliente"
-        ]
+        logger.info(f"[chat] Routing: {agent_name} ({process}) - confidence: {confidence:.2f} - {reason}")
         
-        # ADQUIRIR: Property search, evaluation, offers, inventory
-        adquirir_keywords = [
-            "buscar propiedad", "busca propiedad", "buscar casa", "busca casa",
-            "evaluar propiedad", "evalúa propiedad", "evaluación", "checklist",
-            "calcular oferta", "calcula oferta", "oferta de adquisición", "regla 70",
-            "registrar propiedad", "registra propiedad", "nueva propiedad",
-            "estado propiedad", "actualizar estado", "inventario",
-            "adquirir", "adquisición", "comprar", "inspección"
-        ]
+        # Get the agent
+        agent = agents.get(agent_name)
         
-        # Check each agent in order of specificity
-        if any(kw in message_lower for kw in comercializar_keywords):
-            agent = agents["comercializar"]
-            agent_name = "ComercializarAgent"
-        elif any(kw in message_lower for kw in incorporar_keywords):
-            agent = agents["incorporar"]
-            agent_name = "IncorporarAgent"
-        elif any(kw in message_lower for kw in adquirir_keywords):
-            agent = agents["adquirir"]
-            agent_name = "AdquirirAgent"
-        else:
-            # Default to ComercializarAgent (entry point for most interactions)
-            agent = agents["comercializar"]
+        if not agent:
+            # Agent not available (might be Week 2)
+            logger.warning(f"[chat] Agent {agent_name} not available, falling back to ComercializarAgent")
+            agent = agents["ComercializarAgent"]
             agent_name = "ComercializarAgent"
         
-        logger.info(f"[chat] Routing to {agent_name}")
+        # =====================================================================
+        # ENRICH CONTEXT WITH ROUTING INFORMATION
+        # =====================================================================
+        # Pass flow guidance to the agent so it knows exactly what to do
+        # =====================================================================
         
-        # Process with agent
-        result = agent.process(message, session_id, context)
+        enriched_context = {
+            **user_context,
+            "routing": {
+                "process": process,
+                "confidence": confidence,
+                "reason": reason,
+            },
+            "flow_context": routing_context,
+        }
+        
+        # Add specific guidance for the agent
+        if routing_context.get("next_step_guidance"):
+            enriched_context["next_step_guidance"] = routing_context["next_step_guidance"]
+        
+        if routing_context.get("entity_id"):
+            enriched_context["entity_id"] = routing_context["entity_id"]
+            enriched_context["entity_type"] = routing_context.get("entity_type")
+        
+        if routing_context.get("missing_data"):
+            enriched_context["missing_data"] = routing_context["missing_data"]
+        
+        # =====================================================================
+        # PROCESS WITH AGENT
+        # =====================================================================
+        
+        result = agent.process(message, session_id, enriched_context)
         
         return JSONResponse(content={
             "ok": True,
             "response": result.get("response", "No response generated"),
             "agent": agent_name,
-            "session_id": session_id
+            "process": process,
+            "session_id": session_id,
+            # Include routing info for debugging
+            "routing": {
+                "confidence": confidence,
+                "reason": reason[:100] if reason else None
+            }
         })
         
     except Exception as e:
-        logger.error(f"[chat] Error: {e}")
+        logger.error(f"[chat] Error: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": str(e)}
