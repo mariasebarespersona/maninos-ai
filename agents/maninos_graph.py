@@ -258,6 +258,9 @@ def process_message(
     """
     Process a user message through the single ManinosGraph.
     
+    IMPORTANT: With checkpointer, we only pass the NEW user message.
+    LangGraph automatically loads previous history from the checkpoint.
+    
     Args:
         user_input: User's message
         session_id: Session ID (used as thread_id for checkpointing)
@@ -275,24 +278,59 @@ def process_message(
         # Get appropriate system prompt
         system_prompt = get_system_prompt(process, context)
         
-        # Build messages
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_input)
-        ]
-        
         # Config with thread_id for checkpointing
         config = {
             "configurable": {
                 "thread_id": session_id
-            }
+            },
+            "recursion_limit": 15  # Reasonable limit for tool calls
         }
         
+        # Check if this is a new session or continuing
+        # With checkpointer, we should only pass NEW messages
+        # The checkpointer will load previous history automatically
+        
+        try:
+            # Get current state to check if session exists
+            state = graph.get_state(config)
+            has_history = state and state.values and state.values.get("messages")
+            
+            if has_history:
+                # Continuing conversation - only pass new user message
+                logger.info(f"[ManinosGraph] Continuing session {session_id} with {len(state.values.get('messages', []))} existing messages")
+                messages = [HumanMessage(content=user_input)]
+            else:
+                # New session - include system prompt
+                logger.info(f"[ManinosGraph] Starting new session {session_id}")
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_input)
+                ]
+        except Exception as state_error:
+            # If we can't get state, treat as new session
+            logger.warning(f"[ManinosGraph] Could not get state: {state_error}, treating as new session")
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_input)
+            ]
+        
         # Invoke the graph
-        result = graph.invoke(
-            {"messages": messages},
-            config=config
-        )
+        try:
+            result = graph.invoke(
+                {"messages": messages},
+                config=config
+            )
+        except Exception as invoke_error:
+            error_str = str(invoke_error).lower()
+            if "recursion" in error_str:
+                logger.warning(f"[ManinosGraph] Recursion limit hit, returning helpful response")
+                return {
+                    "ok": True,
+                    "response": "Entendido. ¿Puedes darme más detalles sobre lo que necesitas?",
+                    "process": process,
+                    "session_id": session_id
+                }
+            raise
         
         # Extract the last AI message
         response_content = ""
