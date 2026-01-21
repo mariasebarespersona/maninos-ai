@@ -130,10 +130,11 @@ def get_all_tools() -> List[BaseTool]:
     """
     tools = []
     
-    # AdquirirAgent - 5 tools
+    # AdquirirAgent - 6 tools (5 del Excel + búsqueda inventario)
     try:
         from agents.adquirir_agent import (
             search_property_sources_tool,
+            search_inventory_properties_tool,  # Busca en NUESTRO inventario por dirección
             evaluate_property_criteria_tool,
             create_inspection_record_tool,
             calculate_acquisition_offer_tool,
@@ -141,12 +142,13 @@ def get_all_tools() -> List[BaseTool]:
         )
         tools.extend([
             search_property_sources_tool,
+            search_inventory_properties_tool,
             evaluate_property_criteria_tool,
             create_inspection_record_tool,
             calculate_acquisition_offer_tool,
             register_property_inventory_tool,
         ])
-        logger.info("[ManinosGraph] ✅ Loaded 5 tools from AdquirirAgent")
+        logger.info("[ManinosGraph] ✅ Loaded 6 tools from AdquirirAgent")
     except Exception as e:
         logger.error(f"[ManinosGraph] ❌ Could not load AdquirirAgent tools: {e}")
     

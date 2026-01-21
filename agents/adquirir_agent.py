@@ -33,6 +33,16 @@ class SearchPropertySourcesInput(BaseModel):
     sources: Optional[List[str]] = Field(None, description="Lista de fuentes a consultar")
 
 
+class SearchInventoryPropertiesInput(BaseModel):
+    """Input for search_inventory_properties tool - busca en NUESTRO inventario."""
+    address: Optional[str] = Field(None, description="Dirección parcial o completa (ej: 'Oak Street', '123 Main')")
+    name: Optional[str] = Field(None, description="Nombre de la propiedad")
+    city: Optional[str] = Field(None, description="Ciudad")
+    status: Optional[str] = Field(None, description="Estado: available, sold, pending")
+    max_price: Optional[float] = Field(None, description="Precio máximo de venta")
+    min_bedrooms: Optional[int] = Field(None, description="Mínimo de habitaciones")
+
+
 class EvaluatePropertyCriteriaInput(BaseModel):
     """Input for evaluate_property_criteria tool."""
     property_id: Optional[str] = Field(None, description="UUID de propiedad existente")
@@ -118,6 +128,30 @@ def search_property_sources_tool(
     """
     from tools.adquirir_tools import search_property_sources
     return search_property_sources(location, max_price, min_bedrooms, property_type, sources)
+
+
+@tool("search_inventory_properties", args_schema=SearchInventoryPropertiesInput)
+def search_inventory_properties_tool(
+    address: Optional[str] = None,
+    name: Optional[str] = None,
+    city: Optional[str] = None,
+    status: Optional[str] = None,
+    max_price: Optional[float] = None,
+    min_bedrooms: Optional[int] = None
+) -> Dict:
+    """
+    Busca propiedades en el INVENTARIO de Maninos Capital (nuestra base de datos).
+    
+    Usa esta herramienta para:
+    - Encontrar el ID/UUID de una propiedad por su dirección
+    - Ver propiedades disponibles en inventario
+    - Buscar propiedades para generar contratos
+    
+    IMPORTANTE: Esta herramienta busca en NUESTRO inventario, no en sitios externos.
+    Retorna el property_id (UUID) necesario para otras operaciones como generar contratos.
+    """
+    from tools.adquirir_tools import search_inventory_properties
+    return search_inventory_properties(address, name, city, status, max_price, min_bedrooms)
 
 
 @tool("evaluate_property_criteria", args_schema=EvaluatePropertyCriteriaInput)
@@ -287,9 +321,10 @@ REGLA DEL 70%: Nunca pagues más del 70% del valor de mercado.
 Responde siempre en español."""
     
     def get_tools(self) -> List:
-        """Get tools for AdquirirAgent (5 tools según Excel)."""
+        """Get tools for AdquirirAgent (6 tools - 5 del Excel + búsqueda inventario)."""
         return [
             search_property_sources_tool,
+            search_inventory_properties_tool,  # Busca en NUESTRO inventario
             evaluate_property_criteria_tool,
             create_inspection_record_tool,
             calculate_acquisition_offer_tool,

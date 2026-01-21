@@ -157,6 +157,108 @@ def search_property_sources(
 
 
 # ============================================================================
+# HERRAMIENTA 1b: search_inventory_properties (NUEVA)
+# Busca propiedades en NUESTRO inventario de Supabase por dirección/nombre
+# ============================================================================
+
+def search_inventory_properties(
+    address: Optional[str] = None,
+    name: Optional[str] = None,
+    city: Optional[str] = None,
+    status: Optional[str] = None,
+    max_price: Optional[float] = None,
+    min_bedrooms: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Busca propiedades en el inventario de Maninos Capital (base de datos Supabase).
+    
+    A diferencia de search_property_sources (que busca en sitios externos),
+    esta función busca en NUESTRO inventario de propiedades ya registradas.
+    
+    Útil para:
+    - Encontrar property_id por dirección
+    - Ver propiedades disponibles
+    - Buscar propiedades para contratos
+    
+    Args:
+        address: Dirección parcial o completa (búsqueda flexible)
+        name: Nombre de la propiedad
+        city: Ciudad
+        status: Estado del inventario (available, sold, pending, etc.)
+        max_price: Precio máximo de venta
+        min_bedrooms: Mínimo de habitaciones
+    
+    Returns:
+        Dict con propiedades encontradas incluyendo sus UUIDs
+    """
+    from tools.supabase_client import sb
+    
+    try:
+        # Build query
+        query = sb.table("properties").select("*")
+        
+        # Apply filters
+        if address:
+            # Búsqueda flexible por dirección (case-insensitive)
+            query = query.ilike("address", f"%{address}%")
+        
+        if name:
+            query = query.ilike("name", f"%{name}%")
+        
+        if city:
+            query = query.ilike("address", f"%{city}%")
+        
+        if status:
+            query = query.eq("inventory_status", status)
+        
+        if max_price:
+            query = query.lte("sale_price", max_price)
+        
+        if min_bedrooms:
+            query = query.gte("bedrooms", min_bedrooms)
+        
+        # Execute query
+        result = query.order("created_at", desc=True).limit(10).execute()
+        
+        if not result.data:
+            return {
+                "ok": True,
+                "found": 0,
+                "properties": [],
+                "message": "No se encontraron propiedades con esos criterios en el inventario."
+            }
+        
+        # Format results for LLM (include UUIDs prominently)
+        properties = []
+        for prop in result.data:
+            properties.append({
+                "id": prop.get("id"),  # UUID - importante para otras operaciones
+                "name": prop.get("name"),
+                "address": prop.get("address"),
+                "sale_price": prop.get("sale_price"),
+                "monthly_rent": prop.get("monthly_rent"),
+                "bedrooms": prop.get("bedrooms"),
+                "bathrooms": prop.get("bathrooms"),
+                "year_built": prop.get("year_built"),
+                "status": prop.get("inventory_status"),
+                "acquisition_stage": prop.get("acquisition_stage")
+            })
+        
+        logger.info(f"[search_inventory_properties] Found {len(properties)} properties")
+        
+        return {
+            "ok": True,
+            "found": len(properties),
+            "properties": properties,
+            "message": f"Se encontraron {len(properties)} propiedad(es) en el inventario."
+        }
+        
+    except Exception as e:
+        logger.error(f"[search_inventory_properties] Error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
 # HERRAMIENTA 2: evaluate_property_criteria
 # Procedimiento: Evaluar atributos físicos, financieros y legales (Adquisiciones)
 # ============================================================================
