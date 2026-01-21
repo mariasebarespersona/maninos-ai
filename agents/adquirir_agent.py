@@ -14,7 +14,8 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import logging
 
-from .base_agent import BaseAgent
+# Use LangGraphAgent for persistent conversation memory
+from .langgraph_agent import LangGraphAgent
 
 logger = logging.getLogger(__name__)
 
@@ -242,9 +243,12 @@ def register_property_inventory_tool(
 # ADQUIRIR AGENT
 # ============================================================================
 
-class AdquirirAgent(BaseAgent):
+class AdquirirAgent(LangGraphAgent):
     """
     Agente para el proceso ADQUIRIR de la Cadena de Valor Maninos.
+    
+    Usa LangGraph con checkpointer para memoria persistente de conversación.
+    Esto permite que "sí" después de "¿calcular oferta?" tenga contexto completo.
     
     Según el Excel del cliente, maneja 5 procedimientos:
     1. Investigar y abastecer - Identificar zonas y fuentes
@@ -255,9 +259,9 @@ class AdquirirAgent(BaseAgent):
     """
     
     def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.3):
-        """Initialize AdquirirAgent."""
+        """Initialize AdquirirAgent with LangGraph memory."""
         super().__init__(name="AdquirirAgent", model=model, temperature=temperature)
-        logger.info(f"[AdquirirAgent] Initialized with 5 tools")
+        logger.info(f"[AdquirirAgent] Initialized with 5 tools + LangGraph memory")
     
     def get_system_prompt(self, **kwargs) -> str:
         """Get system prompt for AdquirirAgent from file."""
