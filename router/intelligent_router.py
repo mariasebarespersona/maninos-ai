@@ -101,7 +101,8 @@ class IntelligentRouter:
     
     def __init__(self, supabase_client):
         self.sb = supabase_client
-        self._session_cache = {}
+        # In-memory session cache as PRIMARY storage (more reliable than DB for this)
+        self._session_cache: Dict[str, Dict] = {}
     
     # =========================================================================
     # MAIN ROUTING METHOD
@@ -132,16 +133,25 @@ class IntelligentRouter:
         """
         context = context or {}
         
-        # Step 1: Get session state from database
+        logger.info(f"[IntelligentRouter] === ROUTING START === input='{user_input[:50]}...' session={session_id[:8]}...")
+        
+        # Step 1: Get session state from cache/database
         session_state = self._get_session_state(session_id)
+        
+        logger.info(f"[IntelligentRouter] Session state: active_agent={session_state.get('active_agent')}, active_process={session_state.get('active_process')}")
         
         # =====================================================================
         # CRITICAL FIX: Handle short/ambiguous responses
         # When user says "sí", "no", "ok", etc., KEEP the current agent
         # because these are continuations, not new intents
         # =====================================================================
-        if self._is_ambiguous_response(user_input) and session_state.get("active_agent"):
-            logger.info(f"[IntelligentRouter] Ambiguous response '{user_input}' - keeping agent {session_state['active_agent']}")
+        is_ambiguous = self._is_ambiguous_response(user_input)
+        has_active_agent = bool(session_state.get("active_agent"))
+        
+        logger.info(f"[IntelligentRouter] Ambiguous check: is_ambiguous={is_ambiguous}, has_active_agent={has_active_agent}")
+        
+        if is_ambiguous and has_active_agent:
+            logger.info(f"[IntelligentRouter] ✅ KEEPING agent {session_state['active_agent']} for ambiguous response '{user_input}'")
             routing = {
                 "agent": session_state["active_agent"],
                 "process": session_state.get("active_process", "INCORPORAR"),
@@ -225,36 +235,60 @@ class IntelligentRouter:
         return False
     
     # =========================================================================
-    # SESSION STATE MANAGEMENT
+    # SESSION STATE MANAGEMENT (In-Memory Primary, DB Backup)
     # =========================================================================
     
     def _get_session_state(self, session_id: str) -> Dict:
-        """Get current session state from database or cache."""
+        """
+        Get current session state from in-memory cache (primary) or database (backup).
+        In-memory is more reliable for real-time conversation context.
+        """
+        # PRIMARY: Check in-memory cache first
+        if session_id in self._session_cache:
+            cached = self._session_cache[session_id]
+            logger.info(f"[IntelligentRouter] Session cache HIT for {session_id}: agent={cached.get('active_agent')}")
+            return cached
+        
+        logger.info(f"[IntelligentRouter] Session cache MISS for {session_id}")
+        
+        # BACKUP: Try database
         try:
             result = self.sb.table("sessions").select("*").eq("session_id", session_id).limit(1).execute()
             if result.data:
-                return result.data[0].get("state", {})
+                state = result.data[0].get("state", {})
+                # Populate cache from DB
+                self._session_cache[session_id] = state
+                logger.info(f"[IntelligentRouter] Session loaded from DB for {session_id}: agent={state.get('active_agent')}")
+                return state
         except Exception as e:
-            logger.warning(f"[IntelligentRouter] Could not get session state: {e}")
+            logger.warning(f"[IntelligentRouter] Could not get session state from DB: {e}")
+        
         return {}
     
     def _update_session_state(self, session_id: str, routing: Dict):
-        """Update session state with current routing decision."""
+        """
+        Update session state in both in-memory cache (primary) and database (backup).
+        """
+        state = {
+            "active_process": routing.get("process"),
+            "active_agent": routing.get("agent"),
+            "entity_id": routing.get("context", {}).get("entity_id"),
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        # PRIMARY: Always update in-memory cache
+        self._session_cache[session_id] = state
+        logger.info(f"[IntelligentRouter] Session cache UPDATED for {session_id}: agent={state.get('active_agent')}, process={state.get('active_process')}")
+        
+        # BACKUP: Try to update database (non-blocking, errors are just warnings)
         try:
-            state = {
-                "active_process": routing.get("process"),
-                "active_agent": routing.get("agent"),
-                "entity_id": routing.get("context", {}).get("entity_id"),
-                "last_updated": datetime.now().isoformat()
-            }
-            
             self.sb.table("sessions").upsert({
                 "session_id": session_id,
                 "state": state,
                 "updated_at": datetime.now().isoformat()
             }, on_conflict="session_id").execute()
         except Exception as e:
-            logger.warning(f"[IntelligentRouter] Could not update session state: {e}")
+            logger.warning(f"[IntelligentRouter] Could not update session state in DB: {e}")
     
     # =========================================================================
     # ROUTING WITHIN AN ACTIVE PROCESS
