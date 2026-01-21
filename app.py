@@ -217,7 +217,7 @@ async def chat(request: Request):
             }
         })
         
-                except Exception as e:
+    except Exception as e:
         logger.error("chat_error", error=str(e), exc_info=True)
         clear_context()  # Clear session context on error
         return JSONResponse(
