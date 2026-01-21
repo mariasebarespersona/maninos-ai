@@ -131,46 +131,53 @@ agent: f"✅ DTI calculado: {result['dti_percentage']}% - Riesgo: {result['risk_
 
 ## The 6 Macroprocesses (Cadena de Valor)
 
-### Process Relationship Diagram
+### Process Relationship Diagram (Cadena de Valor Maninos)
 
 ```
-                    ┌─────────────────────────────────────────────────┐
-                    │         COMERCIALIZAR (Transversal)             │
-                    │   Puede inyectar leads en cualquier momento     │
-                    └─────────────────────────────────────────────────┘
-                                          │
-                                          │ (leads/referrals)
-                                          ↓
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   FONDEAR    │────→│   ADQUIRIR   │────→│  INCORPORAR  │
-│  (Capital)   │     │ (Propiedades)│     │  (Clientes)  │
-└──────────────┘     └──────────────┘     └──────────────┘
-        ↑                                         │
-        │                                         │
-        │                                         ↓
-        │            ┌──────────────┐     ┌──────────────┐
-        └────────────│  GESTIONAR   │←────│   ENTREGAR   │
-         (pagos)     │   CARTERA    │     │ (Entrega)    │
-                     └──────────────┘     └──────────────┘
-                            │                    │
-                            │                    │
-                            └────────────────────┘
-                              (cliente termina y
-                               puede volver como
-                               referido)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                    COMERCIALIZAR (Transversal)                    │  │
+│  │          Puede inyectar leads en cualquier momento                │  │
+│  │              NO tiene conexiones directas obligatorias            │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│        ┌────────────────────────────────────────────────────┐          │
+│        │                                                    │          │
+│        ↓                                                    │          │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐         │
+│  │ ADQUIRIR │───→│INCORPORAR│───→│ GESTIONAR│───→│ ENTREGAR │         │
+│  │          │    │          │    │ CARTERA  │    │          │         │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘         │
+│        ↑                ↑               │                              │
+│        │                │               │                              │
+│        │                └───────────────│──────────────────┘          │
+│        │                  (referidos)   │                              │
+│        │                                ↓                              │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                          FONDEAR                                  │  │
+│  │                    (Capital / Inversionistas)                     │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Connections Explained
+### Connections Explained (6 Flechas Total)
 
 | # | From | To | Reason |
 |---|------|-----|--------|
-| 1 | Comercializar | Incorporar | Leads se convierten en clientes |
-| 2 | Fondear | Adquirir | Capital financia compra de propiedades |
-| 3 | Adquirir | Incorporar | Propiedad lista → onboard clientes |
-| 4 | Incorporar | Gestionar Cartera | Cliente firmado → gestión de pagos |
-| 5 | Gestionar Cartera | Fondear | Pagos de clientes → retorno a inversionistas |
-| 6 | Gestionar Cartera | Entregar | Pagos completos → entrega de propiedad |
-| 7 | Entregar | Incorporar | Cliente satisfecho → referidos |
+| 1 | Adquirir | Incorporar | Propiedad adquirida → lista para onboard clientes |
+| 2 | Incorporar | Gestionar Cartera | Cliente con contrato firmado → gestión de pagos |
+| 3 | Gestionar Cartera | Entregar | Pagos completos → entrega de propiedad |
+| 4 | Gestionar Cartera | Fondear | Pagos de clientes financian retorno a inversionistas |
+| 5 | Fondear | Adquirir | Capital de inversionistas financia compra de propiedades |
+| 6 | Entregar | Incorporar | Cliente satisfecho puede volver como referido o nueva compra |
+
+### Important Notes
+
+- **COMERCIALIZAR es TRANSVERSAL**: No tiene conexiones directas obligatorias. Puede inyectar leads/clientes en cualquier momento a cualquier proceso, pero no es un paso obligatorio del flujo.
+- **Flujo Lineal Principal**: Adquirir → Incorporar → Gestionar Cartera → Entregar
+- **FONDEAR es la BASE**: Proporciona el capital para adquisiciones y recibe los pagos de la cartera.
 
 ---
 

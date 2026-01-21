@@ -25,40 +25,56 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 PROCESS_STAGES = {
+    # =========================================================================
+    # COMERCIALIZAR - Proceso TRANSVERSAL
+    # NO tiene conexiones directas obligatorias
+    # Puede inyectar leads/clientes en cualquier momento
+    # =========================================================================
     "COMERCIALIZAR": {
         "stages": ["lead_registered", "visit_scheduled", "material_sent", "converted"],
-        "entry_point": True,  # Can be entered at any time (transversal)
-        "next_processes": ["INCORPORAR"],  # Can inject leads into INCORPORAR
+        "entry_point": True,  # Transversal - can be entered at any time
+        "transversal": True,  # Special flag: not part of linear flow
+        "next_processes": [],  # No direct connections (transversal)
+        "previous_processes": [],
     },
+    
+    # =========================================================================
+    # FLUJO LINEAL PRINCIPAL: Adquirir → Incorporar → Gestionar → Entregar
+    # =========================================================================
     "ADQUIRIR": {
         "stages": ["sourcing", "evaluacion", "negociacion", "cierre_compra"],
-        "entry_point": True,  # Entry point for property acquisition
-        "next_processes": ["INCORPORAR"],  # Property ready → can onboard clients
-        "previous_processes": ["FONDEAR"],  # Needs capital from FONDEAR
+        "entry_point": True,  # Can start here (with capital from FONDEAR)
+        "next_processes": ["INCORPORAR"],  # → Incorporar
+        "previous_processes": ["FONDEAR"],  # ← Fondear (capital)
     },
     "INCORPORAR": {
         "stages": ["datos_basicos", "kyc_pending", "kyc_verified", "dti_calculated", "contract_pending", "contract_signed"],
-        "entry_point": False,
-        "next_processes": ["GESTIONAR_CARTERA"],
-        "previous_processes": ["COMERCIALIZAR", "ADQUIRIR", "ENTREGAR"],  # Referrals can come back
-    },
-    "FONDEAR": {
-        "stages": ["investor_registered", "capital_committed", "disbursed"],
-        "entry_point": True,  # Investors can enter directly
-        "next_processes": ["ADQUIRIR"],  # Capital enables acquisitions
-        "previous_processes": ["GESTIONAR_CARTERA"],  # Payments fund investors
+        "entry_point": False,  # Needs property from ADQUIRIR first
+        "next_processes": ["GESTIONAR_CARTERA"],  # → Gestionar Cartera
+        "previous_processes": ["ADQUIRIR", "ENTREGAR"],  # ← Adquirir, ← Entregar (referidos)
     },
     "GESTIONAR_CARTERA": {
         "stages": ["active", "payment_pending", "payment_received", "delinquent"],
         "entry_point": False,
-        "next_processes": ["FONDEAR", "ENTREGAR"],
-        "previous_processes": ["INCORPORAR"],
+        "next_processes": ["ENTREGAR", "FONDEAR"],  # → Entregar (pagos completos), → Fondear (pagos)
+        "previous_processes": ["INCORPORAR"],  # ← Incorporar
     },
     "ENTREGAR": {
         "stages": ["pending_delivery", "delivered", "title_transferred"],
         "entry_point": False,
-        "next_processes": ["INCORPORAR"],  # Client can become referral
-        "previous_processes": ["GESTIONAR_CARTERA"],
+        "next_processes": ["INCORPORAR"],  # → Incorporar (referidos vuelven)
+        "previous_processes": ["GESTIONAR_CARTERA"],  # ← Gestionar Cartera
+    },
+    
+    # =========================================================================
+    # FONDEAR - Base del sistema (Capital/Inversionistas)
+    # Financia adquisiciones y recibe pagos de la cartera
+    # =========================================================================
+    "FONDEAR": {
+        "stages": ["investor_registered", "capital_committed", "disbursed"],
+        "entry_point": True,  # Investors can enter directly
+        "next_processes": ["ADQUIRIR"],  # → Adquirir (capital para comprar)
+        "previous_processes": ["GESTIONAR_CARTERA"],  # ← Gestionar Cartera (pagos)
     },
 }
 
