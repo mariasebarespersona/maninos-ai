@@ -671,20 +671,29 @@ Clasifica el siguiente mensaje del usuario en UNO de estos 6 procesos:
 1. **ADQUIRIR** - Buscar, evaluar, inspeccionar o registrar PROPIEDADES para comprar
    - Ejemplos: buscar casas, evaluar propiedad, calcular oferta, regla del 70%, inspección, registrar en inventario
    
-2. **INCORPORAR** - Todo lo relacionado con CLIENTES: registro, KYC, DTI, contratos RTO
+2. **INCORPORAR** - Todo lo relacionado con CLIENTES nuevos: registro, KYC, DTI, contratos RTO
    - Ejemplos: registrar cliente, verificar identidad (KYC), calcular DTI, generar contrato RTO
    
-3. **COMERCIALIZAR** - Marketing, promoción, evaluación de crédito, formalizar ventas, fidelización
-   - Ejemplos: promover propiedad, evaluar riesgo crediticio, formalizar venta, marketing
+3. **COMERCIALIZAR** - Marketing, promoción, evaluar riesgo crediticio de UN CLIENTE específico, formalizar ventas
+   - Ejemplos: promover propiedad, evaluar riesgo crediticio de [nombre cliente], formalizar venta, marketing
+   - NOTA: Esto es para evaluar el crédito de UN cliente individual, NO de toda la cartera
 
 4. **FONDEAR** - Gestión de INVERSIONISTAS, capital, planes financieros, notas de deuda
    - Ejemplos: crear plan financiero, registrar inversionista, onboarding inversionista, notas de deuda, SEC compliance, ratio de deuda, pipeline inversionistas, actualización a inversionistas
 
-5. **GESTIONAR_CARTERA** - Gestión de PAGOS, cobranza, RIESGO de cartera, reportes mensuales
-   - Ejemplos: configurar pagos automáticos, monitorear pagos, evaluar riesgo cartera, evaluar riesgo de la cartera, generar reporte mensual, morosidad, cobranza, estado de pagos
+5. **GESTIONAR_CARTERA** - Gestión de PAGOS de clientes, cobranza, análisis de riesgo de TODA la cartera, reportes
+   - Ejemplos: configurar pagos automáticos, monitorear pagos, evaluar riesgo de la cartera, riesgo cartera, generar reporte mensual, morosidad, cobranza, estado de pagos
+   - NOTA: "evaluar riesgo de la cartera" = analizar TODOS los contratos, NO un cliente individual
+   - Palabras clave: "cartera", "portfolio", "todos los contratos", "pagos", "cobranza"
 
 6. **ENTREGAR** - Cierre de venta, transferencia de TÍTULO, opciones de upgrade, bonus de referidos
    - Ejemplos: verificar elegibilidad de compra, transferir título, opciones upgrade, procesar bonus referido, entrega de propiedad, cliente termina contrato
+
+---
+
+IMPORTANTE para distinguir:
+- "evaluar riesgo crediticio de María García" → COMERCIALIZAR (un cliente)
+- "evaluar riesgo de la cartera" → GESTIONAR_CARTERA (todos los contratos)
 
 ---
 
@@ -695,10 +704,10 @@ Mensaje del usuario: "{user_input}"
 Responde SOLO con un JSON válido (sin markdown):
 {{"process": "NOMBRE_PROCESO", "confidence": 0.0-1.0, "reasoning": "breve explicación"}}
 
-Ejemplos de respuesta:
-{{"process": "ADQUIRIR", "confidence": 0.95, "reasoning": "Usuario quiere buscar propiedades en Houston"}}
-{{"process": "INCORPORAR", "confidence": 0.9, "reasoning": "Usuario quiere registrar un nuevo cliente"}}
-{{"process": "GESTIONAR_CARTERA", "confidence": 0.92, "reasoning": "Usuario quiere evaluar el riesgo de la cartera de contratos"}}
+Ejemplos:
+{{"process": "ADQUIRIR", "confidence": 0.95, "reasoning": "Usuario quiere buscar propiedades"}}
+{{"process": "COMERCIALIZAR", "confidence": 0.9, "reasoning": "Usuario quiere evaluar riesgo crediticio de un cliente específico"}}
+{{"process": "GESTIONAR_CARTERA", "confidence": 0.95, "reasoning": "Usuario menciona 'cartera' - quiere analizar riesgo de todos los contratos"}}
 """
         
         response = llm.invoke(classification_prompt)
