@@ -258,24 +258,81 @@ async def get_property(property_id: str):
 
 @app.delete("/api/properties/{property_id}")
 async def delete_property(property_id: str):
-    """Delete a property by ID."""
+    """
+    Delete a property and ALL associated data from the database.
+    
+    Tables affected:
+    - rto_contracts (cascades to payments)
+    - payments (direct reference)
+    - title_transfers
+    - property_inspections
+    - maninos_documents
+    - rag_chunks
+    - contracts (old table)
+    - process_logs
+    """
     try:
         # Check if property exists
-        check = sb.table("properties").select("id").eq("id", property_id).execute()
+        check = sb.table("properties").select("id, address").eq("id", property_id).execute()
         if not check.data:
             raise HTTPException(status_code=404, detail="Property not found")
         
-        # Delete associated data first (contracts, inspections, etc.)
-        # Note: In production you might want to soft-delete instead
-        sb.table("rto_contracts").delete().eq("property_id", property_id).execute()
-        sb.table("property_inspections").delete().eq("property_id", property_id).execute()
-        sb.table("process_logs").delete().eq("entity_id", property_id).execute()
+        property_address = check.data[0].get("address", "Unknown")
+        logger.info(f"[delete_property] Starting deletion of property {property_id} ({property_address})")
         
-        # Delete the property
+        # 1. Delete title_transfers
+        try:
+            sb.table("title_transfers").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] title_transfers: {e}")
+        
+        # 2. Delete payments (direct reference)
+        try:
+            sb.table("payments").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] payments: {e}")
+        
+        # 3. Delete rto_contracts (will cascade)
+        try:
+            sb.table("rto_contracts").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] rto_contracts: {e}")
+        
+        # 4. Delete property_inspections (has CASCADE but explicit is safer)
+        try:
+            sb.table("property_inspections").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] property_inspections: {e}")
+        
+        # 5. Delete maninos_documents (has CASCADE but explicit is safer)
+        try:
+            sb.table("maninos_documents").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] maninos_documents: {e}")
+        
+        # 6. Delete rag_chunks (vector embeddings for RAG)
+        try:
+            sb.table("rag_chunks").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] rag_chunks: {e}")
+        
+        # 7. Delete old contracts table (if exists)
+        try:
+            sb.table("contracts").delete().eq("property_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] contracts: {e}")
+        
+        # 8. Delete process_logs
+        try:
+            sb.table("process_logs").delete().eq("entity_id", property_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_property] process_logs: {e}")
+        
+        # 9. Finally, delete the property
         sb.table("properties").delete().eq("id", property_id).execute()
         
-        logger.info(f"[delete_property] Property {property_id} deleted")
-        return JSONResponse(content={"ok": True, "message": "Property deleted successfully"})
+        logger.info(f"[delete_property] Property {property_id} ({property_address}) deleted successfully with all associated data")
+        return JSONResponse(content={"ok": True, "message": f"Propiedad '{property_address}' eliminada correctamente"})
     except HTTPException:
         raise
     except Exception as e:
@@ -315,23 +372,83 @@ async def get_client(client_id: str):
 
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: str):
-    """Delete a client by ID."""
+    """
+    Delete a client and ALL associated data from the database.
+    
+    Tables affected:
+    - rto_contracts (cascades to payments)
+    - payments
+    - title_transfers
+    - referral_bonuses (as referrer or referred)
+    - referral_history (as referrer or referred)
+    - process_logs
+    - properties.assigned_client_id (cleared)
+    - clients.referred_by_client_id (cleared for other clients)
+    """
     try:
         # Check if client exists
-        check = sb.table("clients").select("id").eq("id", client_id).execute()
+        check = sb.table("clients").select("id, full_name").eq("id", client_id).execute()
         if not check.data:
             raise HTTPException(status_code=404, detail="Client not found")
         
-        # Delete associated data first (contracts, documents, etc.)
-        # Note: In production you might want to soft-delete instead
-        sb.table("rto_contracts").delete().eq("client_id", client_id).execute()
-        sb.table("process_logs").delete().eq("entity_id", client_id).execute()
+        client_name = check.data[0].get("full_name", "Unknown")
+        logger.info(f"[delete_client] Starting deletion of client {client_id} ({client_name})")
         
-        # Delete the client
+        # 1. Delete title_transfers (references client_id)
+        try:
+            sb.table("title_transfers").delete().eq("client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] title_transfers: {e}")
+        
+        # 2. Delete referral_bonuses (as referrer or referred)
+        try:
+            sb.table("referral_bonuses").delete().eq("referrer_client_id", client_id).execute()
+            sb.table("referral_bonuses").delete().eq("referred_client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] referral_bonuses: {e}")
+        
+        # 3. Delete referral_history (as referrer or referred)
+        try:
+            sb.table("referral_history").delete().eq("referrer_client_id", client_id).execute()
+            sb.table("referral_history").delete().eq("referred_client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] referral_history: {e}")
+        
+        # 4. Clear referred_by_client_id in other clients (break circular reference)
+        try:
+            sb.table("clients").update({"referred_by_client_id": None}).eq("referred_by_client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] referred_by_client_id: {e}")
+        
+        # 5. Clear assigned_client_id in properties
+        try:
+            sb.table("properties").update({"assigned_client_id": None}).eq("assigned_client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] assigned_client_id: {e}")
+        
+        # 6. Delete payments (explicit, even though rto_contracts has cascade)
+        try:
+            sb.table("payments").delete().eq("client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] payments: {e}")
+        
+        # 7. Delete rto_contracts (will cascade to related data)
+        try:
+            sb.table("rto_contracts").delete().eq("client_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] rto_contracts: {e}")
+        
+        # 8. Delete process_logs
+        try:
+            sb.table("process_logs").delete().eq("entity_id", client_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete_client] process_logs: {e}")
+        
+        # 9. Finally, delete the client
         sb.table("clients").delete().eq("id", client_id).execute()
         
-        logger.info(f"[delete_client] Client {client_id} deleted")
-        return JSONResponse(content={"ok": True, "message": "Client deleted successfully"})
+        logger.info(f"[delete_client] Client {client_id} ({client_name}) deleted successfully with all associated data")
+        return JSONResponse(content={"ok": True, "message": f"Cliente '{client_name}' eliminado correctamente"})
     except HTTPException:
         raise
     except Exception as e:
