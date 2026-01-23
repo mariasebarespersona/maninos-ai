@@ -653,7 +653,7 @@ def check_kyc_status(
     try:
         # Get client
         client_result = sb.table("clients").select(
-            "id, full_name, email, kyc_status, stripe_verification_session_id, credit_score"
+            "id, full_name, email, kyc_status, stripe_verification_session_id"
         ).eq("id", client_id).execute()
         
         if not client_result.data:

@@ -1,165 +1,140 @@
-# 🎯 Demo Maninos AI - 23 Enero 2026
+# 🎯 Demo Maninos AI - Enero 2026
 
-## Estado Actual del Sistema
+## Estado Actual: Checklist S1-S2 del Plan
 
-### ✅ COMPLETADO (Semanas 1-2)
-
-#### 🤖 6 Agentes Inteligentes Funcionando
-| Agente | Función | Estado |
-|--------|---------|--------|
-| **COMERCIALIZAR** | Evaluación crediticia, captación leads, recuperación cartera | ✅ Activo |
-| **ADQUIRIR** | Búsqueda propiedades, inspecciones, ofertas, inventario | ✅ Activo |
-| **INCORPORAR** | Crear clientes, KYC, DTI, contratos RTO, referidos | ✅ Activo |
-| **GESTIONAR CARTERA** | Pagos automáticos, monitoreo, riesgo portafolio | ✅ Activo |
-| **FONDEAR** | Pipeline inversionistas, notas de deuda, compliance SEC | ✅ Activo |
-| **ENTREGAR** | Elegibilidad compra, transferencia título, bonos referido | ✅ Activo |
-
-#### 🛠️ Funcionalidades Implementadas
-- ✅ Chat con IA que entiende lenguaje natural
-- ✅ Routing inteligente entre agentes (LLM detecta intención)
-- ✅ Memoria compartida entre conversaciones
-- ✅ Base de datos Supabase (clientes, propiedades, contratos, pagos, inversionistas)
-- ✅ Verificación KYC con Stripe Identity
-- ✅ Pagos automáticos con Stripe
-- ✅ Generación de contratos RTO en PDF
-- ✅ Sistema de referidos con códigos únicos
-- ✅ Panel visual de clientes y propiedades
-- ✅ Autenticación de usuarios
+Basado en el plan de producto, esto es lo que debería funcionar:
 
 ---
 
-## 🎬 ESCENARIOS DE DEMO
+## 🎬 DEMO 1: Crear Cliente (INCORPORAR)
 
-### Demo 1: Flujo Completo de Nuevo Cliente (5 min)
+### Paso 1 - Crear perfil de cliente
+```
+Crea un nuevo cliente llamado Juan Pérez, teléfono 832-555-1234, email juan@email.com, ingreso mensual $4,500
+```
+*Esperado: Crea cliente en BD con código de referido automático*
 
-**Paso 1 - Registrar propiedad en inventario**
-```
-Tú: "Registra una nueva propiedad: 456 Oak Street, en el parque Sunny Meadows, 
-     3 recámaras, 2 baños, año 2018, precio de compra $45,000"
-```
-*Esperado: El agente ADQUIRIR registra la propiedad y confirma*
+### Paso 2 - Verificar el cliente creado
+Abre el **drawer de Clientes** (icono 👤) para ver a Juan Pérez
 
-**Paso 2 - Crear cliente**
+### Paso 3 - Calcular DTI
 ```
-Tú: "Crea un nuevo cliente: María González, teléfono 832-555-1234, 
-     email maria@email.com, ingreso mensual $4,500"
-```
-*Esperado: El agente INCORPORAR crea el perfil y asigna un código de referido*
-
-**Paso 3 - Calcular DTI**
-```
-Tú: "Calcula el DTI de María González"
+Calcula el DTI de Juan Pérez
 ```
 *Esperado: Muestra ratio deuda-ingreso y perfil de riesgo*
 
-**Paso 4 - Generar contrato RTO**
+---
+
+## 🎬 DEMO 2: Registrar Propiedad (ADQUIRIR)
+
+### Paso 4 - Registrar propiedad en inventario
 ```
-Tú: "Genera contrato RTO para María González con 456 Oak Street, 
-     36 meses, renta $695"
+Registra en el inventario una propiedad que ya compramos: 456 Oak Street en el parque Sunny Meadows, la compramos por $35,000, fecha de compra hoy, 3 recámaras, 2 baños, año 2018
 ```
-*Esperado: Genera contrato PDF con todas las cláusulas*
+*Esperado: Registra la propiedad como ya adquirida*
+
+### Paso 5 - Verificar propiedad
+Abre el **drawer de Propiedades** (icono 🏠) para ver la propiedad
 
 ---
 
-### Demo 2: Gestión de Cartera (3 min)
+## 🎬 DEMO 3: Evaluar Propiedad con Checklist (ADQUIRIR)
 
-**Paso 1 - Configurar pago automático**
+### Paso 6 - Evaluar con checklist de 26 puntos
 ```
-Tú: "Configura pago automático para el contrato de María González"
+Evalúa la propiedad 456 Oak Street con el checklist de compra
 ```
-*Esperado: Crea cliente en Stripe y configura suscripción*
-
-**Paso 2 - Evaluar riesgo de cartera**
-```
-Tú: "Evalúa el riesgo de toda la cartera"
-```
-*Esperado: Análisis de contratos por estado (al día, preventivo, etc.)*
-
-**Paso 3 - Generar reporte mensual**
-```
-Tú: "Genera reporte mensual de la cartera"
-```
-*Esperado: Resumen de ingresos, pagos, morosidad*
+*Esperado: Evaluación con los 26 puntos del checklist*
 
 ---
 
-### Demo 3: Pipeline de Inversionistas (3 min)
+## 🎬 DEMO 4: Generar Contrato RTO (INCORPORAR)
 
-**Paso 1 - Crear inversionista**
+### Paso 7 - Generar contrato
 ```
-Tú: "Registra un nuevo inversionista: John Smith, email john@investor.com, 
-     teléfono 713-555-9999"
+Genera un contrato RTO para Juan Pérez con la propiedad 456 Oak Street, plazo 36 meses, renta mensual $695
 ```
-*Esperado: Crea perfil de inversionista en pipeline*
+*Esperado: Contrato PDF con las 33 cláusulas del Anexo 3*
 
-**Paso 2 - Generar nota de deuda**
+---
+
+## 🎬 DEMO 5: Gestionar Cartera (GESTIONAR)
+
+### Paso 8 - Configurar pago automático
 ```
-Tú: "Genera una nota de deuda para John Smith por $50,000 a 12% anual, 
-     plazo 12 meses"
+Configura el pago automático para el contrato de Juan Pérez
+```
+*Esperado: Crea cliente en Stripe y configura cobro recurrente*
+
+### Paso 9 - Ver estado de la cartera
+```
+Muéstrame el estado de la cartera de contratos
+```
+*Esperado: Resumen de contratos activos y su estado de pago*
+
+---
+
+## 🎬 DEMO 6: Inversionistas (FONDEAR)
+
+### Paso 10 - Crear inversionista
+```
+Registra un nuevo inversionista: Robert Smith, email robert@investor.com, teléfono 713-555-9999
+```
+*Esperado: Crea perfil de inversionista*
+
+### Paso 11 - Generar nota de deuda
+```
+Genera una nota de deuda para Robert Smith por $50,000 al 12% anual, plazo 12 meses
 ```
 *Esperado: Documento con cronograma de pagos*
 
-**Paso 3 - Validar compliance SEC**
-```
-Tú: "Valida el compliance SEC para John Smith"
-```
-*Esperado: Checklist de requisitos regulatorios*
-
 ---
 
-### Demo 4: Sistema de Referidos (2 min)
+## 🎬 DEMO 7: Entrega y Referidos (ENTREGAR)
 
-**Paso 1 - Ver código de referido**
+### Paso 12 - Ver código de referido
 ```
-Tú: "¿Cuál es el código de referido de María González?"
+¿Cuál es el código de referido de Juan Pérez?
 ```
-*Esperado: Muestra código único (ej: MARIA2026)*
+*Esperado: Muestra código único (ej: JUANP2026)*
 
-**Paso 2 - Registrar referido**
+### Paso 13 - Verificar elegibilidad de compra
 ```
-Tú: "Crea cliente Pedro López referido por María González"
-```
-*Esperado: Registra relación de referido*
-
----
-
-### Demo 5: Proceso de Entrega/Compra (2 min)
-
-**Paso 1 - Verificar elegibilidad**
-```
-Tú: "Verifica si María González es elegible para comprar su propiedad"
+Verifica si Juan Pérez es elegible para comprar su propiedad
 ```
 *Esperado: Análisis de pagos completados y requisitos*
 
 ---
 
-## 💡 Tips para la Demo
+## 📋 Resumen de Comandos por Agente
 
-1. **Abre los drawers** (Clientes/Propiedades) para mostrar visualmente los datos creados
-2. **El chat mantiene contexto** - puedes decir "configura pago para ese contrato" sin repetir nombres
-3. **Muestra los PDFs** - los contratos se generan como archivos descargables
-4. **Si algo falla**, es normal en beta - muestra la intención del sistema
-
----
-
-## 📊 Métricas del Proyecto
-
-| Métrica | Valor |
-|---------|-------|
-| Tiempo de desarrollo | 2 semanas |
-| Agentes IA activos | 6 |
-| Herramientas implementadas | 46 |
-| Tablas de base de datos | 15+ |
-| Integraciones externas | Stripe (KYC + Pagos), Supabase |
+| Agente | Comando de prueba |
+|--------|-------------------|
+| **INCORPORAR** | "Crea un cliente llamado..." |
+| **INCORPORAR** | "Calcula el DTI de..." |
+| **INCORPORAR** | "Genera contrato RTO para..." |
+| **ADQUIRIR** | "Registra en inventario una propiedad..." |
+| **ADQUIRIR** | "Evalúa la propiedad X con el checklist" |
+| **GESTIONAR** | "Configura pago automático para..." |
+| **GESTIONAR** | "Muéstrame el estado de la cartera" |
+| **FONDEAR** | "Registra un inversionista..." |
+| **FONDEAR** | "Genera nota de deuda para..." |
+| **ENTREGAR** | "Verifica si X es elegible para comprar" |
+| **ENTREGAR** | "¿Cuál es el código de referido de...?" |
 
 ---
 
-## 🚀 Próximos Pasos (Semanas 3-4)
+## 💡 Tips Importantes
 
-- [ ] Notificaciones automáticas (email/SMS)
-- [ ] Dashboard con métricas visuales
-- [ ] Integración calendario para citas
-- [ ] App móvil para clientes
-- [ ] Automatización de cobranza
-- [ ] Reportes fiscales (1099-S)
+1. **"Registra en inventario"** = Propiedad YA COMPRADA → usa `register_property_inventory`
+2. **"Evalúa con checklist"** = ANTES de comprar → usa `evaluate_property_criteria` (regla 70%)
+3. **El agente mantiene contexto** - puedes decir "para ese cliente" sin repetir nombres
+4. **Abre los drawers** para mostrar visualmente los datos creados
 
+---
+
+## ⚠️ Comportamientos Conocidos a Mejorar
+
+1. El agente a veces pide más información de la necesaria (campos opcionales)
+2. Si dices solo "registra propiedad" puede confundirlo con "evalúa propiedad"
+3. Ser específico ayuda: "registra EN INVENTARIO" vs "evalúa CON CHECKLIST"
