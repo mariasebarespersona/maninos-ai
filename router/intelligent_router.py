@@ -688,12 +688,18 @@ Clasifica el siguiente mensaje del usuario en UNO de estos 6 procesos:
 
 6. **ENTREGAR** - Cierre de venta, transferencia de TÍTULO, opciones de upgrade, bonus de referidos
    - Ejemplos: verificar elegibilidad de compra, transferir título, opciones upgrade, procesar bonus referido, entrega de propiedad, cliente termina contrato
+   - PALABRAS CLAVE: "elegible para comprar", "puede comprar", "listo para comprar", "transferir título", "entregar propiedad", "terminar contrato"
 
 ---
 
 IMPORTANTE para distinguir:
-- "evaluar riesgo crediticio de María García" → COMERCIALIZAR (un cliente)
+- "evaluar riesgo crediticio de María García" → COMERCIALIZAR (evaluación de crédito ANTES de aprobar)
 - "evaluar riesgo de la cartera" → GESTIONAR_CARTERA (todos los contratos)
+- "¿Es elegible para COMPRAR?" / "¿Puede comprar?" → ENTREGAR (verificar si cumplió contrato para adquirir título)
+
+La diferencia clave:
+- COMERCIALIZAR = evaluar SI darle crédito (ANTES del contrato)
+- ENTREGAR = verificar SI puede comprar la propiedad (DESPUÉS de cumplir pagos del contrato RTO)
 
 ---
 
