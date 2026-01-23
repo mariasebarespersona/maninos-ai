@@ -29,6 +29,7 @@ try:
     POSTGRES_AVAILABLE = True
 except ImportError:
     POSTGRES_AVAILABLE = False
+    ConnectionPool = None  # Define as None for type hints when not available
     logger.warning("postgres_unavailable", message="langgraph-checkpoint-postgres not installed, falling back to MemorySaver")
 
 # Try SQLite as alternative persistent storage (for development)
@@ -40,9 +41,9 @@ except ImportError:
 
 
 # Global connection pool for PostgresSaver (reused across checkpointer calls)
-_connection_pool: Optional[ConnectionPool] = None
+_connection_pool: Optional[Any] = None  # Use Any since ConnectionPool may not be available
 
-def get_connection_pool() -> Optional[ConnectionPool]:
+def get_connection_pool() -> Optional[Any]:
     """Get or create the global PostgreSQL connection pool."""
     global _connection_pool
     
