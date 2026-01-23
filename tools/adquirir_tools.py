@@ -280,12 +280,19 @@ def evaluate_property_criteria(
     vin_number: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Evalúa una propiedad usando el Checklist de 26 puntos y las reglas del 70%/80%.
+    EVALUAR ANTES DE COMPRAR: Analiza si una propiedad es buena inversión ANTES de adquirirla.
     
-    Procedimiento 2 del Excel: Revisar estado físico, ubicación, valor de mercado
-    y cumplimiento regulatorio.
+    ⚠️ USAR ESTA HERRAMIENTA CUANDO:
+    - El usuario quiere EVALUAR o ANALIZAR una propiedad ANTES de comprarla
+    - El usuario pregunta si una propiedad cumple la regla del 70%
+    - El usuario quiere ver el checklist de 26 puntos
+    - El usuario dice "evalúa", "analiza", "revisa si conviene comprar"
     
-    Formato: Checklist 26 puntos
+    ❌ NO USAR CUANDO:
+    - El usuario quiere REGISTRAR una propiedad YA COMPRADA → usar register_property_inventory
+    - El usuario dice "registra en inventario", "ya compramos", "añade al inventario"
+    
+    Aplica: Checklist 26 puntos + Regla del 70% (precio ≤ 70% valor mercado)
     KPI: 100% de propiedades verificadas antes de oferta
     
     Args:
@@ -846,11 +853,19 @@ def register_property_inventory(
     notes: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Registra una propiedad adquirida en el inventario.
+    REGISTRAR PROPIEDAD YA COMPRADA: Añade una propiedad que YA FUE ADQUIRIDA al inventario.
     
-    Procedimiento 5 del Excel: Registrar la vivienda adquirida con atributos
-    financieros y de ubicación.
+    ⚠️ USAR ESTA HERRAMIENTA CUANDO:
+    - El usuario quiere REGISTRAR o AÑADIR una propiedad al inventario
+    - El usuario dice "ya compramos", "registra en inventario", "añade esta propiedad"
+    - El usuario proporciona precio de COMPRA (no precio de venta/mercado)
+    - La propiedad ya es nuestra y queremos tenerla en el sistema
     
+    ❌ NO USAR CUANDO:
+    - El usuario quiere EVALUAR si conviene comprar → usar evaluate_property_criteria
+    - El usuario pregunta por la regla del 70% → usar evaluate_property_criteria
+    
+    Esta herramienta NO evalúa, solo REGISTRA. La propiedad queda disponible para asignar a clientes.
     Formato: Base de datos inventario
     KPI: 100% de viviendas registradas en 24h
     
