@@ -256,6 +256,33 @@ async def get_property(property_id: str):
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
 
+@app.delete("/api/properties/{property_id}")
+async def delete_property(property_id: str):
+    """Delete a property by ID."""
+    try:
+        # Check if property exists
+        check = sb.table("properties").select("id").eq("id", property_id).execute()
+        if not check.data:
+            raise HTTPException(status_code=404, detail="Property not found")
+        
+        # Delete associated data first (contracts, inspections, etc.)
+        # Note: In production you might want to soft-delete instead
+        sb.table("rto_contracts").delete().eq("property_id", property_id).execute()
+        sb.table("property_inspections").delete().eq("property_id", property_id).execute()
+        sb.table("process_logs").delete().eq("entity_id", property_id).execute()
+        
+        # Delete the property
+        sb.table("properties").delete().eq("id", property_id).execute()
+        
+        logger.info(f"[delete_property] Property {property_id} deleted")
+        return JSONResponse(content={"ok": True, "message": "Property deleted successfully"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[delete_property] Error: {e}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
 # ============================================================================
 # CLIENTS API
 # ============================================================================
@@ -283,6 +310,32 @@ async def get_client(client_id: str):
         raise
     except Exception as e:
         logger.error(f"[get_client] Error: {e}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
+@app.delete("/api/clients/{client_id}")
+async def delete_client(client_id: str):
+    """Delete a client by ID."""
+    try:
+        # Check if client exists
+        check = sb.table("clients").select("id").eq("id", client_id).execute()
+        if not check.data:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Delete associated data first (contracts, documents, etc.)
+        # Note: In production you might want to soft-delete instead
+        sb.table("rto_contracts").delete().eq("client_id", client_id).execute()
+        sb.table("process_logs").delete().eq("entity_id", client_id).execute()
+        
+        # Delete the client
+        sb.table("clients").delete().eq("id", client_id).execute()
+        
+        logger.info(f"[delete_client] Client {client_id} deleted")
+        return JSONResponse(content={"ok": True, "message": "Client deleted successfully"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[delete_client] Error: {e}")
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
 

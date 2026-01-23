@@ -34,12 +34,14 @@ const Icons = {
   refresh: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
   home: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
   map: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  trash: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
 }
 
 export default function PropertiesDrawer({ isOpen, onClose, onSelectProperty }: PropertiesDrawerProps) {
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
 
@@ -58,6 +60,33 @@ export default function PropertiesDrawer({ isOpen, onClose, onSelectProperty }: 
       setError('Error connecting to server')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const deleteProperty = async (e: React.MouseEvent, propertyId: string, propertyAddress: string) => {
+    e.stopPropagation() // Prevent card click
+    
+    if (!confirm(`¿Estás seguro de eliminar "${propertyAddress}"?\n\nEsta acción eliminará también los contratos e inspecciones asociadas.`)) {
+      return
+    }
+    
+    setDeletingId(propertyId)
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/properties/${propertyId}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      
+      if (data.ok) {
+        // Remove from local state
+        setProperties(prev => prev.filter(p => p.id !== propertyId))
+      } else {
+        alert(`Error: ${data.error || 'No se pudo eliminar la propiedad'}`)
+      }
+    } catch (e) {
+      alert('Error de conexión al servidor')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -138,9 +167,23 @@ export default function PropertiesDrawer({ isOpen, onClose, onSelectProperty }: 
                 <div
                   key={property.id}
                   onClick={() => onSelectProperty?.(property)}
-                  className="card-luxury p-5 cursor-pointer group"
+                  className="card-luxury p-5 cursor-pointer group relative"
                 >
-                  <div className="flex justify-between items-start mb-3">
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => deleteProperty(e, property.id, property.address || 'esta propiedad')}
+                    disabled={deletingId === property.id}
+                    className="absolute top-3 right-3 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-50 text-navy-400 hover:text-red-500 disabled:opacity-50"
+                    title="Eliminar propiedad"
+                  >
+                    {deletingId === property.id ? (
+                      <div className="w-4 h-4 border-2 border-red-300 border-t-red-500 rounded-full animate-spin" />
+                    ) : (
+                      Icons.trash
+                    )}
+                  </button>
+                  
+                  <div className="flex justify-between items-start mb-3 pr-8">
                     {getStatusBadge(property.inventory_status)}
                     {property.listing_active && (
                       <span className="text-[10px] text-gold-600 font-bold tracking-wide uppercase flex items-center gap-1">

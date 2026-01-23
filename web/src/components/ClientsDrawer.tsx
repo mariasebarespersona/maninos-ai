@@ -33,12 +33,14 @@ const Icons = {
   check: <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
   clock: <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
   shield: <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+  trash: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
 }
 
 export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: ClientsDrawerProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080'
 
@@ -57,6 +59,33 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
       setError('Error connecting to server')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const deleteClient = async (e: React.MouseEvent, clientId: string, clientName: string) => {
+    e.stopPropagation() // Prevent card click
+    
+    if (!confirm(`¿Estás seguro de eliminar a "${clientName}"?\n\nEsta acción eliminará también sus contratos y documentos asociados.`)) {
+      return
+    }
+    
+    setDeletingId(clientId)
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/clients/${clientId}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      
+      if (data.ok) {
+        // Remove from local state
+        setClients(prev => prev.filter(c => c.id !== clientId))
+      } else {
+        alert(`Error: ${data.error || 'No se pudo eliminar el cliente'}`)
+      }
+    } catch (e) {
+      alert('Error de conexión al servidor')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -137,9 +166,23 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
                 <div
                   key={client.id}
                   onClick={() => onSelectClient?.(client)}
-                  className="card-luxury p-5 cursor-pointer group"
+                  className="card-luxury p-5 cursor-pointer group relative"
                 >
-                  <div className="flex justify-between items-start mb-3">
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => deleteClient(e, client.id, client.full_name)}
+                    disabled={deletingId === client.id}
+                    className="absolute top-3 right-3 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-50 text-navy-400 hover:text-red-500 disabled:opacity-50"
+                    title="Eliminar cliente"
+                  >
+                    {deletingId === client.id ? (
+                      <div className="w-4 h-4 border-2 border-red-300 border-t-red-500 rounded-full animate-spin" />
+                    ) : (
+                      Icons.trash
+                    )}
+                  </button>
+                  
+                  <div className="flex justify-between items-start mb-3 pr-8">
                     <span className="text-[10px] font-bold tracking-wider text-navy-400 uppercase bg-navy-50 px-2 py-1 rounded">
                       {client.process_stage?.replace('_', ' ') || 'Nuevo'}
                     </span>
