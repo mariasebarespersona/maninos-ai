@@ -895,7 +895,7 @@ def register_property_inventory(
             "arv": arv,
             "repair_estimate": repair_estimate,
             "status": "owned",
-            "acquisition_stage": "registrado",
+            "acquisition_stage": "cierre_compra",  # Property has been purchased
             "inventory_status": "available",
             "listing_active": False,  # Not listed yet
             "title_status": title_status,
