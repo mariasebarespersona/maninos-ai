@@ -109,32 +109,187 @@ def get_checkpointer():
 
 
 # =============================================================================
-# TOOL COLLECTION - All tools from all agents (now ALL at module level)
+# TOOL COLLECTION - SEGREGATED BY PROCESS (Developer Bible: Each agent only sees its tools)
 # =============================================================================
+
+def get_tools_for_process(process: str) -> List[BaseTool]:
+    """
+    Get tools ONLY for a specific process.
+    
+    ARCHITECTURE (Developer Bible Compliant):
+    - Each process/agent only sees ITS OWN tools
+    - This prevents LLM confusion when choosing between similar tools
+    - Router decides process → Agent only sees relevant tools
+    
+    Example:
+    - ADQUIRIR process → only sees 6 adquirir tools
+    - INCORPORAR process → only sees 11 incorporar tools
+    - NOT 35+ tools like before!
+    """
+    tools = []
+    
+    if process == "ADQUIRIR":
+        try:
+            from agents.adquirir_agent import (
+                search_property_sources_tool,
+                search_inventory_properties_tool,
+                evaluate_property_criteria_tool,
+                create_inspection_record_tool,
+                calculate_acquisition_offer_tool,
+                register_property_inventory_tool,
+            )
+            tools = [
+                search_property_sources_tool,
+                search_inventory_properties_tool,
+                evaluate_property_criteria_tool,
+                create_inspection_record_tool,
+                calculate_acquisition_offer_tool,
+                register_property_inventory_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ ADQUIRIR: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load ADQUIRIR tools: {e}")
+    
+    elif process == "INCORPORAR":
+        try:
+            from agents.incorporar_agent import (
+                create_client_profile_tool,
+                calculate_client_dti_tool,
+                start_kyc_verification_tool,
+                check_kyc_status_tool,
+                qualify_client_for_property_tool,
+                search_available_properties_tool,
+                assign_property_to_client_tool,
+                calculate_payment_plan_tool,
+                generate_rto_contract_tool,
+                schedule_appointment_tool,
+                get_client_details_tool,
+            )
+            tools = [
+                create_client_profile_tool,
+                calculate_client_dti_tool,
+                start_kyc_verification_tool,
+                check_kyc_status_tool,
+                qualify_client_for_property_tool,
+                search_available_properties_tool,
+                assign_property_to_client_tool,
+                calculate_payment_plan_tool,
+                generate_rto_contract_tool,
+                schedule_appointment_tool,
+                get_client_details_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ INCORPORAR: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load INCORPORAR tools: {e}")
+    
+    elif process == "GESTIONAR_CARTERA":
+        try:
+            from agents.gestionar_agent import (
+                generate_rto_contract_tool,
+                setup_automatic_payment_tool,
+                monitor_payment_status_tool,
+                assess_portfolio_risk_tool,
+                generate_monthly_report_tool,
+            )
+            tools = [
+                generate_rto_contract_tool,
+                setup_automatic_payment_tool,
+                monitor_payment_status_tool,
+                assess_portfolio_risk_tool,
+                generate_monthly_report_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ GESTIONAR_CARTERA: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load GESTIONAR_CARTERA tools: {e}")
+    
+    elif process == "FONDEAR":
+        try:
+            from agents.fondear_agent import (
+                create_financial_plan_tool,
+                manage_investor_pipeline_tool,
+                onboard_investor_tool,
+                generate_debt_note_tool,
+                validate_sec_compliance_tool,
+                calculate_debt_ratio_tool,
+                send_investor_update_tool,
+            )
+            tools = [
+                create_financial_plan_tool,
+                manage_investor_pipeline_tool,
+                onboard_investor_tool,
+                generate_debt_note_tool,
+                validate_sec_compliance_tool,
+                calculate_debt_ratio_tool,
+                send_investor_update_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ FONDEAR: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load FONDEAR tools: {e}")
+    
+    elif process == "ENTREGAR":
+        try:
+            from agents.entregar_agent import (
+                verify_purchase_eligibility_tool,
+                process_title_transfer_tool,
+                offer_upgrade_options_tool,
+                process_referral_bonus_tool,
+            )
+            tools = [
+                verify_purchase_eligibility_tool,
+                process_title_transfer_tool,
+                offer_upgrade_options_tool,
+                process_referral_bonus_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ ENTREGAR: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load ENTREGAR tools: {e}")
+    
+    elif process == "COMERCIALIZAR":
+        try:
+            from agents.comercializar_agent import (
+                register_lead_tool,
+                generate_marketing_content_tool,
+                schedule_park_visit_tool,
+                send_material_to_lead_tool,
+                track_lead_source_tool,
+                send_bulk_campaigns_tool,
+            )
+            tools = [
+                register_lead_tool,
+                generate_marketing_content_tool,
+                schedule_park_visit_tool,
+                send_material_to_lead_tool,
+                track_lead_source_tool,
+                send_bulk_campaigns_tool,
+            ]
+            logger.info(f"[ManinosGraph] ✅ COMERCIALIZAR: Loaded {len(tools)} tools")
+        except Exception as e:
+            logger.error(f"[ManinosGraph] ❌ Could not load COMERCIALIZAR tools: {e}")
+    
+    else:  # GENERAL - load basic tools from common processes
+        # For general queries, load a minimal set for basic operations
+        tools = get_all_tools()
+        logger.info(f"[ManinosGraph] ⚠️ GENERAL: Loaded ALL {len(tools)} tools (fallback)")
+    
+    return tools
+
 
 def get_all_tools() -> List[BaseTool]:
     """
     Collect ALL tools from all agents.
     
-    ARCHITECTURE NOTE: All agents now define tools at MODULE LEVEL for consistency.
-    This means we can import them directly without instantiating agents.
+    ⚠️ WARNING: Only use this as fallback for GENERAL queries.
+    For specific processes, use get_tools_for_process() instead!
     
-    Pattern followed by all agents:
-        @tool("tool_name", args_schema=InputSchema)
-        def tool_name_tool(...):
-            ...
-        
-        class XAgent(LangGraphAgent):
-            def get_tools(self):
-                return [tool_name_tool, ...]
+    ARCHITECTURE NOTE: All agents now define tools at MODULE LEVEL for consistency.
     """
     tools = []
     
-    # AdquirirAgent - 6 tools (5 del Excel + búsqueda inventario)
+    # AdquirirAgent - 6 tools
     try:
         from agents.adquirir_agent import (
             search_property_sources_tool,
-            search_inventory_properties_tool,  # Busca en NUESTRO inventario por dirección
+            search_inventory_properties_tool,
             evaluate_property_criteria_tool,
             create_inspection_record_tool,
             calculate_acquisition_offer_tool,
@@ -365,37 +520,56 @@ Responde siempre en español. Sé conciso, profesional y actúa de forma autóno
 
 
 # =============================================================================
-# MANINOS GRAPH - Single graph for entire system
+# MANINOS GRAPH - PROCESS-SPECIFIC GRAPHS (Developer Bible: Each agent has its own tools)
 # =============================================================================
 
-_graph = None
+# Cache graphs per process for performance
+_process_graphs: Dict[str, Any] = {}
 
-def get_maninos_graph():
+def get_maninos_graph(process: str = "GENERAL"):
     """
-    Get or create the single ManinosGraph instance.
-    This is the ONLY LangGraph instance for the entire system.
+    Get or create a LangGraph instance for a SPECIFIC process.
+    
+    ARCHITECTURE (Developer Bible Compliant):
+    - Each process gets its own graph with ONLY its tools
+    - Shared checkpointer maintains conversation memory across processes
+    - LLM sees fewer tools = better tool selection
+    
+    Example:
+    - get_maninos_graph("ADQUIRIR") → Graph with only 6 ADQUIRIR tools
+    - get_maninos_graph("INCORPORAR") → Graph with only 11 INCORPORAR tools
     """
-    global _graph
+    global _process_graphs
     
-    if _graph is None:
-        llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.3,
-            seed=42
-        )
-        
-        tools = get_all_tools()
-        checkpointer = get_checkpointer()
-        
-        _graph = create_react_agent(
-            model=llm,
-            tools=tools,
-            checkpointer=checkpointer
-        )
-        
-        logger.info(f"[ManinosGraph] ✅ Created single graph with {len(tools)} tools")
+    # Return cached graph if exists
+    if process in _process_graphs:
+        return _process_graphs[process]
     
-    return _graph
+    # Create new graph for this process
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.3,
+        seed=42
+    )
+    
+    # Get tools ONLY for this specific process
+    tools = get_tools_for_process(process)
+    
+    # Shared checkpointer for memory persistence across all processes
+    checkpointer = get_checkpointer()
+    
+    graph = create_react_agent(
+        model=llm,
+        tools=tools,
+        checkpointer=checkpointer
+    )
+    
+    # Cache for reuse
+    _process_graphs[process] = graph
+    
+    logger.info(f"[ManinosGraph] ✅ Created {process} graph with {len(tools)} tools (not 35+!)")
+    
+    return graph
 
 
 def process_message(
@@ -405,15 +579,17 @@ def process_message(
     context: Optional[Dict] = None
 ) -> Dict[str, Any]:
     """
-    Process a user message through the single ManinosGraph.
+    Process a user message through a PROCESS-SPECIFIC ManinosGraph.
     
-    IMPORTANT: With checkpointer, we only pass the NEW user message.
-    LangGraph automatically loads previous history from the checkpoint.
+    ARCHITECTURE (Developer Bible Compliant):
+    - Each process gets a graph with ONLY its tools
+    - Shared checkpointer maintains conversation memory
+    - LLM sees ~5-11 tools instead of 35+ → better accuracy
     
     Args:
         user_input: User's message
         session_id: Session ID (used as thread_id for checkpointing)
-        process: Current process (ADQUIRIR, INCORPORAR, COMERCIALIZAR, GENERAL)
+        process: Current process (ADQUIRIR, INCORPORAR, etc.) - determines which tools are available
         context: Additional context
     
     Returns:
@@ -422,7 +598,8 @@ def process_message(
     try:
         logger.info(f"[ManinosGraph] Processing (session={session_id}, process={process}): {user_input[:50]}...")
         
-        graph = get_maninos_graph()
+        # Get graph with ONLY the tools for this specific process
+        graph = get_maninos_graph(process)
         
         # Get appropriate system prompt
         system_prompt = get_system_prompt(process, context)
