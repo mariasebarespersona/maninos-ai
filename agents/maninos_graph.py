@@ -153,30 +153,30 @@ def get_tools_for_process(process: str) -> List[BaseTool]:
     elif process == "INCORPORAR":
         try:
             from agents.incorporar_agent import (
+                get_client_info_tool,
                 create_client_profile_tool,
-                calculate_client_dti_tool,
                 start_kyc_verification_tool,
                 check_kyc_status_tool,
-                qualify_client_for_property_tool,
-                search_available_properties_tool,
-                assign_property_to_client_tool,
-                calculate_payment_plan_tool,
+                calculate_client_dti_tool,
                 generate_rto_contract_tool,
-                schedule_appointment_tool,
-                get_client_details_tool,
+                send_client_update_tool,
+                generate_referral_code_tool,
+                validate_referral_code_tool,
+                register_referral_tool,
+                get_referral_stats_tool,
             )
             tools = [
+                get_client_info_tool,
                 create_client_profile_tool,
-                calculate_client_dti_tool,
                 start_kyc_verification_tool,
                 check_kyc_status_tool,
-                qualify_client_for_property_tool,
-                search_available_properties_tool,
-                assign_property_to_client_tool,
-                calculate_payment_plan_tool,
+                calculate_client_dti_tool,
                 generate_rto_contract_tool,
-                schedule_appointment_tool,
-                get_client_details_tool,
+                send_client_update_tool,
+                generate_referral_code_tool,
+                validate_referral_code_tool,
+                register_referral_tool,
+                get_referral_stats_tool,
             ]
             logger.info(f"[ManinosGraph] ✅ INCORPORAR: Loaded {len(tools)} tools")
         except Exception as e:
@@ -247,20 +247,22 @@ def get_tools_for_process(process: str) -> List[BaseTool]:
     elif process == "COMERCIALIZAR":
         try:
             from agents.comercializar_agent import (
-                register_lead_tool,
-                generate_marketing_content_tool,
-                schedule_park_visit_tool,
-                send_material_to_lead_tool,
-                track_lead_source_tool,
-                send_bulk_campaigns_tool,
+                create_acquisition_committee_record_tool,
+                process_disbursement_tool,
+                promote_property_listing_tool,
+                evaluate_credit_risk_tool,
+                formalize_sale_tool,
+                manage_portfolio_recovery_tool,
+                process_loyalty_program_tool,
             )
             tools = [
-                register_lead_tool,
-                generate_marketing_content_tool,
-                schedule_park_visit_tool,
-                send_material_to_lead_tool,
-                track_lead_source_tool,
-                send_bulk_campaigns_tool,
+                create_acquisition_committee_record_tool,
+                process_disbursement_tool,
+                promote_property_listing_tool,
+                evaluate_credit_risk_tool,
+                formalize_sale_tool,
+                manage_portfolio_recovery_tool,
+                process_loyalty_program_tool,
             ]
             logger.info(f"[ManinosGraph] ✅ COMERCIALIZAR: Loaded {len(tools)} tools")
         except Exception as e:
