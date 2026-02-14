@@ -1,32 +1,24 @@
-# Python files and backend
+# Backend (not needed for Vercel frontend deploy)
 __pycache__/
-*.py
 *.pyc
 .venv/
 venv/
 agents/
+api/
 router/
 tools/
 prompts/
 migrations/
 scripts/
 vendor/
+core/
 *.db
-*.db-shm
-*.db-wal
 *.log
-backend.log
-
-# Data and logs
 data/
 logs/
-
-# Python requirements
 requirements.txt
-env_loader.py
-agentic.py
-app.py
-
-# Keep only web directory for Vercel
-!web/
-
+Dockerfile
+Procfile
+railway.json
+startup.py
+.dockerignore
