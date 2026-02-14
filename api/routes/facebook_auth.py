@@ -148,108 +148,116 @@ async def disconnect_facebook():
 @router.post("/test-scrape")
 async def test_facebook_scrape():
     """
-    Diagnostic endpoint: attempt a SINGLE Facebook Marketplace scrape
-    and return detailed results showing what the server sees.
+    Diagnostic endpoint: test BOTH scraping methods (requests + playwright)
+    and return detailed results.
     """
-    import asyncio
+    import requests as req
+    import re
     import random
     from api.agents.buscador.fb_auth import FacebookAuth
+    from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper, USER_AGENTS
     
     diagnostics = {
-        "step": "init",
         "cookies_loaded": 0,
         "authenticated": False,
-        "url_navigated": "",
-        "url_landed": "",
-        "page_title": "",
-        "redirected_to_login": False,
-        "content_sample": "",
-        "marketplace_links_found": 0,
-        "html_links_found": 0,
-        "listings_extracted": 0,
-        "error": None,
+        "requests_method": {
+            "status_code": 0,
+            "final_url": "",
+            "redirected_to_login": False,
+            "html_length": 0,
+            "marketplace_item_ids": 0,
+            "listings_extracted": 0,
+            "error": None,
+        },
+        "playwright_method": {
+            "final_url": "",
+            "page_title": "",
+            "redirected_to_login": False,
+            "marketplace_links": 0,
+            "error": None,
+        },
     }
     
+    cookies = FacebookAuth.load_cookies()
+    diagnostics["cookies_loaded"] = len(cookies)
+    diagnostics["authenticated"] = FacebookAuth.is_authenticated()
+    
+    if not cookies:
+        diagnostics["requests_method"]["error"] = "No cookies. Import first."
+        diagnostics["playwright_method"]["error"] = "No cookies. Import first."
+        return diagnostics
+    
+    # ── Test 1: HTTP Requests method ──
     try:
-        # Step 1: Check cookies
-        cookies = FacebookAuth.load_cookies()
-        diagnostics["cookies_loaded"] = len(cookies)
-        diagnostics["authenticated"] = FacebookAuth.is_authenticated()
+        session = req.Session()
+        for c in cookies:
+            session.cookies.set(c["name"], c["value"],
+                domain=c.get("domain", ".facebook.com"),
+                path=c.get("path", "/"))
         
-        if not cookies:
-            diagnostics["error"] = "No cookies available. Import cookies first."
-            return diagnostics
+        ua = random.choice(USER_AGENTS)
+        session.headers.update({
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Ch-Ua": '"Chromium";v="121", "Google Chrome";v="121"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+        })
         
-        diagnostics["step"] = "launching_browser"
-        
-        # Step 2: Launch browser using the same method as the scraper
-        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
-        playwright, browser, context, page = await FacebookMarketplaceScraper._create_authenticated_page()
-        diagnostics["step"] = "browser_ready"
-        
-        diagnostics["step"] = "navigating"
-        
-        # Step 3: Navigate to a simple marketplace search
         test_url = "https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice=5000&maxPrice=80000&exact=false"
-        diagnostics["url_navigated"] = test_url
         
+        response = session.get(test_url, allow_redirects=True, timeout=20)
+        rm = diagnostics["requests_method"]
+        rm["status_code"] = response.status_code
+        rm["final_url"] = response.url[:200]
+        rm["html_length"] = len(response.text)
+        rm["redirected_to_login"] = "/login" in response.url
+        
+        # Count marketplace item IDs in the HTML
+        item_ids = set(re.findall(r'/marketplace/item/(\d+)', response.text))
+        rm["marketplace_item_ids"] = len(item_ids)
+        
+        # Try parsing listings
+        listings = FacebookMarketplaceScraper._parse_from_html(response.text, "Houston")
+        if not listings:
+            listings = FacebookMarketplaceScraper._extract_json_from_html(response.text, "Houston")
+        rm["listings_extracted"] = len(listings)
+        
+        if listings:
+            rm["sample"] = [{"title": l.title[:80], "price": l.price, "url": l.url} for l in listings[:3]]
+        
+    except Exception as e:
+        diagnostics["requests_method"]["error"] = f"{type(e).__name__}: {e}"
+    
+    # ── Test 2: Playwright method ──
+    try:
+        playwright, browser, context, page = await FacebookMarketplaceScraper._create_authenticated_page()
+        
+        test_url = "https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice=5000&maxPrice=80000&exact=false"
         await page.goto(test_url, wait_until="domcontentloaded", timeout=30000)
         
-        current_url = page.url
-        page_title = await page.title()
-        diagnostics["url_landed"] = current_url
-        diagnostics["page_title"] = page_title
-        diagnostics["step"] = "page_loaded"
+        pm = diagnostics["playwright_method"]
+        pm["final_url"] = page.url[:200]
+        pm["page_title"] = await page.title()
+        pm["redirected_to_login"] = "/login" in page.url
         
-        # Step 4: Check for redirect
-        if "/login" in current_url or "checkpoint" in current_url:
-            diagnostics["redirected_to_login"] = True
-            diagnostics["error"] = f"Redirected to: {current_url}. Cookies may be expired."
-        else:
-            # Wait for content
-            await asyncio.sleep(4)
-            
-            # Scroll
-            for _ in range(2):
-                await page.evaluate("window.scrollBy(0, window.innerHeight)")
-                await asyncio.sleep(1.5)
-            
-            # Step 5: Get content sample
-            content = await page.evaluate("document.body ? document.body.innerText.substring(0, 1000) : 'NO BODY'")
-            diagnostics["content_sample"] = content[:500]
-            
-            # Step 6: Count links
+        if not pm["redirected_to_login"]:
+            import asyncio
+            await asyncio.sleep(3)
             cards = await page.query_selector_all('a[href*="/marketplace/item/"]')
-            diagnostics["marketplace_links_found"] = len(cards)
-            
-            # Also try HTML parsing
-            html = await page.content()
-            import re
-            html_links = re.findall(r'/marketplace/item/\d+', html)
-            diagnostics["html_links_found"] = len(set(html_links))
-            
-            diagnostics["step"] = "extraction_done"
-            
-            # Step 7: Parse a few listings
-            if cards:
-                sample_listings = []
-                for card in cards[:3]:
-                    try:
-                        text = await card.inner_text()
-                        href = await card.get_attribute("href")
-                        sample_listings.append({"text": text[:200], "href": href})
-                    except Exception:
-                        pass
-                diagnostics["sample_listings"] = sample_listings
-                diagnostics["listings_extracted"] = len(cards)
+            pm["marketplace_links"] = len(cards)
         
         await browser.close()
         await playwright.stop()
-        diagnostics["step"] = "complete"
         
     except Exception as e:
-        diagnostics["error"] = f"{type(e).__name__}: {str(e)}"
-        logger.error(f"[FB Test] Error: {e}", exc_info=True)
+        diagnostics["playwright_method"]["error"] = f"{type(e).__name__}: {e}"
     
     return diagnostics
 

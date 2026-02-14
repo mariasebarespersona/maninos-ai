@@ -130,44 +130,58 @@ class FacebookMarketplaceScraper:
         """
         Scrape Facebook Marketplace for mobile homes in Houston + Dallas.
         
+        Strategy:
+        1. First try HTTP requests (no browser needed, avoids headless detection)
+        2. Fallback to Playwright if requests approach fails
+        
         REQUIRES: Facebook cookies to be saved first.
-        Returns list of FBListing objects.
         """
         from api.agents.buscador.fb_auth import FacebookAuth
         
-        # Check authentication first
         if not FacebookAuth.is_authenticated():
-            logger.warning(
-                "[FB Marketplace] ⚠️ Not authenticated! "
-                "User must connect Facebook first via 'Conectar Facebook' button. "
-                "Skipping Facebook scraping."
-            )
+            logger.warning("[FB Marketplace] ⚠️ Not authenticated! Skipping Facebook scraping.")
             return []
         
-        logger.info(f"[FB Marketplace] Starting authenticated scrape: $0-${max_price:,.0f}")
+        logger.info(f"[FB Marketplace] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
         
         all_listings: List[FBListing] = []
         
+        # Try HTTP requests first (bypasses headless browser detection)
         for config in SEARCH_CONFIGS:
             city = config["center"].split(",")[0]
             
             for term in SEARCH_TERMS:
                 try:
-                    listings = await FacebookMarketplaceScraper._scrape_search(
+                    listings = await FacebookMarketplaceScraper._scrape_with_requests(
                         query=term,
                         city=city,
                         min_price=int(min_price),
                         max_price=int(max_price),
-                        max_listings=max(max_listings // 2, 10),  # At least 10 per search
+                        max_listings=max(max_listings // 2, 10),
                     )
                     all_listings.extend(listings)
-                    
-                    # Random delay between searches to avoid detection
-                    await asyncio.sleep(random.uniform(3, 7))
-                    
+                    await asyncio.sleep(random.uniform(2, 5))
                 except Exception as e:
-                    logger.warning(f"[FB Marketplace] Error searching '{term}' in {city}: {e}")
+                    logger.warning(f"[FB Marketplace] Requests scrape error for '{term}' in {city}: {e}")
                     continue
+        
+        # If requests approach found nothing, try Playwright as fallback
+        if not all_listings:
+            logger.info("[FB Marketplace] Requests approach found 0 — trying Playwright fallback...")
+            for config in SEARCH_CONFIGS:
+                city = config["center"].split(",")[0]
+                for term in SEARCH_TERMS:
+                    try:
+                        listings = await FacebookMarketplaceScraper._scrape_search(
+                            query=term, city=city,
+                            min_price=int(min_price), max_price=int(max_price),
+                            max_listings=max(max_listings // 2, 10),
+                        )
+                        all_listings.extend(listings)
+                        await asyncio.sleep(random.uniform(3, 7))
+                    except Exception as e:
+                        logger.warning(f"[FB Marketplace] Playwright error for '{term}' in {city}: {e}")
+                        continue
         
         # Deduplicate by URL
         seen_urls = set()
@@ -180,6 +194,162 @@ class FacebookMarketplaceScraper:
         
         logger.info(f"[FB Marketplace] Found {len(unique)} unique listings (from {len(all_listings)} total)")
         return unique
+    
+    @staticmethod
+    async def _scrape_with_requests(
+        query: str,
+        city: str,
+        min_price: int = 5000,
+        max_price: int = 80000,
+        max_listings: int = 15,
+    ) -> List[FBListing]:
+        """
+        Scrape Facebook Marketplace using HTTP requests (no browser).
+        
+        This bypasses headless browser detection because it makes direct
+        HTTP requests with session cookies — no browser fingerprint to detect.
+        """
+        import requests as req
+        from api.agents.buscador.fb_auth import FacebookAuth
+        
+        cookies = FacebookAuth.load_cookies()
+        if not cookies:
+            return []
+        
+        # Build session with Facebook cookies
+        session = req.Session()
+        for c in cookies:
+            session.cookies.set(
+                c["name"], c["value"],
+                domain=c.get("domain", ".facebook.com"),
+                path=c.get("path", "/"),
+            )
+        
+        # Match a real browser's headers
+        ua = random.choice(USER_AGENTS)
+        session.headers.update({
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Cache-Control": "max-age=0",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+        })
+        
+        query_encoded = query.replace(" ", "%20")
+        url = (
+            f"https://www.facebook.com/marketplace/{city.lower()}/search?"
+            f"query={query_encoded}&minPrice={min_price}&maxPrice={max_price}&exact=false"
+        )
+        
+        logger.info(f"[FB Requests] Fetching: {city} - '{query}'")
+        
+        # First visit facebook.com to warm up cookies
+        try:
+            warmup = session.get("https://www.facebook.com/", allow_redirects=True, timeout=15)
+            if "/login" in warmup.url:
+                logger.warning(f"[FB Requests] Warmup redirected to login: {warmup.url}")
+                # Try anyway — sometimes marketplace works even if homepage doesn't
+        except Exception as e:
+            logger.warning(f"[FB Requests] Warmup failed: {e}")
+        
+        await asyncio.sleep(random.uniform(1, 2))
+        
+        # Fetch marketplace search page
+        try:
+            response = session.get(url, allow_redirects=True, timeout=30)
+            logger.info(f"[FB Requests] Response: {response.status_code}, URL: {response.url[:100]}, Length: {len(response.text)}")
+            
+            if "/login" in response.url:
+                logger.warning("[FB Requests] Marketplace redirected to login")
+                return []
+            
+            # Parse HTML for marketplace listings
+            listings = FacebookMarketplaceScraper._parse_from_html(response.text, city)
+            
+            if not listings:
+                # Try extracting from embedded JSON data
+                listings = FacebookMarketplaceScraper._extract_json_from_html(response.text, city)
+            
+            logger.info(f"[FB Requests] Extracted {len(listings)} listings from {city}")
+            return listings[:max_listings]
+            
+        except Exception as e:
+            logger.error(f"[FB Requests] Fetch error: {e}")
+            return []
+    
+    @staticmethod
+    def _extract_json_from_html(html: str, city: str) -> List[FBListing]:
+        """Extract listings from Facebook's embedded JSON data in HTML."""
+        listings = []
+        
+        try:
+            # Facebook embeds marketplace data in script tags
+            # Look for JSON blobs containing marketplace listing data
+            import json as json_mod
+            
+            # Pattern 1: Look for marketplace_search results in relay data
+            patterns = [
+                r'"marketplace_search":\{.*?"edges":\[(.*?)\]',
+                r'"marketplace_listing_title":"(.*?)".*?"listing_price":\{.*?"amount":"(\d+)"',
+                r'marketplace/item/(\d+).*?"price"\s*:\s*"?\$?([\d,]+)',
+            ]
+            
+            # Simple approach: find all marketplace item IDs and prices
+            item_pattern = re.compile(r'/marketplace/item/(\d+)')
+            price_pattern = re.compile(r'\$\s*([\d,]+(?:\.\d{2})?)')
+            
+            item_ids = list(set(item_pattern.findall(html)))
+            logger.info(f"[FB Requests] Found {len(item_ids)} marketplace item IDs in HTML")
+            
+            if not item_ids:
+                return []
+            
+            # Extract listing data around each item ID
+            for item_id in item_ids[:30]:
+                listing = FBListing()
+                listing.url = f"https://www.facebook.com/marketplace/item/{item_id}"
+                listing.city = city
+                listing.state = "TX"
+                
+                # Find surrounding context for this item
+                idx = html.find(f"/marketplace/item/{item_id}")
+                if idx > 0:
+                    context = html[max(0, idx-500):idx+500]
+                    
+                    # Extract price from context
+                    prices = price_pattern.findall(context)
+                    for p in prices:
+                        price_val = float(p.replace(",", ""))
+                        if 1000 <= price_val <= 200000:  # Reasonable house price
+                            listing.price = price_val
+                            break
+                    
+                    # Extract title — look for marketplace_listing_title
+                    title_match = re.search(r'"marketplace_listing_title":"([^"]+)"', context)
+                    if title_match:
+                        listing.title = title_match.group(1)
+                    else:
+                        # Try finding any descriptive text
+                        text_match = re.search(r'"name":"([^"]{10,})"', context)
+                        if text_match:
+                            listing.title = text_match.group(1)
+                
+                if listing.price > 0 or listing.title:
+                    FacebookMarketplaceScraper._extract_details(listing)
+                    listings.append(listing)
+            
+        except Exception as e:
+            logger.warning(f"[FB Requests] JSON extraction error: {e}")
+        
+        return listings
     
     @staticmethod
     async def _create_authenticated_page():
