@@ -99,30 +99,26 @@ async def import_facebook_cookies(request: CookieImportRequest):
     The user can export cookies from their browser using extensions like:
     - Cookie-Editor (Chrome/Firefox)
     - EditThisCookie (Chrome)
-    
-    Steps:
-    1. Log into Facebook in your browser
-    2. Use a cookie export extension to export cookies as JSON
-    3. Paste the JSON here
     """
     from api.agents.buscador.fb_auth import FacebookAuth
     
     try:
-        success = await FacebookAuth.import_cookies_from_json(request.cookies_json)
+        result = await FacebookAuth.import_cookies_from_json(request.cookies_json)
         
-        if success:
+        if result.get("success"):
             return {
                 "success": True,
-                "message": "✅ Facebook cookies imported! Marketplace scraping is now enabled.",
+                "message": f"✅ {result['message']}. Marketplace scraping is now enabled.",
             }
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid cookies. Make sure you exported Facebook cookies as JSON."
+                detail=result.get("message", "Invalid cookies")
             )
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"[FB Import] Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error importing cookies: {str(e)}"

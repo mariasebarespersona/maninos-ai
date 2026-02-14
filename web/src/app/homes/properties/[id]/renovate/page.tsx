@@ -238,7 +238,7 @@ export default function RenovationPage() {
       }
 
       const res = await fetch(`/api/renovation/${propertyId}/ai-fill`, {
-        method: 'POST',
+          method: 'POST',
         body: formData,
       })
 
@@ -483,16 +483,16 @@ export default function RenovationPage() {
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href={`/homes/properties/${propertyId}`} className="text-gray-500 hover:text-navy-700">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+              <div>
               <h1 className="text-lg font-bold text-navy-900">Cotización de Renovación</h1>
               <p className="text-xs text-gray-500">{quote.address}</p>
+              </div>
             </div>
-          </div>
           <div className="flex items-center gap-2">
             {/* Voice */}
-            <button
+              <button
               onClick={isListening ? stopVoice : startVoice}
               className={`p-2 rounded-lg border transition-all ${
                 isListening
@@ -502,10 +502,10 @@ export default function RenovationPage() {
               title={isListening ? 'Detener voz' : 'Comandos de voz'}
             >
               {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
+              </button>
 
             {/* Save */}
-            <button
+                  <button
               onClick={saveQuote}
               disabled={saving || !hasUnsavedChanges}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
@@ -516,9 +516,9 @@ export default function RenovationPage() {
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar' : 'Guardado'}
-            </button>
-          </div>
-        </div>
+                  </button>
+                </div>
+                        </div>
 
         {/* Voice bar */}
         {isListening && (
@@ -526,10 +526,10 @@ export default function RenovationPage() {
             <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
             <span className="text-sm text-red-700">
               {voiceTranscript || 'Escuchando... Di "partida [número] precio [monto]"'}
-            </span>
-          </div>
+                        </span>
+                      </div>
         )}
-      </div>
+                    </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Property info + AI tools */}
@@ -538,44 +538,44 @@ export default function RenovationPage() {
             <div className="flex items-center gap-2 text-navy-800 font-medium mb-2">
               <DollarSign className="w-4 h-4" />
               Precio de compra
-            </div>
+                </div>
             <p className="text-2xl font-bold text-navy-900">
               ${(quote.purchase_price || 0).toLocaleString()}
             </p>
-          </div>
+              </div>
 
           <div className="card-luxury p-4">
             <div className="flex items-center gap-2 text-navy-800 font-medium mb-2">
               <FileSpreadsheet className="w-4 h-4" />
               Total Renovación
-            </div>
+                          </div>
             <p className="text-2xl font-bold text-green-700">
               ${quote.total.toLocaleString()}
             </p>
-          </div>
-
+                        </div>
+                        
           <div className="card-luxury p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-navy-800 font-medium">
               <Sparkles className="w-4 h-4" />
               Herramientas AI
-            </div>
+                      </div>
             <div className="flex flex-wrap gap-2">
-              <button
+                            <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={aiFilling}
                 className="flex items-center gap-1 px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm hover:bg-purple-100 transition-all"
               >
                 {aiFilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
                 AI Fotos
-              </button>
-              <button
+                            </button>
+                            <button
                 onClick={() => setShowImportReport(true)}
                 className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm hover:bg-blue-100 transition-all"
-              >
+                            >
                 <FileText className="w-3.5 h-3.5" />
                 Importar Reporte
-              </button>
-            </div>
+                            </button>
+                        </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -583,24 +583,24 @@ export default function RenovationPage() {
               multiple
               className="hidden"
               onChange={handlePhotoUpload}
-            />
-          </div>
-        </div>
-
+                  />
+                </div>
+              </div>
+              
         {/* AI Analysis Banner */}
         {aiAnalysis && (
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
             <div className="flex items-start gap-2">
               <Wand2 className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
-              <div>
+                  <div>
                 <p className="font-medium text-purple-900">Análisis AI</p>
                 <p className="text-sm text-purple-700 mt-1">{aiAnalysis}</p>
-              </div>
+                  </div>
               <button onClick={() => setAiAnalysis(null)} className="text-purple-400 hover:text-purple-600 ml-auto">
                 <X className="w-4 h-4" />
               </button>
-            </div>
-          </div>
+                  </div>
+                  </div>
         )}
 
         {/* MAIN TABLE — Simplified: Partida · Concepto · Precio · Notas */}
@@ -660,12 +660,12 @@ export default function RenovationPage() {
                     {quote.items.some(i => i.is_custom) && (
                       <td className="px-2 py-3 text-center">
                         {item.is_custom && (
-                          <button
+                <button
                             onClick={() => removeCustomItem(item.id)}
                             className="text-red-400 hover:text-red-600 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                </button>
                         )}
                       </td>
                     )}
@@ -678,7 +678,7 @@ export default function RenovationPage() {
           {/* Add custom item */}
           <div className="border-t border-gray-200 px-4 py-3">
             {!showAddCustom ? (
-              <button
+                <button
                 onClick={() => setShowAddCustom(true)}
                 className="flex items-center gap-2 text-sm text-gold-700 hover:text-gold-900 font-medium transition-colors"
               >
@@ -711,8 +711,8 @@ export default function RenovationPage() {
                 </button>
               </div>
             )}
-          </div>
-
+            </div>
+            
           {/* Total */}
           <div className="bg-gray-50 border-t-2 border-navy-200 px-4 py-4">
             <div className="max-w-xs ml-auto">
@@ -722,16 +722,16 @@ export default function RenovationPage() {
                   ${quote.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </span>
               </div>
-            </div>
           </div>
         </div>
+      </div>
 
         {/* Guide text */}
         <p className="text-xs text-gray-400 text-center italic">
           Complete el precio de cada partida que aplique. Use el botón + para agregar ítems personalizados.
         </p>
-      </div>
-
+          </div>
+          
       {/* Import Report Modal */}
       {showImportReport && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowImportReport(false)}>
@@ -743,8 +743,8 @@ export default function RenovationPage() {
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
+              <input
+                type="text"
                   value={importReportNumber}
                   onChange={e => setImportReportNumber(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold-400 text-sm"
@@ -763,7 +763,7 @@ export default function RenovationPage() {
             </div>
             <button onClick={() => setShowImportReport(false)} className="text-sm text-gray-400 hover:text-gray-600">
               Cancelar
-            </button>
+              </button>
           </div>
         </div>
       )}

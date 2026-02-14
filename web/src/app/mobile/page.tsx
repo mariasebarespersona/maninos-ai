@@ -705,13 +705,13 @@ function EvaluatorPanel() {
               Evalúa una casa móvil con el checklist de 28 puntos.<br />
               Puedes subir fotos para que la IA rellene o editar manualmente.
             </p>
-            <button
+              <button
               onClick={startEvaluation}
               className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold py-3 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm"
-            >
+              >
               <Plus className="w-4 h-4" />
               Iniciar Nueva Evaluación
-            </button>
+              </button>
           </div>
           <div className="bg-[#151d2e] border border-white/5 rounded-2xl p-4">
             <h4 className="text-sm font-semibold text-amber-400 mb-2">¿Cómo funciona?</h4>
@@ -726,8 +726,8 @@ function EvaluatorPanel() {
                 <div key={step.n} className="flex items-start gap-2">
                   <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</div>
                   <div><p className="text-xs font-medium text-gray-200">{step.t}</p><p className="text-[10px] text-gray-500">{step.d}</p></div>
-                </div>
-              ))}
+            </div>
+          ))}
             </div>
           </div>
         </div>
@@ -1011,7 +1011,7 @@ function EvaluatorPanel() {
           <button onClick={resetAll}
             className="w-full bg-[#151d2e] border border-white/10 text-gray-300 font-medium py-3 rounded-xl active:bg-[#1a2540] transition-colors flex items-center justify-center gap-2 text-sm">
             <RotateCcw className="w-4 h-4" /> Nueva Evaluación
-          </button>
+        </button>
         </>
       )}
 
@@ -1024,7 +1024,7 @@ function EvaluatorPanel() {
               <h3 className="text-sm font-semibold text-red-400">Error</h3>
               <p className="text-[12px] text-gray-400 mt-1">{error}</p>
               <button onClick={() => setError(null)} className="mt-2 text-xs text-amber-400 font-medium">Cerrar</button>
-            </div>
+      </div>
           </div>
         </div>
       )}
@@ -1320,14 +1320,14 @@ function RenovationPanel() {
                   <p className="text-sm font-medium text-white truncate">{prop.address || 'Sin dirección'}</p>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${prop.status === 'purchased' ? 'bg-blue-500/20 text-blue-400' : prop.status === 'renovating' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                     {prop.status === 'purchased' ? 'Comprada' : prop.status === 'renovating' ? 'En renovación' : 'Lista'}
-                  </span>
-                </div>
+                </span>
+              </div>
                 <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
               </button>
             ))}
           </div>
         )}
-      </div>
+          </div>
     );
   }
 
@@ -1368,8 +1368,8 @@ function RenovationPanel() {
           <div className="mt-1 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1 flex items-center gap-1">
             <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
             <span className="text-[10px] text-red-300">{voiceTranscript || 'Di "partida [#] precio [monto]"'}</span>
-          </div>
-        )}
+        </div>
+      )}
       </div>
 
       <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-3" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -1387,8 +1387,8 @@ function RenovationPanel() {
                 <span>+ Reno: ${quote.total_proyecto.toLocaleString()}</span>
               </div>
               <p className="text-center text-sm font-bold text-emerald-400 mt-1">Venta: ${suggestedSalePrice.toLocaleString()}</p>
-            </div>
-          )}
+        </div>
+      )}
         </div>
 
         {/* AI Actions */}
@@ -1403,7 +1403,7 @@ function RenovationPanel() {
             <FileText className="w-3.5 h-3.5" />
             📋 Importar Reporte
           </button>
-        </div>
+            </div>
 
         {/* AI Result */}
         {aiResult?.ai_analysis && (
@@ -1469,7 +1469,7 @@ function RenovationPanel() {
                 className="flex-1 bg-[#0a0f1a] border border-white/10 rounded-lg px-3 py-2 text-xs text-white" placeholder="Precio" />
               <button onClick={addCustomItem} className="bg-amber-500 text-black font-bold px-4 py-2 rounded-lg text-xs">Agregar</button>
               <button onClick={() => setShowAddCustom(false)} className="text-gray-500 p-2"><X className="w-4 h-4" /></button>
-            </div>
+      </div>
           </div>
         )}
 

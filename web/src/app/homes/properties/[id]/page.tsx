@@ -154,7 +154,7 @@ export default function PropertyDetailPage() {
   })
   const [savingMove, setSavingMove] = useState(false)
   const [expandedMove, setExpandedMove] = useState<string | null>(null)
-
+  
   // 80% rule recommended price
   const [recommendedPrice, setRecommendedPrice] = useState<{
     market_value?: number | null
@@ -529,14 +529,14 @@ export default function PropertyDetailPage() {
             {/* Después de comprar: Publicar O Renovar antes de publicar */}
             {property.status === 'purchased' && (
               <>
-                <button 
-                  onClick={openPublishModal}
-                  disabled={actionLoading}
-                  className="btn-gold"
-                >
-                  <Image className="w-5 h-5" />
-                  Fotos / Publicar
-                </button>
+              <button 
+                onClick={openPublishModal}
+                disabled={actionLoading}
+                className="btn-gold"
+              >
+                <Image className="w-5 h-5" />
+                Fotos / Publicar
+              </button>
                 <button 
                   onClick={handleStartRenovation}
                   disabled={actionLoading}

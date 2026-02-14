@@ -231,37 +231,43 @@ class FacebookAuth:
     # ── Cookie Import ───────────────────────────────────────────────────
     
     @staticmethod
-    async def import_cookies_from_json(cookies_json: str) -> bool:
+    async def import_cookies_from_json(cookies_json: str) -> dict:
         """
         Import cookies from a JSON string exported from browser extension.
         
-        Steps for user:
-        1. Install "Cookie-Editor" extension in Chrome/Firefox
-        2. Log into Facebook in the browser
-        3. Click Cookie-Editor icon → Export → Copy as JSON
-        4. Paste the JSON into the import form in the app
+        Returns dict with 'success' bool and 'message' string for detailed feedback.
         """
         try:
+            logger.info(f"[FB Auth] Importing cookies, input length: {len(cookies_json)} chars")
+            logger.info(f"[FB Auth] Input preview: {cookies_json[:200]}...")
+            
             cookies = json.loads(cookies_json)
+            
             if not isinstance(cookies, list):
-                logger.error("[FB Auth] Invalid cookies format - expected a JSON array")
-                return False
+                msg = f"Expected a JSON array [...], got {type(cookies).__name__}"
+                logger.error(f"[FB Auth] {msg}")
+                return {"success": False, "message": msg}
+            
+            logger.info(f"[FB Auth] Parsed {len(cookies)} total cookies")
+            
+            # Log all domains found
+            domains = set(c.get("domain", "???") for c in cookies)
+            logger.info(f"[FB Auth] Domains in export: {domains}")
             
             # Filter for Facebook cookies only
             fb_cookies = [c for c in cookies if "facebook" in c.get("domain", "").lower()]
             
             if not fb_cookies:
-                logger.error("[FB Auth] No Facebook cookies found in import")
-                return False
+                msg = f"No Facebook cookies found. Domains: {domains}. Make sure you export cookies from facebook.com"
+                logger.error(f"[FB Auth] {msg}")
+                return {"success": False, "message": msg}
+            
+            logger.info(f"[FB Auth] Found {len(fb_cookies)} Facebook cookies")
             
             # Normalize cookie format for Playwright
-            # Playwright requires sameSite to be exactly "Strict", "Lax", or "None"
             SAME_SITE_MAP = {
-                "strict": "Strict",
-                "lax": "Lax",
-                "none": "None",
-                "no_restriction": "None",  # Cookie-Editor uses this
-                "unspecified": "Lax",      # Default to Lax if unspecified
+                "strict": "Strict", "lax": "Lax", "none": "None",
+                "no_restriction": "None", "unspecified": "Lax",
             }
             
             normalized = []
@@ -281,7 +287,6 @@ class FacebookAuth:
                 if c.get("secure") is not None:
                     cookie["secure"] = c["secure"]
                 
-                # Normalize sameSite for Playwright compatibility
                 raw_same_site = c.get("sameSite", "Lax")
                 if isinstance(raw_same_site, str):
                     cookie["sameSite"] = SAME_SITE_MAP.get(raw_same_site.lower(), "Lax")
@@ -290,16 +295,27 @@ class FacebookAuth:
                 
                 normalized.append(cookie)
             
-            # Check we got the essential session cookies
-            essential = {c["name"] for c in normalized} & {"c_user", "xs", "datr", "sb"}
-            if len(essential) < 2:
-                logger.warning(f"[FB Auth] Only found {essential} session cookies — may not be enough")
+            # Check essential session cookies
+            cookie_names = {c["name"] for c in normalized}
+            essential = cookie_names & {"c_user", "xs", "datr", "sb"}
+            logger.info(f"[FB Auth] Cookie names: {cookie_names}")
+            logger.info(f"[FB Auth] Essential session cookies found: {essential}")
             
-            return FacebookAuth.save_cookies(normalized)
+            if len(essential) < 2:
+                logger.warning(f"[FB Auth] Only {len(essential)} essential cookies — may not authenticate")
+            
+            saved = FacebookAuth.save_cookies(normalized)
+            logger.info(f"[FB Auth] ✅ Saved {len(normalized)} cookies successfully")
+            return {"success": True, "message": f"Imported {len(normalized)} Facebook cookies ({len(essential)} session cookies)"}
             
         except json.JSONDecodeError as e:
-            logger.error(f"[FB Auth] Invalid JSON: {e}")
-            return False
+            msg = f"Invalid JSON format: {e}"
+            logger.error(f"[FB Auth] {msg}")
+            return {"success": False, "message": msg}
+        except Exception as e:
+            msg = f"Unexpected error: {type(e).__name__}: {e}"
+            logger.error(f"[FB Auth] {msg}", exc_info=True)
+            return {"success": False, "message": msg}
     
     # ── Interactive Login (LOCAL ONLY) ──────────────────────────────────
     
