@@ -782,6 +782,29 @@ async def update_bank_account(bank_id: str, data: dict):
     return result.data[0]
 
 
+@router.delete("/bank-accounts/{bank_id}")
+async def delete_bank_account(bank_id: str):
+    """Soft-delete a bank account (set is_active = false)."""
+    # Check if there are statements linked to this account
+    stmts = sb.table("bank_statements").select("id", count="exact").eq("bank_account_id", bank_id).execute()
+    stmt_count = stmts.count if hasattr(stmts, 'count') and stmts.count else len(stmts.data or [])
+
+    # Also check by account_key (some statements use the key, not the id)
+    acct = sb.table("bank_accounts").select("name").eq("id", bank_id).execute()
+    if not acct.data:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    # Soft delete — mark as inactive
+    result = sb.table("bank_accounts").update({"is_active": False}).eq("id", bank_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Error deleting bank account")
+
+    _log_audit("bank_accounts", bank_id, "delete",
+               description=f"Deactivated bank account: {acct.data[0]['name']}")
+
+    return {"success": True, "message": f"Cuenta eliminada{f' ({stmt_count} estados de cuenta asociados)' if stmt_count > 0 else ''}"}
+
+
 # ============================================================================
 # RECURRING EXPENSES
 # ============================================================================
@@ -1933,19 +1956,13 @@ async def sync_from_existing_data():
 # BANK STATEMENTS — Upload, Parse, Classify, Post
 # ============================================================================
 
-ACCOUNT_DRAWERS = {
-    "conroe": "Cuenta Conroe",
-    "houston": "Cuenta Houston",
-    "dallas": "Cuenta Dallas",
-    "cash": "Cuenta Cash",
-}
-
-
 @router.get("/bank-statements")
-async def list_bank_statements(account_key: Optional[str] = None):
+async def list_bank_statements(account_key: Optional[str] = None, bank_account_id: Optional[str] = None):
     """List all uploaded bank statements, optionally filtered by account."""
     q = sb.table("bank_statements").select("*").order("created_at", desc=True)
-    if account_key:
+    if bank_account_id:
+        q = q.eq("bank_account_id", bank_account_id)
+    elif account_key:
         q = q.eq("account_key", account_key)
     result = q.execute()
     return {"statements": result.data or []}
@@ -1973,12 +1990,26 @@ async def get_bank_statement(statement_id: str):
 @router.post("/bank-statements/upload")
 async def upload_bank_statement(
     file: UploadFile = File(...),
-    account_key: str = Form(...),
+    bank_account_id: str = Form(None),
+    account_key: str = Form(None),
 ):
     """Upload a bank statement file (PDF, PNG, JPG, Excel, CSV).
-    Stores the file and immediately starts AI-powered parsing."""
-    if account_key not in ACCOUNT_DRAWERS:
-        raise HTTPException(status_code=400, detail=f"Invalid account_key. Must be one of: {list(ACCOUNT_DRAWERS.keys())}")
+    Stores the file and immediately starts AI-powered parsing.
+    Accepts bank_account_id (preferred) or account_key (legacy)."""
+
+    # Resolve the bank account
+    account_label = "Unknown Account"
+    resolved_account_key = account_key or "unknown"
+
+    if bank_account_id:
+        # Look up bank account from DB
+        ba = sb.table("bank_accounts").select("id, name, bank_name").eq("id", bank_account_id).execute()
+        if not ba.data:
+            raise HTTPException(status_code=400, detail="Bank account not found")
+        account_label = ba.data[0]["name"]
+        resolved_account_key = ba.data[0]["name"].lower().replace(" ", "_")
+    elif not account_key:
+        raise HTTPException(status_code=400, detail="Either bank_account_id or account_key is required")
 
     # Validate file type
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
@@ -1992,7 +2023,7 @@ async def upload_bank_statement(
 
     # Upload to Supabase Storage
     import uuid as _uuid
-    storage_path = f"bank-statements/{account_key}/{_uuid.uuid4().hex[:12]}_{file.filename}"
+    storage_path = f"bank-statements/{resolved_account_key}/{_uuid.uuid4().hex[:12]}_{file.filename}"
     file_url = None
     try:
         sb.storage.from_("transaction-documents").upload(
@@ -2007,14 +2038,16 @@ async def upload_bank_statement(
 
     # Create DB record
     stmt_data = {
-        "account_key": account_key,
-        "account_label": ACCOUNT_DRAWERS[account_key],
+        "account_key": resolved_account_key,
+        "account_label": account_label,
         "original_filename": file.filename or "unknown",
         "file_type": ext,
         "storage_path": storage_path,
         "file_url": file_url,
         "status": "parsing",
     }
+    if bank_account_id:
+        stmt_data["bank_account_id"] = bank_account_id
     result = sb.table("bank_statements").insert(stmt_data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Could not save statement record")
@@ -2425,7 +2458,7 @@ Also extract these metadata fields (include them in the FIRST movement only):
 - "beginning_balance": number
 - "ending_balance": number"""
 
-        prompt = f"""You are parsing a bank statement for Maninos Homes LLC ({ACCOUNT_DRAWERS.get(account_key, account_key)}).
+        prompt = f"""You are parsing a bank statement for Maninos Homes LLC ({account_key}).
 
 Extract EVERY financial movement/transaction from this bank statement text chunk.
 

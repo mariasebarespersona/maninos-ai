@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon
+  ChevronUp, Sparkles, ImageIcon, Trash2
 } from 'lucide-react'
 
 // ── Types ──
@@ -1983,7 +1983,7 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
 // ════════════════════════════════════════════════════════════════════════
 
 interface BankStatement {
-  id: string; account_key: string; account_label: string; original_filename: string
+  id: string; account_key: string; account_label: string; bank_account_id?: string; original_filename: string
   file_type: string; file_url?: string; bank_name?: string; account_number_last4?: string
   statement_period_start?: string; statement_period_end?: string
   beginning_balance?: number; ending_balance?: number
@@ -2002,12 +2002,9 @@ interface StatementMovement {
   accounting_accounts?: { code: string; name: string; account_type: string; category: string }
 }
 
-const ACCOUNT_DRAWERS = [
-  { key: 'conroe', label: 'Cuenta Conroe', color: '#2563eb', icon: '🏠' },
-  { key: 'houston', label: 'Cuenta Houston', color: '#dc2626', icon: '🏙️' },
-  { key: 'dallas', label: 'Cuenta Dallas', color: '#059669', icon: '🌆' },
-  { key: 'cash', label: 'Cuenta Cash', color: '#d97706', icon: '💵' },
-]
+// Dynamic color palette for bank account drawers
+const DRAWER_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d', '#4f46e5', '#ca8a04', '#15803d']
+const DRAWER_ICONS = ['🏦', '🏠', '🏙️', '🌆', '💵', '💳', '🏢', '🏗️', '💰', '🔐']
 
 const STMT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   uploaded: { label: 'Subido', color: 'bg-gray-100 text-gray-700' },
@@ -2023,6 +2020,7 @@ const STMT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
 function EstadoCuentaTab() {
   const [expandedDrawer, setExpandedDrawer] = useState<string | null>(null)
   const [statements, setStatements] = useState<Record<string, BankStatement[]>>({})
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState<string | null>(null)
   const [activeStatement, setActiveStatement] = useState<string | null>(null)
@@ -2031,6 +2029,20 @@ function EstadoCuentaTab() {
   const [classifying, setClassifying] = useState(false)
   const [posting, setPosting] = useState(false)
   const [allAccounts, setAllAccounts] = useState<any[]>([])
+  const [showNewAccount, setShowNewAccount] = useState(false)
+  const [newAccountName, setNewAccountName] = useState('')
+  const [newAccountBank, setNewAccountBank] = useState('')
+  const [creatingAccount, setCreatingAccount] = useState(false)
+
+  const fetchBankAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/accounting/bank-accounts')
+      if (res.ok) {
+        const data = await res.json()
+        setBankAccounts(data.bank_accounts || [])
+      }
+    } catch (e) { console.error(e) }
+  }, [])
 
   const fetchStatements = useCallback(async () => {
     setLoading(true)
@@ -2038,10 +2050,12 @@ function EstadoCuentaTab() {
       const res = await fetch('/api/accounting/bank-statements')
       if (res.ok) {
         const data = await res.json()
+        // Group statements by bank_account_id (preferred) or account_key (legacy)
         const grouped: Record<string, BankStatement[]> = {}
-        for (const d of ACCOUNT_DRAWERS) grouped[d.key] = []
         for (const stmt of (data.statements || [])) {
-          if (grouped[stmt.account_key]) grouped[stmt.account_key].push(stmt)
+          const key = stmt.bank_account_id || stmt.account_key || 'uncategorized'
+          if (!grouped[key]) grouped[key] = []
+          grouped[key].push(stmt)
         }
         setStatements(grouped)
       }
@@ -2059,14 +2073,63 @@ function EstadoCuentaTab() {
     } catch (e) { /* ignore */ }
   }, [])
 
-  useEffect(() => { fetchStatements(); fetchAccounts() }, [fetchStatements, fetchAccounts])
+  useEffect(() => { fetchBankAccounts(); fetchStatements(); fetchAccounts() }, [fetchBankAccounts, fetchStatements, fetchAccounts])
 
-  const handleUpload = async (accountKey: string, file: File) => {
-    setUploading(accountKey)
+  const createBankAccount = async () => {
+    if (!newAccountName.trim()) return alert('Nombre de cuenta requerido')
+    setCreatingAccount(true)
+    try {
+      const res = await fetch('/api/accounting/bank-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAccountName.trim(),
+          bank_name: newAccountBank.trim() || undefined,
+          account_type: 'checking',
+          current_balance: 0,
+        }),
+      })
+      if (res.ok) {
+        setNewAccountName('')
+        setNewAccountBank('')
+        setShowNewAccount(false)
+        fetchBankAccounts()
+      } else {
+        alert('Error al crear cuenta')
+      }
+    } catch (e) { alert('Error de conexión') }
+    finally { setCreatingAccount(false) }
+  }
+
+  const deleteBankAccount = async (bankId: string, name: string) => {
+    if (!confirm(`¿Eliminar la cuenta "${name}"? Los estados de cuenta asociados no se borran.`)) return
+    try {
+      const res = await fetch(`/api/accounting/bank-accounts/${bankId}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchBankAccounts()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(`Error: ${err.detail || 'No se pudo eliminar'}`)
+      }
+    } catch (e) { alert('Error de conexión') }
+  }
+
+  // Build drawers from bank accounts — use ba.id as drawer key so it matches bank_account_id in statements
+  const accountDrawers = bankAccounts.map((ba, i) => ({
+    key: ba.id,       // Use the UUID so grouping by bank_account_id works
+    id: ba.id,
+    label: ba.name,
+    bankName: ba.bank_name,
+    color: DRAWER_COLORS[i % DRAWER_COLORS.length],
+    icon: DRAWER_ICONS[i % DRAWER_ICONS.length],
+  }))
+
+  const handleUpload = async (bankAccountId: string, file: File) => {
+    setUploading(bankAccountId)
     try {
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('account_key', accountKey)
+      formData.append('bank_account_id', bankAccountId)
 
       const res = await fetch('/api/accounting/bank-statements', { method: 'POST', body: formData })
       if (res.ok) {
@@ -2075,7 +2138,7 @@ function EstadoCuentaTab() {
         if (data.statement?.id) {
           setActiveStatement(data.statement.id)
           setActiveMovements(data.movements || [])
-          setExpandedDrawer(accountKey)
+          setExpandedDrawer(bankAccountId)
         }
       } else {
         const err = await res.json().catch(() => ({}))
@@ -2173,43 +2236,127 @@ function EstadoCuentaTab() {
             Importa estados de cuenta bancarios · La IA extrae y clasifica los movimientos
           </p>
         </div>
+        <button
+          onClick={() => setShowNewAccount(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors hover:opacity-90"
+          style={{ backgroundColor: 'var(--navy-800)' }}
+        >
+          <Plus className="w-4 h-4" /> Nueva Cuenta
+        </button>
       </div>
 
+      {/* New Account Inline Form */}
+      {showNewAccount && (
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--navy-800)', backgroundColor: 'var(--pearl)' }}>
+          <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>Crear nueva cuenta bancaria</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nombre de cuenta *</label>
+              <input
+                type="text"
+                value={newAccountName}
+                onChange={e => setNewAccountName(e.target.value)}
+                placeholder="Ej: Cuenta Conroe, Cash Houston"
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--stone)' }}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Banco (opcional)</label>
+              <input
+                type="text"
+                value={newAccountBank}
+                onChange={e => setNewAccountBank(e.target.value)}
+                placeholder="Ej: Chase, Wells Fargo"
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--stone)' }}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={createBankAccount}
+              disabled={creatingAccount || !newAccountName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--navy-800)' }}
+            >
+              {creatingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
+              {creatingAccount ? 'Creando...' : 'Crear Cuenta'}
+            </button>
+            <button
+              onClick={() => { setShowNewAccount(false); setNewAccountName(''); setNewAccountBank('') }}
+              className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Account Drawers */}
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--navy-800)' }} /></div>
+      ) : accountDrawers.length === 0 ? (
+        <div className="text-center py-12 card-luxury">
+          <Landmark className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
+          <p className="text-sm mb-3" style={{ color: 'var(--ash)' }}>No hay cuentas bancarias</p>
+          <button onClick={() => setShowNewAccount(true)} className="text-sm font-medium hover:underline" style={{ color: 'var(--navy-800)' }}>
+            + Crear primera cuenta
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4">
-        {ACCOUNT_DRAWERS.map(drawer => {
-          const drawerStmts = statements[drawer.key] || []
+        {accountDrawers.map(drawer => {
+          // Match statements by bank_account_id (key=UUID), or fallback: check if legacy account_key matches drawer label
+          const directStmts = statements[drawer.key] || []
+          // Also gather legacy statements whose account_key matches the drawer label (e.g. "conroe" in "Cuenta Conroe")
+          const legacyStmts = Object.entries(statements)
+            .filter(([k]) => k !== drawer.key && drawer.label.toLowerCase().includes(k.toLowerCase()))
+            .flatMap(([, stmts]) => stmts)
+          const drawerStmts = [...directStmts, ...legacyStmts]
           const isExpanded = expandedDrawer === drawer.key
 
           return (
-            <div key={drawer.key} className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: 'var(--stone)' }}>
+            <div key={drawer.id} className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: 'var(--stone)' }}>
               {/* Drawer Header */}
-              <button
-                onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-stone-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between px-5 py-4 hover:bg-stone-50 transition-colors">
+                <button
+                  onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)}
+                  className="flex-1 flex items-center gap-3 text-left"
+                >
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
                     style={{ backgroundColor: `${drawer.color}15`, border: `1px solid ${drawer.color}30` }}>
                     {drawer.icon}
                   </div>
-                  <div className="text-left">
+                  <div>
                     <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>{drawer.label}</h3>
                     <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                      {drawer.bankName && <span>{drawer.bankName} · </span>}
                       {drawerStmts.length === 0 ? 'Sin estados de cuenta' :
                        `${drawerStmts.length} estado${drawerStmts.length > 1 ? 's' : ''} de cuenta`}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
+                </button>
+                <div className="flex items-center gap-2">
                   {drawerStmts.some(s => s.status === 'review') && (
                     <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-medium">
                       Pendiente revisión
                     </span>
                   )}
-                  {isExpanded ? <ChevronUp className="w-5 h-5 text-stone-400" /> : <ChevronDown className="w-5 h-5 text-stone-400" />}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteBankAccount(drawer.id, drawer.label) }}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-stone-300 hover:text-red-500 transition-colors"
+                    title="Eliminar cuenta"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)} className="p-1">
+                    {isExpanded ? <ChevronUp className="w-5 h-5 text-stone-400" /> : <ChevronDown className="w-5 h-5 text-stone-400" />}
+                  </button>
                 </div>
-              </button>
+              </div>
 
               {/* Drawer Content */}
               {isExpanded && (
@@ -2303,6 +2450,7 @@ function EstadoCuentaTab() {
           )
         })}
       </div>
+      )}
 
       {/* Movement Classification Panel */}
       {activeStatement && activeStmt && (
