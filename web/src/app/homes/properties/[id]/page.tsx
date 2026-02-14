@@ -29,9 +29,7 @@ import {
   Truck,
   Plus,
   Phone,
-  Route,
   X,
-  MapPinned,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
