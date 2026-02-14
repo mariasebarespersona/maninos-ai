@@ -28,9 +28,8 @@ logger = logging.getLogger(__name__)
 # Local fallback path
 COOKIE_FILE = Path(__file__).parent.parent.parent.parent / "data" / "fb_cookies.json"
 
-# Supabase storage config
-_SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "property-docs")
-_SUPABASE_COOKIE_PATH = "system/fb_cookies.json"
+# Supabase DB table for persistent config
+_SYSTEM_CONFIG_TABLE = "system_config"
 
 
 def _get_sb():
@@ -46,30 +45,24 @@ class FacebookAuth:
     
     @staticmethod
     def save_cookies(cookies: List[Dict[str, Any]]) -> bool:
-        """Save Facebook cookies to Supabase Storage (+ local fallback)."""
+        """Save Facebook cookies to Supabase DB (system_config table) + local fallback."""
         data = {
             "cookies": cookies,
             "saved_at": datetime.now().isoformat(),
             "count": len(cookies),
         }
-        json_bytes = json.dumps(data, indent=2).encode("utf-8")
         
-        # Save to Supabase Storage
+        # Save to Supabase DB (system_config table) — persists across deploys
         try:
             sb = _get_sb()
-            # Try to remove old file first (upsert)
-            try:
-                sb.storage.from_(_SUPABASE_BUCKET).remove([_SUPABASE_COOKIE_PATH])
-            except Exception:
-                pass
-            sb.storage.from_(_SUPABASE_BUCKET).upload(
-                _SUPABASE_COOKIE_PATH,
-                json_bytes,
-                {"content-type": "application/json"},
-            )
-            logger.info(f"[FB Auth] Saved {len(cookies)} cookies to Supabase Storage")
+            sb.table("system_config").upsert({
+                "key": "fb_cookies",
+                "value": json.dumps(data),
+                "updated_at": datetime.now().isoformat(),
+            }, on_conflict="key").execute()
+            logger.info(f"[FB Auth] ✅ Saved {len(cookies)} cookies to Supabase DB")
         except Exception as e:
-            logger.warning(f"[FB Auth] Supabase Storage save failed: {e}")
+            logger.warning(f"[FB Auth] Supabase DB save failed: {e}")
         
         # Also save locally as fallback
         try:
@@ -98,22 +91,22 @@ class FacebookAuth:
     
     @staticmethod
     def load_cookies() -> List[Dict[str, Any]]:
-        """Load saved Facebook cookies from Supabase Storage (+ local fallback)."""
-        # Try Supabase Storage first
+        """Load saved Facebook cookies from Supabase DB (+ local fallback)."""
+        # Try Supabase DB first (persists across deploys)
         try:
             sb = _get_sb()
-            res = sb.storage.from_(_SUPABASE_BUCKET).download(_SUPABASE_COOKIE_PATH)
-            if res:
-                data = json.loads(res)
+            res = sb.table("system_config").select("value").eq("key", "fb_cookies").single().execute()
+            if res.data and res.data.get("value"):
+                data = json.loads(res.data["value"])
                 if isinstance(data, dict):
                     cookies = data.get("cookies", [])
                 else:
                     cookies = data
                 if cookies:
-                    logger.info(f"[FB Auth] Loaded {len(cookies)} cookies from Supabase Storage")
+                    logger.info(f"[FB Auth] Loaded {len(cookies)} cookies from Supabase DB")
                     return FacebookAuth._normalize_same_site(cookies)
         except Exception as e:
-            logger.debug(f"[FB Auth] Supabase Storage load failed: {e}")
+            logger.debug(f"[FB Auth] Supabase DB load failed: {e}")
         
         # Fallback to local file
         if COOKIE_FILE.exists():
@@ -124,7 +117,9 @@ class FacebookAuth:
                     cookies = data.get("cookies", [])
                 else:
                     cookies = data
-                return FacebookAuth._normalize_same_site(cookies)
+                if cookies:
+                    logger.info(f"[FB Auth] Loaded {len(cookies)} cookies from local file")
+                    return FacebookAuth._normalize_same_site(cookies)
             except Exception as e:
                 logger.error(f"[FB Auth] Error loading local cookies: {e}")
         
@@ -133,12 +128,12 @@ class FacebookAuth:
     @staticmethod
     def _load_raw_data() -> Optional[Dict[str, Any]]:
         """Load raw cookie data (with metadata) for status checks."""
-        # Try Supabase first
+        # Try Supabase DB first
         try:
             sb = _get_sb()
-            res = sb.storage.from_(_SUPABASE_BUCKET).download(_SUPABASE_COOKIE_PATH)
-            if res:
-                data = json.loads(res)
+            res = sb.table("system_config").select("value").eq("key", "fb_cookies").single().execute()
+            if res.data and res.data.get("value"):
+                data = json.loads(res.data["value"])
                 if isinstance(data, dict):
                     return data
                 return {"cookies": data}
@@ -161,11 +156,11 @@ class FacebookAuth:
     @staticmethod
     def clear_cookies():
         """Clear saved Facebook cookies from both storages."""
-        # Clear from Supabase
+        # Clear from Supabase DB
         try:
             sb = _get_sb()
-            sb.storage.from_(_SUPABASE_BUCKET).remove([_SUPABASE_COOKIE_PATH])
-            logger.info("[FB Auth] Cookies cleared from Supabase Storage")
+            sb.table("system_config").delete().eq("key", "fb_cookies").execute()
+            logger.info("[FB Auth] Cookies cleared from Supabase DB")
         except Exception as e:
             logger.debug(f"[FB Auth] Supabase clear failed: {e}")
         

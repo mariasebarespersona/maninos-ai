@@ -182,28 +182,10 @@ async def test_facebook_scrape():
         
         diagnostics["step"] = "launching_browser"
         
-        # Step 2: Launch browser
-        from playwright.async_api import async_playwright
-        
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(
-            headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-                  '--disable-gpu', '--disable-blink-features=AutomationControlled']
-        )
-        context = await browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            locale='en-US',
-            timezone_id='America/Chicago',
-        )
-        await context.add_cookies(cookies)
-        page = await context.new_page()
-        
-        # Anti-detection
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        """)
+        # Step 2: Launch browser using the same method as the scraper
+        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
+        playwright, browser, context, page = await FacebookMarketplaceScraper._create_authenticated_page()
+        diagnostics["step"] = "browser_ready"
         
         diagnostics["step"] = "navigating"
         

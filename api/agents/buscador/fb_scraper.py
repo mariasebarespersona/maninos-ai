@@ -183,7 +183,7 @@ class FacebookMarketplaceScraper:
     
     @staticmethod
     async def _create_authenticated_page():
-        """Create a Playwright page with Facebook cookies loaded."""
+        """Create a Playwright page with Facebook cookies loaded and session warm-up."""
         from playwright.async_api import async_playwright
         from api.agents.buscador.fb_auth import FacebookAuth
         
@@ -201,6 +201,8 @@ class FacebookMarketplaceScraper:
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
                 '--disable-blink-features=AutomationControlled',
+                '--disable-infobars',
+                '--window-size=1920,1080',
             ]
         )
         
@@ -210,6 +212,10 @@ class FacebookMarketplaceScraper:
             user_agent=ua,
             locale='en-US',
             timezone_id='America/Chicago',
+            # Simulate a real desktop screen
+            screen={'width': 1920, 'height': 1080},
+            has_touch=False,
+            is_mobile=False,
         )
         
         # Load saved cookies into the context
@@ -217,12 +223,44 @@ class FacebookMarketplaceScraper:
         
         page = await context.new_page()
         
-        # Anti-detection: override webdriver property
+        # Comprehensive anti-detection
         await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
+            // Hide webdriver flag
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            
+            // Override permissions query
+            const origQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) =>
+                parameters.name === 'notifications'
+                    ? Promise.resolve({ state: Notification.permission })
+                    : origQuery(parameters);
+            
+            // Hide automation-related properties
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
             });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en', 'es'],
+            });
+            
+            // Override chrome runtime
+            window.chrome = { runtime: {} };
         """)
+        
+        # Warm up session: visit Facebook homepage first to establish cookies/session
+        try:
+            logger.info("[FB Marketplace] Warming up session on facebook.com...")
+            await page.goto("https://www.facebook.com/", wait_until="domcontentloaded", timeout=15000)
+            await asyncio.sleep(random.uniform(2, 4))
+            
+            # Check if we're logged in (look for the c_user evidence)
+            warmup_url = page.url
+            if "/login" not in warmup_url and "checkpoint" not in warmup_url:
+                logger.info("[FB Marketplace] ✅ Session warm-up successful — logged in")
+            else:
+                logger.warning(f"[FB Marketplace] ⚠️ Session warm-up: redirected to {warmup_url}")
+        except Exception as e:
+            logger.warning(f"[FB Marketplace] Session warm-up failed: {e}")
         
         return playwright, browser, context, page
     
@@ -259,16 +297,16 @@ class FacebookMarketplaceScraper:
             logger.info(f"[FB Marketplace] Navigating to: {url}")
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             
-            # Check if we got redirected to login (cookies expired)
+            # Check if we got redirected to login (cookies expired or headless detected)
             current_url = page.url
             page_title = await page.title()
             logger.info(f"[FB Marketplace] Landed on: {current_url}")
             logger.info(f"[FB Marketplace] Page title: {page_title}")
             
             if "/login" in current_url or "checkpoint" in current_url:
-                logger.warning("[FB Marketplace] Cookies expired — redirected to login page. Need to reconnect.")
-                from api.agents.buscador.fb_auth import FacebookAuth
-                FacebookAuth.clear_cookies()
+                logger.warning("[FB Marketplace] Redirected to login — Facebook may have detected headless browser. Cookies NOT cleared (may still be valid).")
+                # NOTE: Do NOT clear cookies here. Facebook often blocks headless browsers
+                # even with valid cookies. User shouldn't need to re-import.
                 return []
             
             # Wait for page to load
