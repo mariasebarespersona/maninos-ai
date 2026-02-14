@@ -82,6 +82,21 @@ class FacebookAuth:
         return True
     
     @staticmethod
+    def _normalize_same_site(cookies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Normalize sameSite values for Playwright compatibility."""
+        SAME_SITE_MAP = {
+            "strict": "Strict", "lax": "Lax", "none": "None",
+            "no_restriction": "None", "unspecified": "Lax",
+        }
+        for c in cookies:
+            raw = c.get("sameSite", "Lax")
+            if isinstance(raw, str):
+                c["sameSite"] = SAME_SITE_MAP.get(raw.lower(), "Lax")
+            else:
+                c["sameSite"] = "Lax"
+        return cookies
+    
+    @staticmethod
     def load_cookies() -> List[Dict[str, Any]]:
         """Load saved Facebook cookies from Supabase Storage (+ local fallback)."""
         # Try Supabase Storage first
@@ -96,7 +111,7 @@ class FacebookAuth:
                     cookies = data
                 if cookies:
                     logger.info(f"[FB Auth] Loaded {len(cookies)} cookies from Supabase Storage")
-                    return cookies
+                    return FacebookAuth._normalize_same_site(cookies)
         except Exception as e:
             logger.debug(f"[FB Auth] Supabase Storage load failed: {e}")
         
@@ -106,8 +121,10 @@ class FacebookAuth:
                 with open(COOKIE_FILE, "r") as f:
                     data = json.load(f)
                 if isinstance(data, dict):
-                    return data.get("cookies", [])
-                return data
+                    cookies = data.get("cookies", [])
+                else:
+                    cookies = data
+                return FacebookAuth._normalize_same_site(cookies)
             except Exception as e:
                 logger.error(f"[FB Auth] Error loading local cookies: {e}")
         
@@ -238,6 +255,15 @@ class FacebookAuth:
                 return False
             
             # Normalize cookie format for Playwright
+            # Playwright requires sameSite to be exactly "Strict", "Lax", or "None"
+            SAME_SITE_MAP = {
+                "strict": "Strict",
+                "lax": "Lax",
+                "none": "None",
+                "no_restriction": "None",  # Cookie-Editor uses this
+                "unspecified": "Lax",      # Default to Lax if unspecified
+            }
+            
             normalized = []
             for c in fb_cookies:
                 cookie = {
@@ -254,8 +280,14 @@ class FacebookAuth:
                     cookie["httpOnly"] = c["httpOnly"]
                 if c.get("secure") is not None:
                     cookie["secure"] = c["secure"]
-                if c.get("sameSite"):
-                    cookie["sameSite"] = c["sameSite"]
+                
+                # Normalize sameSite for Playwright compatibility
+                raw_same_site = c.get("sameSite", "Lax")
+                if isinstance(raw_same_site, str):
+                    cookie["sameSite"] = SAME_SITE_MAP.get(raw_same_site.lower(), "Lax")
+                else:
+                    cookie["sameSite"] = "Lax"
+                
                 normalized.append(cookie)
             
             # Check we got the essential session cookies
