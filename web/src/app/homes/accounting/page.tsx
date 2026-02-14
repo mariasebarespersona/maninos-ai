@@ -2198,7 +2198,15 @@ function EstadoCuentaTab() {
       const res = await fetch(`/api/accounting/bank-statements/${stmtId}/post`, { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
-        alert(`✅ ${data.posted} transacciones creadas exitosamente`)
+        let msg = `✅ ${data.posted} transacciones creadas en contabilidad.`
+        if (data.skipped > 0) {
+          msg += `\n\n⚠️ ${data.skipped} movimientos omitidos (sin cuenta contable asignada).`
+          msg += `\nAsegúrate de clasificar y confirmar cada movimiento con una cuenta antes de publicar.`
+        }
+        if (data.errors?.length > 0) {
+          msg += `\n\nDetalles:\n` + data.errors.slice(0, 5).map((e: string) => `• ${e}`).join('\n')
+        }
+        alert(msg)
         await openStatement(stmtId)
         fetchStatements()
       } else {
@@ -2678,9 +2686,12 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
                 )}
               </div>
             ) : (
-              <span className="text-xs italic group-hover:underline" style={{ color: 'var(--ash)' }}>
-                Seleccionar cuenta →
-              </span>
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-xs italic group-hover:underline text-amber-600">
+                  ⚠️ Sin cuenta — clic para asignar
+                </span>
+              </div>
             )}
           </button>
         )}

@@ -2206,14 +2206,20 @@ async def post_confirmed_movements(statement_id: str):
                  .order("sort_order").execute())
 
     if not movements.data:
-        return {"message": "No confirmed movements to post", "posted": 0}
+        return {"message": "No hay movimientos confirmados para publicar. Primero clasifica y confirma los movimientos.", "posted": 0, "skipped": 0, "errors": []}
 
     posted = 0
+    skipped = 0
+    errors = []
     for mv in movements.data:
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
         txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
 
         if not account_id:
+            skipped += 1
+            desc = mv.get("description", "")[:60]
+            errors.append(f"'{desc}' — sin cuenta contable asignada")
+            logger.warning(f"[BankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
 
         txn_data = {
@@ -2223,6 +2229,7 @@ async def post_confirmed_movements(statement_id: str):
             "amount": abs(float(mv["amount"])),
             "is_income": mv["is_credit"],
             "account_id": account_id,
+            "bank_account_id": statement.get("bank_account_id"),
             "payment_method": mv.get("payment_method"),
             "payment_reference": mv.get("reference"),
             "counterparty_name": mv.get("counterparty"),
@@ -2241,8 +2248,13 @@ async def post_confirmed_movements(statement_id: str):
                     "transaction_id": txn_result.data[0]["id"],
                 }).eq("id", mv["id"]).execute()
                 posted += 1
+            else:
+                skipped += 1
+                errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar transacción")
         except Exception as e:
             logger.warning(f"[BankStmt] Failed to post movement {mv['id']}: {e}")
+            skipped += 1
+            errors.append(f"'{mv.get('description', '')[:60]}' — {str(e)[:80]}")
 
     # Update statement stats
     total_posted = (sb.table("statement_movements")
@@ -2257,7 +2269,12 @@ async def post_confirmed_movements(statement_id: str):
         "status": new_status,
     }).eq("id", statement_id).execute()
 
-    return {"message": f"Posted {posted} transactions", "posted": posted}
+    return {
+        "message": f"Publicados {posted} transacciones" + (f", {skipped} omitidos (sin cuenta asignada)" if skipped > 0 else ""),
+        "posted": posted,
+        "skipped": skipped,
+        "errors": errors[:10],  # Limit to first 10 errors
+    }
 
 
 @router.delete("/bank-statements/{statement_id}")
@@ -2580,6 +2597,15 @@ async def _ai_classify_movements(
 
 For each bank movement below, suggest the most appropriate accounting account from our Chart of Accounts.
 
+IMPORTANT RULES:
+- ALWAYS classify to INCOME or EXPENSE accounts (codes starting with 4xxxx, 5xxxx, 6xxxx, or 8xxxx).
+- NEVER classify to Balance Sheet accounts (assets, liabilities, equity — codes 1xxxx, 2xxxx, 3xxxx).
+- Bank statement movements represent revenues earned or expenses incurred, NOT balance sheet changes.
+- Deposits/credits = classify to an INCOME account (code 4xxxx)
+- Withdrawals/debits = classify to an EXPENSE or COGS account (codes 5xxxx, 6xxxx, 8xxxx)
+- For transfers between bank accounts, use transaction_type "bank_transfer" and the closest expense account.
+- Use EXACT account codes from the chart below. Do NOT invent codes.
+
 CHART OF ACCOUNTS:
 {accounts_reference}
 
@@ -2599,7 +2625,7 @@ MOVEMENTS TO CLASSIFY:
 
 For EACH movement (numbered), respond with a JSON array of objects:
 {{
-  "account_code": "the best matching account code from the chart",
+  "account_code": "the EXACT account code from the chart above (must be an income 4xxxx or expense 5xxxx/6xxxx/8xxxx account)",
   "account_name": "account name",
   "transaction_type": one of ["sale_cash", "sale_rto_capital", "deposit_received", "other_income", "purchase_house", "renovation", "moving_transport", "commission", "operating_expense", "other_expense", "bank_transfer", "adjustment"],
   "confidence": 0.0-1.0 (how confident you are),
