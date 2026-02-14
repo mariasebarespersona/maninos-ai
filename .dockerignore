@@ -1,0 +1,33 @@
+# Frontend (not needed in backend container)
+web/
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Dev & test files
+tests/
+test-photos/
+*.xlsx
+*.pdf
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.vscode/
+.cursor/
+
+# Docs (not needed at runtime)
+docs/
+*.md
+
+# Env files (Railway injects env vars)
+.env
+.env.*
+
+# Misc
+*.log
+migrations/
+
