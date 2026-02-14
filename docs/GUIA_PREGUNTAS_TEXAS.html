@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maninos AI — Guía de Preguntas por Día</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8f9fc; color: #1e293b;
+      min-height: 100vh; padding: 2rem 1rem;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .container { max-width: 920px; margin: 0 auto; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 1.5rem; }
+    .header-row { display: flex; align-items: center; justify-content: center; gap: .6rem; margin-bottom: .4rem; }
+    .header .logo {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+      border-radius: 11px; color: #fff; font-size: 18px; font-weight: 800;
+      box-shadow: 0 3px 10px rgba(30,58,95,.2);
+    }
+    .header h1 { font-size: 1.45rem; font-weight: 800; color: #0f172a; }
+    .header .sub { color: #64748b; font-size: .85rem; margin-top: .2rem; }
+
+    /* Progress */
+    .progress-wrap {
+      background: #fff; border-radius: 14px; padding: 1rem 1.3rem;
+      margin-bottom: 1.5rem; border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .progress-top { display: flex; justify-content: space-between; margin-bottom: .4rem; }
+    .progress-top span { font-size: .8rem; font-weight: 600; color: #475569; }
+    .progress-top .ct { font-weight: 700; color: #1e3a5f; }
+    .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #c9a227, #e2b93b); border-radius: 999px; transition: width .4s; width: 0%; }
+
+    /* Day tabs */
+    .day-tabs {
+      display: flex; gap: .4rem; margin-bottom: 1.5rem;
+      overflow-x: auto; padding-bottom: .25rem;
+    }
+    .day-tab {
+      padding: .5rem 1rem; border-radius: 10px; font-size: .78rem;
+      font-weight: 700; cursor: pointer; white-space: nowrap;
+      border: 2px solid #e2e8f0; background: #fff; color: #64748b;
+      transition: all .2s; user-select: none;
+    }
+    .day-tab:hover { border-color: #cbd5e1; color: #475569; }
+    .day-tab.active { border-color: #1e3a5f; background: #1e3a5f; color: #fff; }
+    .day-tab .tab-count {
+      display: inline-block; background: rgba(255,255,255,.2);
+      padding: .05rem .4rem; border-radius: 6px; font-size: .65rem;
+      margin-left: .3rem;
+    }
+    .day-tab:not(.active) .tab-count { background: #f1f5f9; color: #94a3b8; }
+
+    /* Day panel */
+    .day-panel { display: none; }
+    .day-panel.active { display: block; }
+
+    /* Day header */
+    .day-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+    .day-num {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .95rem; font-weight: 800; color: #fff;
+      background: linear-gradient(135deg, #1e3a5f, #2d5a8e); flex-shrink: 0;
+    }
+    .day-meta h2 { font-size: 1.15rem; font-weight: 800; color: #0f172a; }
+    .day-meta .day-sub { font-size: .8rem; color: #64748b; font-weight: 500; }
+
+    /* Tip */
+    .tip {
+      background: linear-gradient(135deg, #fefce8, #fef9c3);
+      border: 1px solid #fde68a; border-radius: 12px;
+      padding: 1rem 1.2rem; margin-bottom: 1.25rem;
+      display: flex; gap: .6rem; align-items: flex-start;
+    }
+    .tip-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .tip-text { font-size: .82rem; color: #78350f; line-height: 1.55; }
+    .tip-text strong { color: #92400e; }
+
+    /* Section within day */
+    .section { margin-bottom: 1.5rem; }
+    .section-head {
+      display: flex; align-items: center; gap: .6rem;
+      margin-bottom: .75rem; padding-bottom: .4rem;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .section-icon {
+      width: 34px; height: 34px; border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; flex-shrink: 0;
+    }
+    .si-purple { background: #f5f3ff; }
+    .si-red { background: #fef2f2; }
+    .si-blue { background: #eff6ff; }
+    .si-green { background: #f0fdf4; }
+    .si-amber { background: #fffbeb; }
+    .si-pink { background: #fdf2f8; }
+
+    .section-title { font-size: .95rem; font-weight: 700; color: #0f172a; }
+    .section-why { font-size: .73rem; color: #94a3b8; font-weight: 500; }
+
+    /* Question card */
+    .q-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: .9rem 1.1rem; margin-bottom: .5rem;
+      display: flex; align-items: flex-start; gap: .75rem;
+      transition: all .15s; cursor: pointer; user-select: none;
+    }
+    .q-card:hover { border-color: #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,.03); }
+    .q-card.checked { background: #f8fafc; }
+    .q-card.checked .q-text, .q-card.checked .q-why, .q-card.checked .q-current {
+      opacity: .35; text-decoration: line-through; text-decoration-color: #94a3b8;
+    }
+    .q-check { flex-shrink: 0; margin-top: 1px; }
+    .q-check input { display: none; }
+    .q-check-vis {
+      width: 20px; height: 20px; border-radius: 6px;
+      border: 2px solid #cbd5e1; display: flex; align-items: center;
+      justify-content: center; transition: all .2s; background: #fff;
+    }
+    .q-check-vis svg { opacity: 0; transform: scale(.5); transition: all .15s; }
+    .q-card.checked .q-check-vis {
+      background: linear-gradient(135deg, #c9a227, #d4ad2e); border-color: #c9a227;
+    }
+    .q-card.checked .q-check-vis svg { opacity: 1; transform: scale(1); }
+    .q-content { flex: 1; }
+    .q-text { font-size: .85rem; font-weight: 600; color: #1e293b; line-height: 1.4; }
+    .q-why {
+      font-size: .76rem; color: #64748b; margin-top: .2rem; line-height: 1.45;
+      padding-left: .5rem; border-left: 2px solid #e2e8f0;
+    }
+    .q-current {
+      font-size: .7rem; color: #8b5cf6; margin-top: .25rem;
+      background: #f5f3ff; padding: .25rem .5rem; border-radius: 5px;
+      display: inline-block;
+    }
+    .q-current code {
+      background: #ede9fe; padding: .02rem .2rem; border-radius: 3px;
+      font-family: 'SF Mono', monospace; font-size: .66rem; color: #6d28d9;
+    }
+    .q-tag {
+      display: inline-block; font-size: .58rem; font-weight: 700;
+      padding: .12rem .35rem; border-radius: 4px; margin-left: .3rem;
+      vertical-align: middle; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .q-tag.critical { background: #fef2f2; color: #dc2626; }
+    .q-tag.important { background: #fffbeb; color: #d97706; }
+
+    /* Notes area */
+    .notes-area {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 1rem; margin-top: .6rem;
+    }
+    .notes-label {
+      font-size: .75rem; font-weight: 700; color: #64748b;
+      text-transform: uppercase; letter-spacing: .4px; margin-bottom: .4rem;
+    }
+    .notes-field {
+      width: 100%; min-height: 70px; border: 1px dashed #cbd5e1;
+      border-radius: 8px; padding: .6rem; font-family: inherit;
+      font-size: .8rem; color: #1e293b; resize: vertical;
+      background: #fafbfc; outline: none;
+    }
+    .notes-field:focus { border-color: #8b5cf6; background: #fff; }
+
+    .info-box {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+      padding: .8rem 1rem; margin-bottom: 1rem; font-size: .8rem;
+      color: #1e40af; line-height: 1.5;
+    }
+    .info-box strong { color: #1e3a8a; }
+
+    .footer {
+      text-align: center; margin-top: 2rem; padding-top: 1.25rem;
+      border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: .73rem;
+    }
+
+    @media print {
+      .day-tabs { display: none !important; }
+      .day-panel { display: block !important; page-break-before: always; }
+      .day-panel:first-of-type { page-break-before: auto; }
+      .q-card { break-inside: avoid; }
+      .notes-field { min-height: 40px; }
+    }
+    @media (max-width: 640px) {
+      body { padding: 1rem .5rem; }
+      .day-tabs { gap: .25rem; }
+      .day-tab { padding: .4rem .7rem; font-size: .72rem; }
+    }
+    .chk-svg { width: 11px; height: 11px; }
+
+    /* Answer fields */
+    .q-answer {
+      width: 100%; min-height: 44px; max-height: 200px;
+      border: 1px dashed #c7d2fe; border-radius: 8px;
+      padding: .5rem .65rem; font-family: inherit;
+      font-size: .8rem; color: #1e293b; resize: vertical;
+      background: #fefefe; outline: none;
+      margin-top: .45rem; transition: all .2s;
+    }
+    .q-answer::placeholder { color: #a5b4fc; font-style: italic; font-size: .75rem; }
+    .q-answer:focus { border-color: #6366f1; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,.08); }
+    .q-answer.has-value { border-color: #86efac; background: #f0fdf4; }
+    .q-card.checked .q-answer { opacity: .5; }
+
+    /* Export button */
+    .export-bar {
+      display: flex; gap: .5rem; justify-content: center; margin-bottom: 1.5rem;
+    }
+    .export-btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .6rem 1.2rem; border-radius: 10px; font-size: .8rem;
+      font-weight: 700; cursor: pointer; border: 2px solid;
+      transition: all .2s; font-family: inherit;
+    }
+    .export-btn.primary {
+      background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;
+      border-color: #4f46e5; box-shadow: 0 2px 8px rgba(79,70,229,.25);
+    }
+    .export-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(79,70,229,.3); }
+    .export-btn.secondary {
+      background: #fff; color: #475569; border-color: #e2e8f0;
+    }
+    .export-btn.secondary:hover { border-color: #cbd5e1; background: #f8fafc; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: #1e293b; color: #fff; padding: .7rem 1.4rem; border-radius: 12px;
+      font-size: .82rem; font-weight: 600; opacity: 0; transition: all .3s;
+      z-index: 999; box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* Export modal */
+    .export-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5);
+      z-index: 100; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .export-overlay.show { display: flex; }
+    .export-modal {
+      background: #fff; border-radius: 16px; padding: 1.5rem;
+      max-width: 700px; width: 100%; max-height: 80vh;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2); display: flex; flex-direction: column;
+    }
+    .export-modal h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: .75rem; }
+    .export-textarea {
+      flex: 1; min-height: 300px; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: .75rem; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: .75rem; color: #1e293b; resize: none; outline: none;
+      line-height: 1.6; background: #f8fafc;
+    }
+    .export-modal .btn-row { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .75rem; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="header-row">
+      <div class="logo">M</div>
+      <span style="font-size:26px;">📋🇺🇸</span>
+    </div>
+    <h1>Guía de Preguntas — 1 Semana Intensiva</h1>
+    <p class="sub">65 preguntas repartidas en 3 días de descubrimiento (D1, D2, D3)</p>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-top">
+      <span>Preguntas respondidas</span>
+      <span class="ct" id="progress-text">0 / 65</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- Export buttons -->
+  <div class="export-bar">
+    <button class="export-btn primary" onclick="exportAnswers()">📤 Exportar para IA</button>
+    <button class="export-btn secondary" onclick="downloadBackup()">💾 Backup (.json)</button>
+    <button class="export-btn secondary" onclick="document.getElementById('restore-input').click()">📂 Restaurar backup</button>
+    <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreBackup(event)">
+    <button class="export-btn secondary" onclick="clearAllAnswers()">🗑️ Borrar</button>
+  </div>
+
+  <!-- Export overlay -->
+  <div class="export-overlay" id="export-overlay" onclick="if(event.target===this)this.classList.remove('show')">
+    <div class="export-modal">
+      <h3>📤 Respuestas — Copia y pega esto al chat con tu IA</h3>
+      <textarea class="export-textarea" id="export-text" readonly></textarea>
+      <div class="btn-row">
+        <button class="export-btn secondary" onclick="document.getElementById('export-overlay').classList.remove('show')">Cerrar</button>
+        <button class="export-btn primary" onclick="copyExport()">📋 Copiar al portapapeles</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- TABS -->
+  <div class="day-tabs">
+    <div class="day-tab active" data-day="d1">D1 Lunes <span class="tab-count">27</span></div>
+    <div class="day-tab" data-day="d2">D2 Martes <span class="tab-count">29</span></div>
+    <div class="day-tab" data-day="d3">D3 Miércoles <span class="tab-count">9</span></div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 1 — LUNES: INMERSIÓN + FILTROS + LEADS + SHADOWING -->
+  <!-- ================================================================ -->
+  <div class="day-panel active" id="panel-d1">
+
+    <div class="day-head">
+      <div class="day-num">D1</div>
+      <div class="day-meta">
+        <h2>Inmersión + Filtros + Leads + Shadowing</h2>
+        <div class="day-sub">Lunes · 8am–1pm con Maninos — El día más importante</div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <div class="tip-icon">🎯</div>
+      <div class="tip-text"><strong>Regla de oro:</strong> NO tocar código. Solo escuchar, preguntar y anotar. Pide permiso para <strong>grabar la reunión</strong>. Lo que aprendas hoy define todo lo que implementas por la tarde y el resto de la semana.</div>
+    </div>
+
+    <!-- Flujo general -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-purple">🏠</div>
+        <div>
+          <div class="section-title">Flujo de Compra — Visión General</div>
+          <div class="section-why">8–9:30am · Entender el proceso completo de compra de casas</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="1">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Dónde buscan casas EXACTAMENTE? ¿Qué páginas web, grupos de Facebook, contactos directos? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Para saber si MHVillage y MobileHome.net son suficientes o necesito añadir más fuentes al scraper.</div>
+          <div class="q-current">🔧 Ahora: MHVillage + MobileHome.net + Facebook MT manual</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="2">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Paso a paso: ¿qué pasa ANTES de ir a ver una casa? ¿Llaman al vendedor? ¿Piden fotos? ¿Negocian precio?</div>
+          <div class="q-why">Si hay pasos pre-visita que la app no cubre, hay que añadirlos.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="3">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">El checklist de 26 puntos de evaluación: ¿lo revisamos juntos? ¿Falta algo? ¿Sobra?</div>
+          <div class="q-why">Imprimir y repasar punto por punto. Es el corazón de la decisión de compra.</div>
+          <div class="q-current">🔧 Ahora: 26 puntos en 6 categorías (Estructura, Instalaciones, Docs, Financiero, Specs, Cierre)</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="4">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo pagan al vendedor cuando compran la casa? ¿Cashier's check? ¿Wire? ¿Zelle?</div>
+          <div class="q-why">El pago Stripe es para que el cliente pague a Maninos. ¿Pero cómo paga Maninos al vendedor original?</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-blue">🔍</div>
+        <div>
+          <div class="section-title">Filtros Exactos de Compra</div>
+          <div class="section-why">9:30–10:30am · Que escriban y firmen los criterios reales</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="5">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cuál es el rango de precio REAL? ¿Mínimo y máximo? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Los filtros actuales usan $15,000–$60,000. ¿Es correcto o hay que ajustar?</div>
+          <div class="q-current">🔧 Ahora: <code>min_price=15000</code>, <code>max_price=60000</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="6">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué año mínimo de fabricación? ¿Es 1995 correcto? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-current">🔧 Ahora: <code>year_built >= 1995</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="7">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿La regla del 70% la usan de verdad? ¿Es 70% u otro porcentaje?</div>
+          <div class="q-current">🔧 Ahora: <code>price &lt;= (ARV * 0.70) - renovation</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="8">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué ZONAS / condados / ciudades son válidas? ¿Solo Houston o más?</div>
+          <div class="q-current">🔧 Ahora: Houston, Dallas, San Antonio, Austin, El Paso</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="9">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Single section, double wide, o ambas? ¿Algún tipo que NO compren?</div>
+          <div class="q-why">No hay filtro de tipo actualmente.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leads -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-red">💰</div>
+        <div>
+          <div class="section-title">Leads y Comisiones</div>
+          <div class="section-why">10:30–11:15am · Quién encontró la casa y cuánto se lleva</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="10">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quién se lleva comisión? ¿Solo el que encontró la casa o también el que cerró la venta? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Necesito saber qué campos guardar: found_by, sold_by, o ambos.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="11">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo se calcula la comisión? ¿% fijo? ¿Cantidad fija? ¿Varía contado vs RTO?</div>
+          <div class="q-why">Para implementar el cálculo automático y mostrarlo en reportes.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="12">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo rastrean hoy quién encontró cada casa? ¿Excel? ¿De memoria?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="13">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quieren un reporte de comisiones? ¿Mensual? ¿Qué info necesitan ver?</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Operaciones -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-pink">⚙️</div>
+        <div>
+          <div class="section-title">Operaciones Diarias</div>
+          <div class="section-why">11:15am–12pm · Entender qué usan hoy y qué les duele</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="14">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cuántos empleados hay? ¿Qué hace cada uno? ¿Nombres y roles?</div>
+          <div class="q-why">Para crear usuarios con roles correctos (admin, empleado Homes, empleado Capital).</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="15">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué herramientas usan HOY? ¿Excel? ¿Google Sheets? ¿Nada?</div>
+          <div class="q-why">Si tienen datos en Excel, puedo importarlos.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="16">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">⭐ ¿Qué es lo que más DOLOR les causa hoy? ¿Dónde pierden más tiempo? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why"><strong>LA PREGUNTA MÁS IMPORTANTE.</strong> Lo que más les duela es lo primero a resolver.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="17">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cuántas casas compran/venden al mes? ¿Cuántos clientes RTO activos?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="18">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Desde qué dispositivos van a usar la app? ¿Laptop? ¿Teléfono en campo? ¿Tablet?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="19">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen dominio web? ¿Hosting? ¿Quién paga Stripe / Supabase / Vercel?</div>
+          <div class="q-why">Para deploy a producción necesito saber quién controla DNS y servicios.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shadowing -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-purple">👀</div>
+        <div>
+          <div class="section-title">Shadowing</div>
+          <div class="section-why">12–1pm · Observar SIN preguntar — solo mirar y anotar</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="20">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Observar: ¿cuántas pestañas/apps abren? ¿Qué preguntan a compañeros? ¿Qué anotan en papel?</div>
+          <div class="q-why">Cada "oye, ¿sabes si…?" es una feature que falta. Los post-its son features pendientes.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="21">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué vocabulario usan? ¿"Casita"? ¿"Traila"? ¿Términos internos? ¿Internet rápido o sin señal?</div>
+          <div class="q-why">La app debe hablar como ellos hablan. Y define si PWA/offline es necesario.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Datos existentes + Legal + Clientes -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-red">📊</div>
+        <div>
+          <div class="section-title">Datos Existentes + Legal + Captación de Clientes</div>
+          <div class="section-why">Puede cambiar mucho lo que implementes esta semana</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="40">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen DATOS existentes? ¿Clientes RTO activos, propiedades en inventario, contratos vigentes? ¿En Excel, papel o nada? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Si tienen datos en Excel, necesito importarlos para que la app no esté vacía el primer día. Cambia prioridades de D4.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="41">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo ENCUENTRAN clientes compradores? ¿Facebook Ads? ¿Letreros? ¿Referidos? ¿Craigslist?</div>
+          <div class="q-why">Define si el portal Clientes necesita un formulario de contacto, landing page, o integración con marketing. Macroproceso COMERCIALIZAR.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="42">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Los contratos: ¿los firman en PAPEL e imprimen, o quieren firmas DIGITALES? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">Ya tenemos generación PDF de contratos RTO (33 cláusulas), Bill of Sale, y Deposit Agreement. Si firman en papel, solo necesito botón de descarga. Si digital, necesito DocuSign o similar.</div>
+          <div class="q-current">🔧 Ahora: PDFs generables (<code>pdf_service.py</code>), endpoint <code>/contracts/{id}/pdf</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="43">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen INVERSIONISTAS? ¿Cómo los manejan hoy? ¿Necesitan ese módulo o no es prioridad? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">El macroproceso FONDEAR (pagos de clientes → inversionistas) está implementado en backend pero quizás no lo usen. Priorizar lo que sí usan.</div>
+          <div class="q-current">🔧 Ahora: <code>capital_flows.py</code> con <code>link_investment_to_contract</code> y <code>pay_investor_return</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="44">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen abogado que redacte Privacy Policy y Terms of Service para el portal público? ¿O uso template?</div>
+          <div class="q-why">El portal recoge SSN/ITIN, ingresos, datos laborales. Legalmente necesita avisos de privacidad, especialmente en TX para servicios financieros.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="45">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué pasa cuando un cliente RTO TERMINA de pagar? ¿Cómo se entrega el título? ¿Hay ceremonia, docs extra? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">Macroproceso ENTREGAR. El endpoint existe (<code>/contracts/{id}/deliver</code>) pero necesito saber el proceso real para verificar que la app lo cubre.</div>
+          <div class="q-current">🔧 Ahora: Title transfer automático + email al cliente al completar pagos</div>
+        </div>
+      </div>
+    </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D1 — Lo más importante que aprendí hoy</div>
+        <textarea class="notes-field" data-notes="d1-notes" placeholder="Apunta aquí todo: gaps, sorpresas, prioridades que cambiaron..."></textarea>
+      </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 2 — MARTES: PAGOS Y STRIPE -->
+  <!-- ================================================================ -->
+  <div class="day-panel" id="panel-d2">
+
+    <div class="day-head">
+      <div class="day-num">D2</div>
+      <div class="day-meta">
+        <h2>Pagos + Renovaciones + Capital + Clientes</h2>
+        <div class="day-sub">Martes · 8–11am con Maninos — Primero pagos y renovaciones (cierra Homes), después Capital y Clientes</div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <div class="tip-icon">🎯</div>
+      <div class="tip-text"><strong>Objetivo D2:</strong> Primero resolver las preguntas de <strong>PAGOS</strong> y <strong>RENOVACIONES</strong> — con estas respuestas cerramos Maninos Homes. Después cubrir Capital (RTO, evaluación, KYC, cobros) y Portal Clientes (qué ven, pagos, registro).</div>
+    </div>
+
+    <div class="info-box">
+      <div style="flex-shrink:0;">🏠</div>
+      <div class="info-text"><strong>Prioridad Homes:</strong> Las preguntas de Pagos (#22–26) y Renovaciones (#32–35) son las últimas que faltan para cerrar el portal Homes. Respóndelas primero. Después pasamos a Capital + Clientes.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-blue">💳</div>
+        <div>
+          <div class="section-title">① Pagos, Stripe y Finanzas</div>
+          <div class="section-why">8–9:30am · PRIORIDAD — Cómo pagan vendedores y clientes, Stripe LIVE</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="22">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen cuenta de Stripe ya? ¿Datos bancarios y EIN listos? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Sin esto no puedo activar pagos reales. Necesito: EIN, datos bancarios, dirección fiscal, representante legal.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="23">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Para RTO: ¿los clientes pagan por Zelle hoy? ¿Quieren que paguen por tarjeta/ACH en la app? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">El contrato dice "Zelle 832-745-9600". Si quieren migrar a Stripe, implemento subscriptions.</div>
+          <div class="q-current">🔧 Ahora: Pagos RTO manuales. Stripe subscriptions desconectadas.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="24">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cuánto es el down payment típico? ¿Monthly rent? ¿Varía por casa o es fijo?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="25">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué pasa si un cliente RTO no paga? ¿Días de gracia? ¿Late fee? ¿Evicción?</div>
+          <div class="q-why">Contrato dice $15/día después del 5to y NSF $250. ¿Lo aplican así?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="26">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Ventas contado: ¿cómo paga el cliente hoy? ¿Todo de golpe? ¿Qué docs firman?</div>
+        </div>
+      </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D2 — Pagos y Stripe</div>
+        <textarea class="notes-field" data-notes="d2-notes" placeholder="Apunta aquí: datos Stripe, reglas RTO, montos, late fees..."></textarea>
+      </div>
+    </div>
+
+    <!-- Renovación (movido de D3 — prioridad para cerrar Homes) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-green">🔨</div>
+        <div>
+          <div class="section-title">② Renovación de Casas</div>
+          <div class="section-why">9:30–10:30am · PRIORIDAD — Quién decide, presupuesto, duración, fotos</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="32">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quién decide qué reparaciones se hacen? ¿Dueño? ¿Capataz? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Si es capataz en campo, la voz es clave. Si es dueño en oficina, el chat basta.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="33">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo estiman presupuesto? ¿Proveedores fijos? ¿Home Depot? ¿Lowes?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="34">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cuánto dura una renovación típica? ¿Contratistas o lo hacen ellos?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="35">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Toman fotos/videos de renovaciones? ¿Dónde los guardan?</div>
+        </div>
+      </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D2 — Renovaciones</div>
+        <textarea class="notes-field" data-notes="d2-renovacion-notes" placeholder="Apunta aquí: quién decide reparaciones, presupuesto, proveedores, duración..."></textarea>
+      </div>
+    </div>
+
+    <!-- Capital RTO -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-red">🏦</div>
+        <div>
+          <div class="section-title">③ Maninos Capital — Gestión RTO</div>
+          <div class="section-why">10:30–11:30am · Evaluación de solicitudes, KYC, cobros, morosos, entregas</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="46">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo evalúan una solicitud RTO hoy? ¿Qué criterios usan para aprobar o rechazar? ¿Credit check? ¿DTI máximo? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">La app tiene DTI calculation pero necesito saber si lo usan y cuál es el umbral real.</div>
+          <div class="q-current">🔧 Ahora: DTI calculado automáticamente, pero sin umbral definido</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="47">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué documentos piden al cliente para RTO? ¿Solo la solicitud de crédito (Anexo 1) o algo más?</div>
+          <div class="q-why">La solicitud pide: SSN/ITIN, empleo, ingresos, referencias. ¿Piden comprobantes? ¿Recibos de nómina?</div>
+          <div class="q-current">🔧 Ahora: Formulario solicitud crédito con todos los campos del Anexo 1</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="48">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo deciden los términos RTO? Meses de plazo, renta mensual, down payment — ¿fórmula fija o caso por caso? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Necesito saber si hay una fórmula automática o si Gabriel/Sebastian deciden a ojo.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="49">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Hacen KYC (verificación de identidad) real? ¿Cómo lo hacen hoy? ¿Les interesa Stripe Identity?</div>
+          <div class="q-why">Stripe Identity está integrado pero quizás ellos solo piden ID en persona. ¿Lo necesitan digital?</div>
+          <div class="q-current">🔧 Ahora: Stripe Identity integrado + verificación manual como fallback</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="50">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo cobran pagos RTO hoy? ¿Solo Zelle al 832-745-9600? ¿Quieren migrar a Stripe/tarjeta? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Si quieren seguir con Zelle, no necesito Stripe subscriptions. Si quieren tarjeta, lo implemento.</div>
+          <div class="q-current">🔧 Ahora: Contrato dice Zelle. Stripe subscriptions codificado pero desconectado.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="51">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué pasa cuando un cliente paga TARDE? Días de gracia reales, multa real, proceso de cobro</div>
+          <div class="q-why">Contrato: pago día 15, late fee $15/día después del 5to, NSF $250. ¿Lo aplican así o es diferente en la práctica?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="52">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué pasa si un cliente DEJA de pagar completamente? ¿Proceso de desahucio/eviction? ¿Plazos legales? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">Contrato cláusula 19: 7 días para corregir. ¿Cómo lo gestionan en la práctica?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="53">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quién gestiona Capital day-to-day? ¿Abigail sola? ¿Tiene acceso a todo o solo tesorería?</div>
+          <div class="q-why">Para definir roles y permisos del portal Capital. ¿Quién ve qué?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="54">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué REPORTES necesita Capital? ¿Pagos pendientes? ¿Morosos? ¿Proyección ingresos? ¿Resumen para inversores?</div>
+          <div class="q-why">El dashboard de Capital existe pero con datos limitados. ¿Qué necesitan ver de un vistazo?</div>
+          <div class="q-current">🔧 Ahora: Dashboard con resumen básico, contratos activos, pagos recientes</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="55">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen inversionistas activos AHORA? ¿Cuántos? ¿Qué les reportan? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">El módulo Fondear existe en backend pero necesito saber si lo usan activamente.</div>
+          <div class="q-current">🔧 Ahora: Endpoints <code>link_investment_to_contract</code> y <code>pay_investor_return</code></div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="56">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué pasa cuando un RTO TERMINA de pagar? ¿Entrega de título automática? ¿Docs finales? ¿Celebración?</div>
+          <div class="q-why">Macroproceso ENTREGAR. El endpoint <code>/contracts/{id}/deliver</code> existe pero necesito verificar si cubre todo el proceso real.</div>
+          <div class="q-current">🔧 Ahora: Title transfer + email automático al completar pagos</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="57">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Los 200 clientes RTO actuales: ¿están en Excel/sistema? ¿Nos los puede mandar Sebastian para importar? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Sin estos datos la app Capital estará vacía. Necesito: nombres, casas, montos, fechas, pagos hechos.</div>
+        </div>
+      </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D2 — Maninos Capital / RTO</div>
+        <textarea class="notes-field" data-notes="d2-capital-notes" placeholder="Apunta aquí: criterios aprobación, DTI, KYC, morosos, entregas..."></textarea>
+      </div>
+    </div>
+
+    <!-- Portal Clientes -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-green">👥</div>
+        <div>
+          <div class="section-title">④ Portal Clientes — Experiencia del Comprador</div>
+          <div class="section-why">11:30am+ · Qué ve el cliente, cómo paga, registro, comunicación</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="58">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Qué quieren que vea el cliente al entrar a su cuenta? ¿Pagos, contrato, próxima fecha, saldo restante? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Define qué mostrar en el dashboard de "Mi Cuenta" del portal Clientes.</div>
+          <div class="q-current">🔧 Ahora: Lista de compras (contado + RTO) con estado. Sin detalle de pagos RTO.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="59">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Los clientes deben poder pagar ONLINE desde el portal? ¿O solo Zelle como ahora? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-why">Si sí → implementar botón "Pagar" con Stripe en Mi Cuenta. Si no → solo mostrar info.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="60">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Los clientes deben poder descargar su contrato y recibos de pago desde el portal?</div>
+          <div class="q-why">Ya se generan PDFs de contratos. ¿Quieren que el cliente los descargue solo?</div>
+          <div class="q-current">🔧 Ahora: PDFs generables desde backend, no accesible desde portal Clientes</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="61">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Los clientes necesitan subir documentos? (ej: seguro, comprobante de pago, fotos de la casa)</div>
+          <div class="q-why">Si sí → necesito un upload de archivos en el portal + notificación al empleado.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="62">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo se crea la cuenta del cliente? ¿El empleado la crea desde Homes o el cliente se registra solo? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">Ahora solo se puede crear desde Homes. Si quieren auto-registro, necesito un flujo nuevo.</div>
+          <div class="q-current">🔧 Ahora: Cliente creado por empleado desde Homes. No hay auto-registro.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="63">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Comunicación con clientes: email, WhatsApp, llamada, SMS? ¿Qué prefieren los clientes?</div>
+          <div class="q-why">Si WhatsApp es principal → WhatsApp Business API puede ser más útil que emails.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="64">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quieren que el portal muestre casas disponibles para comprar? ¿O solo la cuenta personal del cliente?</div>
+          <div class="q-why">Ahora muestra catálogo de casas + Mi Cuenta. ¿Lo quieren así o solo Mi Cuenta?</div>
+          <div class="q-current">🔧 Ahora: Portal con catálogo público de casas + sección Mi Cuenta autenticada</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="65">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Los clientes hablan español, inglés, o ambos? ¿El portal tiene que ser bilingüe? <span class="q-tag important">Importante</span></div>
+          <div class="q-why">Define si necesito i18n (internacionalización) o si con un solo idioma basta.</div>
+          <div class="q-current">🔧 Ahora: App mezcla español e inglés en algunos sitios</div>
+        </div>
+      </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D2 — Portal Clientes</div>
+        <textarea class="notes-field" data-notes="d2-clientes-notes" placeholder="Apunta aquí: qué quiere el cliente ver, pagos online, docs, idioma..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 3 — MIÉRCOLES: EMAILS + RENOVACIÓN + ROLES -->
+  <!-- ================================================================ -->
+  <div class="day-panel" id="panel-d3">
+
+    <div class="day-head">
+      <div class="day-num">D3</div>
+      <div class="day-meta">
+        <h2>Emails + Roles + Firmas Digitales</h2>
+        <div class="day-sub">Miércoles · 8–12pm con Maninos — Comunicación, permisos y contratos</div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <div class="tip-icon">📧</div>
+      <div class="tip-text"><strong>Objetivo:</strong> Definir exactamente qué emails enviar, clarificar quién accede a qué en la app, y cerrar el tema de firmas digitales para contratos.</div>
+    </div>
+
+    <div class="info-box">
+      <div style="flex-shrink:0;">✅</div>
+      <div class="info-text"><strong>Nota:</strong> Las preguntas de Renovaciones (#32-35) se movieron a D2 junto con Pagos para cerrar Maninos Homes. D3 se enfoca en comunicación, roles y temas transversales.</div>
+    </div>
+
+    <!-- Emails -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-amber">📧</div>
+        <div>
+          <div class="section-title">Comunicación con Clientes</div>
+          <div class="section-why">8–9:30am · Emails, tono, idioma, branding</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="27">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Los emails en ESPAÑOL, INGLÉS, o ambos? <span class="q-tag critical">Crítico</span></div>
+          <div class="q-current">🔧 Ahora: Todos en español</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="28">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">Revisar los 6 tipos de email: bienvenida, pago, review (7d), referral (30d), recordatorio RTO, atraso. ¿Falta? ¿Sobra?</div>
+          <div class="q-current">🔧 Ahora: 6 tipos + 4 jobs programados</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="29">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Tienen logo en alta resolución? ¿Colores de marca? ¿Tipografías?</div>
+          <div class="q-current">🔧 Ahora: Azul marino #1e3a5f + dorado #c9a227</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="30">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Cómo se comunican con clientes HOY? ¿WhatsApp? ¿Llamadas? ¿Texto?</div>
+          <div class="q-why">Si usan WhatsApp, quizás necesito WhatsApp Business API además de email.</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="31">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Desde qué email quieren enviar? ¿info@maninos.com? ¿Tienen dominio configurado?</div>
+          <div class="q-why">Para Resend necesito acceso al DNS para evitar spam.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Roles -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-icon si-pink">🔐</div>
+        <div>
+          <div class="section-title">Roles y Permisos</div>
+          <div class="section-why">9:30–11am · Quién accede a qué portal</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="36">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quién debe acceder a Homes? ¿Y a Capital? ¿Es la misma persona?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="37">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Necesitan un admin que vea todo? ¿Quién es el admin?</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="38">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Hay info que un empleado NO debería ver? (ej: precios de compra, márgenes)</div>
+        </div>
+      </div>
+
+      <div class="q-card" data-q="39">
+        <label class="q-check"><input type="checkbox"><div class="q-check-vis"><svg class="chk-svg" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+        <div class="q-content">
+          <div class="q-text">¿Quién va a ser el "dueño" de la app? ¿Quién la mantiene cuando me vaya?</div>
+          <div class="q-why">Para saber a quién hacer el handover el viernes.</div>
+        </div>
+      </div>
+
+      <div class="notes-area">
+        <div class="notes-label">📝 Notas D3 — Emails y Roles</div>
+        <textarea class="notes-field" data-notes="d3-notes" placeholder="Apunta aquí todo sobre emails, branding, permisos..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Maninos AI · Guía de Preguntas Texas · 1 Semana Intensiva · Febrero 2026<br>
+    <span style="font-size:.68rem; color:#b0b8c4;">D4 (jueves) = testing con usuarios reales · D5 (viernes) = deploy + demo final · Cmd+P para imprimir</span>
+  </div>
+
+</div>
+
+<script>
+  const SK = 'maninos_questions_v3';
+  const NSK = 'maninos_questions_notes_v3';
+  const ASK = 'maninos_answers_v1';
+  const saved = JSON.parse(localStorage.getItem(SK) || '{}');
+  const savedNotes = JSON.parse(localStorage.getItem(NSK) || '{}');
+  const savedAnswers = JSON.parse(localStorage.getItem(ASK) || '{}');
+  const cards = document.querySelectorAll('.q-card[data-q]');
+  const total = cards.length;
+
+  function updateProgress() {
+    const n = document.querySelectorAll('.q-card.checked').length;
+    document.getElementById('progress-text').textContent = `${n} / ${total} respondidas`;
+    document.getElementById('progress-fill').style.width = `${(n / total) * 100}%`;
+  }
+
+  // Inject answer textarea into each question card
+  cards.forEach(card => {
+    const id = card.dataset.q;
+    const content = card.querySelector('.q-content');
+    if (!content) return;
+
+    const ta = document.createElement('textarea');
+    ta.className = 'q-answer';
+    ta.dataset.answer = id;
+    ta.placeholder = '✏️ Escribe la respuesta aquí...';
+    if (savedAnswers[id]) { ta.value = savedAnswers[id]; ta.classList.add('has-value'); }
+    content.appendChild(ta);
+
+    // Save on input
+    ta.addEventListener('input', () => {
+      const ans = JSON.parse(localStorage.getItem(ASK) || '{}');
+      if (ta.value.trim()) { ans[id] = ta.value; ta.classList.add('has-value'); }
+      else { delete ans[id]; ta.classList.remove('has-value'); }
+      localStorage.setItem(ASK, JSON.stringify(ans));
+    });
+    ta.addEventListener('click', (e) => e.stopPropagation());
+    ta.addEventListener('mousedown', (e) => e.stopPropagation());
+    ta.addEventListener('focus', (e) => e.stopPropagation());
+  });
+
+  // Checkbox logic
+  cards.forEach(card => {
+    const id = card.dataset.q;
+    const input = card.querySelector('input');
+    if (!input) return;
+    if (saved[id]) { input.checked = true; card.classList.add('checked'); }
+    card.addEventListener('click', (e) => {
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'A') return;
+      if (e.target.closest('.q-answer')) return;
+      input.checked = !input.checked;
+      card.classList.toggle('checked', input.checked);
+      const st = JSON.parse(localStorage.getItem(SK) || '{}');
+      if (input.checked) st[id] = true; else delete st[id];
+      localStorage.setItem(SK, JSON.stringify(st));
+      updateProgress();
+    });
+  });
+
+  // Notes fields
+  document.querySelectorAll('.notes-field[data-notes]').forEach(field => {
+    const key = field.dataset.notes;
+    if (savedNotes[key]) field.value = savedNotes[key];
+    field.addEventListener('input', () => {
+      const n = JSON.parse(localStorage.getItem(NSK) || '{}');
+      n[key] = field.value;
+      localStorage.setItem(NSK, JSON.stringify(n));
+    });
+    field.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  // Tabs
+  document.querySelectorAll('.day-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.day-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.day).classList.add('active');
+    });
+  });
+
+  // Export answers
+  function exportAnswers() {
+    const answers = JSON.parse(localStorage.getItem(ASK) || '{}');
+    const notes = JSON.parse(localStorage.getItem(NSK) || '{}');
+    const questionTexts = {};
+    cards.forEach(card => {
+      const id = card.dataset.q;
+      const qText = card.querySelector('.q-text');
+      if (qText) questionTexts[id] = qText.textContent.replace(/Crítico|Importante/g, '').trim();
+    });
+
+    let output = '=== RESPUESTAS GUÍA TEXAS — MANINOS AI ===\n';
+    output += `Fecha: ${new Date().toLocaleDateString('es-ES')}\n`;
+    output += `Respondidas: ${Object.keys(answers).length} / ${total}\n\n`;
+
+    // Group by day
+    const days = [
+      { id: 'd1', label: 'DÍA 1 — LUNES', panel: 'panel-d1' },
+      { id: 'd2', label: 'DÍA 2 — MARTES', panel: 'panel-d2' },
+      { id: 'd3', label: 'DÍA 3 — MIÉRCOLES', panel: 'panel-d3' },
+    ];
+
+    days.forEach(day => {
+      const panel = document.getElementById(day.panel);
+      if (!panel) return;
+      const dayCards = panel.querySelectorAll('.q-card[data-q]');
+      const dayAnswered = [];
+      dayCards.forEach(c => {
+        const qid = c.dataset.q;
+        if (answers[qid]) dayAnswered.push(qid);
+      });
+
+      if (dayAnswered.length === 0) return;
+
+      output += `--- ${day.label} ---\n\n`;
+      dayCards.forEach(c => {
+        const qid = c.dataset.q;
+        if (!answers[qid]) return;
+        output += `P${qid}: ${questionTexts[qid] || '(pregunta ' + qid + ')'}\n`;
+        output += `R${qid}: ${answers[qid]}\n\n`;
+      });
+
+      // Day notes
+      const noteKey = day.id + '-notes';
+      if (notes[noteKey]) {
+        output += `[NOTAS ${day.label}]: ${notes[noteKey]}\n\n`;
+      }
+    });
+
+    output += '=== FIN RESPUESTAS ===';
+
+    document.getElementById('export-text').value = output;
+    document.getElementById('export-overlay').classList.add('show');
+  }
+
+  function copyExport() {
+    const ta = document.getElementById('export-text');
+    ta.select();
+    document.execCommand('copy');
+    showToast('✅ Copiado al portapapeles — pégalo en el chat con tu IA');
+  }
+
+  function clearAllAnswers() {
+    if (!confirm('¿Borrar TODAS las respuestas? (Las preguntas y checks se mantienen)')) return;
+    localStorage.removeItem(ASK);
+    document.querySelectorAll('.q-answer').forEach(ta => {
+      ta.value = '';
+      ta.classList.remove('has-value');
+    });
+    showToast('🗑️ Respuestas borradas');
+  }
+
+  // Download backup as JSON file
+  function downloadBackup() {
+    const data = {
+      _meta: {
+        exported: new Date().toISOString(),
+        version: 'maninos_texas_v1',
+        description: 'Backup de respuestas Guía Preguntas Texas'
+      },
+      answers: JSON.parse(localStorage.getItem(ASK) || '{}'),
+      checks: JSON.parse(localStorage.getItem(SK) || '{}'),
+      notes: JSON.parse(localStorage.getItem(NSK) || '{}')
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maninos_respuestas_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('💾 Backup descargado — guárdalo en un lugar seguro');
+  }
+
+  // Restore from backup JSON file
+  function restoreBackup(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.answers) {
+          localStorage.setItem(ASK, JSON.stringify(data.answers));
+          // Restore answer fields
+          document.querySelectorAll('.q-answer[data-answer]').forEach(ta => {
+            const id = ta.dataset.answer;
+            if (data.answers[id]) { ta.value = data.answers[id]; ta.classList.add('has-value'); }
+            else { ta.value = ''; ta.classList.remove('has-value'); }
+          });
+        }
+        if (data.checks) {
+          localStorage.setItem(SK, JSON.stringify(data.checks));
+          cards.forEach(card => {
+            const id = card.dataset.q;
+            const input = card.querySelector('input');
+            if (!input) return;
+            if (data.checks[id]) { input.checked = true; card.classList.add('checked'); }
+            else { input.checked = false; card.classList.remove('checked'); }
+          });
+        }
+        if (data.notes) {
+          localStorage.setItem(NSK, JSON.stringify(data.notes));
+          document.querySelectorAll('.notes-field[data-notes]').forEach(field => {
+            const key = field.dataset.notes;
+            if (data.notes[key]) field.value = data.notes[key];
+          });
+        }
+        updateProgress();
+        showToast('✅ Backup restaurado correctamente — ' + Object.keys(data.answers || {}).length + ' respuestas');
+      } catch (err) {
+        showToast('❌ Error: archivo no válido');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  // Auto-backup reminder: if there are answers but no backup in 30 min, show reminder
+  (function autoBackupReminder() {
+    const answers = JSON.parse(localStorage.getItem(ASK) || '{}');
+    const count = Object.keys(answers).length;
+    if (count >= 3) {
+      const lastBackup = localStorage.getItem('maninos_last_backup_reminder');
+      const now = Date.now();
+      if (!lastBackup || (now - parseInt(lastBackup)) > 30 * 60 * 1000) {
+        setTimeout(() => {
+          showToast('💡 Tienes ' + count + ' respuestas — haz backup por si acaso (💾)');
+          localStorage.setItem('maninos_last_backup_reminder', now.toString());
+        }, 5000);
+      }
+    }
+  })();
+
+  updateProgress();
+</script>
+
+</body>
+</html>

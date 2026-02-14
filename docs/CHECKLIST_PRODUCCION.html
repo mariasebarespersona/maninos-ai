@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maninos AI — Checklist de Producción</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8f9fc;
+      color: #1e293b;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .header .logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px; height: 56px;
+      background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+      border-radius: 14px;
+      color: #fff;
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 14px rgba(30,58,95,.25);
+    }
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .header p {
+      color: #64748b;
+      margin-top: .35rem;
+      font-size: .95rem;
+    }
+
+    /* Progress bar */
+    .progress-wrapper {
+      background: #fff;
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      border: 1px solid #e2e8f0;
+    }
+    .progress-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .6rem;
+    }
+    .progress-top span {
+      font-size: .85rem;
+      font-weight: 600;
+      color: #475569;
+    }
+    .progress-top .count {
+      font-size: .85rem;
+      font-weight: 700;
+      color: #1e3a5f;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #c9a227, #e2b93b);
+      border-radius: 999px;
+      transition: width .4s ease;
+      width: 0%;
+    }
+
+    /* Section */
+    .section {
+      margin-bottom: 2rem;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      margin-bottom: 1rem;
+      padding-left: .25rem;
+    }
+    .section-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+    .section-badge.critical { background: #fef2f2; }
+    .section-badge.important { background: #fffbeb; }
+    .section-badge.minor { background: #f0fdf4; }
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .section-title.critical { color: #dc2626; }
+    .section-title.important { color: #d97706; }
+    .section-title.minor { color: #16a34a; }
+    .section-subtitle {
+      font-size: .8rem;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    /* Card / item */
+    .checklist-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: .65rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      transition: all .2s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+    .checklist-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 2px 8px rgba(0,0,0,.04);
+    }
+    .checklist-card.checked {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
+    .checklist-card.checked .item-title,
+    .checklist-card.checked .item-detail {
+      opacity: .45;
+      text-decoration: line-through;
+      text-decoration-color: #94a3b8;
+    }
+
+    /* Checkbox */
+    .checkbox-wrapper {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .checkbox-wrapper input {
+      display: none;
+    }
+    .checkbox-visual {
+      width: 24px; height: 24px;
+      border-radius: 8px;
+      border: 2px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s ease;
+      background: #fff;
+    }
+    .checkbox-visual svg {
+      opacity: 0;
+      transform: scale(.5);
+      transition: all .15s ease;
+    }
+    .checklist-card.checked .checkbox-visual {
+      background: linear-gradient(135deg, #c9a227, #d4ad2e);
+      border-color: #c9a227;
+    }
+    .checklist-card.checked .checkbox-visual svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Priority dot */
+    .priority-dot {
+      flex-shrink: 0;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-top: 7px;
+    }
+    .priority-dot.critical { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.15); }
+    .priority-dot.important { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.15); }
+    .priority-dot.minor { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.15); }
+
+    /* Item text */
+    .item-content { flex: 1; }
+    .item-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      font-size: .7rem;
+      font-weight: 700;
+      margin-right: .4rem;
+      vertical-align: middle;
+    }
+    .item-number.critical { background: #fef2f2; color: #dc2626; }
+    .item-number.important { background: #fffbeb; color: #d97706; }
+    .item-number.minor { background: #f0fdf4; color: #16a34a; }
+    .item-title {
+      font-size: .93rem;
+      font-weight: 600;
+      color: #1e293b;
+      line-height: 1.4;
+      transition: all .2s;
+    }
+    .item-detail {
+      font-size: .83rem;
+      color: #64748b;
+      margin-top: .3rem;
+      line-height: 1.55;
+      transition: all .2s;
+    }
+    .item-detail code {
+      background: #f1f5f9;
+      padding: .1rem .35rem;
+      border-radius: 4px;
+      font-size: .78rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #475569;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 2.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0;
+      color: #94a3b8;
+      font-size: .8rem;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 1rem; }
+      .checklist-card { padding: .85rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">M</div>
+    <h1>Checklist de Producción</h1>
+    <p>Maninos AI — Lo que falta antes de entregar al cliente</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrapper">
+    <div class="progress-top">
+      <span>Progreso general</span>
+      <span class="count" id="progress-text">0 / 27 completados</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- CRITICAL -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-badge critical">🔴</div>
+      <div>
+        <div class="section-title critical">CRÍTICO</div>
+        <div class="section-subtitle">Bloquea entrega a producción</div>
+      </div>
+    </div>
+
+    <label class="checklist-card" data-id="1">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">1</span>No hay Stripe para pagos recurrentes RTO</div>
+        <div class="item-detail">El <code>tools/stripe_payments.py</code> tiene funciones para <code>create_subscription()</code>, <code>create_setup_intent()</code>, etc., pero <strong>no están conectadas</strong> a ningún endpoint. Los pagos mensuales RTO se registran manualmente. El cliente no puede pagar automáticamente por Stripe cada mes.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="2">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">2</span>No hay webhook de Stripe en producción</div>
+        <div class="item-detail">El endpoint <code>/api/capital/kyc/webhook</code> existe para KYC, pero <strong>no hay webhook para pagos</strong> (ni contado ni RTO). Si un pago falla o se disputa, no se entera el sistema.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="3">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">3</span>Supabase Storage buckets sin verificar</div>
+        <div class="item-detail">Se usan dos buckets (<code>property-photos</code> y <code>transaction-documents</code>) pero no hay verificación de que existan ni políticas RLS configuradas para acceso público a fotos.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="4">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">4</span>Variables de entorno incompletas para producción</div>
+        <div class="item-detail">El <code>.env</code> necesita: <code>RESEND_API_KEY</code>, <code>RESEND_EMAIL_FROM</code>, <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code>, <code>OPENAI_API_KEY</code>, <code>STRIPE_PUBLISHABLE_KEY</code> (frontend), <code>APP_URL</code> (para links en emails). Sin estos, emails/pagos/IA no funcionan.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="5">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">5</span>Pagos Stripe de casas deben ser reales (end-to-end)</div>
+        <div class="item-detail">Cuando un usuario pone su tarjeta y paga por una casa, el dinero <strong>tiene que llegar realmente</strong> a la cuenta del vendedor (Maninos). Actualmente Stripe está en modo test. Hay que configurar la cuenta Stripe Connect o cuenta directa en modo <strong>live</strong>, verificar el onboarding del vendedor, y asegurar que los <code>PaymentIntents</code> se crean con la cuenta destino correcta para que los fondos se transfieran.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="6">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">6</span>RenovacionAgent: mejorar chat/voz e integrar en la app</div>
+        <div class="item-detail">El <code>RenovacionAgent</code> tiene endpoints de voz (<code>/api/agents/renovacion/voice</code>) y chat, pero la interfaz en la página de renovación es básica. Falta: un <strong>chat completo embebido</strong> en la pantalla de renovación con historial de conversación, un <strong>botón de grabación de voz</strong> que funcione de verdad (actualmente usa placeholders), respuestas del agente visibles en tiempo real, y que los materiales sugeridos por el chat se añadan automáticamente a la lista de renovación.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="7">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">7</span>Leads y comisiones: rastrear quién encontró cada casa</div>
+        <div class="item-detail">El empleado de Homes que encuentra y registra una casa en el mercado <strong>se lleva comisión</strong> cuando un cliente la compra. Falta guardar el <code>found_by_user_id</code> (empleado que la encontró) en <code>market_listings</code> y propagarlo a <code>properties</code> y <code>sales</code>. Cuando se completa una venta, el nombre del empleado debe aparecer visible en el detalle de la venta y en reportes, para calcular y pagar su comisión.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="8">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">8</span>Emails automatizados: completar, testear y verificar links</div>
+        <div class="item-detail">Los emails automáticos (bienvenida, confirmación de pago, solicitud RTO, seguimiento post-venta, recordatorios de pago, alertas de atraso) están definidos en <code>email_service.py</code> pero necesitan: <strong>templates HTML profesionales</strong> con branding Maninos, <strong>links correctos</strong> que apunten a las URLs de producción (<code>APP_URL</code>), <strong>testing real</strong> con Resend en modo producción para verificar que llegan, no van a spam, y los links funcionan. Cada flujo de email debe testearse end-to-end.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="9">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">9</span>App móvil (PWA): instalable, responsive y usable en campo</div>
+        <div class="item-detail">Los empleados de Maninos trabajan en campo (evaluando casas, visitando renovaciones) y necesitan usar la app desde el <strong>teléfono</strong>. Falta: <code>manifest.json</code> + service worker para hacerla <strong>instalable como app nativa</strong> desde Chrome/Safari, auditoría responsive de TODAS las páginas (tablas, formularios, sidebar, navegación), <strong>bottom navigation</strong> para móvil, botones touch-friendly (min 44px), formularios full-width, y modo offline básico para zonas sin señal en rural Texas. La app tiene que funcionar tan bien en iPhone como en desktop.</div>
+      </div>
+    </label>
+  </div>
+
+  <!-- IMPORTANT -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-badge important">🟡</div>
+      <div>
+        <div class="section-title important">IMPORTANTE</div>
+        <div class="section-subtitle">Afecta la experiencia del usuario</div>
+      </div>
+    </div>
+
+    <label class="checklist-card" data-id="10">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">10</span>Sin notificaciones push / en-app</div>
+        <div class="item-detail">Todo depende de email. Si el email no llega o el usuario no lo ve, no se entera de nada (pagos pendientes, RTO aprobado, etc.).</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="11">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">11</span>El flujo Renovación → Publicar no es intuitivo</div>
+        <div class="item-detail">Después de comprar, el empleado ve "Fotos/Publicar" pero el flujo del diagrama dice: comprar → evaluar → renovar → publicar. No hay un paso intermedio claro de "evaluación post-compra".</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="12">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">12</span>Filtros de compra de casas con criterios reales de Maninos</div>
+        <div class="item-detail">Los filtros actuales del <code>BuscadorAgent</code> y la calificación de propiedades usan criterios genéricos. Deben <strong>reemplazarse por los criterios reales</strong> que Maninos usa para decidir qué casas comprar: rangos de precio específicos, zonas/condados permitidos, año mínimo de fabricación, condiciones aceptables, ratio máximo reparación/valor, etc. Estos criterios deben ser configurables desde el frontend (no hardcodeados).</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="13">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">13</span>Sin validación de roles</div>
+        <div class="item-detail">Cualquier usuario autenticado puede acceder a <code>/homes</code> y <code>/capital</code>. No hay distinción entre admin, empleado Homes, y empleado Capital.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="14">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">14</span>Sin tests automatizados</div>
+        <div class="item-detail">Cero tests unitarios, de integración o E2E. El Developer Bible los menciona como requerimiento.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="15">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">15</span>Sin manejo de errores global en frontend</div>
+        <div class="item-detail">No hay <code>error.tsx</code> boundaries en las rutas de Next.js. Un crash en cualquier página muestra el error de React genérico.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="16">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">16</span>Clientes portal: sin registro nuevo</div>
+        <div class="item-detail">El login requiere que el email ya exista en la tabla <code>clients</code>. Un cliente nuevo solo puede ser creado desde Homes. No hay auto-registro.</div>
+      </div>
+    </label>
+  </div>
+
+  <!-- MINOR -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-badge minor">🟢</div>
+      <div>
+        <div class="section-title minor">MENOR</div>
+        <div class="section-subtitle">Nice-to-have antes de entrega</div>
+      </div>
+    </div>
+
+    <label class="checklist-card" data-id="17">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot minor"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number minor">17</span>Sin paginación en listados</div>
+        <div class="item-detail">Las tablas de propiedades, clientes, ventas, etc. cargan todo sin paginación. Con muchos registros esto será lento.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="18">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot minor"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number minor">18</span>Sin búsqueda/filtros avanzados en Capital</div>
+        <div class="item-detail">Contratos, pagos, inversionistas no tienen filtros ni búsqueda.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="19">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot minor"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number minor">19</span>Logs de auditoría no implementados</div>
+        <div class="item-detail">El Developer Bible menciona audit trail pero no hay tabla ni lógica de auditoría.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="20">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot minor"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number minor">20</span>Sin i18n completo</div>
+        <div class="item-detail">La app mezcla español e inglés en algunos lugares (status enums en inglés, UI en español).</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="21">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot minor"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number minor">21</span>Sin dashboard analytics avanzado</div>
+        <div class="item-detail">Los charts existen (SalesChart, TexasMap) pero con datos limitados.</div>
+      </div>
+    </label>
+  </div>
+
+  <!-- ADDED — Post deep review -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-badge critical">🔍</div>
+      <div>
+        <div class="section-title critical">DESCUBIERTO EN REVISIÓN FINAL</div>
+        <div class="section-subtitle">Detectados al cruzar código + macroprocesos + producción real</div>
+      </div>
+    </div>
+
+    <label class="checklist-card" data-id="22">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">22</span>Limpieza datos de test + crear usuarios reales de producción</div>
+        <div class="item-detail">La base de datos tiene decenas de registros de test (clientes falsos como "Carlos Mendez", ventas de prueba, propiedades de ejemplo). <strong>Todo debe borrarse</strong> antes de producción. Además, hay que crear los <strong>usuarios reales</strong> de Maninos con sus roles (admin, empleado Homes, empleado Capital), y configurar Supabase Auth con sus emails reales.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="23">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">23</span>Importar datos existentes de Maninos (clientes RTO, propiedades, contratos)</div>
+        <div class="item-detail">Si Maninos ya tiene clientes RTO activos, propiedades en inventario, o contratos vigentes en Excel/papel, <strong>hay que importarlos</strong>. No hay herramienta de import en la app. Necesito: script de migración CSV → Supabase, o formulario de carga masiva. Sin esto, el primer día de producción está vacío y los empleados no ven sus datos reales. Preguntar en D1 qué datos tienen.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="24">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot critical"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number critical">24</span>Seguridad producción: CORS, rate limiting, headers, HTTPS</div>
+        <div class="item-detail">No hay configuración de <strong>CORS para producción</strong> (actualmente acepta todo), no hay <strong>rate limiting</strong> en endpoints públicos (un bot podría hacer miles de requests), no hay <strong>secure headers</strong> (CSP, X-Frame-Options, HSTS). Tampoco hay verificación de que <strong>HTTPS</strong> funcione correctamente en el deploy. Para una app que maneja datos financieros y SSN/ITIN esto es obligatorio.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="25">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">25</span>Monitoreo y alertas: ¿cómo sé si la app se cae?</div>
+        <div class="item-detail">Cero monitoreo implementado. Si el backend se cae o Supabase tiene un problema, <strong>nadie se entera</strong> hasta que un empleado reporta que "no funciona". Mínimo: health check endpoint + <strong>UptimeRobot</strong> o similar (gratis) para alertas por email/Slack. Ideal: Sentry para errores frontend + backend, alertas de Stripe para pagos fallidos.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="26">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">26</span>Páginas legales: Privacy Policy + Terms of Service</div>
+        <div class="item-detail">El portal Clientes recoge datos personales sensibles (nombre, SSN/ITIN, empleador, ingresos). <strong>Legalmente</strong> necesita al menos: una <strong>Privacy Policy</strong> explicando qué datos se recogen y cómo se usan, y <strong>Terms of Service</strong>. En Texas esto es especialmente importante para servicios financieros/inmobiliarios. Preguntar a Maninos si tienen abogado que redacte o si usamos un template estándar.</div>
+      </div>
+    </label>
+
+    <label class="checklist-card" data-id="27">
+      <div class="checkbox-wrapper">
+        <input type="checkbox"><div class="checkbox-visual"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div class="priority-dot important"></div>
+      <div class="item-content">
+        <div class="item-title"><span class="item-number important">27</span>Probar descarga de PDFs (contrato RTO, Bill of Sale, Deposit Agreement, Checklist)</div>
+        <div class="item-detail">Los servicios de PDF existen en <code>pdf_service.py</code> y los endpoints en <code>contracts.py</code>, pero <strong>nunca se han testeado end-to-end</strong>. Verificar: que el botón "Descargar PDF" existe en el frontend, que el PDF se genera correctamente con datos reales, que las 33 cláusulas del contrato RTO se ven bien, que el Bill of Sale y Deposit Agreement incluyen todos los campos requeridos. Si Maninos imprime y firma a mano, esto es crítico.</div>
+      </div>
+    </label>
+  </div>
+
+  <div class="footer">
+    Maninos AI — Análisis de producción · 10 de febrero de 2026
+  </div>
+
+</div>
+
+<script>
+  // Load saved state
+  const STORAGE_KEY = 'maninos_checklist';
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+
+  const cards = document.querySelectorAll('.checklist-card');
+  const total = cards.length;
+
+  function updateProgress() {
+    const checked = document.querySelectorAll('.checklist-card.checked').length;
+    document.getElementById('progress-text').textContent = `${checked} / ${total} completados`;
+    document.getElementById('progress-fill').style.width = `${(checked / total) * 100}%`;
+  }
+
+  cards.forEach(card => {
+    const id = card.dataset.id;
+    const input = card.querySelector('input');
+
+    // Restore
+    if (saved[id]) {
+      input.checked = true;
+      card.classList.add('checked');
+    }
+
+    card.addEventListener('click', (e) => {
+      input.checked = !input.checked;
+      card.classList.toggle('checked', input.checked);
+
+      // Save
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if (input.checked) state[id] = true;
+      else delete state[id];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+      updateProgress();
+    });
+  });
+
+  updateProgress();
+</script>
+
+</body>
+</html>
+

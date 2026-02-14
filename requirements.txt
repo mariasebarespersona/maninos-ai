@@ -1,55 +1,65 @@
-# requirements.clean.txt
+# ============================================================================
+# Maninos AI — Backend Dependencies
+# ============================================================================
+
+# --- Core Framework ---
 fastapi==0.112.2
 uvicorn==0.30.6
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
 
-jsonschema>=4.22.0
-httpx>=0.27.0
-nest_asyncio>=1.6.0
-
-# LangGraph + LC core WITHOUT installing the "langchain" meta package
-langgraph==0.2.45
-langgraph-checkpoint>=2.1.2
-langgraph-checkpoint-postgres>=2.0.25
-langchain-core>=0.2.43,<0.3.0
-langchain-openai>=0.1.23
-langsmith==0.1.144
-psycopg[binary,pool]>=3.2.0
-
-# OpenAI for Whisper API (voice transcription)
-openai>=1.40.0
-
-# Supabase + realtime client expects websockets >=13 (provides websockets.asyncio)
+# --- Database (Supabase) ---
 supabase==2.7.3
 websockets>=13.0,<14.0
 
-# Email - Resend API (cloud-friendly, no SMTP port blocking)
+# --- AI / LLM ---
+openai>=1.40.0
+langchain-core>=0.2.43,<0.3.0
+langchain-openai>=0.1.23
+langgraph==0.2.45
+langgraph-checkpoint>=2.1.2
+langgraph-checkpoint-postgres>=2.0.25
+langsmith==0.1.144
+psycopg[binary,pool]>=3.2.0
+
+# --- Document Processing ---
+pypdf>=4.0.0
+openpyxl>=3.1.0
+Pillow>=10.0.0
+reportlab>=4.0.0
+
+# --- Data / Analysis ---
+pandas>=2.0.0
+python-dateutil>=2.8.0
+
+# --- HTTP / Networking ---
+httpx>=0.27.0
+requests>=2.31.0
+
+# --- Email ---
 resend>=2.4.0
 
-# Stripe - Payments and Identity verification (KYC)
+# --- Payments ---
 stripe>=7.0.0
 
-# Structured logging (better than standard logging)
+# --- Scheduling ---
+APScheduler>=3.10.0
+
+# --- Web Scraping ---
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+playwright>=1.40.0
+
+# --- Logging / Observability ---
 structlog>=24.1.0
+logfire[fastapi]>=0.49.0
+langfuse>=2.0.0
 
-# Typed configuration management (replaces python-dotenv for settings)
-pydantic-settings>=2.0.0
-
-# the rest of your deps
-python-dotenv
-pypdf
-pandas
-requests
-schedule
-python-dateutil
-python-multipart
+# --- Misc ---
+jsonschema>=4.22.0
+nest_asyncio>=1.6.0
 plotly>=5.20.0
 kaleido==0.2.1
 python-pptx>=0.6.23
-Pillow>=10.0.0
-reportlab>=4.0.0
-openpyxl>=3.1.0
-logfire[fastapi]>=0.49.0
-
-# Redis for caching (optional - app works without it)
-redis>=5.0.0
-hiredis>=2.3.0

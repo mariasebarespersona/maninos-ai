@@ -1,0 +1,24 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+const API_URL = process.env.API_URL || 'http://localhost:8000'
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const { searchParams } = new URL(request.url)
+    const url = new URL(`${API_URL}/api/properties/${id}/complete-renovation`)
+    
+    const newPrice = searchParams.get('new_sale_price')
+    if (newPrice) url.searchParams.set('new_sale_price', newPrice)
+    
+    const res = await fetch(url.toString(), { method: 'POST' })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    console.error('Error proxying to API:', error)
+    return NextResponse.json({ detail: 'API connection error' }, { status: 500 })
+  }
+}

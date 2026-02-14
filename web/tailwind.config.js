@@ -3,66 +3,77 @@ module.exports = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  darkMode: 'class', // Disable automatic dark mode based on system
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Lato', 'sans-serif'],
-        serif: ['Playfair Display', 'serif'],
-        display: ['Playfair Display', 'serif'],
+        sans: ['Source Sans 3', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        serif: ['Cormorant Garamond', 'Georgia', 'serif'],
       },
       colors: {
-        // Maninos Luxury Palette
+        // Warm Neutrals
+        ivory: '#fafaf8',
+        cream: '#f5f4f1',
+        sand: '#e8e6e1',
+        stone: '#d4d2cd',
+        ash: '#9a9890',
+        slate: '#6b6962',
+        charcoal: '#3d3b36',
+        ink: '#1a1917',
+        
+        // Navy (Primary)
         navy: {
-          50: '#f0f4f8',
-          100: '#d9e2ec',
-          200: '#bcccdc',
-          300: '#9fb3c8',
-          400: '#829ab1',
-          500: '#627d98',
-          600: '#486581',
-          700: '#334e68',
-          800: '#243b53',
-          900: '#102a43', // Deep Royal
+          50: '#f4f6f9',
+          100: '#e8ebf0',
+          200: '#c9d0dc',
+          300: '#9aa7bb',
+          400: '#6b7c96',
+          500: '#4a5d78',
+          600: '#3a4a62',
+          700: '#2f3c50',
+          800: '#283242',
+          900: '#1e2532',
+          950: '#141821',
         },
+        
+        // Gold (Accent - Subtle)
         gold: {
-          50: '#fbf9f0',
-          100: '#f6f2dd',
-          200: '#ede0b1',
-          300: '#e3cd83',
-          400: '#d9bb57',
-          500: '#d4af37', // Champagne Gold (Primary)
-          600: '#aa8c2c',
-          700: '#806921',
-          800: '#554616',
-          900: '#2b230b',
+          50: '#fdfcf9',
+          100: '#f9f6ef',
+          200: '#f0e9d8',
+          300: '#e4d7bb',
+          400: '#d4c09a',
+          500: '#b8a070',
+          600: '#9a8357',
+          700: '#7d6a47',
+          800: '#66563c',
+          900: '#544834',
         },
-        slate: {
-          50: '#f8fafc', // Alabaster White
-          100: '#f1f5f9',
-          800: '#1e293b', // Slate Dark
-          900: '#0f172a', // Slate Black
-        }
+      },
+      borderRadius: {
+        'sm': '4px',
+        'md': '6px',
+        'lg': '8px',
+        'xl': '12px',
       },
       boxShadow: {
-        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
-        'card': '0 0 0 1px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.04)',
-        'gold': '0 4px 14px 0 rgba(212, 175, 55, 0.3)',
+        'xs': '0 1px 2px rgba(0, 0, 0, 0.04)',
+        'sm': '0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
+        'md': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+        'lg': '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02)',
       },
-      animation: {
-        'fade-in': 'fadeIn 0.6s ease-out forwards',
-        'slide-up': 'slideUp 0.6s ease-out forwards',
+      fontSize: {
+        'base': ['1rem', { lineHeight: '1.6' }],
+        'lg': ['1.125rem', { lineHeight: '1.5' }],
+        'xl': ['1.25rem', { lineHeight: '1.4' }],
+        '2xl': ['1.5rem', { lineHeight: '1.35' }],
+        '3xl': ['1.875rem', { lineHeight: '1.25' }],
+        '4xl': ['2.25rem', { lineHeight: '1.2' }],
       },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        }
-      }
+      spacing: {
+        '18': '4.5rem',
+        '88': '22rem',
+      },
     },
   },
   plugins: [],

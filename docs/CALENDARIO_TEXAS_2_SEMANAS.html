@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maninos AI — Plan Texas 1 Semana Intensiva v2</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8f9fc; color: #1e293b;
+      min-height: 100vh; padding: 2rem 1rem;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 2rem; }
+    .header .logo-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: .75rem; margin-bottom: .5rem;
+    }
+    .header .logo {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 48px; height: 48px; background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+      border-radius: 12px; color: #fff; font-size: 20px; font-weight: 800;
+      box-shadow: 0 4px 14px rgba(30,58,95,.25);
+    }
+    .header .flag { font-size: 32px; }
+    .header h1 { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
+    .header .subtitle { color: #64748b; margin-top: .25rem; font-size: .9rem; }
+    .header .dates {
+      display: inline-block; background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+      color: #fff; padding: .4rem 1.2rem; border-radius: 999px;
+      font-size: .8rem; font-weight: 600; margin-top: .75rem;
+    }
+    .version-badge {
+      display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff; padding: .25rem .8rem; border-radius: 999px;
+      font-size: .7rem; font-weight: 700; margin-top: .5rem;
+    }
+
+    /* Alert box */
+    .alert-box {
+      background: linear-gradient(135deg, #fef2f2, #fee2e2);
+      border: 1px solid #fca5a5; border-radius: 14px;
+      padding: 1rem 1.3rem; margin-bottom: 1rem;
+      display: flex; gap: .7rem; align-items: flex-start;
+    }
+    .alert-box .alert-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .alert-box .alert-text { font-size: .83rem; color: #991b1b; line-height: 1.55; }
+    .alert-box .alert-text strong { color: #7f1d1d; }
+
+    .info-box {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border: 1px solid #93c5fd; border-radius: 14px;
+      padding: 1rem 1.3rem; margin-bottom: 1.5rem;
+      display: flex; gap: .7rem; align-items: flex-start;
+    }
+    .info-box .info-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .info-box .info-text { font-size: .83rem; color: #1e40af; line-height: 1.55; }
+    .info-box .info-text strong { color: #1e3a8a; }
+
+    /* Legend */
+    .legend { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-bottom: 1.5rem; }
+    .legend-item {
+      display: flex; align-items: center; gap: .35rem; font-size: .75rem;
+      font-weight: 600; color: #475569; background: #fff;
+      padding: .35rem .75rem; border-radius: 8px; border: 1px solid #e2e8f0;
+    }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot-discovery { background: #8b5cf6; }
+    .dot-critical { background: #ef4444; }
+    .dot-important { background: #f59e0b; }
+    .dot-dev { background: #3b82f6; }
+    .dot-test { background: #22c55e; }
+    .dot-handover { background: #c9a227; }
+
+    /* Progress */
+    .progress-wrapper {
+      background: #fff; border-radius: 16px; padding: 1.1rem 1.5rem;
+      margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      border: 1px solid #e2e8f0;
+    }
+    .progress-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+    .progress-top span { font-size: .82rem; font-weight: 600; color: #475569; }
+    .progress-top .count { font-weight: 700; color: #1e3a5f; }
+    .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #c9a227, #e2b93b); border-radius: 999px; transition: width .4s; width: 0%; }
+
+    /* Day card */
+    .day-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+      margin-bottom: 1rem; overflow: hidden; transition: all .2s;
+    }
+    .day-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); border-color: #cbd5e1; }
+    .day-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem; cursor: pointer; user-select: none;
+    }
+    .day-left { display: flex; align-items: center; gap: .75rem; }
+    .day-number {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 42px; height: 42px; border-radius: 12px; font-size: .9rem;
+      font-weight: 800; color: #fff; flex-shrink: 0;
+      background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+    }
+    .day-info h3 { font-size: .95rem; font-weight: 700; color: #0f172a; }
+    .day-info .day-date { font-size: .78rem; color: #94a3b8; font-weight: 500; }
+    .day-tags { display: flex; flex-wrap: wrap; gap: .3rem; }
+    .day-tag {
+      font-size: .65rem; font-weight: 700; padding: .2rem .5rem; border-radius: 6px;
+      text-transform: uppercase; letter-spacing: .3px;
+    }
+    .tag-discovery { background: #f5f3ff; color: #7c3aed; }
+    .tag-critical { background: #fef2f2; color: #dc2626; }
+    .tag-important { background: #fffbeb; color: #d97706; }
+    .tag-dev { background: #eff6ff; color: #2563eb; }
+    .tag-test { background: #f0fdf4; color: #16a34a; }
+    .tag-handover { background: #fefce8; color: #a16207; }
+    .day-toggle { font-size: 1.2rem; color: #94a3b8; transition: transform .2s; }
+    .day-card.open .day-toggle { transform: rotate(180deg); }
+    .day-content { display: none; padding: 0 1.25rem 1.25rem; }
+    .day-card.open .day-content { display: block; }
+
+    /* Time blocks */
+    .time-block { margin-bottom: 1rem; }
+    .time-block:last-child { margin-bottom: 0; }
+    .time-label {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .75rem; font-weight: 700; color: #64748b;
+      text-transform: uppercase; letter-spacing: .5px;
+      margin-bottom: .5rem; padding-bottom: .35rem; border-bottom: 1px solid #f1f5f9;
+    }
+    .time-label .time-icon { font-size: .9rem; }
+
+    /* Task */
+    .task { display: flex; align-items: flex-start; gap: .65rem; padding: .5rem 0; }
+    .task + .task { border-top: 1px dashed #f1f5f9; }
+    .task-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+    .task-text { flex: 1; }
+    .task-title { font-size: .85rem; font-weight: 600; color: #1e293b; line-height: 1.4; }
+    .task-desc {
+      font-size: .78rem; color: #64748b; margin-top: .15rem; line-height: 1.5;
+    }
+    .task-desc code {
+      background: #f1f5f9; padding: .05rem .3rem; border-radius: 3px;
+      font-size: .72rem; font-family: 'SF Mono', monospace; color: #475569;
+    }
+    .task-checklist-ref {
+      display: inline-block; background: #fef2f2; color: #dc2626;
+      font-size: .65rem; font-weight: 700; padding: .1rem .4rem;
+      border-radius: 4px; margin-left: .3rem; vertical-align: middle;
+    }
+    .task-checklist-ref.imp { background: #fffbeb; color: #d97706; }
+    .task-checklist-ref.new { background: #f0fdf4; color: #16a34a; }
+
+    /* Checkbox */
+    .task-check { flex-shrink: 0; margin-top: 2px; }
+    .task-check input { display: none; }
+    .task-check-visual {
+      width: 20px; height: 20px; border-radius: 6px; border: 2px solid #cbd5e1;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s; background: #fff; cursor: pointer;
+    }
+    .task-check-visual svg { opacity: 0; transform: scale(.5); transition: all .15s; }
+    .task.checked .task-check-visual { background: linear-gradient(135deg, #c9a227, #d4ad2e); border-color: #c9a227; }
+    .task.checked .task-check-visual svg { opacity: 1; transform: scale(1); }
+    .task.checked .task-title, .task.checked .task-desc { opacity: .4; text-decoration: line-through; text-decoration-color: #94a3b8; }
+
+    /* Tip box */
+    .tip-box {
+      background: linear-gradient(135deg, #fefce8, #fef9c3);
+      border: 1px solid #fde68a; border-radius: 12px;
+      padding: 1rem 1.25rem; margin-bottom: 1rem;
+      display: flex; gap: .65rem; align-items: flex-start;
+    }
+    .tip-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .tip-text { font-size: .82rem; color: #78350f; line-height: 1.55; }
+    .tip-text strong { color: #92400e; }
+
+    /* Phase 2 section */
+    .phase2 {
+      background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px;
+      padding: 1.25rem; margin-top: 2rem;
+    }
+    .phase2 h3 { font-size: 1rem; font-weight: 700; color: #475569; margin-bottom: .5rem; }
+    .phase2 ul { list-style: none; padding: 0; }
+    .phase2 li {
+      font-size: .82rem; color: #64748b; padding: .25rem 0;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .phase2 li::before { content: "○"; color: #94a3b8; font-size: .7rem; }
+    .phase2 .ref {
+      font-size: .6rem; font-weight: 700; padding: .1rem .3rem;
+      border-radius: 3px; background: #f1f5f9; color: #94a3b8;
+    }
+
+    .footer {
+      text-align: center; margin-top: 2.5rem; padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: .78rem;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 1rem .5rem; }
+      .day-header { padding: .85rem 1rem; }
+      .day-content { padding: 0 1rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-row">
+      <div class="logo">M</div>
+      <span class="flag">🇺🇸</span>
+    </div>
+    <h1>Plan Texas — 1 Semana Intensiva</h1>
+    <p class="subtitle">5 días para descubrir, implementar, testear y entregar</p>
+    <div class="dates">📍 Houston / Pasadena, TX · Lunes a Viernes · 8am–8pm</div>
+    <br>
+    <div class="version-badge">v2 — ACTUALIZADO con respuestas D1 (10 Feb 2026)</div>
+  </div>
+
+  <div class="alert-box">
+    <div class="alert-icon">⚡</div>
+    <div class="alert-text">
+      <strong>Formato intensivo:</strong> Cada día tiene 3 bloques — mañana con Maninos (8–12h), tarde desarrollo con IA (13–17h), y noche desarrollo extra (18–20h). Tu IA trabaja contigo en tiempo real.
+    </div>
+  </div>
+
+  <div class="info-box">
+    <div class="info-icon">🎯</div>
+    <div class="info-text">
+      <strong>Cambios post-D1:</strong> Las 3 prioridades TOP de Maninos son: <strong>1)</strong> Facebook Marketplace automatizado, <strong>2)</strong> App móvil con AI voz (su mayor dolor), <strong>3)</strong> Checklist de evaluación con IA + fotos/video. Los filtros pasan a regla del 60% (sin año, $0-$80K, radio 200mi). Comisiones: $1K RTO / $1.5K contado. Firmas DIGITALES obligatorias.
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrapper">
+    <div class="progress-top">
+      <span>Tareas completadas</span>
+      <span class="count" id="progress-text">0 / 0</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot dot-discovery"></div>Descubrimiento</div>
+    <div class="legend-item"><div class="legend-dot dot-critical"></div>Crítico</div>
+    <div class="legend-item"><div class="legend-dot dot-important"></div>Importante</div>
+    <div class="legend-item"><div class="legend-dot dot-dev"></div>Desarrollo</div>
+    <div class="legend-item"><div class="legend-dot dot-test"></div>Testing</div>
+    <div class="legend-item"><div class="legend-dot dot-handover"></div>Entrega</div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 1 — LUNES: INMERSIÓN + FILTROS + COMISIONES (COMPLETADO) -->
+  <!-- ================================================================ -->
+  <div class="day-card open">
+    <div class="day-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="day-left">
+        <div class="day-number">D1</div>
+        <div class="day-info">
+          <h3>✅ Inmersión + Filtros + Comisiones + Candado compra</h3>
+          <div class="day-date">Lunes · 8am–8pm — COMPLETADO (descubrimiento)</div>
+        </div>
+      </div>
+      <div class="day-tags">
+        <span class="day-tag tag-discovery">Descubrimiento</span>
+        <span class="day-tag tag-dev">Desarrollo</span>
+      </div>
+      <div class="day-toggle">▼</div>
+    </div>
+    <div class="day-content">
+      <div class="tip-box">
+        <div class="tip-icon">✅</div>
+        <div class="tip-text"><strong>D1 completado.</strong> 27 preguntas respondidas. Hallazgos clave: FB Marketplace es fuente #1, app móvil con voz es el mayor dolor, IA para checklist con fotos/video. Filtros: 60% (no 70%), sin año, $0-$80K, radio 200mi. Comisiones: $1K RTO / $1.5K contado, split found_by/sold_by.</div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌅</span> Mañana 8–12h (con el equipo Maninos) ✅</div>
+
+        <div class="task" data-task="1-1">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Reunión kickoff: flujo real compra (Gabriel→empleado→evaluación→pago)</div>
+            <div class="task-desc">✅ Descubierto: Gabriel negocia en FB MP → manda empleado a evaluar → Bill of Sale + Title App requeridos ANTES de pagar → Abigail paga por transferencia.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-2">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Filtros EXACTOS: regla 60%, sin año, $0–$80K, radio 200mi</div>
+            <div class="task-desc">✅ Cambio vs antes: 70%→60%, quitar año, ampliar precio, zona por radio no ciudades fijas. Vender max 80% mercado.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-3">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Comisiones: $1K RTO / $1.5K contado, split found_by + sold_by</div>
+            <div class="task-desc">✅ No hay comisión en compra. Solo en venta. 50/50 split. Reporte mensual con ranking.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-4">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">⭐ Mayor dolor: se llaman constantemente → necesitan app móvil con AI voz</div>
+            <div class="task-desc">✅ Quieren preguntar por voz: "¿cuándo pagó X?", "¿qué clientes tengo?". IA SOLO con datos reales. También: checklist por fotos/video + renovación por voz.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">💻</span> Tarde-Noche 13–20h (Desarrollo con IA)</div>
+
+        <div class="task" data-task="1-6">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🔧 Actualizar filtros: 60% rule, quitar año, $0–$80K, radio 200mi</div>
+            <div class="task-desc">Cambiar en: <code>buscador/agent.py</code>, <code>market_listings.py</code> (create + scrape), frontend. Regla de venta ≤80% mercado. <span class="task-checklist-ref new">NUEVO</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-7">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🔧 Sistema comisiones: migration + backend + reporte mensual</div>
+            <div class="task-desc">Campos <code>found_by_employee_id</code>, <code>sold_by_employee_id</code> en sales. Cálculo: $1K RTO / $1.5K cash. Split 50/50. Endpoint reporte. <span class="task-checklist-ref new">NUEVO</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-8">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-important"></div>
+          <div class="task-text">
+            <div class="task-title">🔧 Candado compra: no pagar hasta recibir title application + bill of sale</div>
+            <div class="task-desc">Campo <code>title_application_received</code>, <code>bill_of_sale_received</code> en properties. Bloquear botón "Marcar como pagado" hasta ambos = true. <span class="task-checklist-ref new">NUEVO</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="1-9">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-important"></div>
+          <div class="task-text">
+            <div class="task-title">Valor mercado: media histórico Maninos + media mercado web</div>
+            <div class="task-desc">Preparar tabla <code>maninos_sales_history</code> para importar datos de Sebastian. Combinar con scraping actual para media real. <span class="task-checklist-ref new">NUEVO</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 2 — MARTES: CAPITAL + CLIENTES + FB MP + PWA -->
+  <!-- ================================================================ -->
+  <div class="day-card open">
+    <div class="day-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="day-left">
+        <div class="day-number">D2</div>
+        <div class="day-info">
+          <h3>💳🔨 Pagos + Renovaciones (cerrar Homes) + Capital + Clientes</h3>
+          <div class="day-date">Martes · 8am–8pm</div>
+        </div>
+      </div>
+      <div class="day-tags">
+        <span class="day-tag tag-discovery">Descubrimiento</span>
+        <span class="day-tag tag-critical">Crítico</span>
+        <span class="day-tag tag-dev">Desarrollo</span>
+      </div>
+      <div class="day-toggle">▼</div>
+    </div>
+    <div class="day-content">
+      <div class="tip-box">
+        <div class="tip-icon">🎯</div>
+        <div class="tip-text"><strong>Día clave — Nuevo orden:</strong> Mañana PRIMERO: preguntas <strong>Pagos (#22-26)</strong> y <strong>Renovaciones (#32-35)</strong> — con esto cerramos Homes. DESPUÉS: Capital (RTO, KYC, cobros) + Clientes (qué ven, pagos). Tarde: implementar lo descubierto + FB MP + PWA.</div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌅</span> Mañana 8–9:30h (① Pagos + ② Renovaciones — CIERRA HOMES)</div>
+
+        <div class="task" data-task="2-0a">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">💳 Preguntas PAGOS: Stripe, cash, RTO, late fees (#22–26)</div>
+            <div class="task-desc">¿Tienen Stripe? ¿Migrar Zelle→tarjeta? ¿Down payment? ¿Late fees reales? ¿Cómo paga el cliente contado? Con esto cerramos el flujo de venta en Homes. <span class="task-checklist-ref">PRIORIDAD</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-0b">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🔨 Preguntas RENOVACIONES: quién decide, presupuesto, duración, fotos (#32–35)</div>
+            <div class="task-desc">¿Quién decide reparaciones (dueño vs capataz)? ¿Proveedores fijos? ¿Cuánto dura? ¿Fotos/videos? Con esto cerramos el paso de renovación en Homes. <span class="task-checklist-ref">PRIORIDAD</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🏦</span> Mañana 9:30–11h (③ Capital + ④ Clientes + Stripe)</div>
+
+        <div class="task" data-task="2-1">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">🏦 Preguntas Maninos CAPITAL: RTO, evaluación, KYC, pagos, entregas</div>
+            <div class="task-desc">¿Cómo evalúan solicitudes RTO? ¿Qué DTI usan? ¿Hacen KYC real? ¿Cómo cobran hoy (Zelle)? ¿Qué pasa cuando pagan tarde? ¿Quién gestiona Capital? ¿Qué reportes necesitan? <span class="task-checklist-ref new">D2</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-2">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">👥 Preguntas Portal CLIENTES: qué ven, cómo pagan, auto-registro</div>
+            <div class="task-desc">¿Qué quiere ver el cliente al entrar? ¿Pagan online o en persona? ¿Pueden subir docs? ¿Se registran solos o solo desde Homes? ¿Descargan contratos? <span class="task-checklist-ref new">D2</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-3">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">💳 Stripe + pagos: configurar cuenta LIVE con Maninos</div>
+            <div class="task-desc">EIN, datos bancarios, dirección fiscal. ¿Quieren migrar Zelle→Stripe para RTO? ¿Down payment típico? ¿Late fees reales? <span class="task-checklist-ref">#5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">👀</span> Mediodía 11–12h (Demo rápida + shadowing)</div>
+
+        <div class="task" data-task="2-4">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Mostrar filtros D1 implementados + ver cómo usan Facebook MP en vivo</div>
+            <div class="task-desc">Enseñar los cambios de ayer (filtros 60%, comisiones, evaluador AI, app móvil). Observar EXACTAMENTE cómo Gabriel busca en FB MP: qué busca, cómo filtra, cómo negocia. Grabar pantalla si se puede.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">💻</span> Tarde 13–17h (Desarrollo: FB MP + PWA)</div>
+
+        <div class="task" data-task="2-5">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🔥 Facebook MP: mejorar flujo screenshot→datos + investigar automatización</div>
+            <div class="task-desc">Mejorar OCR screenshot con GPT-4V. Investigar: FB Graph API, browser extension, IFTTT/Zapier, RSS. Hacer que el flujo manual sea ultra-rápido (3 clicks). <span class="task-checklist-ref new">PRIORIDAD #1</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-6">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">📱 PWA foundation: manifest.json + service worker + install prompt</div>
+            <div class="task-desc">Crear <code>manifest.json</code>, service worker para cache, meta tags iOS/Android, iconos app. Hacer instalable desde Chrome/Safari. <span class="task-checklist-ref">#9</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-7">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">📱 AI Voice Chat: backend endpoint + Web Speech API + Whisper</div>
+            <div class="task-desc">Endpoint <code>/api/ai/chat</code> que consulta DB real (clients, properties, sales, payments). Frontend: botón micrófono → Whisper → respuesta hablada. SOLO datos reales. <span class="task-checklist-ref new">PRIORIDAD #2</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌙</span> Noche 18–20h (Stripe + continuar PWA)</div>
+
+        <div class="task" data-task="2-8">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">Stripe LIVE keys + webhooks de pagos</div>
+            <div class="task-desc">Conectar keys reales. Webhook: <code>payment_intent.succeeded</code>, <code>failed</code>, <code>charge.dispute</code>. Si quieren Stripe para RTO: <code>create_subscription</code>. <span class="task-checklist-ref">#1</span> <span class="task-checklist-ref">#2</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="2-9">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-dev"></div>
+          <div class="task-text">
+            <div class="task-title">📱 UI móvil: responsive audit + bottom nav + touch-friendly</div>
+            <div class="task-desc">Sidebar colapsable, tablas scrollables, formularios full-width, botones min 44px, bottom nav para los 3 portales. <span class="task-checklist-ref">#9</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 3 — MIÉRCOLES: EMAILS + RENOVACIÓN + AI CHECKLIST + FIRMAS -->
+  <!-- ================================================================ -->
+  <div class="day-card">
+    <div class="day-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="day-left">
+        <div class="day-number">D3</div>
+        <div class="day-info">
+          <h3>Emails + Roles + Firmas Digitales + Implementar Capital</h3>
+          <div class="day-date">Miércoles · 8am–8pm</div>
+        </div>
+      </div>
+      <div class="day-tags">
+        <span class="day-tag tag-discovery">Descubrimiento</span>
+        <span class="day-tag tag-critical">Crítico</span>
+        <span class="day-tag tag-dev">Desarrollo</span>
+      </div>
+      <div class="day-toggle">▼</div>
+    </div>
+    <div class="day-content">
+      <div class="tip-box">
+        <div class="tip-icon">📧</div>
+        <div class="tip-text"><strong>Preguntas finales + Capital.</strong> Mañana: emails, roles/permisos (preguntas D3). Tarde: firmas digitales, implementar portal Capital con las respuestas de D2, RenovacionAgent con voz. <em>Renovaciones se resolvieron en D2.</em></div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌅</span> Mañana 8–12h (con Maninos)</div>
+
+        <div class="task" data-task="3-1">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Definir TODOS los emails + idioma + tono + branding</div>
+            <div class="task-desc">¿Español, inglés o ambos? Logo alta res. ¿Desde qué email? ¿WhatsApp vs email? Revisar 6 tipos. <span class="task-checklist-ref">#8</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-2b">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Roles: ¿quién accede a qué? + demostrar app móvil (PWA D2)</div>
+            <div class="task-desc">Definir permisos: Sebastian (admin), Gabriel (Homes), Abigail (Capital tesorería), subgerentes (patios). Mostrar PWA instalada. <span class="task-checklist-ref imp">#13</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-2c">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-discovery"></div>
+          <div class="task-text">
+            <div class="task-title">Demo: Homes completo + app móvil con equipo (validación final Homes)</div>
+            <div class="task-desc">Enseñar todo el flujo Homes implementado: búsqueda → evaluación AI → compra → candado docs → renovación → venta → comisiones. Recoger feedback final.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">💻</span> Tarde 13–17h (Desarrollo Capital + Firmas)</div>
+
+        <div class="task" data-task="3-4">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🏦 Implementar Portal Capital: solicitud RTO → evaluación → contrato → cobro</div>
+            <div class="task-desc">Con las respuestas de D2 Capital: DTI threshold, KYC flow, términos RTO, late fees. Frontend + backend completo del portal Capital. <span class="task-checklist-ref new">PRIORIDAD</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-5">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">✍️ Firmas digitales: integrar e-signatures en contratos</div>
+            <div class="task-desc">Evaluar: DocuSign eSignature API, Pandadoc, o firma canvas HTML5. RTO contract, Bill of Sale, Deposit Agreement, Title Application. <span class="task-checklist-ref new">OBLIGATORIO</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-6">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">👥 Implementar Portal Clientes: Mi Cuenta, pagos, descargas</div>
+            <div class="task-desc">Con las respuestas de D2 Clientes: qué ven, cómo pagan, docs descargables, auto-registro si aplica. <span class="task-checklist-ref new">PRIORIDAD</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌙</span> Noche 18–20h (Emails + Renovación Agent + Seguridad)</div>
+
+        <div class="task" data-task="3-7">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">Templates HTML profesionales para CADA email + Resend config</div>
+            <div class="task-desc">Logo, colores, links producción, footer legal. Configurar <code>RESEND_API_KEY</code> y dominio. Testear cada tipo. <span class="task-checklist-ref">#8</span> <span class="task-checklist-ref">#4</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-8">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-important"></div>
+          <div class="task-text">
+            <div class="task-title">RenovacionAgent mejorado: voz + presupuesto automático (con datos D2)</div>
+            <div class="task-desc">Chat con voz (Whisper) → empleado dice "hace falta cambiar el techo y el A/C" → IA calcula presupuesto con datos de proveedores obtenidos en D2. <span class="task-checklist-ref">#6</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="3-9">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-important"></div>
+          <div class="task-text">
+            <div class="task-title">Seguridad + Storage: CORS, rate limiting, Supabase buckets, RLS</div>
+            <div class="task-desc">CORS producción, rate limiting, buckets (<code>property-photos</code>, <code>transaction-documents</code>), roles middleware. Privacy Policy template TX. <span class="task-checklist-ref">#3</span> <span class="task-checklist-ref imp">#13</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 4 — JUEVES: TESTING E2E + IMPORT DATOS + FIXES -->
+  <!-- ================================================================ -->
+  <div class="day-card">
+    <div class="day-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="day-left">
+        <div class="day-number">D4</div>
+        <div class="day-info">
+          <h3>Testing E2E con Usuarios Reales + Import Datos + Fixes</h3>
+          <div class="day-date">Jueves · 8am–8pm</div>
+        </div>
+      </div>
+      <div class="day-tags">
+        <span class="day-tag tag-test">Testing</span>
+        <span class="day-tag tag-dev">Desarrollo</span>
+      </div>
+      <div class="day-toggle">▼</div>
+    </div>
+    <div class="day-content">
+      <div class="tip-box">
+        <div class="tip-icon">🧪</div>
+        <div class="tip-text"><strong>Día de verdad:</strong> Un empleado usa la app EN VIVO (desktop + móvil). Tú solo observas. Anotas CADA punto de confusión. Por la tarde arreglas TODO.</div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌅</span> Mañana 8–12h (Testing con Maninos)</div>
+
+        <div class="task" data-task="4-1">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">Test Homes: buscar casa (FB MP) → evaluar (AI foto) → comprar → renovar → publicar</div>
+            <div class="task-desc">Gabriel o Romario hacen el flujo completo. Probar AI checklist con fotos reales de una casa. Comisiones se asignan correctamente.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-2">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">Test Capital: solicitud RTO → KYC → contrato → firma digital → pago</div>
+            <div class="task-desc">Crear solicitud real. Verificación KYC. Aprobar. Contrato con firma digital. Registrar pago (Stripe o manual). Sincronización entre portales.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-3">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">Test Clientes: compra contado + RTO + mi cuenta + emails recibidos</div>
+            <div class="task-desc">Comprar casa → recibo → contrato firmado. Casa vendida desaparece del listado. Verificar emails.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-3b">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">📱 Test MÓVIL: PWA + AI voz + checklist fotos desde teléfono real</div>
+            <div class="task-desc">Empleados instalan PWA → preguntan por voz "¿cuándo pagó X?" → toman foto de casa → IA genera checklist. Anotar TODO lo que falle. <span class="task-checklist-ref">#9</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-3c">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">📄 Test PDFs + firmas: contrato RTO, Bill of Sale, Title Application</div>
+            <div class="task-desc">Generar PDFs con datos reales. Firmar digitalmente. ¿Todo correcto? ¿Campos que faltan? Formulario TDHCA incluido. <span class="task-checklist-ref imp">#27</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">💻</span> Tarde 13–17h (Fixes + Import datos)</div>
+
+        <div class="task" data-task="4-4">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-dev"></div>
+          <div class="task-text">
+            <div class="task-title">Fix TODOS los bugs del testing de la mañana</div>
+            <div class="task-desc">Bloqueantes primero → UX confusos → cosméticos. Me pasas la lista y vamos uno por uno.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-5">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">📊 Importar datos Excel de Sebastian → Supabase</div>
+            <div class="task-desc">Script CSV/Excel → clients, properties, rto_contracts, payments. Si ya envió los datos (recordar pedirlos). <span class="task-checklist-ref">#22</span> <span class="task-checklist-ref">#23</span></div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-6">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-dev"></div>
+          <div class="task-text">
+            <div class="task-title">📱 Fix bugs móviles + ajustes UI/UX según feedback</div>
+            <div class="task-desc">Tablas cortadas, botones imposibles de tocar, formularios rotos. Textos, colores, vocabulario que pidieron.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌙</span> Noche 18–20h (Preparar deploy)</div>
+
+        <div class="task" data-task="4-7">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-dev"></div>
+          <div class="task-text">
+            <div class="task-title">Preparar deploy: env vars producción, DNS, configuración</div>
+            <div class="task-desc">Todo listo para mañana. Verificar que no quede nada en localhost. Error boundaries en todas las rutas.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="4-8">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-critical"></div>
+          <div class="task-text">
+            <div class="task-title">🗑️ Limpiar datos test + crear usuarios reales con roles</div>
+            <div class="task-desc">Borrar clientes falsos, ventas prueba. Crear: Sebastian (admin), Gabriel (ops), Abigail (treasury), Romario (yard). <span class="task-checklist-ref">#22</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- DÍA 5 — VIERNES: DEPLOY + DEMO FINAL + HANDOVER -->
+  <!-- ================================================================ -->
+  <div class="day-card">
+    <div class="day-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="day-left">
+        <div class="day-number">D5</div>
+        <div class="day-info">
+          <h3>🚀 Deploy + Demo Final + Handover</h3>
+          <div class="day-date">Viernes · 8am–6pm</div>
+        </div>
+      </div>
+      <div class="day-tags">
+        <span class="day-tag tag-handover">Entrega</span>
+        <span class="day-tag tag-test">Testing</span>
+      </div>
+      <div class="day-toggle">▼</div>
+    </div>
+    <div class="day-content">
+      <div class="tip-box">
+        <div class="tip-icon">🎯</div>
+        <div class="tip-text"><strong>Último día:</strong> App en producción. Demo final con todo el equipo. PWA instalada en sus teléfonos. Documentación de handover. 🎉</div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🌅</span> Mañana 8–12h (Deploy + Smoke test)</div>
+
+        <div class="task" data-task="5-1">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-handover"></div>
+          <div class="task-text">
+            <div class="task-title">Deploy a producción: backend (Railway/Render) + frontend (Vercel)</div>
+            <div class="task-desc">Variables de entorno. DNS (si tienen dominio). SSL. Health check. URLs reales.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="5-2">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-test"></div>
+          <div class="task-text">
+            <div class="task-title">Smoke test producción: pago real $1 + email real + AI voz en móvil</div>
+            <div class="task-desc">Todo en URLs de producción. Verificar que funciona en sus teléfonos.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="5-3">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-dev"></div>
+          <div class="task-text">
+            <div class="task-title">Últimos hotfixes de producción</div>
+            <div class="task-desc">Arreglar lo que no funcione en smoke test. Prioridad: pagos, emails, AI voz.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="5-3b">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-important"></div>
+          <div class="task-text">
+            <div class="task-title">🔔 Monitoreo: UptimeRobot + Sentry + alertas Stripe</div>
+            <div class="task-desc">Health check cada 5min. Sentry errores JS/Python. Stripe dashboard alertas pagos fallidos. <span class="task-checklist-ref imp">#25</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-block">
+        <div class="time-label"><span class="time-icon">🎉</span> Tarde 13–17h (Demo + Handover)</div>
+
+        <div class="task" data-task="5-4">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-handover"></div>
+          <div class="task-text">
+            <div class="task-title">📱 Instalar PWA en teléfonos de TODO el equipo</div>
+            <div class="task-desc">Cada empleado instala la app. Probar AI voz juntos. Verificar que funciona offline (cache básico). Enseñar a usar el micrófono.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="5-5">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-handover"></div>
+          <div class="task-text">
+            <div class="task-title">🎉 Demo final: 3 portales completos con TODO el equipo</div>
+            <div class="task-desc">Homes (búsqueda→compra→renovación→venta), Capital (solicitud→KYC→contrato→pagos), Clientes (catálogo→compra→mi cuenta). Responder preguntas.</div>
+          </div>
+        </div>
+
+        <div class="task" data-task="5-6">
+          <label class="task-check"><input type="checkbox"><div class="task-check-visual"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L5.5 10L11 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></label>
+          <div class="task-dot dot-handover"></div>
+          <div class="task-text">
+            <div class="task-title">Entregar credenciales + documentación + plan Fase 2</div>
+            <div class="task-desc">Accesos Stripe/Supabase/Vercel. Cómo reiniciar/actualizar. Contacto soporte. Plan remoto Fase 2.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div class="phase2">
+    <h3>📋 Fase 2 — Soporte Remoto Post-Texas</h3>
+    <p style="font-size:.78rem;color:#64748b;margin-bottom:.6rem;">Items que se completarán remotamente. No bloquean la entrega pero mejoran la app a largo plazo.</p>
+    <ul>
+      <li>Notificaciones push / in-app <span class="ref">#10</span></li>
+      <li>Auto-registro de clientes en portal Clientes <span class="ref">#16</span></li>
+      <li>Tests automatizados (unitarios + E2E) <span class="ref">#14</span></li>
+      <li>Paginación en listados <span class="ref">#17</span></li>
+      <li>Búsqueda/filtros avanzados en Capital <span class="ref">#18</span></li>
+      <li>Logs de auditoría <span class="ref">#19</span></li>
+      <li>i18n completo (español/inglés consistente) <span class="ref">#20</span></li>
+      <li>Dashboard analytics avanzado <span class="ref">#21</span></li>
+      <li>Mantenimiento scrapers (MHVillage/MobileHome.net cambian diseño)</li>
+      <li>WhatsApp Business API (si lo piden)</li>
+      <li>Portal Inversionistas (R43: lo necesitan pero no es prioridad)</li>
+      <li>Mejora continua AI: fine-tuning voz, más fuentes datos, más idiomas</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    Maninos AI · Plan Texas 1 Semana Intensiva v2 · Febrero 2026<br>
+    <span style="font-size:.72rem;color:#b0b8c4;">Actualizado con respuestas D1 · Los items (#1-#27) corresponden a <em>CHECKLIST_PRODUCCION.html</em> · <span style="color:#16a34a;">NUEVO</span> = items descubiertos en D1</span>
+  </div>
+
+</div>
+
+<script>
+  const STORAGE_KEY = 'maninos_texas_cal_v3';
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  const tasks = document.querySelectorAll('.task[data-task]');
+  const total = tasks.length;
+
+  function updateProgress() {
+    const checked = document.querySelectorAll('.task.checked').length;
+    document.getElementById('progress-text').textContent = `${checked} / ${total} tareas completadas`;
+    document.getElementById('progress-fill').style.width = `${(checked / total) * 100}%`;
+  }
+
+  tasks.forEach(task => {
+    const id = task.dataset.task;
+    const input = task.querySelector('input');
+    if (!input) return;
+    if (saved[id]) { input.checked = true; task.classList.add('checked'); }
+    task.addEventListener('click', (e) => {
+      if (e.target.tagName === 'A') return;
+      e.stopPropagation();
+      input.checked = !input.checked;
+      task.classList.toggle('checked', input.checked);
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if (input.checked) state[id] = true; else delete state[id];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      updateProgress();
+    });
+  });
+
+  updateProgress();
+</script>
+
+</body>
+</html>

@@ -1,214 +1,281 @@
 /**
  * MANINOS AI - Type Definitions
  * 
- * Core types for the Maninos Capital rent-to-own platform.
+ * Core types for Portal Homes MVP.
  */
 
 // ============================================================================
-// CHAT
+// PROPERTY
 // ============================================================================
 
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp?: string
-  agent?: string
-}
-
-// ============================================================================
-// CLIENT (INCORPORAR)
-// ============================================================================
-
-export interface Client {
-  id: string
-  full_name: string
-  email: string
-  phone?: string
-  date_of_birth?: string
-  ssn_itin?: string
-  marital_status?: 'single' | 'married' | 'other'
-  current_address?: string
-  city?: string
-  state?: string
-  zip_code?: string
-  residence_type?: 'owned' | 'rented' | 'other'
-  
-  // Employment
-  employer?: string
-  occupation?: string
-  employer_address?: string
-  employer_phone?: string
-  monthly_income?: number
-  years_at_employer?: number
-  months_at_employer?: number
-  other_income_source?: boolean
-  other_income_amount?: number
-  
-  // Credit
-  credit_requested_amount?: number
-  credit_purpose?: string
-  desired_term_months?: number
-  preferred_payment_method?: string
-  
-  // KYC
-  kyc_status: 'pending' | 'verified' | 'rejected' | 'canceled'
-  stripe_verification_session_id?: string
-  credit_score?: number
-  
-  // DTI
-  dti_score?: number
-  dti_rating?: 'excellent' | 'good' | 'limited' | 'not_qualified'
-  
-  // References
-  reference1_name?: string
-  reference1_phone?: string
-  reference1_relationship?: string
-  reference2_name?: string
-  reference2_phone?: string
-  reference2_relationship?: string
-  
-  // Process
-  process_stage?: string
-  created_at?: string
-  updated_at?: string
-}
-
-// ============================================================================
-// PROPERTY (ADQUIRIR)
-// ============================================================================
+export type PropertyStatus = 'purchased' | 'published' | 'renovating' | 'sold'
 
 export interface Property {
   id: string
-  name?: string
   address: string
   city?: string
   state?: string
   zip_code?: string
-  county?: string
-  
-  // Financials
-  asking_price?: number
-  market_value?: number
-  arv?: number
-  repair_estimate?: number
-  max_offer_70?: number
-  max_investment_80?: number
-  
-  // Details
-  year_built?: number
+  hud_number?: string
+  year?: number
+  purchase_price?: number
+  sale_price?: number
   bedrooms?: number
   bathrooms?: number
   square_feet?: number
-  lot_size?: string
-  vin_number?: string
-  
-  // Status
-  inventory_status: 'sourcing' | 'evaluating' | 'under_contract' | 'owned' | 'listed' | 'sold'
-  acquisition_stage?: string
-  title_status?: 'clean' | 'liens' | 'unknown'
-  
-  // Inspection
-  checklist_completed?: boolean
-  checklist_results?: Record<string, boolean>
-  
-  created_at?: string
-  updated_at?: string
+  status: PropertyStatus
+  is_renovated: boolean
+  photos: string[]
+  checklist_completed: boolean
+  checklist_data: Record<string, boolean>
+  created_at: string
+  updated_at: string
+}
+
+export interface PropertyCreate {
+  address: string
+  city?: string
+  state?: string
+  zip_code?: string
+  hud_number?: string
+  year?: number
+  purchase_price?: number
+  sale_price?: number
+  bedrooms?: number
+  bathrooms?: number
+  square_feet?: number
 }
 
 // ============================================================================
-// INVESTOR (FONDEAR)
+// CLIENT
 // ============================================================================
 
-export interface Investor {
+export type ClientStatus = 'lead' | 'active' | 'completed'
+
+export interface Client {
   id: string
-  full_name: string
-  email: string
+  name: string
+  email?: string
   phone?: string
-  company_name?: string
-  
-  // Type
-  investor_type: 'individual' | 'entity' | 'accredited'
-  accredited_status?: boolean
-  
-  // KYC
-  kyc_status: 'pending' | 'verified' | 'rejected'
-  
-  // Investment
-  total_invested?: number
-  active_investments?: number
-  
-  created_at?: string
-  updated_at?: string
+  terreno?: string
+  status: ClientStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientWithSale extends Client {
+  property_address?: string
+  sale_status?: SaleStatus
+  sale_date?: string
+}
+
+export interface ClientCreate {
+  name: string
+  email?: string
+  phone?: string
+  terreno?: string
 }
 
 // ============================================================================
-// RTO CONTRACT (GESTIONAR CARTERA)
+// SALE
 // ============================================================================
 
-export interface RTOContract {
+export type SaleStatus = 'pending' | 'paid' | 'completed' | 'cancelled'
+export type SaleType = 'contado' | 'rto'
+
+export interface Sale {
   id: string
-  contract_number?: string
-  
-  // Relations
-  client_id: string
   property_id: string
-  
-  // Terms
-  term_months: number
-  monthly_rent: number
-  down_payment: number
-  purchase_option_price: number
-  payment_day: number
-  
-  // Fees
-  late_fee_per_day?: number
-  nsf_fee?: number
-  
-  // Dates
-  start_date?: string
-  end_date?: string
-  
-  // Status
-  status: 'draft' | 'pending_signature' | 'active' | 'completed' | 'terminated' | 'defaulted'
-  
-  created_at?: string
-  updated_at?: string
-}
-
-// ============================================================================
-// PAYMENT
-// ============================================================================
-
-export interface Payment {
-  id: string
-  contract_id: string
   client_id: string
-  
-  amount: number
-  payment_date: string
-  due_date?: string
-  
-  payment_type: 'rent' | 'down_payment' | 'late_fee' | 'other'
-  payment_method?: 'card' | 'zelle' | 'check' | 'cash'
-  
-  status: 'pending' | 'completed' | 'failed' | 'refunded'
-  
-  stripe_payment_id?: string
-  
-  created_at?: string
+  sale_type: SaleType
+  sale_price: number
+  status: SaleStatus
+  sold_before_renovation: boolean
+  payment_method?: string
+  payment_reference?: string
+  created_at: string
+  completed_at?: string
+  updated_at: string
+  property_address?: string
+  client_name?: string
+}
+
+export interface SaleCreate {
+  property_id: string
+  client_id: string
+  sale_price: number
+  sale_type: SaleType
 }
 
 // ============================================================================
-// PROCESS LOG
+// RENOVATION
 // ============================================================================
 
-export interface ProcessLog {
+export type RenovationStatus = 'in_progress' | 'completed'
+
+export interface MaterialItem {
+  item: string
+  quantity: number
+  unit_cost: number
+  total: number
+}
+
+export interface Renovation {
   id: string
-  entity_type: 'property' | 'client' | 'investor' | 'contract' | 'payment'
+  property_id: string
+  materials: MaterialItem[]
+  total_cost: number
+  notes?: string
+  status: RenovationStatus
+  was_moved: boolean
+  created_at: string
+  completed_at?: string
+  updated_at: string
+}
+
+// ============================================================================
+// DOCUMENT
+// ============================================================================
+
+export type EntityType = 'property' | 'client' | 'sale' | 'renovation'
+
+export interface Document {
+  id: string
+  entity_type: EntityType
   entity_id: string
-  process: 'ADQUIRIR' | 'COMERCIALIZAR' | 'INCORPORAR' | 'FONDEAR' | 'GESTIONAR' | 'ENTREGAR'
-  action: string
-  details?: Record<string, unknown>
-  created_at?: string
+  doc_type: string
+  file_name?: string
+  file_url: string
+  storage_path?: string
+  created_at: string
+}
+
+// ============================================================================
+// USER
+// ============================================================================
+
+export type UserRole =
+  | 'admin'
+  | 'operations'
+  | 'treasury'
+  | 'yard_manager'
+  // Legacy (backward compat)
+  | 'comprador'
+  | 'renovador'
+  | 'vendedor'
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: UserRole
+  department?: string
+  portal_access: string[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Yard {
+  id: string
+  name: string
+  address?: string
+  city: string
+  state: string
+  capacity: number
+  notes?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface YardAssignment {
+  id: string
+  user_id: string
+  yard_id: string
+  is_primary: boolean
+  assigned_at: string
+}
+
+/** What each role can access */
+export const ROLE_PERMISSIONS: Record<UserRole, {
+  label: string
+  portals: string[]
+  description: string
+}> = {
+  admin: {
+    label: 'Administrador',
+    portals: ['homes', 'capital', 'clientes'],
+    description: 'Acceso total a todos los portales',
+  },
+  operations: {
+    label: 'Operaciones (Compras)',
+    portals: ['homes'],
+    description: 'Buscar, comprar, renovar y vender propiedades',
+  },
+  treasury: {
+    label: 'Tesorería',
+    portals: ['homes', 'capital'],
+    description: 'Pagos, contabilidad, comisiones',
+  },
+  yard_manager: {
+    label: 'Encargado de Yard',
+    portals: ['homes'],
+    description: 'Gestión de yards y propiedades asignadas',
+  },
+  // Legacy
+  comprador: { label: 'Comprador (legacy)', portals: ['homes'], description: '' },
+  renovador: { label: 'Renovador (legacy)', portals: ['homes'], description: '' },
+  vendedor: { label: 'Vendedor (legacy)', portals: ['homes'], description: '' },
+}
+
+// ============================================================================
+// VOCABULARY (Maninos terminology — Feb 2026)
+// ============================================================================
+
+/** Maninos-specific property type labels */
+export const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  single_wide: 'Casa de una sección',
+  double_wide: 'Casa doble',
+  mobile_home: 'Casa móvil',
+  manufactured: 'Casa manufacturada',
+  // English fallbacks
+  'single wide': 'Casa de una sección',
+  'double wide': 'Casa doble',
+  'mobile home': 'Casa móvil',
+}
+
+/** Get the Spanish label for a property type */
+export function getPropertyTypeLabel(type?: string | null): string {
+  if (!type) return 'Casa móvil'
+  const key = type.toLowerCase().trim()
+  return PROPERTY_TYPE_LABELS[key] || type
+}
+
+// ============================================================================
+// API RESPONSES
+// ============================================================================
+
+export interface ApiError {
+  detail: string
+}
+
+export interface ClientsSummary {
+  lead: number
+  active: number
+  completed: number
+  total: number
+}
+
+export interface SalesSummary {
+  total_sales: number
+  total_revenue: number
+  pending: number
+  paid: number
+  completed: number
+  cancelled: number
+  contado: number
+  rto: number
+  sold_before_renovation: number
+  sold_after_renovation: number
 }

@@ -77,3 +77,10 @@ prompts/agents/docs_agent/set_strategy_legacy_rama.md
 web/src/components/legacy/
 web/src/app/api/legacy/
 web/src/app/legacy/
+
+# Sensitive data / sample files (do not commit)
+*.xlsx
+*.xls
+eStmt*.pdf
+streak-no-insta.html
+test-photos/

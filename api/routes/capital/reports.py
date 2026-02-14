@@ -1,0 +1,489 @@
+"""
+Capital Reports - Monthly portfolio reports (PDF + data)
+"""
+
+import os
+import logging
+from datetime import datetime, date
+from calendar import monthrange
+from typing import Optional
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel
+from tools.supabase_client import sb
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/reports", tags=["Capital - Reports"])
+
+MONTH_NAMES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+
+# =============================================================================
+# SCHEMAS
+# =============================================================================
+
+class ReportGenerate(BaseModel):
+    month: int  # 1-12
+    year: int
+    generated_by: str = "admin"
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+def _collect_report_data(month: int, year: int) -> dict:
+    """Collect all metrics for the given month/year."""
+    start_date = f"{year}-{month:02d}-01"
+    _, last_day = monthrange(year, month)
+    end_date = f"{year}-{month:02d}-{last_day}"
+
+    # --- Active Contracts ---
+    contracts = sb.table("rto_contracts") \
+        .select("id, monthly_rent, purchase_price, status, start_date, client_id, property_id") \
+        .execute().data or []
+
+    active_contracts = [c for c in contracts if c["status"] == "active"]
+    total_contracts = len(contracts)
+
+    portfolio_value = sum(float(c.get("purchase_price", 0)) for c in active_contracts)
+    expected_income = sum(float(c.get("monthly_rent", 0)) for c in active_contracts)
+
+    # --- Payments this month ---
+    payments = sb.table("rto_payments") \
+        .select("id, amount, paid_amount, status, due_date, late_fee_amount, days_late") \
+        .gte("due_date", start_date) \
+        .lte("due_date", end_date) \
+        .execute().data or []
+
+    paid_payments = [p for p in payments if p["status"] == "paid"]
+    actual_income = sum(float(p.get("paid_amount", 0)) for p in paid_payments)
+    overdue_payments = [p for p in payments if p["status"] in ("late", "pending") and p["due_date"] < date.today().isoformat()]
+    overdue_amount = sum(float(p.get("amount", 0)) for p in overdue_payments)
+
+    collection_rate = (actual_income / expected_income * 100) if expected_income > 0 else 0
+
+    total_due = sum(float(p.get("amount", 0)) for p in payments)
+    delinquency_rate = (overdue_amount / total_due * 100) if total_due > 0 else 0
+
+    late_fees_charged = sum(float(p.get("late_fee_amount", 0)) for p in payments)
+    late_fees_collected = sum(float(p.get("late_fee_amount", 0)) for p in paid_payments if p.get("late_fee_amount"))
+
+    # --- Investors ---
+    investors = sb.table("investors") \
+        .select("id, total_invested, available_capital, status") \
+        .execute().data or []
+
+    active_investors = [i for i in investors if i["status"] == "active"]
+    total_invested = sum(float(i.get("total_invested", 0)) for i in active_investors)
+    total_returns_paid = 0  # calculated from capital_flows
+
+    try:
+        returns = sb.table("capital_flows") \
+            .select("amount") \
+            .eq("flow_type", "return_out") \
+            .gte("flow_date", start_date) \
+            .lte("flow_date", end_date) \
+            .execute().data or []
+        total_returns_paid = sum(abs(float(r.get("amount", 0))) for r in returns)
+    except Exception:
+        pass
+
+    # --- Acquisitions this month ---
+    try:
+        acquisitions = sb.table("capital_flows") \
+            .select("amount") \
+            .eq("flow_type", "acquisition_out") \
+            .gte("flow_date", start_date) \
+            .lte("flow_date", end_date) \
+            .execute().data or []
+        acquisition_spend = sum(abs(float(a.get("amount", 0))) for a in acquisitions)
+        properties_acquired = len(acquisitions)
+    except Exception:
+        acquisition_spend = 0
+        properties_acquired = 0
+
+    # --- Deliveries this month ---
+    try:
+        deliveries = sb.table("rto_contracts") \
+            .select("id") \
+            .eq("status", "delivered") \
+            .execute().data or []
+        titles_delivered = len(deliveries)
+    except Exception:
+        titles_delivered = 0
+
+    # --- Contract breakdown ---
+    contract_breakdown = {}
+    for c in contracts:
+        s = c.get("status", "unknown")
+        contract_breakdown[s] = contract_breakdown.get(s, 0) + 1
+
+    # --- Payment breakdown ---
+    payment_breakdown = {}
+    for p in payments:
+        s = p.get("status", "unknown")
+        payment_breakdown[s] = payment_breakdown.get(s, 0) + 1
+
+    # --- Top delinquent clients ---
+    top_delinquent = []
+    for p in sorted(overdue_payments, key=lambda x: float(x.get("amount", 0)), reverse=True)[:5]:
+        top_delinquent.append({
+            "payment_id": p["id"],
+            "amount": float(p.get("amount", 0)),
+            "due_date": p.get("due_date"),
+            "days_late": p.get("days_late", 0),
+        })
+
+    return {
+        "active_contracts": len(active_contracts),
+        "total_contracts": total_contracts,
+        "portfolio_value": portfolio_value,
+        "expected_income": expected_income,
+        "actual_income": actual_income,
+        "collection_rate": round(collection_rate, 1),
+        "overdue_payments": len(overdue_payments),
+        "overdue_amount": overdue_amount,
+        "delinquency_rate": round(delinquency_rate, 1),
+        "late_fees_charged": late_fees_charged,
+        "late_fees_collected": late_fees_collected,
+        "total_invested": total_invested,
+        "total_returns_paid": total_returns_paid,
+        "active_investors": len(active_investors),
+        "properties_acquired": properties_acquired,
+        "acquisition_spend": acquisition_spend,
+        "titles_delivered": titles_delivered,
+        "detailed_data": {
+            "contract_breakdown": contract_breakdown,
+            "payment_breakdown": payment_breakdown,
+            "top_delinquent": top_delinquent,
+        },
+    }
+
+
+def _generate_report_pdf(report_data: dict, period_label: str) -> bytes:
+    """Generate a PDF monthly report."""
+    from io import BytesIO
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=0.75*inch, leftMargin=0.75*inch,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch)
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='ReportTitle', parent=styles['Heading1'],
+                              fontSize=18, alignment=TA_CENTER, spaceAfter=20))
+    styles.add(ParagraphStyle(name='SectionHead', parent=styles['Heading2'],
+                              fontSize=13, spaceAfter=8, spaceBefore=16,
+                              textColor=colors.HexColor("#283242")))
+    styles.add(ParagraphStyle(name='RightAlign', parent=styles['Normal'],
+                              alignment=TA_RIGHT))
+
+    elements = []
+    fmt = lambda n: f"${n:,.0f}" if n else "$0"
+
+    # Title
+    elements.append(Paragraph("Maninos Capital LLC", styles['ReportTitle']))
+    elements.append(Paragraph(f"Reporte Mensual — {period_label}", styles['Heading2']))
+    elements.append(Spacer(1, 20))
+
+    # Portfolio Overview
+    elements.append(Paragraph("Resumen del Portafolio", styles['SectionHead']))
+    portfolio_data = [
+        ["Contratos Activos", str(report_data["active_contracts"])],
+        ["Total Contratos", str(report_data["total_contracts"])],
+        ["Valor del Portafolio", fmt(report_data["portfolio_value"])],
+    ]
+    t = Table(portfolio_data, colWidths=[300, 150])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor("#283242")),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 15))
+
+    # Income
+    elements.append(Paragraph("Ingresos del Mes", styles['SectionHead']))
+    income_data = [
+        ["Ingreso Esperado", fmt(report_data["expected_income"])],
+        ["Ingreso Real", fmt(report_data["actual_income"])],
+        ["Tasa de Cobro", f"{report_data['collection_rate']}%"],
+    ]
+    t = Table(income_data, colWidths=[300, 150])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 15))
+
+    # Delinquency
+    elements.append(Paragraph("Morosidad", styles['SectionHead']))
+    delinq_data = [
+        ["Pagos Atrasados", str(report_data["overdue_payments"])],
+        ["Monto Atrasado", fmt(report_data["overdue_amount"])],
+        ["Tasa de Morosidad", f"{report_data['delinquency_rate']}%"],
+        ["Late Fees Cobrados", fmt(report_data["late_fees_collected"])],
+    ]
+    t = Table(delinq_data, colWidths=[300, 150])
+    bg = colors.HexColor("#fef2f2") if report_data["overdue_payments"] > 0 else colors.HexColor("#f9f9f6")
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), bg),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 15))
+
+    # Investors
+    elements.append(Paragraph("Inversionistas", styles['SectionHead']))
+    inv_data = [
+        ["Inversionistas Activos", str(report_data["active_investors"])],
+        ["Total Invertido", fmt(report_data["total_invested"])],
+        ["Retornos Pagados (mes)", fmt(report_data["total_returns_paid"])],
+    ]
+    t = Table(inv_data, colWidths=[300, 150])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 15))
+
+    # Acquisitions
+    elements.append(Paragraph("Adquisiciones & Entregas", styles['SectionHead']))
+    acq_data = [
+        ["Propiedades Adquiridas", str(report_data["properties_acquired"])],
+        ["Gasto en Adquisiciones", fmt(report_data["acquisition_spend"])],
+        ["Títulos Entregados", str(report_data["titles_delivered"])],
+    ]
+    t = Table(acq_data, colWidths=[300, 150])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+
+    # Footer
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph(
+        f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Maninos Capital LLC — Confidencial",
+        ParagraphStyle(name='Footer', parent=styles['Normal'], fontSize=8,
+                       textColor=colors.grey, alignment=TA_CENTER)
+    ))
+
+    doc.build(elements)
+    return buffer.getvalue()
+
+
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
+
+@router.get("/")
+async def list_reports():
+    """List all generated monthly reports."""
+    try:
+        result = sb.table("monthly_reports") \
+            .select("id, report_month, report_year, period_label, active_contracts, actual_income, collection_rate, overdue_payments, delinquency_rate, pdf_url, generated_at") \
+            .order("report_year", desc=True) \
+            .order("report_month", desc=True) \
+            .execute()
+
+        return {"ok": True, "reports": result.data or []}
+    except Exception as e:
+        logger.error(f"Error listing reports: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate")
+async def generate_monthly_report(data: ReportGenerate):
+    """Generate (or regenerate) a monthly portfolio report."""
+    try:
+        if data.month < 1 or data.month > 12:
+            raise HTTPException(status_code=400, detail="Mes inválido (1-12)")
+        if data.year < 2020 or data.year > 2030:
+            raise HTTPException(status_code=400, detail="Año inválido")
+
+        period_label = f"{MONTH_NAMES_ES[data.month]} {data.year}"
+
+        # Collect data
+        report_metrics = _collect_report_data(data.month, data.year)
+
+        # Generate PDF
+        pdf_bytes = _generate_report_pdf(report_metrics, period_label)
+
+        # Upload PDF to storage
+        pdf_url = None
+        try:
+            from api.services.document_service import _upload_to_storage
+            filename = f"Report_{data.year}_{data.month:02d}.pdf"
+            pdf_url = _upload_to_storage(pdf_bytes, f"reports/{data.year}", filename)
+        except Exception as upload_err:
+            logger.warning(f"Could not upload report PDF: {upload_err}")
+
+        # Upsert report record
+        existing = sb.table("monthly_reports") \
+            .select("id") \
+            .eq("report_month", data.month) \
+            .eq("report_year", data.year) \
+            .execute()
+
+        report_record = {
+            "report_month": data.month,
+            "report_year": data.year,
+            "period_label": period_label,
+            "active_contracts": report_metrics["active_contracts"],
+            "total_contracts": report_metrics["total_contracts"],
+            "portfolio_value": report_metrics["portfolio_value"],
+            "expected_income": report_metrics["expected_income"],
+            "actual_income": report_metrics["actual_income"],
+            "collection_rate": report_metrics["collection_rate"],
+            "overdue_payments": report_metrics["overdue_payments"],
+            "overdue_amount": report_metrics["overdue_amount"],
+            "delinquency_rate": report_metrics["delinquency_rate"],
+            "late_fees_charged": report_metrics["late_fees_charged"],
+            "late_fees_collected": report_metrics["late_fees_collected"],
+            "total_invested": report_metrics["total_invested"],
+            "total_returns_paid": report_metrics["total_returns_paid"],
+            "active_investors": report_metrics["active_investors"],
+            "properties_acquired": report_metrics["properties_acquired"],
+            "acquisition_spend": report_metrics["acquisition_spend"],
+            "titles_delivered": report_metrics["titles_delivered"],
+            "detailed_data": report_metrics["detailed_data"],
+            "pdf_url": pdf_url,
+            "generated_at": datetime.utcnow().isoformat(),
+            "generated_by": data.generated_by,
+        }
+
+        if existing.data:
+            sb.table("monthly_reports") \
+                .update(report_record) \
+                .eq("id", existing.data[0]["id"]) \
+                .execute()
+            report_id = existing.data[0]["id"]
+        else:
+            result = sb.table("monthly_reports") \
+                .insert(report_record) \
+                .execute()
+            report_id = result.data[0]["id"]
+
+        return {
+            "ok": True,
+            "report_id": report_id,
+            "period": period_label,
+            "pdf_url": pdf_url,
+            "metrics": report_metrics,
+            "message": f"Reporte de {period_label} generado exitosamente."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating report {data.month}/{data.year}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{report_id}")
+async def get_report(report_id: str):
+    """Get a specific report with full details."""
+    try:
+        result = sb.table("monthly_reports") \
+            .select("*") \
+            .eq("id", report_id) \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+        return {"ok": True, "report": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{report_id}/pdf")
+async def download_report_pdf(report_id: str):
+    """Download or regenerate the report PDF."""
+    try:
+        result = sb.table("monthly_reports") \
+            .select("*") \
+            .eq("id", report_id) \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+        report = result.data[0]
+        period_label = report["period_label"]
+
+        # Regenerate PDF from stored data
+        report_metrics = {
+            "active_contracts": report.get("active_contracts", 0),
+            "total_contracts": report.get("total_contracts", 0),
+            "portfolio_value": float(report.get("portfolio_value", 0)),
+            "expected_income": float(report.get("expected_income", 0)),
+            "actual_income": float(report.get("actual_income", 0)),
+            "collection_rate": float(report.get("collection_rate", 0)),
+            "overdue_payments": report.get("overdue_payments", 0),
+            "overdue_amount": float(report.get("overdue_amount", 0)),
+            "delinquency_rate": float(report.get("delinquency_rate", 0)),
+            "late_fees_charged": float(report.get("late_fees_charged", 0)),
+            "late_fees_collected": float(report.get("late_fees_collected", 0)),
+            "total_invested": float(report.get("total_invested", 0)),
+            "total_returns_paid": float(report.get("total_returns_paid", 0)),
+            "active_investors": report.get("active_investors", 0),
+            "properties_acquired": report.get("properties_acquired", 0),
+            "acquisition_spend": float(report.get("acquisition_spend", 0)),
+            "titles_delivered": report.get("titles_delivered", 0),
+        }
+
+        pdf_bytes = _generate_report_pdf(report_metrics, period_label)
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Reporte_{report['report_year']}_{report['report_month']:02d}.pdf"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading report PDF {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

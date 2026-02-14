@@ -1,34 +1,27 @@
-# Use an official Python runtime as a parent image
+# Maninos AI — Backend (FastAPI)
 FROM python:3.12-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
+ENV PORT=8000
 
-# Set work directory
 WORKDIR /app
 
-# Install system dependencies (required for some python packages like psycopg, pillow, etc)
+# System deps (psycopg, Pillow, lxml, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
-# Make start script executable
-RUN chmod +x start.sh
+EXPOSE ${PORT}
 
-# Expose port
-EXPOSE 8080
-
-# Command to run the application using python directly
-CMD ["python", "main.py"]
-
+# Railway provides $PORT; default to 8000
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

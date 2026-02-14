@@ -1,136 +1,514 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============================================================================
-   MANINOS AI - Luxury Design System (v4)
-   "Elegant Estate" - Light, Airy, Sophisticated
+   MANINOS HOMES - "Executive Elegance" Design System
+   Inspired by: Private Banking, Luxury Real Estate, Enterprise Software
+   
+   Philosophy: 
+   - Sophisticated, not flashy
+   - Clear hierarchy without loud colors
+   - Professional confidence
+   - Accessibility for 40+ users
    ============================================================================ */
 
 :root {
-  /* COLORS */
-  --bg-app: #f8fafc; /* Slate 50 - Soft White */
-  --bg-surface: #ffffff;
-  --bg-sidebar: #ffffff;
+  /* ─── NEUTRALS (Warm) ─── */
+  --white: #ffffff;
+  --ivory: #fafaf8;
+  --cream: #f5f4f1;
+  --sand: #e8e6e1;
+  --stone: #d4d2cd;
+  --ash: #9a9890;
+  --slate: #6b6962;
+  --charcoal: #3d3b36;
+  --ink: #1a1917;
   
-  --text-primary: #102a43; /* Navy 900 */
-  --text-secondary: #486581; /* Navy 600 */
-  --text-tertiary: #829ab1; /* Navy 400 */
+  /* ─── PRIMARY (Navy) ─── */
+  --navy-50: #f4f6f9;
+  --navy-100: #e8ebf0;
+  --navy-200: #c9d0dc;
+  --navy-300: #9aa7bb;
+  --navy-400: #6b7c96;
+  --navy-500: #4a5d78;
+  --navy-600: #3a4a62;
+  --navy-700: #2f3c50;
+  --navy-800: #283242;
+  --navy-900: #1e2532;
+  --navy-950: #141821;
   
-  --primary: #102a43; /* Navy */
-  --accent: #d4af37; /* Champagne Gold */
+  /* ─── ACCENT (Champagne Gold - Very Subtle) ─── */
+  --gold-50: #fdfcf9;
+  --gold-100: #f9f6ef;
+  --gold-200: #f0e9d8;
+  --gold-300: #e4d7bb;
+  --gold-400: #d4c09a;
+  --gold-500: #b8a070;
+  --gold-600: #9a8357;
+  --gold-700: #7d6a47;
+  --gold-800: #66563c;
+  --gold-900: #544834;
   
-  /* BORDERS */
-  --border-light: rgba(16, 42, 67, 0.08);
-  --border-gold: rgba(212, 175, 55, 0.3);
+  /* ─── SEMANTIC ─── */
+  --success: #2d7a4f;
+  --success-light: #ecf5f0;
+  --warning: #b5850a;
+  --warning-light: #fdf8e8;
+  --error: #b91c1c;
+  --error-light: #fef2f2;
+  --info: #1d5a8c;
+  --info-light: #f0f7fc;
+  
+  /* ─── SHADOWS (Very Subtle) ─── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
 }
 
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
 @layer base {
-  body {
-    @apply bg-slate-50 text-navy-900 antialiased;
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-serif text-navy-900;
+  
+  body {
+    font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--ivory);
+    color: var(--charcoal);
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+  
+  /* Elegant serif headings */
+  h1, h2, h3, h4 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  
+  h1 { font-size: 2rem; line-height: 1.2; }
+  h2 { font-size: 1.625rem; line-height: 1.25; }
+  h3 { font-size: 1.375rem; line-height: 1.3; }
+  h4 { font-size: 1.125rem; line-height: 1.35; }
+  
+  /* Readable body text */
+  p, span, label {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  
+  /* Clean focus states */
+  *:focus-visible {
+    outline: 2px solid var(--navy-500);
+    outline-offset: 2px;
+  }
+  
+  /* Selection */
+  ::selection {
+    background-color: var(--gold-200);
+    color: var(--ink);
   }
 }
 
+/* ============================================================================
+   COMPONENT STYLES
+   ============================================================================ */
 @layer components {
+  
   /* ─────────────────────────────────────────────────────────────────────────
-     LUXURY CARDS
+     CARDS - Clean, understated
      ───────────────────────────────────────────────────────────────────────── */
-  .card-luxury {
-    @apply bg-white rounded-xl border border-navy-100 shadow-soft transition-all duration-300;
-  }
-  .card-luxury:hover {
-    @apply shadow-lg border-gold-300 -translate-y-1;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     BUTTONS
-     ───────────────────────────────────────────────────────────────────────── */
-  .btn-primary {
-    @apply flex items-center justify-center gap-2 px-6 py-3 rounded-lg 
-           bg-navy-900 text-white font-medium tracking-wide shadow-md 
-           transition-all duration-300 hover:bg-navy-800 hover:shadow-lg hover:-translate-y-0.5;
+  .card {
+    @apply bg-white rounded-lg border border-stone/50;
+    box-shadow: var(--shadow-sm);
   }
   
-  .btn-gold {
-    @apply flex items-center justify-center gap-2 px-6 py-3 rounded-lg 
-           bg-gradient-to-r from-gold-400 to-gold-500 text-white font-medium 
-           shadow-gold transition-all duration-300 hover:brightness-105 hover:-translate-y-0.5;
+  .card:hover {
+    box-shadow: var(--shadow-md);
+    @apply border-stone;
   }
-
-  .btn-ghost {
-    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-lg 
-           text-navy-600 hover:bg-navy-50 hover:text-navy-900 transition-colors;
+  
+  .card-luxury {
+    @apply bg-white rounded-lg border border-stone/40;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  
+  .card-luxury:hover {
+    box-shadow: var(--shadow-md);
+    @apply border-stone;
+  }
+  
+  .card-flat {
+    @apply bg-cream rounded-lg p-5;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     INPUTS
+     BUTTONS - Professional, clear
      ───────────────────────────────────────────────────────────────────────── */
-  .input-luxury {
-    @apply w-full px-4 py-3 rounded-lg bg-white border border-navy-100 
-           text-navy-900 placeholder:text-navy-300 shadow-sm
-           focus:outline-none focus:border-gold-400 focus:ring-1 focus:ring-gold-400
-           transition-all duration-200;
+  .btn {
+    @apply inline-flex items-center justify-center gap-2
+           font-semibold text-base
+           rounded-md transition-all duration-150
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    min-height: 44px;
+    padding: 10px 20px;
+  }
+  
+  /* Primary - Solid Navy */
+  .btn-primary {
+    @apply btn text-white;
+    background-color: var(--navy-800);
+  }
+  
+  .btn-primary:hover {
+    background-color: var(--navy-900);
+  }
+  
+  .btn-primary:active {
+    background-color: var(--navy-950);
+  }
+  
+  /* Gold accent - Used sparingly */
+  .btn-gold {
+    @apply btn text-white;
+    background-color: var(--gold-600);
+  }
+  
+  .btn-gold:hover {
+    background-color: var(--gold-700);
+  }
+  
+  /* Secondary - Outlined */
+  .btn-secondary {
+    @apply btn bg-white border border-stone text-charcoal;
+  }
+  
+  .btn-secondary:hover {
+    @apply bg-cream border-slate;
+  }
+  
+  /* Ghost - Minimal */
+  .btn-ghost {
+    @apply btn bg-transparent text-slate;
+  }
+  
+  .btn-ghost:hover {
+    @apply bg-sand/50 text-charcoal;
+  }
+  
+  /* Danger */
+  .btn-danger {
+    @apply btn text-white;
+    background-color: var(--error);
+  }
+  
+  .btn-danger:hover {
+    background-color: #991b1b;
+  }
+  
+  /* Sizes */
+  .btn-sm {
+    @apply text-sm;
+    min-height: 36px;
+    padding: 6px 14px;
+  }
+  
+  .btn-lg {
+    @apply text-lg;
+    min-height: 52px;
+    padding: 14px 28px;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     BADGES
+     INPUTS - Clean, spacious
+     ───────────────────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full px-4 py-3 
+           bg-white border border-stone rounded-md
+           text-charcoal placeholder:text-ash
+           transition-colors duration-150;
+    font-size: 1rem;
+    min-height: 48px;
+  }
+  
+  .input:hover {
+    @apply border-slate;
+  }
+  
+  .input:focus {
+    @apply border-navy-500 ring-1 ring-navy-500/20 outline-none;
+  }
+  
+  .input-luxury {
+    @apply input;
+  }
+  
+  .input-error {
+    @apply border-error ring-1 ring-error/20;
+  }
+  
+  /* Labels */
+  .label {
+    @apply block text-sm font-semibold text-slate mb-1.5;
+    letter-spacing: 0.01em;
+  }
+  
+  .help-text {
+    @apply text-sm text-ash mt-1;
+  }
+  
+  .error-text {
+    @apply text-sm mt-1 font-medium;
+    color: var(--error);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     BADGES - Subtle, informative
      ───────────────────────────────────────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border;
+    @apply inline-flex items-center gap-1 px-2.5 py-1 
+           rounded text-xs font-semibold uppercase tracking-wide;
   }
+  
+  .badge-default {
+    @apply bg-sand text-slate;
+  }
+  
   .badge-gold {
-    @apply bg-gold-50 border-gold-200 text-gold-700;
+    background-color: var(--gold-100);
+    color: var(--gold-700);
   }
+  
   .badge-navy {
-    @apply bg-navy-50 border-navy-200 text-navy-700;
+    @apply bg-navy-100 text-navy-700;
   }
+  
   .badge-success {
-    @apply bg-emerald-50 border-emerald-200 text-emerald-700;
+    background-color: var(--success-light);
+    color: var(--success);
+  }
+  
+  .badge-warning {
+    background-color: var(--warning-light);
+    color: var(--warning);
+  }
+  
+  .badge-error {
+    background-color: var(--error-light);
+    color: var(--error);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     CHAT BUBBLES
+     TABLES
      ───────────────────────────────────────────────────────────────────────── */
-  .chat-bubble-user {
-    @apply bg-navy-900 text-white rounded-2xl rounded-tr-sm px-5 py-3 shadow-md;
-  }
-  .chat-bubble-assistant {
-    @apply bg-white border border-navy-100 text-navy-800 rounded-2xl rounded-tl-sm px-5 py-3 shadow-sm;
+  .table {
+    @apply w-full text-left;
   }
   
+  .table th {
+    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate
+           bg-cream border-b border-stone;
+  }
+  
+  .table td {
+    @apply px-4 py-4 text-charcoal border-b border-sand;
+  }
+  
+  .table tr:hover td {
+    @apply bg-cream/50;
+  }
+
   /* ─────────────────────────────────────────────────────────────────────────
      SIDEBAR
      ───────────────────────────────────────────────────────────────────────── */
   .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-navy-600 
-           transition-all duration-200 hover:bg-navy-50 hover:text-navy-900;
-  }
-  .sidebar-link-active {
-    @apply bg-white text-gold-600 shadow-sm border border-navy-50 font-medium;
+    @apply flex items-center gap-3 px-4 py-3 rounded-md
+           text-slate font-medium
+           transition-colors duration-150;
   }
   
+  .sidebar-link:hover {
+    @apply bg-sand/50 text-charcoal;
+  }
+  
+  .sidebar-link-active {
+    @apply bg-navy-50 text-navy-800;
+  }
+
   /* ─────────────────────────────────────────────────────────────────────────
-     UTILITIES
+     DIVIDERS
      ───────────────────────────────────────────────────────────────────────── */
-  .text-gold-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-gold-500 to-gold-700;
+  .divider {
+    @apply border-t border-sand my-6;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     ALERTS
+     ───────────────────────────────────────────────────────────────────────── */
+  .alert {
+    @apply flex items-start gap-3 p-4 rounded-md border;
+  }
+  
+  .alert-success {
+    background-color: var(--success-light);
+    border-color: #a7d5b8;
+    color: var(--success);
+  }
+  
+  .alert-warning {
+    background-color: var(--warning-light);
+    border-color: #e8d89a;
+    color: var(--warning);
+  }
+  
+  .alert-error {
+    background-color: var(--error-light);
+    border-color: #f5c6c6;
+    color: var(--error);
+  }
+  
+  .alert-info {
+    background-color: var(--info-light);
+    border-color: #a8cce4;
+    color: var(--info);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     STAT CARDS - For dashboard metrics
+     ───────────────────────────────────────────────────────────────────────── */
+  .stat-card {
+    @apply bg-white rounded-lg border border-sand p-5;
+    box-shadow: var(--shadow-xs);
+  }
+  
+  .stat-value {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    @apply text-3xl font-semibold text-ink;
+  }
+  
+  .stat-label {
+    @apply text-sm text-slate mt-1;
   }
 }
 
-/* Custom Scrollbar for Webkit */
+/* ============================================================================
+   ANIMATIONS - Subtle, professional
+   ============================================================================ */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+}
+
+.animate-progress {
+  animation: progress linear forwards;
+}
+
+/* ============================================================================
+   SCROLLBAR - Minimal
+   ============================================================================ */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--cream);
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--stone);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--ash);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stone) var(--cream);
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ============================================================================ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+  }
+  
+  .card, .card-luxury {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
 }

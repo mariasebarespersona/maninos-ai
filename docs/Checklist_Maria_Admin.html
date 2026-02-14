@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>✅ Checklist Maria Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 30%, #f0f9ff 70%, #eff6ff 100%);
+      min-height: 100vh; padding: 2rem 1rem;
+      color: #1e293b;
+    }
+    .container { max-width: 680px; margin: 0 auto; }
+
+    header {
+      text-align: center; margin-bottom: 2rem;
+    }
+    header h1 {
+      font-size: 1.8rem; font-weight: 800;
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    header p { color: #64748b; font-size: .9rem; margin-top: .3rem; }
+
+    /* Progress */
+    .progress-wrap {
+      background: #fff; border-radius: 16px; padding: 1rem 1.2rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 1.5rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .progress-bar-bg {
+      flex: 1; height: 10px; background: #f1f5f9; border-radius: 99px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; border-radius: 99px; transition: width .4s ease;
+      background: linear-gradient(90deg, #ec4899, #8b5cf6);
+    }
+    .progress-text { font-size: .85rem; font-weight: 700; color: #8b5cf6; min-width: 52px; text-align: right; }
+
+    /* Section */
+    .section {
+      background: #fff; border-radius: 16px; padding: 1.4rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 1.2rem;
+    }
+    .section-title {
+      font-size: 1rem; font-weight: 700; margin-bottom: 1rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .section-title .emoji { font-size: 1.2rem; }
+    .badge {
+      font-size: .65rem; font-weight: 700; padding: .2rem .55rem;
+      border-radius: 99px; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge.fast { background: #dcfce7; color: #16a34a; }
+    .badge.long { background: #fef3c7; color: #d97706; }
+    .badge.city { background: #dbeafe; color: #2563eb; }
+
+    /* Task card */
+    .task {
+      display: flex; align-items: flex-start; gap: .75rem;
+      padding: .7rem .6rem; border-radius: 12px;
+      transition: all .2s; cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .task:hover { background: #faf5ff; border-color: #e9d5ff; }
+    .task.checked { opacity: .55; }
+    .task.checked .task-text { text-decoration: line-through; color: #94a3b8; }
+
+    .task input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none;
+      width: 22px; height: 22px; min-width: 22px;
+      border: 2px solid #d1d5db; border-radius: 6px;
+      cursor: pointer; position: relative; margin-top: 2px;
+      transition: all .2s;
+    }
+    .task input[type="checkbox"]:checked {
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      border-color: transparent;
+    }
+    .task input[type="checkbox"]:checked::after {
+      content: '✓'; color: #fff; font-size: 14px; font-weight: 700;
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .task-content { flex: 1; }
+    .task-text { font-size: .92rem; font-weight: 500; line-height: 1.4; }
+    .task-note {
+      font-size: .78rem; color: #94a3b8; margin-top: .2rem;
+      font-style: italic;
+    }
+
+    /* Notes area */
+    .task-notes-area {
+      width: 100%; margin-top: .5rem; padding: .5rem .7rem;
+      border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: .8rem; font-family: inherit; color: #475569;
+      resize: vertical; min-height: 36px; max-height: 120px;
+      transition: border-color .2s;
+      background: #fafbfc;
+    }
+    .task-notes-area:focus { outline: none; border-color: #c084fc; background: #fff; }
+    .task-notes-area.has-value { border-color: #a78bfa; background: #faf5ff; }
+
+    /* Footer */
+    .footer {
+      text-align: center; margin-top: 1.5rem;
+      font-size: .75rem; color: #94a3b8;
+    }
+
+    @media print {
+      body { background: #fff; padding: .5rem; }
+      .task:hover { background: none; border-color: transparent; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>✅ Checklist Maria Admin</h1>
+      <p>Tareas personales pendientes</p>
+    </header>
+
+    <!-- Progress -->
+    <div class="progress-wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <span class="progress-text" id="progress-text">0/8</span>
+    </div>
+
+    <!-- Tareas rápidas -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">⚡</span> Tareas rápidas
+        <span class="badge fast">Rápido</span>
+      </div>
+
+      <label class="task" data-id="t1">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Pagar council tax</div>
+          <textarea class="task-notes-area" data-note="t1" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t2">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Pagar factura Cigna</div>
+          <textarea class="task-notes-area" data-note="t2" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t3">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Meterme en cuenta Tumai en CaixaBank</div>
+          <textarea class="task-notes-area" data-note="t3" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t4">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Darme de baja en Giffgaff</div>
+          <textarea class="task-notes-area" data-note="t4" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t12">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Traspasarme dinero viaje de cuenta Tumai a cuenta personal</div>
+          <div class="task-note">Por ahora 1.000€</div>
+          <textarea class="task-notes-area" data-note="t12" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+    </div>
+
+    <!-- Tareas que llevan más tiempo -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">🕐</span> Tareas que llevan más tiempo
+        <span class="badge long">Más tiempo</span>
+      </div>
+
+      <label class="task" data-id="t5">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Régimen Beckham</div>
+          <div class="task-note">Ver qué docs necesito, hablar con mamá</div>
+          <textarea class="task-notes-area" data-note="t5" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t6">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Llamar empresas Startup Emergente</div>
+          <textarea class="task-notes-area" data-note="t6" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t7">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Aplicar a The Bridge: Hacer video</div>
+          <textarea class="task-notes-area" data-note="t7" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t8">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Aplicar ICEX programa mujeres</div>
+          <textarea class="task-notes-area" data-note="t8" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+    </div>
+
+    <!-- Madrid -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">🏙️</span> Madrid
+        <span class="badge city">Ciudad</span>
+      </div>
+
+      <label class="task" data-id="t9">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Terminar empadronamiento</div>
+          <div class="task-note">Firma papá doc + escritura Sobradiel</div>
+          <textarea class="task-notes-area" data-note="t9" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t10">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Pedir cita médico general</div>
+          <textarea class="task-notes-area" data-note="t10" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+
+      <label class="task" data-id="t11">
+        <input type="checkbox">
+        <div class="task-content">
+          <div class="task-text">Pedir cita limpieza facial</div>
+          <textarea class="task-notes-area" data-note="t11" placeholder="Notas..."></textarea>
+        </div>
+      </label>
+    </div>
+
+    <div class="footer">Maria Admin Checklist · Guardado automático en navegador</div>
+  </div>
+
+  <script>
+    const SK = 'maria_admin_checks';
+    const NK = 'maria_admin_notes';
+
+    const tasks = document.querySelectorAll('.task');
+    const checks = JSON.parse(localStorage.getItem(SK) || '{}');
+    const notes = JSON.parse(localStorage.getItem(NK) || '{}');
+
+    // Restore state
+    tasks.forEach(task => {
+      const id = task.dataset.id;
+      const input = task.querySelector('input[type="checkbox"]');
+      if (checks[id]) { input.checked = true; task.classList.add('checked'); }
+
+      input.addEventListener('change', () => {
+        checks[id] = input.checked;
+        task.classList.toggle('checked', input.checked);
+        localStorage.setItem(SK, JSON.stringify(checks));
+        updateProgress();
+      });
+    });
+
+    // Notes restore & auto-save
+    document.querySelectorAll('.task-notes-area').forEach(ta => {
+      const key = ta.dataset.note;
+      if (notes[key]) { ta.value = notes[key]; ta.classList.add('has-value'); }
+
+      ta.addEventListener('input', () => {
+        notes[key] = ta.value;
+        localStorage.setItem(NK, JSON.stringify(notes));
+        ta.classList.toggle('has-value', ta.value.trim().length > 0);
+      });
+
+      // Prevent checkbox toggle when clicking on textarea
+      ta.addEventListener('click', e => e.stopPropagation());
+    });
+
+    function updateProgress() {
+      const total = tasks.length;
+      const done = document.querySelectorAll('.task input:checked').length;
+      document.getElementById('progress-fill').style.width = (done / total * 100) + '%';
+      document.getElementById('progress-text').textContent = done + '/' + total;
+    }
+
+    updateProgress();
+  </script>
+</body>
+</html>
+

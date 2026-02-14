@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏠 Maninos AI - Diagrama de Flujo Operativo V2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #e2e8f0;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .version-badge {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .version-badge span {
+            background: linear-gradient(90deg, #10b981, #059669);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        
+        /* MANINOS HOMES Section */
+        .section-homes {
+            background: linear-gradient(180deg, rgba(234, 179, 8, 0.15) 0%, rgba(234, 179, 8, 0.05) 100%);
+            border: 2px solid #eab308;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 1.4rem;
+            font-weight: 700;
+            padding: 12px 30px;
+            border-radius: 30px;
+            margin-bottom: 30px;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .section-title.homes {
+            background: linear-gradient(90deg, #eab308, #ca8a04);
+            color: #1e293b;
+        }
+        
+        /* Steps Grid */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            position: relative;
+        }
+        
+        .step {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .step-number {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #eab308;
+            color: #1e293b;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        
+        .step h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            padding-top: 8px;
+            color: #f8fafc;
+        }
+        
+        .step-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+        
+        .step-item.sub {
+            margin-left: 20px;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+        
+        .step-item .icon {
+            flex-shrink: 0;
+        }
+        
+        /* Sale Point Badges */
+        .sale-point {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1));
+            border: 2px dashed #22c55e;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .sale-point-icon {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        
+        .sale-point-text {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #22c55e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* NEW: Automation badges */
+        .automation-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: white;
+            margin-left: 6px;
+        }
+        
+        .automation-badge.mobile {
+            background: linear-gradient(90deg, #06b6d4, #0891b2);
+        }
+        
+        .automation-badge.email {
+            background: linear-gradient(90deg, #f97316, #ea580c);
+        }
+        
+        .automation-badge.ai {
+            background: linear-gradient(90deg, #ec4899, #db2777);
+        }
+        
+        /* Arrow between sections */
+        .arrow-down {
+            text-align: center;
+            font-size: 3rem;
+            color: #64748b;
+            margin: 20px 0;
+        }
+        
+        /* Decision Box */
+        .decision-box {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border-radius: 16px;
+            padding: 20px 40px;
+            text-align: center;
+            max-width: 500px;
+            margin: 0 auto 30px;
+        }
+        
+        .decision-box h3 {
+            font-size: 1.3rem;
+            margin-bottom: 8px;
+        }
+        
+        .decision-box p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        /* Options Grid */
+        .options-container {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        
+        .option-label {
+            background: rgba(100, 116, 139, 0.3);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+        
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        /* CONTADO Section */
+        .section-contado {
+            background: linear-gradient(180deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+            border: 2px solid #22c55e;
+            border-radius: 20px;
+            padding: 25px;
+        }
+        
+        .section-title.contado {
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+            color: white;
+        }
+        
+        /* RTO Section */
+        .section-rto {
+            background: linear-gradient(180deg, rgba(249, 115, 22, 0.15) 0%, rgba(249, 115, 22, 0.05) 100%);
+            border: 2px solid #f97316;
+            border-radius: 20px;
+            padding: 25px;
+        }
+        
+        .section-title.rto {
+            background: linear-gradient(90deg, #f97316, #ea580c);
+            color: white;
+        }
+        
+        .flow-step {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .flow-step h4 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: #f8fafc;
+        }
+        
+        .flow-step.highlight {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid #22c55e;
+        }
+        
+        .flow-step.highlight-rto {
+            background: rgba(249, 115, 22, 0.2);
+            border: 1px solid #f97316;
+        }
+        
+        /* Fondear Section */
+        .section-fondear {
+            background: linear-gradient(90deg, #7c3aed, #6d28d9);
+            border-radius: 12px;
+            padding: 15px 25px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .cycle-note {
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px dashed #7c3aed;
+            border-radius: 10px;
+            padding: 10px;
+            margin-top: 15px;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        
+        /* NEW: Automations Panel */
+        .automations-panel {
+            background: linear-gradient(180deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+            border: 2px solid #8b5cf6;
+            border-radius: 20px;
+            padding: 25px;
+            margin-top: 30px;
+        }
+        
+        .section-title.automations {
+            background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+            color: white;
+        }
+        
+        .automations-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .automation-card {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .automation-card h4 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #f8fafc;
+        }
+        
+        .automation-card .emoji {
+            font-size: 1.3rem;
+        }
+        
+        .automation-list {
+            list-style: none;
+        }
+        
+        .automation-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+        
+        .automation-list li::before {
+            content: "→";
+            color: #8b5cf6;
+            font-weight: bold;
+        }
+        
+        /* Legend */
+        .legend {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 20px 30px;
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .legend-color.homes { background: #eab308; }
+        .legend-color.contado { background: #22c55e; }
+        .legend-color.rto { background: #f97316; }
+        .legend-color.fondear { background: #7c3aed; }
+        .legend-color.auto { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .steps-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .automations-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .steps-grid,
+            .options-grid,
+            .automations-grid {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Maninos AI - Diagrama de Flujo Operativo</h1>
+        <div class="version-badge">
+            <span>✨ Versión 2.0 - Con Automatizaciones</span>
+        </div>
+        
+        <!-- ====== MANINOS HOMES (COMERCIALIZAR) ====== -->
+        <div class="section-homes">
+            <div class="section-title homes">COMERCIALIZAR (MANINOS HOMES)</div>
+            
+            <div class="steps-grid">
+                <!-- PASO 1: Compra Casa -->
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>🏠 Compra Casa</h3>
+                    
+                    <div class="step-item">
+                        <span class="icon">1.1</span>
+                        <span>Dashboard casas del mercado</span>
+                        <span class="automation-badge ai">🤖 AI</span>
+                    </div>
+                    <div class="step-item sub">
+                        <span>Filtro análisis financiero (histórico + mercado)</span>
+                    </div>
+                    <div class="step-item sub">
+                        <span>Regla 70% automática</span>
+                    </div>
+                    <div class="step-item sub">
+                        <span>🔔 Alertas nuevas casas</span>
+                        <span class="automation-badge mobile">📱</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">1.2</span>
+                        <span>Checklist casa física (28 pts)</span>
+                        <span class="automation-badge mobile">📱 App</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">1.3</span>
+                        <span>Docs</span>
+                    </div>
+                    <div class="step-item sub">→ Pagar taxes</div>
+                    <div class="step-item sub">→ Bill of Sale (escritura)</div>
+                    <div class="step-item sub">→ Cambio título</div>
+                    
+                    <div class="step-item">
+                        <span class="icon">1.4</span>
+                        <span>Pago casa</span>
+                        <span class="automation-badge" style="background: linear-gradient(90deg, #6366f1, #4f46e5);">💳 Stripe</span>
+                    </div>
+                    <div class="step-item sub">→ Pago automatizado por Stripe</div>
+                    <div class="step-item sub">→ Transferencia / Efectivo</div>
+                </div>
+                
+                <!-- PASO 2: Fotos / Publicar -->
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>📸 Fotos / Publicar</h3>
+                    
+                    <div class="step-item">
+                        <span class="icon">2.1</span>
+                        <span>Dashboard casas Maninos</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">2.2</span>
+                        <span>Cada casa con precio y fotos</span>
+                    </div>
+                    <div class="step-item sub">
+                        <span>📷 Subir fotos desde app</span>
+                        <span class="automation-badge mobile">📱</span>
+                    </div>
+                    
+                    <div class="sale-point">
+                        <div class="sale-point-icon">💰</div>
+                        <div class="sale-point-text">Posible Punto de Venta</div>
+                    </div>
+                </div>
+                
+                <!-- PASO 3: Renovar -->
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>🔧 Renovar</h3>
+                    
+                    <div class="step-item">
+                        <span class="icon">3.1</span>
+                        <span>Incluye posibilidad de mover</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">3.2</span>
+                        <span>Checklist materiales</span>
+                        <span class="automation-badge mobile">📱 App</span>
+                    </div>
+                    <div class="step-item sub">→ Materiales por unidad + costos</div>
+                    <div class="step-item sub">→ Cálculo automático por sqft</div>
+                    <div class="step-item sub">
+                        <span>🎤 Comandos de voz</span>
+                        <span class="automation-badge ai">🤖</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">3.3</span>
+                        <span>Registro compras materiales</span>
+                        <span class="automation-badge mobile">📱</span>
+                    </div>
+                    <div class="step-item sub">
+                        <span>📊 Precio sugerido auto</span>
+                        <span class="automation-badge ai">🤖</span>
+                    </div>
+                </div>
+                
+                <!-- PASO 4: Volver a Publicar -->
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h3>📢 Volver a Publicar</h3>
+                    
+                    <div class="step-item">
+                        <span class="icon">4.1</span>
+                        <span>Precio updated post reforma</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">4.2</span>
+                        <span>Fotos nuevas (antes/después)</span>
+                        <span class="automation-badge mobile">📱</span>
+                    </div>
+                    
+                    <div class="step-item">
+                        <span class="icon">4.3</span>
+                        <span>Publicar en Portal Clientes</span>
+                    </div>
+                    <div class="step-item sub">→ Clientes ven casas disponibles</div>
+                    <div class="step-item sub">→ Fotos, precio, ubicación</div>
+                    
+                    <div class="sale-point">
+                        <div class="sale-point-icon">💰</div>
+                        <div class="sale-point-text">Posible Punto de Venta</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Arrow -->
+        <div class="arrow-down">⬇</div>
+        
+        <!-- Decision Box -->
+        <div class="decision-box">
+            <h3>💳 ¿Cómo paga el cliente?</h3>
+            <p>Al cierre de venta, el cliente elige su forma de pago</p>
+        </div>
+        
+        <!-- Options Labels -->
+        <div class="options-container">
+            <span class="option-label">↓ Opción 1</span>
+            <span class="option-label">↓ Opción 2</span>
+        </div>
+        
+        <!-- Options Grid -->
+        <div class="options-grid">
+            <!-- CONTADO (Cash) -->
+            <div class="section-contado">
+                <div class="section-title contado">💵 CONTADO (Cash)</div>
+                
+                <div class="flow-step">
+                    <h4>Cliente paga al contado</h4>
+                    <div class="step-item">El cliente tiene el dinero completo</div>
+                </div>
+                
+                <div class="flow-step">
+                    <h4>Datos Cliente</h4>
+                    <div class="step-item">→ Nombre, Tel, Correo</div>
+                    <div class="step-item">→ Terreno (ubicación)</div>
+                </div>
+                
+                <div class="flow-step">
+                    <h4>Pago</h4>
+                    <div class="step-item">→ Stripe</div>
+                    <div class="step-item">→ Transferencia</div>
+                    <div class="step-item">→ Efectivo</div>
+                    <div class="step-item" style="margin-top: 10px;">
+                        <span>📧 Recordatorios de pago</span>
+                        <span class="automation-badge email">✉️ Email</span>
+                    </div>
+                    <div class="step-item sub">→ 3 días antes del vencimiento</div>
+                    <div class="step-item sub">→ Día del vencimiento</div>
+                    <div class="step-item sub">→ 1 día después (si no pagó)</div>
+                </div>
+                
+                <div class="flow-step highlight">
+                    <h4>✅ Transferencia de Título</h4>
+                    <div class="step-item">Maninos Homes transfiere título directamente al cliente</div>
+                    <div class="step-item" style="margin-top: 8px;">
+                        <span>📄 Docs auto-generados</span>
+                        <span class="automation-badge ai">🤖</span>
+                    </div>
+                </div>
+                
+                <div class="flow-step" style="background: rgba(34, 197, 94, 0.15); border: 1px dashed #22c55e;">
+                    <h4>🎉 Post-Venta</h4>
+                    <div class="step-item">
+                        <span>⭐ Solicitar reseña (7 días)</span>
+                        <span class="automation-badge email">✉️</span>
+                    </div>
+                    <div class="step-item">
+                        <span>🤝 Pedir referidos (30 días)</span>
+                        <span class="automation-badge email">✉️</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MANINOS CAPITAL (RTO) -->
+            <div class="section-rto">
+                <div class="section-title rto">🏦 MANINOS CAPITAL (RTO)</div>
+                
+                <div class="flow-step">
+                    <h4>Maninos Capital compra la casa</h4>
+                    <div class="step-item">Capital adquiere la propiedad de Maninos Homes</div>
+                </div>
+                
+                <div class="flow-step">
+                    <h4>1. Adquirir</h4>
+                    <div class="step-item">→ Análisis financiero</div>
+                    <div class="step-item">→ Cambio de título a Maninos Capital</div>
+                </div>
+                
+                <div class="flow-step">
+                    <h4>2. Incorporar</h4>
+                    <div class="step-item">→ Meter cliente</div>
+                    <div class="step-item">→ KYC (verificación identidad)</div>
+                    <div class="step-item">→ DTI (capacidad de pago)</div>
+                    <div class="step-item">→ Generar contrato RTO</div>
+                </div>
+                
+                <div class="flow-step">
+                    <h4>3. Gestionar Cartera</h4>
+                    <div class="step-item">→ Cobro de pagos mensuales</div>
+                    <div class="step-item">→ Reportes mensuales</div>
+                    <div class="step-item">→ Seguimiento cliente</div>
+                    <div class="step-item" style="margin-top: 8px;">
+                        <span>📧 Recordatorios pago mensual</span>
+                        <span class="automation-badge email">✉️</span>
+                    </div>
+                    <div class="step-item">
+                        <span>🔔 Alertas morosidad</span>
+                        <span class="automation-badge mobile">📱</span>
+                    </div>
+                </div>
+                
+                <div class="flow-step highlight-rto">
+                    <h4>4. Entregar ✅</h4>
+                    <div class="step-item">→ Verificación final</div>
+                    <div class="step-item">→ Transferencia de título al cliente</div>
+                </div>
+                
+                <div class="section-fondear">
+                    <h4>💰 FONDEAR</h4>
+                    <div class="step-item" style="justify-content: center;">Inversionistas / Deuda</div>
+                </div>
+                
+                <div class="cycle-note">
+                    🔄 Gestionar → Fondear (Recuperación) → Adquirir (Capital)
+                </div>
+            </div>
+        </div>
+        
+        <!-- ====== NEW: AUTOMATIZACIONES PANEL ====== -->
+        <div class="automations-panel">
+            <div class="section-title automations">⚡ AUTOMATIZACIONES MANINOS HOMES</div>
+            
+            <div class="automations-grid">
+                <!-- Email Automations -->
+                <div class="automation-card">
+                    <h4><span class="emoji">📧</span> Emails Automáticos</h4>
+                    <ul class="automation-list">
+                        <li>Recordatorio pago (3 días antes)</li>
+                        <li>Recordatorio día de vencimiento</li>
+                        <li>Aviso pago vencido (+1 día)</li>
+                        <li>Confirmación de pago recibido</li>
+                        <li>Solicitud de reseña (post-venta)</li>
+                        <li>Solicitud de referidos (30 días)</li>
+                        <li>Bienvenida nuevo cliente</li>
+                    </ul>
+                </div>
+                
+                <!-- Mobile App -->
+                <div class="automation-card">
+                    <h4><span class="emoji">📱</span> App Móvil Empleados</h4>
+                    <ul class="automation-list">
+                        <li>Notificaciones push en tiempo real</li>
+                        <li>Checklist compra casa (28 puntos)</li>
+                        <li>Checklist renovación + costos</li>
+                        <li>Subir fotos directamente</li>
+                        <li>Alertas nuevas casas mercado</li>
+                        <li>Ver dashboard desde cualquier lugar</li>
+                        <li>Registrar compras de materiales</li>
+                    </ul>
+                </div>
+                
+                <!-- AI Automations -->
+                <div class="automation-card">
+                    <h4><span class="emoji">🤖</span> Inteligencia Artificial</h4>
+                    <ul class="automation-list">
+                        <li>BuscadorAgent: scraping + regla 70%</li>
+                        <li>RenovaciónAgent: cálculo materiales</li>
+                        <li>Comandos de voz para renovación</li>
+                        <li>Precio sugerido post-renovación</li>
+                        <li>Generación automática de documentos</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Extra Automations I Suggest -->
+            <div style="margin-top: 25px; padding: 20px; background: rgba(139, 92, 246, 0.1); border-radius: 12px; border: 1px dashed #8b5cf6;">
+                <h4 style="margin-bottom: 15px; color: #c4b5fd;">💡 Automatizaciones Extra Sugeridas</h4>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                    <div class="step-item">
+                        <span>📊</span>
+                        <span><strong>Alertas KPIs:</strong> Notificación cuando métricas salen de rango (margen < 15%, etc.)</span>
+                    </div>
+                    <div class="step-item">
+                        <span>🔄</span>
+                        <span><strong>Auto-republish:</strong> Si casa no se vende en X días, bajar precio automáticamente</span>
+                    </div>
+                    <div class="step-item">
+                        <span>📝</span>
+                        <span><strong>Reportes semanales:</strong> Email automático con resumen de actividad</span>
+                    </div>
+                    <div class="step-item">
+                        <span>🗺️</span>
+                        <span><strong>Geo-alertas:</strong> Notificación cuando aparece casa cerca de zonas favoritas</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <h4 style="width: 100%; text-align: center; margin-bottom: 15px;">Leyenda</h4>
+            <div class="legend-item">
+                <div class="legend-color homes"></div>
+                <span>Maninos Homes (Comercializar)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color contado"></div>
+                <span>Opción 1: Contado (Cash)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color rto"></div>
+                <span>Opción 2: Maninos Capital (RTO)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color fondear"></div>
+                <span>Fondear (Funding)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color auto"></div>
+                <span>Automatizaciones</span>
+            </div>
+        </div>
+        
+        <p style="text-align: center; margin-top: 30px; color: #64748b; font-size: 0.85rem;">
+            Maninos AI v2.0 - Diagrama actualizado con automatizaciones | Enero 2026
+        </p>
+    </div>
+</body>
+</html>
+

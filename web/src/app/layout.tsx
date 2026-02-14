@@ -1,16 +1,33 @@
 import './globals.css'
 import React from 'react'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/Auth/AuthProvider'
+import { ToastProvider } from '@/components/ui/Toast'
+import PWAInstall from '@/components/PWA/PWAInstall'
 
 // Import Google Fonts via HTML link for reliability
 const fontUrl = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap";
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#d4a853',
+}
 
 export const metadata: Metadata = {
   title: 'MANINOS AI - Tu hogar, nuestro compromiso',
   description: 'Plataforma inteligente de gestión para casas móviles rent-to-own. Maninos Capital LLC.',
   icons: {
     icon: '/favicon.ico',
+    apple: '/icons/icon-192.svg',
+  },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Maninos AI',
   },
 }
 
@@ -22,10 +39,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href={fontUrl} rel="stylesheet" />
       </head>
-      <body className="min-h-screen overflow-hidden bg-slate-50 font-sans">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+      <body className="min-h-screen bg-slate-50 font-sans">
+        <ToastProvider>
+          <AuthProvider>
+            {children}
+            <PWAInstall />
+          </AuthProvider>
+        </ToastProvider>
       </body>
     </html>
   )

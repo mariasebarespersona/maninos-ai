@@ -1,25 +1,24 @@
 {
   "version": 2,
-  "name": "rama-agentic-ai",
-  "builds": [
+  "name": "maninos-ai",
+  "framework": "nextjs",
+  "buildCommand": "cd web && npm install && npm run build",
+  "outputDirectory": "web/.next",
+  "installCommand": "cd web && npm install",
+  "devCommand": "cd web && npm run dev",
+  "headers": [
     {
-      "src": "web/package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Service-Worker-Allowed", "value": "/" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
     {
-      "src": "/(.*)",
-      "dest": "web/$1"
+      "source": "/manifest.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
     }
-  ],
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@next_public_api_url"
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_API_URL": "@next_public_api_url"
-    }
-  }
+  ]
 }
-
