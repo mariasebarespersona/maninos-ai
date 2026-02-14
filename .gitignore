@@ -15,6 +15,7 @@ web/node_modules/
 .DS_Store
 web/tsconfig.tsbuildinfo
 data/**
+!data/historico_2025.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
