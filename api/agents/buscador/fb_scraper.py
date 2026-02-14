@@ -256,10 +256,15 @@ class FacebookMarketplaceScraper:
             playwright, browser, context, page = await FacebookMarketplaceScraper._create_authenticated_page()
             
             # Navigate to marketplace search
+            logger.info(f"[FB Marketplace] Navigating to: {url}")
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             
             # Check if we got redirected to login (cookies expired)
             current_url = page.url
+            page_title = await page.title()
+            logger.info(f"[FB Marketplace] Landed on: {current_url}")
+            logger.info(f"[FB Marketplace] Page title: {page_title}")
+            
             if "/login" in current_url or "checkpoint" in current_url:
                 logger.warning("[FB Marketplace] Cookies expired — redirected to login page. Need to reconnect.")
                 from api.agents.buscador.fb_auth import FacebookAuth
@@ -274,13 +279,17 @@ class FacebookMarketplaceScraper:
                 await page.evaluate("window.scrollBy(0, window.innerHeight)")
                 await asyncio.sleep(random.uniform(1.5, 3))
             
+            # Log page content sample for debugging
+            content_sample = await page.evaluate("document.body ? document.body.innerText.substring(0, 500) : 'NO BODY'")
+            logger.info(f"[FB Marketplace] Page content sample: {content_sample[:300]}")
+            
             # Extract listing data from the page
             listings = await FacebookMarketplaceScraper._extract_listings(page, city, max_listings)
             
             logger.info(f"[FB Marketplace] Extracted {len(listings)} listings from {city}")
             
         except Exception as e:
-            logger.error(f"[FB Marketplace] Scrape error for {city}: {e}")
+            logger.error(f"[FB Marketplace] Scrape error for {city}: {e}", exc_info=True)
         finally:
             if page:
                 await page.close()

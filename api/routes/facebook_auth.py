@@ -144,3 +144,134 @@ async def disconnect_facebook():
         "message": "Facebook disconnected. Cookies cleared.",
     }
 
+
+# ============================================
+# POST /api/facebook/test-scrape
+# ============================================
+
+@router.post("/test-scrape")
+async def test_facebook_scrape():
+    """
+    Diagnostic endpoint: attempt a SINGLE Facebook Marketplace scrape
+    and return detailed results showing what the server sees.
+    """
+    import asyncio
+    import random
+    from api.agents.buscador.fb_auth import FacebookAuth
+    
+    diagnostics = {
+        "step": "init",
+        "cookies_loaded": 0,
+        "authenticated": False,
+        "url_navigated": "",
+        "url_landed": "",
+        "page_title": "",
+        "redirected_to_login": False,
+        "content_sample": "",
+        "marketplace_links_found": 0,
+        "html_links_found": 0,
+        "listings_extracted": 0,
+        "error": None,
+    }
+    
+    try:
+        # Step 1: Check cookies
+        cookies = FacebookAuth.load_cookies()
+        diagnostics["cookies_loaded"] = len(cookies)
+        diagnostics["authenticated"] = FacebookAuth.is_authenticated()
+        
+        if not cookies:
+            diagnostics["error"] = "No cookies available. Import cookies first."
+            return diagnostics
+        
+        diagnostics["step"] = "launching_browser"
+        
+        # Step 2: Launch browser
+        from playwright.async_api import async_playwright
+        
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+                  '--disable-gpu', '--disable-blink-features=AutomationControlled']
+        )
+        context = await browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale='en-US',
+            timezone_id='America/Chicago',
+        )
+        await context.add_cookies(cookies)
+        page = await context.new_page()
+        
+        # Anti-detection
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        """)
+        
+        diagnostics["step"] = "navigating"
+        
+        # Step 3: Navigate to a simple marketplace search
+        test_url = "https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice=5000&maxPrice=80000&exact=false"
+        diagnostics["url_navigated"] = test_url
+        
+        await page.goto(test_url, wait_until="domcontentloaded", timeout=30000)
+        
+        current_url = page.url
+        page_title = await page.title()
+        diagnostics["url_landed"] = current_url
+        diagnostics["page_title"] = page_title
+        diagnostics["step"] = "page_loaded"
+        
+        # Step 4: Check for redirect
+        if "/login" in current_url or "checkpoint" in current_url:
+            diagnostics["redirected_to_login"] = True
+            diagnostics["error"] = f"Redirected to: {current_url}. Cookies may be expired."
+        else:
+            # Wait for content
+            await asyncio.sleep(4)
+            
+            # Scroll
+            for _ in range(2):
+                await page.evaluate("window.scrollBy(0, window.innerHeight)")
+                await asyncio.sleep(1.5)
+            
+            # Step 5: Get content sample
+            content = await page.evaluate("document.body ? document.body.innerText.substring(0, 1000) : 'NO BODY'")
+            diagnostics["content_sample"] = content[:500]
+            
+            # Step 6: Count links
+            cards = await page.query_selector_all('a[href*="/marketplace/item/"]')
+            diagnostics["marketplace_links_found"] = len(cards)
+            
+            # Also try HTML parsing
+            html = await page.content()
+            import re
+            html_links = re.findall(r'/marketplace/item/\d+', html)
+            diagnostics["html_links_found"] = len(set(html_links))
+            
+            diagnostics["step"] = "extraction_done"
+            
+            # Step 7: Parse a few listings
+            if cards:
+                sample_listings = []
+                for card in cards[:3]:
+                    try:
+                        text = await card.inner_text()
+                        href = await card.get_attribute("href")
+                        sample_listings.append({"text": text[:200], "href": href})
+                    except Exception:
+                        pass
+                diagnostics["sample_listings"] = sample_listings
+                diagnostics["listings_extracted"] = len(cards)
+        
+        await browser.close()
+        await playwright.stop()
+        diagnostics["step"] = "complete"
+        
+    except Exception as e:
+        diagnostics["error"] = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"[FB Test] Error: {e}", exc_info=True)
+    
+    return diagnostics
+
