@@ -2,9 +2,9 @@
   "name": "Maninos AI",
   "short_name": "Maninos",
   "description": "Plataforma inteligente para casas móviles - Maninos Capital LLC",
-  "start_url": "/",
+  "start_url": "/mobile",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#0a0f1a",
   "theme_color": "#d4a853",
   "orientation": "portrait-primary",
   "icons": [

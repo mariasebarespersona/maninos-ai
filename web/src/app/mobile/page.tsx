@@ -11,12 +11,10 @@ import {
   Edit3, Hash, StickyNote, FileText, Copy, Share2,
 } from 'lucide-react';
 
-// On mobile, ALWAYS use same-origin so the HTTPS proxy routes /api/* to the backend.
-// Using localhost:8000 would fail on phones since localhost = the phone itself.
-// In production, set NEXT_PUBLIC_API_URL to the actual backend URL.
-const API_URL = typeof window !== 'undefined' && window.location.port === '3443'
-  ? ''  // Through HTTPS proxy — use same origin
-  : (process.env.NEXT_PUBLIC_API_URL || '');
+// In production, ALL API calls go through Next.js proxy routes (same origin).
+// This avoids CORS issues and works perfectly with the PWA.
+// The Next.js API routes in /app/api/* proxy requests to the backend.
+const API_URL = '';
 
 type Tab = 'chat' | 'notifications' | 'evaluator' | 'renovation';
 
