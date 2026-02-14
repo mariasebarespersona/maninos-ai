@@ -46,15 +46,24 @@ async def get_facebook_status():
 @router.post("/connect")
 async def connect_facebook():
     """
-    Start interactive Facebook login.
-    
-    This opens a VISIBLE browser window on the server where the user
-    must log into their Facebook account. Cookies are saved for future use.
-    
-    NOTE: This only works when running locally (not on a headless server).
-    For production, use the /import-cookies endpoint instead.
+    Start interactive Facebook login (local only).
+    On production servers, returns instructions to use cookie import instead.
     """
+    import os
     from api.agents.buscador.fb_auth import FacebookAuth
+    
+    # On headless servers, guide user to cookie import
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("PORT"):
+        return {
+            "success": False,
+            "message": "⚠️ El login interactivo no está disponible en el servidor. "
+                       "Usa 'Importar Cookies' para conectar Facebook:\n\n"
+                       "1. Instala la extensión 'Cookie-Editor' en Chrome\n"
+                       "2. Abre Facebook e inicia sesión\n"
+                       "3. Haz click en el icono de Cookie-Editor → Export → JSON\n"
+                       "4. Pega el JSON en el campo 'Importar Cookies' de la app",
+            "use_cookie_import": True,
+        }
     
     try:
         logger.info("[FB Connect] Starting interactive Facebook login...")

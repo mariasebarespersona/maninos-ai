@@ -401,6 +401,10 @@ export default function MarketDashboard() {
       if (data.success) {
         setFbConnected(true);
         toast.success('✅ Facebook conectado! Ahora puedes buscar casas en Marketplace.');
+      } else if (data.use_cookie_import) {
+        // Server can't do interactive login — show cookie import form
+        setShowCookieImport(true);
+        toast.info('Usa "Importar Cookies" para conectar Facebook desde el servidor.');
       } else {
         toast.error(data.message || 'No se pudo conectar Facebook');
       }
