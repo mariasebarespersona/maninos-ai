@@ -7,7 +7,7 @@ ENV PORT=8000
 
 WORKDIR /app
 
-# System deps (psycopg, Pillow, lxml, etc.)
+# System deps (psycopg, Pillow, lxml, Playwright browsers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browser (Chromium only — smaller image)
+RUN playwright install --with-deps chromium || echo "Playwright browser install skipped"
 
 # Copy application code
 COPY . .

@@ -30,7 +30,13 @@ from dataclasses import dataclass
 from urllib.parse import urljoin, quote
 
 # Playwright for browser automation
-from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeout
+try:
+    from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeout
+except ImportError:
+    async_playwright = None  # Playwright not installed — scraping disabled
+    Page = None
+    Browser = None
+    PlaywrightTimeout = TimeoutError
 
 # BeautifulSoup for HTML parsing
 from bs4 import BeautifulSoup

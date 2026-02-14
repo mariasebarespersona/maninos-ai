@@ -1,0 +1,2 @@
+# Maninos AI — Shared tools
+
