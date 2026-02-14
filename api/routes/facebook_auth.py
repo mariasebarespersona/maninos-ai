@@ -157,9 +157,13 @@ async def test_facebook_scrape():
     from api.agents.buscador.fb_auth import FacebookAuth
     from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper, USER_AGENTS
     
+    from api.agents.buscador.fb_scraper import PROXY_URL
+    
     diagnostics = {
         "cookies_loaded": 0,
         "authenticated": False,
+        "proxy_configured": bool(PROXY_URL),
+        "proxy_hint": "Set RESIDENTIAL_PROXY_URL in Railway env vars. Facebook blocks datacenter IPs." if not PROXY_URL else f"Using: {PROXY_URL[:30]}...",
         "requests_method": {
             "status_code": 0,
             "final_url": "",
@@ -194,6 +198,10 @@ async def test_facebook_scrape():
             session.cookies.set(c["name"], c["value"],
                 domain=c.get("domain", ".facebook.com"),
                 path=c.get("path", "/"))
+        
+        # Use proxy if configured
+        if PROXY_URL:
+            session.proxies = {"http": PROXY_URL, "https": PROXY_URL}
         
         ua = random.choice(USER_AGENTS)
         session.headers.update({

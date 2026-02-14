@@ -26,6 +26,7 @@ ANTI-DETECTION:
 
 import asyncio
 import logging
+import os
 import re
 import random
 from datetime import datetime
@@ -33,6 +34,11 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# Residential proxy URL — REQUIRED for server-based scraping
+# Format: http://user:pass@host:port  or  socks5://user:pass@host:port
+# Services: BrightData, IPRoyal, Smartproxy (~$5-10/month)
+PROXY_URL = os.getenv("RESIDENTIAL_PROXY_URL", "")
 
 
 @dataclass
@@ -165,9 +171,9 @@ class FacebookMarketplaceScraper:
                     logger.warning(f"[FB Marketplace] Requests scrape error for '{term}' in {city}: {e}")
                     continue
         
-        # If requests approach found nothing, try Playwright as fallback
-        if not all_listings:
-            logger.info("[FB Marketplace] Requests approach found 0 — trying Playwright fallback...")
+        # If requests approach found nothing, try Playwright as fallback (only if proxy is set)
+        if not all_listings and PROXY_URL:
+            logger.info("[FB Marketplace] Requests found 0 — trying Playwright fallback with proxy...")
             for config in SEARCH_CONFIGS:
                 city = config["center"].split(",")[0]
                 for term in SEARCH_TERMS:
@@ -182,6 +188,13 @@ class FacebookMarketplaceScraper:
                     except Exception as e:
                         logger.warning(f"[FB Marketplace] Playwright error for '{term}' in {city}: {e}")
                         continue
+        elif not all_listings:
+            logger.warning(
+                "[FB Marketplace] ⚠️ Facebook returned 0 listings. "
+                "Facebook blocks datacenter IPs (Railway/AWS). "
+                "Set RESIDENTIAL_PROXY_URL env var with a residential proxy to fix this. "
+                "Services: BrightData, IPRoyal, Smartproxy (~$5-10/month)."
+            )
         
         # Deduplicate by URL
         seen_urls = set()
@@ -225,6 +238,16 @@ class FacebookMarketplaceScraper:
                 path=c.get("path", "/"),
             )
         
+        # Configure residential proxy if available
+        if PROXY_URL:
+            session.proxies = {
+                "http": PROXY_URL,
+                "https": PROXY_URL,
+            }
+            logger.info(f"[FB Requests] Using residential proxy: {PROXY_URL[:30]}...")
+        else:
+            logger.warning("[FB Requests] ⚠️ No RESIDENTIAL_PROXY_URL set — Facebook blocks datacenter IPs!")
+        
         # Match a real browser's headers
         ua = random.choice(USER_AGENTS)
         session.headers.update({
@@ -253,10 +276,9 @@ class FacebookMarketplaceScraper:
         
         # First visit facebook.com to warm up cookies
         try:
-            warmup = session.get("https://www.facebook.com/", allow_redirects=True, timeout=15)
+            warmup = session.get("https://www.facebook.com/", allow_redirects=True, timeout=20)
             if "/login" in warmup.url:
                 logger.warning(f"[FB Requests] Warmup redirected to login: {warmup.url}")
-                # Try anyway — sometimes marketplace works even if homepage doesn't
         except Exception as e:
             logger.warning(f"[FB Requests] Warmup failed: {e}")
         
@@ -362,9 +384,11 @@ class FacebookMarketplaceScraper:
             raise ValueError("No Facebook cookies available")
         
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(
-            headless=True,
-            args=[
+        
+        # Configure proxy for Playwright if available
+        launch_args = {
+            "headless": True,
+            "args": [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
@@ -373,20 +397,39 @@ class FacebookMarketplaceScraper:
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
                 '--window-size=1920,1080',
-            ]
-        )
+            ],
+        }
+        
+        # Parse proxy URL for Playwright format
+        proxy_config = None
+        if PROXY_URL:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(PROXY_URL)
+                proxy_config = {"server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"}
+                if parsed.username:
+                    proxy_config["username"] = parsed.username
+                if parsed.password:
+                    proxy_config["password"] = parsed.password
+                launch_args["proxy"] = proxy_config
+                logger.info(f"[FB Playwright] Using proxy: {parsed.hostname}")
+            except Exception as e:
+                logger.warning(f"[FB Playwright] Failed to parse proxy URL: {e}")
+        
+        browser = await playwright.chromium.launch(**launch_args)
         
         ua = random.choice(USER_AGENTS)
-        context = await browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent=ua,
-            locale='en-US',
-            timezone_id='America/Chicago',
-            # Simulate a real desktop screen
-            screen={'width': 1920, 'height': 1080},
-            has_touch=False,
-            is_mobile=False,
-        )
+        context_args = {
+            "viewport": {'width': 1920, 'height': 1080},
+            "user_agent": ua,
+            "locale": 'en-US',
+            "timezone_id": 'America/Chicago',
+            "screen": {'width': 1920, 'height': 1080},
+            "has_touch": False,
+            "is_mobile": False,
+        }
+        
+        context = await browser.new_context(**context_args)
         
         # Load saved cookies into the context
         await context.add_cookies(cookies)
