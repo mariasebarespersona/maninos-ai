@@ -169,9 +169,11 @@ async def review_application(application_id: str, review: ApplicationReview):
                 logger.info(f"[capital] RTO contract created for application {application_id}")
             
             # Create title transfer: Maninos Homes → Maninos Capital
+            # (Capital acquires the property — docs come in Capital's name)
             existing_transfer = sb.table("title_transfers") \
                 .select("id") \
-                .eq("sale_id", application["sale_id"]) \
+                .eq("property_id", application["property_id"]) \
+                .eq("to_name", "Maninos Capital LLC") \
                 .eq("transfer_type", "sale") \
                 .execute()
             
@@ -183,7 +185,16 @@ async def review_application(application_id: str, review: ApplicationReview):
                     "from_name": "Maninos Homes LLC",
                     "to_name": "Maninos Capital LLC",
                     "status": "pending",
-                    "notes": f"Transferencia RTO - Solicitud {application_id}"
+                    "documents_checklist": {
+                        "bill_of_sale": False,
+                        "titulo": False,
+                        "title_application": False,
+                        "tax_receipt": False,
+                        "id_copies": False,
+                        "lien_release": False,
+                        "notarized_forms": False,
+                    },
+                    "notes": f"Adquisición RTO - Capital adquiere propiedad de Homes. Solicitud {application_id}"
                 }).execute()
         
         elif review.status == "rejected":

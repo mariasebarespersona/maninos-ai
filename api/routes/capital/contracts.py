@@ -443,9 +443,11 @@ async def deliver_title(contract_id: str):
             )
 
         # Create title transfer: Maninos Capital → Client
+        # (Capital transfers title and documents to client after all RTO payments)
         existing = sb.table("title_transfers") \
             .select("id") \
             .eq("property_id", c["property_id"]) \
+            .eq("from_name", "Maninos Capital LLC") \
             .eq("to_name", c["clients"]["name"]) \
             .eq("transfer_type", "sale") \
             .execute()
@@ -453,6 +455,11 @@ async def deliver_title(contract_id: str):
         transfer_id = None
         if existing.data:
             transfer_id = existing.data[0]["id"]
+            # Update existing transfer to completed
+            sb.table("title_transfers").update({
+                "status": "completed",
+                "completed_at": datetime.utcnow().isoformat(),
+            }).eq("id", transfer_id).execute()
         else:
             transfer_result = sb.table("title_transfers").insert({
                 "property_id": c["property_id"],
@@ -462,23 +469,44 @@ async def deliver_title(contract_id: str):
                 "to_name": c["clients"]["name"],
                 "status": "completed",
                 "completed_at": datetime.utcnow().isoformat(),
-                "notes": f"Entrega RTO - Contrato {contract_id[:8]}... completado"
+                "documents_checklist": {
+                    "bill_of_sale": False,
+                    "titulo": False,
+                    "title_application": False,
+                    "tax_receipt": False,
+                    "id_copies": False,
+                },
+                "notes": f"Entrega RTO - Capital transfiere título al cliente. Contrato {contract_id[:8]}..."
             }).execute()
             transfer_id = transfer_result.data[0]["id"]
 
-        # Generate documents
+        # Also update Capital's transfer (Homes → Capital) to completed
+        sb.table("title_transfers").update({
+            "status": "completed",
+        }).eq("property_id", c["property_id"]) \
+          .eq("to_name", "Maninos Capital LLC") \
+          .eq("transfer_type", "sale") \
+          .execute()
+
+        # Generate documents in client's name
         try:
-            from api.services.document_service import document_service
-            docs = await document_service.generate_and_upload_documents(
-                transfer_id=transfer_id,
+            from api.services.document_service import auto_generate_sale_documents
+            docs = auto_generate_sale_documents(
+                sale_id=c["sale_id"],
+                sale_data={
+                    "sale_price": c["purchase_price"],
+                    "sale_type": "rto",
+                },
+                client_data={
+                    "name": c["clients"]["name"],
+                    "email": c["clients"].get("email", ""),
+                    "phone": c["clients"].get("phone", ""),
+                },
                 property_data=c["properties"],
-                seller_name="Maninos Capital LLC",
-                buyer_name=c["clients"]["name"],
-                sale_price=c["purchase_price"],
             )
-            logger.info(f"Documents generated for delivery: {docs}")
+            logger.info(f"Documents generated for client delivery: {docs}")
         except Exception as doc_err:
-            logger.warning(f"Could not generate documents: {doc_err}")
+            logger.warning(f"Could not generate documents for client: {doc_err}")
 
         # Update contract status to delivered
         sb.table("rto_contracts").update({

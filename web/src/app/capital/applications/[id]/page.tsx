@@ -1485,18 +1485,24 @@ export default function ApplicationDetailPage() {
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} />
             </div>
           ) : (() => {
-            // Get the sale transfer (Maninos → Client)
-            const saleTransfer = transferData?.sale || null
-            const purchaseTransfer = transferData?.purchase || null
-            // Use sale transfer docs, or fallback to purchase
-            const mainTransfer = saleTransfer || purchaseTransfer
+            const allTransfers: any[] = transferData?.all || []
+            const clientName = app.clients?.name || ''
+
+            // Phase 1: Homes → Capital (Capital's own documents for the property)
+            const capitalTransfer = allTransfers.find(
+              (t: any) => t.to_name?.includes('Capital') && t.from_name?.includes('Homes')
+            ) || null
+
+            // Phase 2: Capital → Client (title transfer to client after RTO completion)
+            const clientTransfer = allTransfers.find(
+              (t: any) => t.from_name?.includes('Capital') && !t.to_name?.includes('Capital') && !t.to_name?.includes('Homes')
+            ) || null
 
             const DOC_LABELS: Record<string, { label: string; description: string }> = {
               bill_of_sale: { label: 'Bill of Sale', description: 'Factura de compra-venta' },
               titulo: { label: 'Título (TDHCA)', description: 'Título de propiedad manufacturada' },
               title_application: { label: 'Aplicación Cambio de Título', description: 'Solicitud de transferencia de título' },
             }
-
             const PRIMARY_DOCS = ['bill_of_sale', 'titulo', 'title_application']
 
             const getDocInfo = (checklist: any, key: string) => {
@@ -1507,102 +1513,216 @@ export default function ApplicationDetailPage() {
               return { checked: false, fileUrl: null }
             }
 
+            // Reusable doc row renderer
+            const renderDocRow = (transfer: any, docKey: string, uploadPrefix: string) => {
+              const info = getDocInfo(transfer?.documents_checklist, docKey)
+              const label = DOC_LABELS[docKey] || { label: docKey.replace(/_/g, ' '), description: '' }
+              const upKey = `${uploadPrefix}_${docKey}`
+              return (
+                <div key={docKey} className="p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      {info.checked ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{label.label}</p>
+                      <p className="text-xs truncate" style={{ color: 'var(--ash)' }}>{label.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {info.fileUrl && (
+                      <a href={info.fileUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm text-xs inline-flex items-center gap-1">
+                        <Eye className="w-3.5 h-3.5" /> Ver
+                      </a>
+                    )}
+                    {info.fileUrl && (
+                      <a href={info.fileUrl} download className="btn-ghost btn-sm text-xs inline-flex items-center gap-1">
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    {transfer && (
+                      <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === upKey ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {uploadingDoc === upKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        Subir
+                        <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              setUploadingDoc(upKey)
+                              handleDocUpload(transfer.id, docKey, file)
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+
+            const transferStatusLabel: Record<string, { label: string; color: string }> = {
+              pending: { label: 'Pendiente', color: 'var(--warning)' },
+              in_progress: { label: 'En Proceso', color: 'var(--info)' },
+              completed: { label: 'Completada', color: 'var(--success)' },
+              cancelled: { label: 'Cancelada', color: 'var(--error)' },
+            }
+
             return (
               <>
-                {!mainTransfer ? (
-                  <div className="card-luxury p-8 text-center">
-                    <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ash)' }} />
-                    <h3 className="font-serif text-lg mb-2" style={{ color: 'var(--charcoal)' }}>Sin documentos aún</h3>
-                    <p className="text-sm" style={{ color: 'var(--slate)' }}>
-                      Los documentos se generarán cuando el contrato sea aprobado y activado.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Transfer Info */}
-                    <div className="card-luxury p-4">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div>
-                          <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                            Transferencia: {mainTransfer.from_name} → {mainTransfer.to_name}
-                          </p>
-                          <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                            Estado: {mainTransfer.status} • ID: {mainTransfer.id?.slice(0, 8)}...
-                          </p>
-                        </div>
-                        {mainTransfer.tracking_number && (
-                          <span className="badge text-xs" style={{ backgroundColor: 'var(--info-light)', color: 'var(--info)' }}>
-                            # {mainTransfer.tracking_number}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                {/* ===== Explainer banner ===== */}
+                <div className="card-luxury p-4" style={{ backgroundColor: 'var(--cream)' }}>
+                  <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                    <strong>Flujo de documentos RTO:</strong> Capital adquiere la propiedad de Homes (los documentos salen a nombre de Capital). 
+                    Al completar los pagos, Capital transfiere el título y documentos al cliente.
+                  </p>
+                </div>
 
-                    {/* Primary Documents */}
+                {/* ===== PHASE 1: Capital's Documents (Homes → Capital) ===== */}
+                <div className="card-luxury overflow-hidden">
+                  <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+                    <div>
+                      <h3 className="font-serif text-lg flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                        <Home className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
+                        Documentos de Capital
+                      </h3>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                        Maninos Homes → Maninos Capital • Propiedad a nombre de Capital
+                      </p>
+                    </div>
+                    {capitalTransfer && (
+                      <span className="badge text-xs" style={{
+                        backgroundColor: transferStatusLabel[capitalTransfer.status]?.color === 'var(--success)' ? 'var(--success-light)' : 'var(--warning-light)',
+                        color: transferStatusLabel[capitalTransfer.status]?.color || 'var(--slate)',
+                      }}>
+                        {transferStatusLabel[capitalTransfer.status]?.label || capitalTransfer.status}
+                      </span>
+                    )}
+                  </div>
+
+                  {capitalTransfer ? (
+                    <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                      {PRIMARY_DOCS.map((docKey) => renderDocRow(capitalTransfer, docKey, 'cap'))}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center">
+                      <p className="text-sm" style={{ color: 'var(--ash)' }}>
+                        {app.status === 'approved' || app.status === 'under_review'
+                          ? 'La transferencia de documentos se creará cuando la solicitud sea aprobada.'
+                          : app.status === 'submitted'
+                          ? 'Pendiente de aprobación de la solicitud RTO.'
+                          : 'No hay transferencia registrada.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* ===== PHASE 2: Client's Documents (Capital → Client) ===== */}
+                <div className="card-luxury overflow-hidden">
+                  <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+                    <div>
+                      <h3 className="font-serif text-lg flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                        <User className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
+                        Transferencia al Cliente
+                      </h3>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                        Maninos Capital → {clientName || 'Cliente'} • Se ejecuta al completar pagos RTO
+                      </p>
+                    </div>
+                    {clientTransfer ? (
+                      <span className="badge text-xs" style={{
+                        backgroundColor: clientTransfer.status === 'completed' ? 'var(--success-light)' : 'var(--info-light)',
+                        color: clientTransfer.status === 'completed' ? 'var(--success)' : 'var(--info)',
+                      }}>
+                        {transferStatusLabel[clientTransfer.status]?.label || clientTransfer.status}
+                      </span>
+                    ) : (
+                      <span className="badge text-xs" style={{ backgroundColor: 'var(--cream)', color: 'var(--ash)' }}>
+                        Pendiente de pagos
+                      </span>
+                    )}
+                  </div>
+
+                  {clientTransfer ? (
+                    <>
+                      <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                        {PRIMARY_DOCS.map((docKey) => renderDocRow(clientTransfer, docKey, 'cli'))}
+                      </div>
+                      {clientTransfer.completed_at && (
+                        <div className="p-3 text-center text-xs border-t" style={{ borderColor: 'var(--sand)', color: 'var(--success)' }}>
+                          ✅ Transferencia completada el {new Date(clientTransfer.completed_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-6 text-center space-y-2">
+                      <FileSignature className="w-10 h-10 mx-auto" style={{ color: 'var(--sand)' }} />
+                      <p className="text-sm" style={{ color: 'var(--ash)' }}>
+                        La transferencia al cliente se genera automáticamente cuando se completan todos los pagos del contrato RTO y se ejecuta la entrega del título.
+                      </p>
+                      {paymentsSummary && paymentsSummary.total_payments > 0 && (
+                        <p className="text-xs" style={{ color: 'var(--slate)' }}>
+                          Progreso: {paymentsSummary.payments_made}/{paymentsSummary.total_payments} pagos ({paymentsSummary.completion_percentage}%)
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ===== Additional Documents (from any transfer) ===== */}
+                {(() => {
+                  const mainTransfer = capitalTransfer || clientTransfer
+                  if (!mainTransfer) return null
+                  const otherDocs = Object.keys(mainTransfer.documents_checklist || {}).filter(
+                    (k) => !PRIMARY_DOCS.includes(k)
+                  )
+                  if (otherDocs.length === 0) return null
+                  const EXTRA_LABELS: Record<string, string> = {
+                    tax_receipt: 'Recibo de Impuestos',
+                    id_copies: 'Copias de Identificación',
+                    lien_release: 'Liberación de Gravamen',
+                    notarized_forms: 'Formularios Notarizados',
+                  }
+                  return (
                     <div className="card-luxury overflow-hidden">
                       <div className="p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
-                        <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-                          Documentos del Cliente
+                        <h3 className="font-serif text-base" style={{ color: 'var(--ink)' }}>
+                          Documentos Adicionales
                         </h3>
                       </div>
                       <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
-                        {PRIMARY_DOCS.map((docKey) => {
+                        {otherDocs.map((docKey) => {
                           const info = getDocInfo(mainTransfer.documents_checklist, docKey)
-                          const label = DOC_LABELS[docKey] || { label: docKey, description: '' }
                           return (
                             <div key={docKey} className="p-4 flex items-center justify-between gap-4">
                               <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
-                                  {info.checked ? (
-                                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                                  ) : (
-                                    <FileText className="w-4 h-4 text-gray-400" />
-                                  )}
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                  {info.checked ? <CheckCircle2 className="w-3 h-3 text-green-600" /> : <Hash className="w-3 h-3 text-gray-400" />}
                                 </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
-                                    {label.label}
-                                  </p>
-                                  <p className="text-xs truncate" style={{ color: 'var(--ash)' }}>
-                                    {label.description}
-                                  </p>
-                                </div>
+                                <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                                  {EXTRA_LABELS[docKey] || docKey.replace(/_/g, ' ')}
+                                </p>
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 {info.fileUrl && (
-                                  <a
-                                    href={info.fileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="btn-ghost btn-sm text-xs inline-flex items-center gap-1"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                    Ver
+                                  <a href={info.fileUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm text-xs inline-flex items-center gap-1">
+                                    <Eye className="w-3.5 h-3.5" /> Ver
                                   </a>
                                 )}
-                                {info.fileUrl && (
-                                  <a
-                                    href={info.fileUrl}
-                                    download
-                                    className="btn-ghost btn-sm text-xs inline-flex items-center gap-1"
-                                  >
-                                    <Download className="w-3.5 h-3.5" />
-                                  </a>
-                                )}
-                                <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === docKey ? 'opacity-50 pointer-events-none' : ''}`}>
-                                  {uploadingDoc === docKey ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Upload className="w-3.5 h-3.5" />
-                                  )}
+                                <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === `extra_${docKey}` ? 'opacity-50 pointer-events-none' : ''}`}>
+                                  {uploadingDoc === `extra_${docKey}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                                   Subir
-                                  <input
-                                    type="file"
-                                    className="hidden"
-                                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                  <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
                                     onChange={(e) => {
                                       const file = e.target.files?.[0]
-                                      if (file) handleDocUpload(mainTransfer.id, docKey, file)
+                                      if (file) {
+                                        setUploadingDoc(`extra_${docKey}`)
+                                        handleDocUpload(mainTransfer.id, docKey, file)
+                                      }
                                       e.target.value = ''
                                     }}
                                   />
@@ -1613,70 +1733,8 @@ export default function ApplicationDetailPage() {
                         })}
                       </div>
                     </div>
-
-                    {/* Other Documents */}
-                    {(() => {
-                      const otherDocs = Object.keys(mainTransfer.documents_checklist || {}).filter(
-                        (k) => !PRIMARY_DOCS.includes(k)
-                      )
-                      if (otherDocs.length === 0) return null
-                      return (
-                        <div className="card-luxury overflow-hidden">
-                          <div className="p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
-                            <h3 className="font-serif text-base" style={{ color: 'var(--ink)' }}>
-                              Documentos Adicionales
-                            </h3>
-                          </div>
-                          <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
-                            {otherDocs.map((docKey) => {
-                              const info = getDocInfo(mainTransfer.documents_checklist, docKey)
-                              const EXTRA_LABELS: Record<string, string> = {
-                                tax_receipt: 'Recibo de Impuestos',
-                                id_copies: 'Copias de Identificación',
-                                lien_release: 'Liberación de Gravamen',
-                                notarized_forms: 'Formularios Notarizados',
-                              }
-                              return (
-                                <div key={docKey} className="p-4 flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
-                                      {info.checked ? (
-                                        <CheckCircle2 className="w-3 h-3 text-green-600" />
-                                      ) : (
-                                        <Hash className="w-3 h-3 text-gray-400" />
-                                      )}
-                                    </div>
-                                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                                      {EXTRA_LABELS[docKey] || docKey.replace(/_/g, ' ')}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                    {info.fileUrl && (
-                                      <a href={info.fileUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm text-xs inline-flex items-center gap-1">
-                                        <Eye className="w-3.5 h-3.5" /> Ver
-                                      </a>
-                                    )}
-                                    <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === docKey ? 'opacity-50 pointer-events-none' : ''}`}>
-                                      {uploadingDoc === docKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                      Subir
-                                      <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0]
-                                          if (file) handleDocUpload(mainTransfer.id, docKey, file)
-                                          e.target.value = ''
-                                        }}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </>
-                )}
+                  )
+                })()}
               </>
             )
           })()}
