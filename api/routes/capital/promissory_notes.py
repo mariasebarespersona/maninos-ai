@@ -59,6 +59,8 @@ class PromissoryNoteUpdate(BaseModel):
 
 class RecordPaymentRequest(BaseModel):
     amount: float
+    payment_method: str = "bank_transfer"  # bank_transfer, check, cash, zelle, wire
+    reference: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -167,9 +169,55 @@ async def list_promissory_notes(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/alerts/upcoming")
+async def get_upcoming_maturities(days: int = 30):
+    """Get promissory notes maturing in the next N days."""
+    try:
+        from datetime import timedelta
+        today = date.today()
+        cutoff = today + timedelta(days=days)
+        
+        result = sb.table("promissory_notes") \
+            .select("*, investors(id, name, email, phone)") \
+            .in_("status", ["active", "overdue"]) \
+            .lte("maturity_date", cutoff.isoformat()) \
+            .order("maturity_date") \
+            .execute()
+        
+        notes = result.data or []
+        
+        # Categorize
+        overdue = []
+        this_week = []
+        this_month = []
+        
+        for n in notes:
+            mat = date.fromisoformat(str(n["maturity_date"]))
+            days_until = (mat - today).days
+            n["days_until_maturity"] = days_until
+            
+            if days_until < 0:
+                overdue.append(n)
+            elif days_until <= 7:
+                this_week.append(n)
+            else:
+                this_month.append(n)
+        
+        return {
+            "ok": True,
+            "overdue": overdue,
+            "this_week": this_week,
+            "this_month": this_month,
+            "total_alerts": len(notes),
+        }
+    except Exception as e:
+        logger.error(f"Error getting upcoming maturities: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{note_id}")
 async def get_promissory_note(note_id: str):
-    """Get a promissory note with full schedule."""
+    """Get a promissory note with full schedule and payment history."""
     try:
         result = sb.table("promissory_notes") \
             .select("*, investors(id, name, email, phone, company)") \
@@ -188,10 +236,23 @@ async def get_promissory_note(note_id: str):
         # Calculate compound interest schedule
         calc = _calculate_compound_schedule(loan_amount, monthly_rate, term_months)
         
+        # Get individual payment history
+        payments = []
+        try:
+            pay_result = sb.table("promissory_note_payments") \
+                .select("*") \
+                .eq("promissory_note_id", note_id) \
+                .order("paid_at", desc=True) \
+                .execute()
+            payments = pay_result.data or []
+        except Exception:
+            pass
+        
         return {
             "ok": True,
             "note": note,
             "schedule": calc["schedule"],
+            "payments": payments,
         }
     except HTTPException:
         raise
@@ -356,6 +417,21 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
         
         sb.table("promissory_notes").update(update_data).eq("id", note_id).execute()
         
+        # Record individual payment in promissory_note_payments table
+        payment_record = None
+        try:
+            pay_result = sb.table("promissory_note_payments").insert({
+                "promissory_note_id": note_id,
+                "amount": data.amount,
+                "payment_method": data.payment_method,
+                "reference": data.reference,
+                "notes": data.notes,
+                "paid_at": datetime.utcnow().isoformat(),
+            }).execute()
+            payment_record = pay_result.data[0] if pay_result.data else None
+        except Exception as pay_err:
+            logger.warning(f"Could not record individual payment record: {pay_err}")
+        
         # Record capital flow (outgoing - paying investor back)
         try:
             from api.routes.capital.capital_flows import _record_flow
@@ -374,6 +450,7 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
             "paid_amount": new_paid,
             "remaining": max(0, total_due - new_paid),
             "status": new_status,
+            "payment": payment_record,
             "message": f"Pago de ${data.amount:,.2f} registrado. {'Nota PAGADA completamente.' if new_status == 'paid' else f'Pendiente: ${max(0, total_due - new_paid):,.2f}'}",
         }
     except HTTPException:

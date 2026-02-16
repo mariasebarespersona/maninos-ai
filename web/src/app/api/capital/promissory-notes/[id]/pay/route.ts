@@ -4,11 +4,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const res = await fetch(`${API}/api/capital/promissory-notes/${params.id}/pay`, {
+    const res = await fetch(`${API}/api/capital/promissory-notes/${id}/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -19,4 +20,3 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'Backend unavailable' }, { status: 500 })
   }
 }
-

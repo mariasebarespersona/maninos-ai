@@ -42,6 +42,7 @@ class InvestmentCreate(BaseModel):
     investor_id: str
     property_id: Optional[str] = None
     rto_contract_id: Optional[str] = None
+    promissory_note_id: Optional[str] = None
     amount: float
     expected_return_rate: Optional[float] = None
     notes: Optional[str] = None
@@ -79,15 +80,55 @@ async def get_investor(investor_id: str):
             raise HTTPException(status_code=404, detail="Inversionista no encontrado")
         
         investments = sb.table("investments") \
-            .select("*, properties(address, city), rto_contracts(client_id, clients(name))") \
+            .select("*, properties(address, city), rto_contracts(client_id, clients(name)), promissory_notes(id, loan_amount, status, maturity_date)") \
             .eq("investor_id", investor_id) \
             .order("invested_at", desc=True) \
             .execute()
         
+        # Get promissory notes for this investor
+        notes = sb.table("promissory_notes") \
+            .select("*") \
+            .eq("investor_id", investor_id) \
+            .order("created_at", desc=True) \
+            .execute()
+        
+        # Calculate ROI metrics
+        inv_data = investments.data or []
+        total_invested = sum(float(i.get("amount", 0)) for i in inv_data)
+        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in inv_data)
+        active_investments = [i for i in inv_data if i.get("status") == "active"]
+        
+        # Expected returns from active investments
+        expected_returns = 0.0
+        for inv in active_investments:
+            rate = float(inv.get("expected_return_rate", 0) or 0) / 100
+            expected_returns += float(inv.get("amount", 0)) * (1 + rate)
+        
+        # Notes metrics
+        notes_data = notes.data or []
+        total_lent = sum(float(n.get("loan_amount", 0)) for n in notes_data)
+        total_due_notes = sum(float(n.get("total_due", 0)) for n in notes_data)
+        total_paid_notes = sum(float(n.get("paid_amount", 0) or 0) for n in notes_data)
+        active_notes = [n for n in notes_data if n.get("status") in ("active", "overdue")]
+        
         return {
             "ok": True,
             "investor": investor.data,
-            "investments": investments.data or []
+            "investments": inv_data,
+            "promissory_notes": notes_data,
+            "metrics": {
+                "total_invested": total_invested,
+                "total_returned": total_returned,
+                "net_outstanding": total_invested - total_returned,
+                "active_investments": len(active_investments),
+                "expected_returns": expected_returns,
+                "roi_pct": round(((total_returned / total_invested * 100) - 100), 2) if total_invested > 0 else 0,
+                "notes_total_lent": total_lent,
+                "notes_total_due": total_due_notes,
+                "notes_total_paid": total_paid_notes,
+                "notes_outstanding": total_due_notes - total_paid_notes,
+                "active_notes": len(active_notes),
+            },
         }
     except HTTPException:
         raise
@@ -135,14 +176,18 @@ async def update_investor(investor_id: str, data: InvestorUpdate):
 async def create_investment(data: InvestmentCreate):
     """Record a new investment."""
     try:
-        result = sb.table("investments").insert({
+        insert_data = {
             "investor_id": data.investor_id,
             "property_id": data.property_id,
             "rto_contract_id": data.rto_contract_id,
             "amount": data.amount,
             "expected_return_rate": data.expected_return_rate,
             "notes": data.notes,
-        }).execute()
+        }
+        if data.promissory_note_id:
+            insert_data["promissory_note_id"] = data.promissory_note_id
+        
+        result = sb.table("investments").insert(insert_data).execute()
         
         # Update investor totals
         investor = sb.table("investors") \

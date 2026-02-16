@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, FileText, DollarSign, Calendar, Clock, User, Landmark,
   CheckCircle2, AlertTriangle, Edit2, Save, X, Download, Printer,
-  TrendingUp, CreditCard, Hash
+  TrendingUp, CreditCard, Hash, Banknote, Receipt
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -55,6 +55,18 @@ interface ScheduleRow {
   pending: number
 }
 
+interface PaymentRecord {
+  id: string
+  promissory_note_id: string
+  amount: number
+  payment_method: string
+  reference: string | null
+  notes: string | null
+  paid_at: string
+  recorded_by: string | null
+  created_at: string
+}
+
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   draft: { bg: 'var(--cream)', color: 'var(--slate)', label: 'Borrador' },
   active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
@@ -62,6 +74,14 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   overdue: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Vencida' },
   defaulted: { bg: '#fca5a5', color: '#7f1d1d', label: 'Impago' },
   cancelled: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Cancelada' },
+}
+
+const PAYMENT_METHODS: Record<string, string> = {
+  bank_transfer: 'Transferencia Bancaria',
+  check: 'Cheque',
+  cash: 'Efectivo',
+  zelle: 'Zelle',
+  wire: 'Wire Transfer',
 }
 
 export default function PromissoryNoteDetailPage() {
@@ -72,12 +92,15 @@ export default function PromissoryNoteDetailPage() {
 
   const [note, setNote] = useState<PromissoryNote | null>(null)
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
+  const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'document' | 'schedule' | 'payments'>('document')
 
   // Payment
   const [showPayModal, setShowPayModal] = useState(false)
   const [payAmount, setPayAmount] = useState('')
+  const [payMethod, setPayMethod] = useState('bank_transfer')
+  const [payReference, setPayReference] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [paying, setPaying] = useState(false)
 
@@ -100,6 +123,7 @@ export default function PromissoryNoteDetailPage() {
       if (data.ok) {
         setNote(data.note)
         setSchedule(data.schedule || [])
+        setPayments(data.payments || [])
         setEditData({
           annual_rate: String(data.note.annual_rate),
           term_months: String(data.note.term_months),
@@ -107,8 +131,9 @@ export default function PromissoryNoteDetailPage() {
           subscriber_representative: data.note.subscriber_representative || '',
           lender_representative: data.note.lender_representative || '',
         })
-        // Pre-fill pay amount with total due
-        setPayAmount(String(data.note.total_due))
+        // Pre-fill pay amount with remaining
+        const paid = Number(data.note.paid_amount || 0)
+        setPayAmount(String(Math.max(0, data.note.total_due - paid)))
       }
     } catch (err) {
       console.error('Error loading note:', err)
@@ -155,6 +180,8 @@ export default function PromissoryNoteDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: parseFloat(payAmount),
+          payment_method: payMethod,
+          reference: payReference || undefined,
           notes: payNotes || undefined,
         }),
       })
@@ -163,7 +190,9 @@ export default function PromissoryNoteDetailPage() {
         toast.success(data.message)
         setShowPayModal(false)
         setPayAmount('')
+        setPayReference('')
         setPayNotes('')
+        setPayMethod('bank_transfer')
         loadNote()
       } else {
         toast.error(data.detail || 'Error al registrar pago')
@@ -193,6 +222,26 @@ export default function PromissoryNoteDetailPage() {
     URL.revokeObjectURL(url)
   }
 
+  const handleExportPaymentsCSV = () => {
+    if (!payments.length || !note) return
+    const headers = ['Fecha', 'Monto', 'Método', 'Referencia', 'Notas']
+    const rows = payments.map(p => [
+      new Date(p.paid_at).toLocaleDateString('es-MX'),
+      p.amount.toFixed(2),
+      PAYMENT_METHODS[p.payment_method] || p.payment_method,
+      p.reference || '',
+      p.notes || '',
+    ])
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `pagos-nota-${note.lender_name.replace(/\s+/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n)
 
@@ -205,7 +254,6 @@ export default function PromissoryNoteDetailPage() {
 
   const numberToWords = (n: number): string => {
     const intPart = Math.floor(n)
-    // Simple approach for large numbers
     return new Intl.NumberFormat('en-US', { style: 'decimal', maximumFractionDigits: 0 }).format(intPart)
       .replace(/,/g, ',') + ' 00/100 UNITED STATES DOLLARS'
   }
@@ -321,7 +369,7 @@ export default function PromissoryNoteDetailPage() {
             </button>
           )}
           <button onClick={handlePrint} className="btn-ghost btn-sm">
-            <Printer className="w-4 h-4" /> Imprimir
+            <Printer className="w-4 h-4" /> Imprimir / PDF
           </button>
           <button onClick={handleExportCSV} className="btn-ghost btn-sm">
             <Download className="w-4 h-4" /> Exportar CSV
@@ -376,7 +424,7 @@ export default function PromissoryNoteDetailPage() {
         {[
           { key: 'document' as const, label: 'Documento', icon: FileText },
           { key: 'schedule' as const, label: 'Tabla de Intereses', icon: Hash },
-          { key: 'payments' as const, label: 'Pagos', icon: CreditCard },
+          { key: 'payments' as const, label: `Pagos (${payments.length})`, icon: CreditCard },
         ].map(tab => (
           <button
             key={tab.key}
@@ -614,79 +662,155 @@ export default function PromissoryNoteDetailPage() {
         </div>
       )}
 
-      {/* TAB: Payments */}
+      {/* TAB: Payments (#4 - Individual payment history) */}
       {activeTab === 'payments' && (
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>
-            Historial de Pagos
-          </h3>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <div className="card-flat p-4 text-center">
+        <div className="space-y-6">
+          {/* Payment Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="card-luxury p-4 text-center">
               <p className="text-xs" style={{ color: 'var(--ash)' }}>Total a Pagar</p>
               <p className="font-serif text-lg font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(note.total_due)}</p>
             </div>
-            <div className="card-flat p-4 text-center">
+            <div className="card-luxury p-4 text-center">
               <p className="text-xs" style={{ color: 'var(--ash)' }}>Pagado</p>
               <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>{fmt(paidAmount)}</p>
             </div>
-            <div className="card-flat p-4 text-center">
+            <div className="card-luxury p-4 text-center">
               <p className="text-xs" style={{ color: 'var(--ash)' }}>Pendiente</p>
               <p className="font-serif text-lg font-semibold" style={{ color: remaining > 0 ? 'var(--error)' : 'var(--success)' }}>{fmt(remaining)}</p>
             </div>
           </div>
 
           {/* Status timeline */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
-                <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--success)' }} />
+          <div className="card-luxury p-6">
+            <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Línea de Tiempo</h3>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
+                  <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Nota creada</p>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>{fmtDate(note.start_date, true)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Nota creada</p>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>{fmtDate(note.start_date, true)}</p>
+
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                     style={{ backgroundColor: note.status === 'paid' ? 'var(--success-light)' : daysToMaturity < 0 ? 'var(--error-light)' : 'var(--cream)' }}>
+                  <Calendar className="w-4 h-4" style={{
+                    color: note.status === 'paid' ? 'var(--success)' : daysToMaturity < 0 ? 'var(--error)' : 'var(--slate)',
+                  }} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                    Vencimiento: {fmtDate(note.maturity_date, true)}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                    {daysToMaturity > 0 ? `En ${daysToMaturity} días` : daysToMaturity < 0 ? `Hace ${Math.abs(daysToMaturity)} días` : 'Hoy'}
+                  </p>
+                </div>
               </div>
+
+              {note.paid_at && (
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
+                    <DollarSign className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
+                      Pagada completamente: {fmt(paidAmount)}
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                      {fmtDate(note.paid_at, true)}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center"
-                   style={{ backgroundColor: note.status === 'paid' ? 'var(--success-light)' : daysToMaturity < 0 ? 'var(--error-light)' : 'var(--cream)' }}>
-                <Calendar className="w-4 h-4" style={{
-                  color: note.status === 'paid' ? 'var(--success)' : daysToMaturity < 0 ? 'var(--error)' : 'var(--slate)',
-                }} />
-              </div>
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                  Vencimiento: {fmtDate(note.maturity_date, true)}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                  {daysToMaturity > 0 ? `En ${daysToMaturity} días` : daysToMaturity < 0 ? `Hace ${Math.abs(daysToMaturity)} días` : 'Hoy'}
-                </p>
+          </div>
+
+          {/* Individual Payment Records */}
+          <div className="card-luxury">
+            <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                <Receipt className="w-4 h-4 inline mr-2" />
+                Historial de Pagos ({payments.length})
+              </h3>
+              <div className="flex gap-2">
+                {payments.length > 0 && (
+                  <button onClick={handleExportPaymentsCSV} className="btn-ghost btn-sm">
+                    <Download className="w-4 h-4" /> CSV
+                  </button>
+                )}
+                {note.status === 'active' && remaining > 0 && (
+                  <button onClick={() => setShowPayModal(true)} className="btn-primary btn-sm">
+                    <CreditCard className="w-4 h-4" /> Registrar Pago
+                  </button>
+                )}
               </div>
             </div>
 
-            {note.paid_at && (
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
-                  <DollarSign className="w-4 h-4" style={{ color: 'var(--success)' }} />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
-                    Pagada: {fmt(paidAmount)}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                    {fmtDate(note.paid_at, true)}
-                  </p>
-                </div>
+            {payments.length === 0 ? (
+              <div className="p-8 text-center" style={{ color: 'var(--ash)' }}>
+                <Banknote className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>No hay pagos registrados</p>
+                {note.status === 'active' && remaining > 0 && (
+                  <button onClick={() => setShowPayModal(true)} className="btn-ghost btn-sm mt-3">
+                    <CreditCard className="w-4 h-4" /> Registrar primer pago
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table w-full">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th className="text-right">Monto</th>
+                      <th>Método</th>
+                      <th>Referencia</th>
+                      <th>Notas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map(p => (
+                      <tr key={p.id}>
+                        <td className="text-sm">
+                          {new Date(p.paid_at).toLocaleDateString('es-MX', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="text-right font-semibold" style={{ color: 'var(--success)' }}>
+                          {fmt(p.amount)}
+                        </td>
+                        <td>
+                          <span className="badge text-xs" style={{ backgroundColor: 'var(--cream)', color: 'var(--charcoal)' }}>
+                            {PAYMENT_METHODS[p.payment_method] || p.payment_method}
+                          </span>
+                        </td>
+                        <td className="text-sm" style={{ color: 'var(--slate)' }}>
+                          {p.reference || '—'}
+                        </td>
+                        <td className="text-xs max-w-[200px] truncate" style={{ color: 'var(--ash)' }}>
+                          {p.notes || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Total row */}
+                    <tr style={{ borderTop: '2px solid var(--sand)' }}>
+                      <td className="font-semibold" style={{ color: 'var(--ink)' }}>Total</td>
+                      <td className="text-right font-serif font-semibold" style={{ color: 'var(--success)' }}>
+                        {fmt(payments.reduce((s, p) => s + p.amount, 0))}
+                      </td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
-
-          {note.status === 'active' && remaining > 0 && (
-            <button onClick={() => setShowPayModal(true)} className="btn-primary btn-sm mt-6">
-              <CreditCard className="w-4 h-4" /> Registrar Pago
-            </button>
-          )}
         </div>
       )}
 
@@ -733,13 +857,37 @@ export default function PromissoryNoteDetailPage() {
                 </div>
               </div>
               <div>
+                <label className="label">Método de Pago</label>
+                <select
+                  value={payMethod}
+                  onChange={e => setPayMethod(e.target.value)}
+                  className="input w-full"
+                >
+                  <option value="bank_transfer">Transferencia Bancaria</option>
+                  <option value="zelle">Zelle</option>
+                  <option value="wire">Wire Transfer</option>
+                  <option value="check">Cheque</option>
+                  <option value="cash">Efectivo</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Referencia / # Transacción</label>
+                <input
+                  type="text"
+                  value={payReference}
+                  onChange={e => setPayReference(e.target.value)}
+                  className="input w-full"
+                  placeholder="Número de referencia bancaria..."
+                />
+              </div>
+              <div>
                 <label className="label">Notas</label>
                 <input
                   type="text"
                   value={payNotes}
                   onChange={e => setPayNotes(e.target.value)}
                   className="input w-full"
-                  placeholder="Referencia, método de pago..."
+                  placeholder="Notas adicionales..."
                 />
               </div>
               <div className="flex gap-3 pt-2">
@@ -761,4 +909,3 @@ export default function PromissoryNoteDetailPage() {
     </div>
   )
 }
-

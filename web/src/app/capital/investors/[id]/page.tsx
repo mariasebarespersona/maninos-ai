@@ -7,7 +7,8 @@ import {
   ArrowLeft, Landmark, User, Mail, Phone, Briefcase,
   DollarSign, TrendingUp, Calendar, MapPin, FileText,
   PieChart, BarChart3, Edit2, Save, X, Clock, AlertTriangle,
-  ArrowRight, CheckCircle2, Plus
+  ArrowRight, CheckCircle2, Plus, Activity, ArrowUpRight,
+  ArrowDownLeft, Pause, Play, Ban, RefreshCw
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -33,8 +34,10 @@ interface Investment {
   notes: string | null
   invested_at: string
   returned_at: string | null
+  promissory_note_id?: string | null
   properties?: { address: string; city: string } | null
   rto_contracts?: { client_id: string; clients?: { name: string } } | null
+  promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string } | null
 }
 
 interface PromissoryNote {
@@ -52,6 +55,39 @@ interface PromissoryNote {
   created_at: string
 }
 
+interface Metrics {
+  total_invested: number
+  total_returned: number
+  net_outstanding: number
+  active_investments: number
+  expected_returns: number
+  roi_pct: number
+  notes_total_lent: number
+  notes_total_due: number
+  notes_total_paid: number
+  notes_outstanding: number
+  active_notes: number
+}
+
+interface CycleData {
+  total_invested: number
+  total_returned: number
+  net_outstanding: number
+  active_investments: number
+  expected_future_returns: number
+  roi_to_date: number
+}
+
+interface FlowRecord {
+  id: string
+  flow_type: string
+  amount: number
+  description: string | null
+  flow_date: string
+  created_at: string
+  properties?: { address: string } | null
+}
+
 const NOTE_STATUS: Record<string, { bg: string; color: string; label: string }> = {
   draft: { bg: 'var(--cream)', color: 'var(--slate)', label: 'Borrador' },
   active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
@@ -61,6 +97,15 @@ const NOTE_STATUS: Record<string, { bg: string; color: string; label: string }> 
   cancelled: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Cancelada' },
 }
 
+const FLOW_LABELS: Record<string, { label: string; color: string }> = {
+  investment_in: { label: 'Inversión entrante', color: 'var(--success)' },
+  acquisition_out: { label: 'Adquisición', color: 'var(--error)' },
+  rent_income: { label: 'Ingreso renta', color: 'var(--success)' },
+  return_out: { label: 'Retorno a inversor', color: 'var(--error)' },
+  late_fee_income: { label: 'Mora', color: 'var(--warning)' },
+  operating_expense: { label: 'Gasto operativo', color: 'var(--error)' },
+}
+
 export default function InvestorDetailPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -68,37 +113,62 @@ export default function InvestorDetailPage() {
   const [investor, setInvestor] = useState<Investor | null>(null)
   const [investments, setInvestments] = useState<Investment[]>([])
   const [promissoryNotes, setPromissoryNotes] = useState<PromissoryNote[]>([])
+  const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
-  const [editData, setEditData] = useState({ notes: '', available_capital: 0 })
-  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes'>('overview')
+  const [editData, setEditData] = useState({ notes: '', available_capital: 0, name: '', email: '', phone: '', company: '' })
+  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes' | 'cycle'>('overview')
+  const [savingStatus, setSavingStatus] = useState(false)
+
+  // Capital cycle
+  const [cycleData, setCycleData] = useState<CycleData | null>(null)
+  const [cycleFlows, setCycleFlows] = useState<FlowRecord[]>([])
+  const [cycleInvestments, setCycleInvestments] = useState<Investment[]>([])
+  const [cycleLoading, setCycleLoading] = useState(false)
 
   useEffect(() => { loadInvestor() }, [id])
 
   const loadInvestor = async () => {
     try {
-      const [investorRes, notesRes] = await Promise.all([
-        fetch(`/api/capital/investors/${id}`),
-        fetch(`/api/capital/promissory-notes?investor_id=${id}`),
-      ])
-      const investorData = await investorRes.json()
-      const notesData = await notesRes.json()
+      const res = await fetch(`/api/capital/investors/${id}`)
+      const investorData = await res.json()
 
       if (investorData.ok) {
         setInvestor(investorData.investor)
         setInvestments(investorData.investments || [])
+        setPromissoryNotes(investorData.promissory_notes || [])
+        setMetrics(investorData.metrics || null)
         setEditData({
           notes: investorData.investor.notes || '',
           available_capital: investorData.investor.available_capital || 0,
+          name: investorData.investor.name || '',
+          email: investorData.investor.email || '',
+          phone: investorData.investor.phone || '',
+          company: investorData.investor.company || '',
         })
-      }
-      if (notesData.ok) {
-        setPromissoryNotes(notesData.notes || [])
       }
     } catch (err) {
       console.error('Error loading investor:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadCycle = async () => {
+    if (cycleData) return // already loaded
+    setCycleLoading(true)
+    try {
+      const res = await fetch(`/api/capital/flows/investor-cycle/${id}`)
+      const data = await res.json()
+      if (data.ok) {
+        setCycleData(data.cycle)
+        setCycleFlows(data.flows || [])
+        setCycleInvestments(data.investments || [])
+      }
+    } catch (err) {
+      console.error('Error loading capital cycle:', err)
+    } finally {
+      setCycleLoading(false)
     }
   }
 
@@ -122,6 +192,33 @@ export default function InvestorDetailPage() {
     }
   }
 
+  const handleStatusChange = async (newStatus: string) => {
+    setSavingStatus(true)
+    try {
+      const res = await fetch(`/api/capital/investors/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(`Estado cambiado a ${newStatus === 'active' ? 'Activo' : newStatus === 'paused' ? 'Pausado' : 'Inactivo'}`)
+        loadInvestor()
+      } else {
+        toast.error(data.detail || 'Error al cambiar estado')
+      }
+    } catch {
+      toast.error('Error al cambiar estado')
+    } finally {
+      setSavingStatus(false)
+    }
+  }
+
+  const handleTabChange = (tab: typeof activeTab) => {
+    setActiveTab(tab)
+    if (tab === 'cycle') loadCycle()
+  }
+
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n)
 
@@ -137,22 +234,16 @@ export default function InvestorDetailPage() {
     return <div className="text-center py-12" style={{ color: 'var(--slate)' }}>Inversionista no encontrado</div>
   }
 
-  // Calculate stats
-  const totalInvested = investments.reduce((sum, i) => sum + Number(i.amount || 0), 0)
-  const totalReturned = investments.reduce((sum, i) => sum + Number(i.return_amount || 0), 0)
-  const activeInvestments = investments.filter(i => i.status === 'active')
-  const completedInvestments = investments.filter(i => i.status === 'returned')
-  const avgReturn = completedInvestments.length > 0
-    ? completedInvestments.reduce((s, i) => s + Number(i.expected_return_rate || 0), 0) / completedInvestments.length
-    : 0
-
-  // Promissory note stats
-  const activeNotes = promissoryNotes.filter(n => n.status === 'active')
-  const totalNotesIssued = promissoryNotes.reduce((s, n) => s + Number(n.loan_amount || 0), 0)
-  const totalNotesDue = promissoryNotes.reduce((s, n) => s + Number(n.total_due || 0), 0)
-  const totalNotesPaid = promissoryNotes.reduce((s, n) => s + Number(n.paid_amount || 0), 0)
-
   const daysUntilMaturity = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+
+  // Rendimiento real vs esperado (#7)
+  const totalInvested = metrics?.total_invested || 0
+  const totalReturned = metrics?.total_returned || 0
+  const expectedReturns = metrics?.expected_returns || 0
+  const realRoi = totalInvested > 0 ? ((totalReturned / totalInvested) * 100 - 100) : 0
+  const expectedRoiAvg = investments.length > 0
+    ? investments.reduce((s, i) => s + Number(i.expected_return_rate || 0), 0) / investments.length
+    : 0
 
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl">
@@ -192,13 +283,47 @@ export default function InvestorDetailPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="badge" style={{
-              backgroundColor: investor.status === 'active' ? 'var(--success-light)' : 'var(--cream)',
-              color: investor.status === 'active' ? 'var(--success)' : 'var(--slate)',
-            }}>
-              {investor.status === 'active' ? 'Activo' : investor.status}
-            </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Status Badge + Controls (#6) */}
+            <div className="flex items-center gap-1">
+              <span className="badge" style={{
+                backgroundColor: investor.status === 'active' ? 'var(--success-light)' : investor.status === 'paused' ? 'var(--warning-light)' : 'var(--cream)',
+                color: investor.status === 'active' ? 'var(--success)' : investor.status === 'paused' ? 'var(--warning)' : 'var(--slate)',
+              }}>
+                {investor.status === 'active' ? 'Activo' : investor.status === 'paused' ? 'Pausado' : 'Inactivo'}
+              </span>
+              {/* Status change buttons */}
+              {investor.status !== 'active' && (
+                <button
+                  onClick={() => handleStatusChange('active')}
+                  disabled={savingStatus}
+                  className="btn-ghost btn-sm"
+                  title="Activar"
+                >
+                  <Play className="w-3.5 h-3.5" style={{ color: 'var(--success)' }} />
+                </button>
+              )}
+              {investor.status !== 'paused' && (
+                <button
+                  onClick={() => handleStatusChange('paused')}
+                  disabled={savingStatus}
+                  className="btn-ghost btn-sm"
+                  title="Pausar"
+                >
+                  <Pause className="w-3.5 h-3.5" style={{ color: 'var(--warning)' }} />
+                </button>
+              )}
+              {investor.status !== 'inactive' && (
+                <button
+                  onClick={() => handleStatusChange('inactive')}
+                  disabled={savingStatus}
+                  className="btn-ghost btn-sm"
+                  title="Desactivar"
+                >
+                  <Ban className="w-3.5 h-3.5" style={{ color: 'var(--slate)' }} />
+                </button>
+              )}
+            </div>
             {!editing ? (
               <button onClick={() => setEditing(true)} className="btn-ghost btn-sm">
                 <Edit2 className="w-4 h-4" /> Editar
@@ -223,8 +348,8 @@ export default function InvestorDetailPage() {
           { label: 'Total Invertido', value: fmt(totalInvested), icon: DollarSign, color: 'var(--navy-800)' },
           { label: 'Capital Disponible', value: fmt(investor.available_capital), icon: Landmark, color: 'var(--gold-600)' },
           { label: 'Retornos', value: fmt(totalReturned), icon: TrendingUp, color: 'var(--success)' },
-          { label: 'Inversiones Activas', value: String(activeInvestments.length), icon: PieChart, color: 'var(--info)' },
-          { label: 'Notas Activas', value: String(activeNotes.length), icon: FileText, color: 'var(--gold-700)' },
+          { label: 'Inversiones Activas', value: String(metrics?.active_investments || 0), icon: PieChart, color: 'var(--info)' },
+          { label: 'Notas Activas', value: String(metrics?.active_notes || 0), icon: FileText, color: 'var(--gold-700)' },
         ].map((kpi) => (
           <div key={kpi.label} className="card-luxury p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -237,16 +362,17 @@ export default function InvestorDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1" style={{ borderBottom: '1px solid var(--sand)' }}>
+      <div className="flex gap-1 overflow-x-auto" style={{ borderBottom: '1px solid var(--sand)' }}>
         {[
           { key: 'overview' as const, label: 'Resumen', icon: BarChart3 },
           { key: 'investments' as const, label: `Inversiones (${investments.length})`, icon: DollarSign },
           { key: 'notes' as const, label: `Promissory Notes (${promissoryNotes.length})`, icon: FileText },
+          { key: 'cycle' as const, label: 'Ciclo de Capital', icon: Activity },
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className="px-4 py-2.5 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors"
+            onClick={() => handleTabChange(tab.key)}
+            className="px-4 py-2.5 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap"
             style={{
               borderColor: activeTab === tab.key ? 'var(--gold-600)' : 'transparent',
               color: activeTab === tab.key ? 'var(--gold-700)' : 'var(--slate)',
@@ -260,61 +386,118 @@ export default function InvestorDetailPage() {
       {/* TAB: Overview */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Notes (editable) */}
-          {(editing || investor.notes) && (
+          {/* Edit form */}
+          {editing && (
+            <div className="card-luxury p-6">
+              <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Editar Inversionista</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Nombre</label>
+                  <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="input w-full" />
+                </div>
+                <div>
+                  <label className="label">Email</label>
+                  <input type="email" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} className="input w-full" />
+                </div>
+                <div>
+                  <label className="label">Teléfono</label>
+                  <input type="tel" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="input w-full" />
+                </div>
+                <div>
+                  <label className="label">Empresa</label>
+                  <input type="text" value={editData.company} onChange={e => setEditData({...editData, company: e.target.value})} className="input w-full" />
+                </div>
+                <div>
+                  <label className="label">Capital Disponible</label>
+                  <input type="number" value={editData.available_capital} onChange={e => setEditData({...editData, available_capital: Number(e.target.value)})} className="input w-full" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Notas</label>
+                  <textarea value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} className="input w-full" rows={3} placeholder="Notas sobre el inversionista..." />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes (non-edit) */}
+          {!editing && investor.notes && (
             <div className="card-luxury p-6">
               <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>
                 <FileText className="w-4 h-4 inline mr-2" />
                 Notas
               </h3>
-              {editing ? (
-                <div className="space-y-3">
-                  <textarea
-                    value={editData.notes}
-                    onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                    className="input w-full"
-                    rows={3}
-                    placeholder="Notas sobre el inversionista..."
-                  />
-                  <div>
-                    <label className="text-sm" style={{ color: 'var(--slate)' }}>Capital Disponible</label>
-                    <input
-                      type="number"
-                      value={editData.available_capital}
-                      onChange={(e) => setEditData({ ...editData, available_capital: Number(e.target.value) })}
-                      className="input w-full mt-1"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <p style={{ color: 'var(--charcoal)' }}>{investor.notes || 'Sin notas'}</p>
-              )}
+              <p style={{ color: 'var(--charcoal)' }}>{investor.notes}</p>
             </div>
           )}
 
-          {/* Performance Summary */}
+          {/* Rendimiento Real vs Esperado (#7) */}
           <div className="card-luxury p-6">
-            <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Resumen de Rendimiento</h3>
+            <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>
+              <TrendingUp className="w-4 h-4 inline mr-2" />
+              Rendimiento Real vs Esperado
+            </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Inversiones Completadas</span>
-                <p className="font-serif text-lg" style={{ color: 'var(--ink)' }}>{completedInvestments.length}</p>
-              </div>
-              <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Retorno Promedio</span>
-                <p className="font-serif text-lg" style={{ color: 'var(--gold-700)' }}>{avgReturn.toFixed(1)}%</p>
-              </div>
-              <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Ganancia Neta (Inversiones)</span>
-                <p className="font-serif text-lg" style={{ color: 'var(--success)' }}>
-                  {fmt(totalReturned - totalInvested > 0 ? totalReturned - totalInvested : 0)}
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>ROI Real</span>
+                <p className="font-serif text-xl font-semibold" style={{
+                  color: realRoi >= 0 ? 'var(--success)' : 'var(--error)'
+                }}>
+                  {realRoi > 0 ? '+' : ''}{realRoi.toFixed(1)}%
+                </p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  Retornado: {fmt(totalReturned)}
                 </p>
               </div>
               <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Notas Emitidas</span>
-                <p className="font-serif text-lg" style={{ color: 'var(--navy-800)' }}>{fmt(totalNotesIssued)}</p>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Tasa Esperada Prom.</span>
+                <p className="font-serif text-xl font-semibold" style={{ color: 'var(--gold-700)' }}>
+                  {expectedRoiAvg.toFixed(1)}%
+                </p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  Esperado: {fmt(expectedReturns)}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Capital Pendiente</span>
+                <p className="font-serif text-xl font-semibold" style={{ color: 'var(--navy-800)' }}>
+                  {fmt(metrics?.net_outstanding || 0)}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  En inversiones activas
+                </p>
+              </div>
+              <div>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Notas por Cobrar</span>
+                <p className="font-serif text-xl font-semibold" style={{
+                  color: (metrics?.notes_outstanding || 0) > 0 ? 'var(--warning)' : 'var(--success)'
+                }}>
+                  {fmt(metrics?.notes_outstanding || 0)}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  Pagado: {fmt(metrics?.notes_total_paid || 0)} / {fmt(metrics?.notes_total_due || 0)}
+                </p>
               </div>
             </div>
+
+            {/* ROI visual bar */}
+            {totalInvested > 0 && (
+              <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--sand)' }}>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--ash)' }}>
+                      <span>Retorno real: {fmt(totalReturned)}</span>
+                      <span>de {fmt(totalInvested)} invertido</span>
+                    </div>
+                    <div className="w-full h-3 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: `${Math.min(100, totalInvested > 0 ? (totalReturned / totalInvested) * 100 : 0)}%`,
+                        backgroundColor: totalReturned >= totalInvested ? 'var(--success)' : 'var(--gold-600)',
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Promissory Notes Quick View */}
@@ -325,7 +508,7 @@ export default function InvestorDetailPage() {
                   <FileText className="w-4 h-4 inline mr-2" />
                   Promissory Notes Recientes
                 </h3>
-                <button onClick={() => setActiveTab('notes')} className="btn-ghost btn-sm">
+                <button onClick={() => handleTabChange('notes')} className="btn-ghost btn-sm">
                   Ver Todas <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -375,7 +558,7 @@ export default function InvestorDetailPage() {
                   <DollarSign className="w-4 h-4 inline mr-2" />
                   Inversiones Recientes
                 </h3>
-                <button onClick={() => setActiveTab('investments')} className="btn-ghost btn-sm">
+                <button onClick={() => handleTabChange('investments')} className="btn-ghost btn-sm">
                   Ver Todas <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -384,6 +567,7 @@ export default function InvestorDetailPage() {
                   const statusStyles: Record<string, { bg: string; color: string; label: string }> = {
                     active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
                     returned: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Retornada' },
+                    partial_return: { bg: 'var(--info-light, var(--cream))', color: 'var(--info)', label: 'Parcial' },
                     defaulted: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Perdida' },
                   }
                   const s = statusStyles[inv.status] || statusStyles.active
@@ -394,6 +578,9 @@ export default function InvestorDetailPage() {
                         <p className="text-xs" style={{ color: 'var(--ash)' }}>
                           {inv.properties?.address || inv.rto_contracts?.clients?.name || '—'} ·{' '}
                           {new Date(inv.invested_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {inv.promissory_notes && (
+                            <span style={{ color: 'var(--gold-700)' }}> · Nota: {fmt(inv.promissory_notes.loan_amount)}</span>
+                          )}
                         </p>
                       </div>
                       <span className="badge text-xs" style={{ backgroundColor: s.bg, color: s.color }}>
@@ -433,8 +620,8 @@ export default function InvestorDetailPage() {
                     <th>Monto</th>
                     <th>Tasa Esperada</th>
                     <th>Retorno</th>
+                    <th>Nota Vinculada</th>
                     <th>Estado</th>
-                    <th>Notas</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -442,6 +629,7 @@ export default function InvestorDetailPage() {
                     const statusStyles: Record<string, { bg: string; color: string; label: string }> = {
                       active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
                       returned: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Retornada' },
+                      partial_return: { bg: 'var(--cream)', color: 'var(--info)', label: 'Parcial' },
                       defaulted: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Perdida' },
                     }
                     const s = statusStyles[inv.status] || statusStyles.active
@@ -487,12 +675,20 @@ export default function InvestorDetailPage() {
                           )}
                         </td>
                         <td>
+                          {inv.promissory_notes ? (
+                            <Link href={`/capital/promissory-notes/${inv.promissory_notes.id}`}
+                              className="text-xs flex items-center gap-1 hover:underline" style={{ color: 'var(--gold-700)' }}>
+                              <FileText className="w-3 h-3" />
+                              {fmt(inv.promissory_notes.loan_amount)}
+                            </Link>
+                          ) : (
+                            <span style={{ color: 'var(--ash)' }}>—</span>
+                          )}
+                        </td>
+                        <td>
                           <span className="badge text-xs" style={{ backgroundColor: s.bg, color: s.color }}>
                             {s.label}
                           </span>
-                        </td>
-                        <td className="text-xs max-w-[150px] truncate" style={{ color: 'var(--slate)' }}>
-                          {inv.notes || '—'}
                         </td>
                       </tr>
                     )
@@ -507,29 +703,27 @@ export default function InvestorDetailPage() {
       {/* TAB: Promissory Notes */}
       {activeTab === 'notes' && (
         <div className="space-y-4">
-          {/* Notes summary */}
           {promissoryNotes.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="card-flat p-4 text-center">
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Total Emitido</p>
-                <p className="font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(totalNotesIssued)}</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(metrics?.notes_total_lent || 0)}</p>
               </div>
               <div className="card-flat p-4 text-center">
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Total Adeudado</p>
-                <p className="font-serif font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(totalNotesDue)}</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(metrics?.notes_total_due || 0)}</p>
               </div>
               <div className="card-flat p-4 text-center">
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Pagado</p>
-                <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(totalNotesPaid)}</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(metrics?.notes_total_paid || 0)}</p>
               </div>
               <div className="card-flat p-4 text-center">
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Notas Activas</p>
-                <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{activeNotes.length}</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{metrics?.active_notes || 0}</p>
               </div>
             </div>
           )}
 
-          {/* Notes list */}
           <div className="card-luxury">
             <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
               <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
@@ -612,6 +806,160 @@ export default function InvestorDetailPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB: Ciclo de Capital (#1) */}
+      {activeTab === 'cycle' && (
+        <div className="space-y-6">
+          {cycleLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--gold-600)' }} />
+            </div>
+          ) : !cycleData ? (
+            <div className="card-luxury p-8 text-center" style={{ color: 'var(--ash)' }}>
+              <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>No se pudo cargar el ciclo de capital</p>
+              <button onClick={loadCycle} className="btn-ghost btn-sm mt-2">
+                <RefreshCw className="w-4 h-4" /> Reintentar
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Cycle KPIs */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {[
+                  { label: 'Total Invertido', value: fmt(cycleData.total_invested), color: 'var(--navy-800)', sub: `${cycleData.active_investments} inversión(es) activa(s)` },
+                  { label: 'Total Retornado', value: fmt(cycleData.total_returned), color: 'var(--success)', sub: `ROI: ${cycleData.roi_to_date > 0 ? '+' : ''}${cycleData.roi_to_date.toFixed(1)}%` },
+                  { label: 'Pendiente Neto', value: fmt(cycleData.net_outstanding), color: 'var(--gold-700)', sub: `Retorno esperado: ${fmt(cycleData.expected_future_returns)}` },
+                ].map(kpi => (
+                  <div key={kpi.label} className="card-luxury p-5">
+                    <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>{kpi.label}</p>
+                    <p className="font-serif text-2xl font-semibold" style={{ color: kpi.color }}>{kpi.value}</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>{kpi.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Visual cycle flow */}
+              <div className="card-luxury p-6">
+                <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>
+                  Flujo: Inversión → Propiedad → RTO → Retorno
+                </h3>
+                <div className="space-y-3">
+                  {cycleInvestments.map((inv: any) => {
+                    const prop = inv.properties
+                    const contract = inv.rto_contracts
+                    const client = contract?.clients
+                    const returnAmt = Number(inv.return_amount || 0)
+                    const invAmt = Number(inv.amount || 0)
+                    const progress = invAmt > 0 ? Math.min(100, (returnAmt / invAmt) * 100) : 0
+
+                    return (
+                      <div key={inv.id} className="card-flat p-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Investment */}
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+                               style={{ backgroundColor: 'var(--navy-800)', color: 'white' }}>
+                            <DollarSign className="w-3 h-3" />
+                            {fmt(invAmt)}
+                          </div>
+                          <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                          {/* Property */}
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+                               style={{ backgroundColor: 'var(--gold-100)', color: 'var(--gold-700)' }}>
+                            <MapPin className="w-3 h-3" />
+                            {prop?.address || 'Sin propiedad'}
+                          </div>
+                          {contract && (
+                            <>
+                              <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                              {/* RTO Contract */}
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+                                   style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
+                                <User className="w-3 h-3" />
+                                {client?.name || 'RTO'}
+                              </div>
+                            </>
+                          )}
+                          {returnAmt > 0 && (
+                            <>
+                              <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+                                   style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
+                                <TrendingUp className="w-3 h-3" />
+                                {fmt(returnAmt)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs" style={{ color: 'var(--ash)' }}>
+                            <span>Retorno: {progress.toFixed(0)}%</span>
+                            <span>{inv.status}</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--sand)' }}>
+                            <div className="h-full rounded-full" style={{
+                              width: `${progress}%`,
+                              backgroundColor: progress >= 100 ? 'var(--success)' : 'var(--gold-600)',
+                            }} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {cycleInvestments.length === 0 && (
+                    <p className="text-sm text-center py-4" style={{ color: 'var(--ash)' }}>
+                      No hay inversiones vinculadas a propiedades o contratos
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Recent Flows */}
+              {cycleFlows.length > 0 && (
+                <div className="card-luxury">
+                  <div className="p-5 border-b" style={{ borderColor: 'var(--sand)' }}>
+                    <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                      Movimientos de Capital Recientes
+                    </h3>
+                  </div>
+                  <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                    {cycleFlows.map(flow => {
+                      const fl = FLOW_LABELS[flow.flow_type] || { label: flow.flow_type, color: 'var(--slate)' }
+                      const isPositive = flow.amount > 0
+                      return (
+                        <div key={flow.id} className="flex items-center justify-between p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                                 style={{ backgroundColor: isPositive ? 'var(--success-light)' : 'var(--error-light)' }}>
+                              {isPositive ? (
+                                <ArrowDownLeft className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                              ) : (
+                                <ArrowUpRight className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fl.label}</p>
+                              <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                                {flow.description || '—'} · {new Date(flow.flow_date || flow.created_at).toLocaleDateString('es-MX', {
+                                  day: 'numeric', month: 'short', year: 'numeric'
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="font-serif font-semibold" style={{ color: fl.color }}>
+                            {isPositive ? '+' : ''}{fmt(flow.amount)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
