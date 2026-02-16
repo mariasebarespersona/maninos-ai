@@ -130,15 +130,32 @@ class ClientCreate(ClientBase):
 
 
 class ClientUpdate(BaseModel):
-    """Schema for updating client details"""
+    """Schema for updating client details (Solicitud de Crédito included)"""
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     terreno: Optional[str] = None
     status: Optional[ClientStatus] = None
+    # Employment / Credit info
     monthly_income: Optional[Decimal] = None
     employment_status: Optional[str] = None
     employer_name: Optional[str] = None
+    occupation: Optional[str] = None
+    employer_phone: Optional[str] = None
+    time_at_job_years: Optional[int] = None
+    time_at_job_months: Optional[int] = None
+    other_income_source: Optional[bool] = None
+    other_income_amount: Optional[Decimal] = None
+    # Personal info
+    marital_status: Optional[str] = None
+    residence_type: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    # References (JSONB)
+    personal_references: Optional[list] = None
 
 
 class ClientResponse(ClientBase):

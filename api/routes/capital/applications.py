@@ -39,7 +39,7 @@ async def list_applications(status: Optional[str] = None):
     """List all RTO applications, optionally filtered by status."""
     try:
         query = sb.table("rto_applications") \
-            .select("*, clients(id, name, email, phone), properties(id, address, city, state, sale_price, photos), sales(id, sale_price, status)")
+            .select("*, clients(id, name, email, phone, kyc_verified, kyc_status), properties(id, address, city, state, sale_price, photos), sales(id, sale_price, status)")
         
         if status:
             query = query.eq("status", status)
@@ -72,6 +72,7 @@ async def get_application(application_id: str):
 
 
 @router.put("/{application_id}/review")
+@router.post("/{application_id}/review")
 async def review_application(application_id: str, review: ApplicationReview):
     """
     Review an RTO application.

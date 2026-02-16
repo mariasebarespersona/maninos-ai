@@ -105,6 +105,10 @@ export default function PaymentMethodPage() {
     setSelectedMethod('rto')
 
     try {
+      // Recover RTO simulator params if client used the simulator
+      const simRaw = sessionStorage.getItem('maninos_rto_sim')
+      const simParams = simRaw ? JSON.parse(simRaw) : null
+
       const res = await fetch('/api/public/purchases/initiate-rto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,7 +117,10 @@ export default function PaymentMethodPage() {
           client_name: clientData.client_name,
           client_email: clientData.client_email,
           client_phone: clientData.client_phone,
-          client_terreno: clientData.client_terreno
+          client_terreno: clientData.client_terreno,
+          // Pass simulator values if available
+          desired_down_payment: simParams?.down_payment_amount ?? undefined,
+          desired_term_months: simParams?.term_months ?? undefined,
         })
       })
 
@@ -121,6 +128,7 @@ export default function PaymentMethodPage() {
 
       if (data.ok) {
         sessionStorage.setItem('maninos_rto_data', JSON.stringify(data))
+        sessionStorage.removeItem('maninos_rto_sim') // cleanup
         toast.success('¡Solicitud enviada!')
         router.push(`/clientes/comprar/${propertyId}/rto-solicitud`)
       } else {
@@ -147,7 +155,13 @@ export default function PaymentMethodPage() {
   if (!clientData) return null
 
   const property = clientData.property
-  const estimatedMonthly = Math.round((property.sale_price || 0) / 36)
+
+  // Pull from simulator if available, otherwise default 36mo
+  const simRaw = typeof window !== 'undefined' ? sessionStorage.getItem('maninos_rto_sim') : null
+  const simParams = simRaw ? JSON.parse(simRaw) : null
+  const estimatedMonthly = simParams?.monthly_payment ?? Math.round((property.sale_price || 0) / 36)
+  const simTermMonths = simParams?.term_months ?? 36
+  const simDownPayment = simParams?.down_payment_amount ?? 0
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -316,11 +330,16 @@ export default function PaymentMethodPage() {
 
               {/* Estimated Monthly */}
               <div className="bg-orange-50 rounded-xl p-5 mb-6 text-center">
-                <p className="text-sm text-orange-700 mb-1">Estimado mensual desde</p>
+                <p className="text-sm text-orange-700 mb-1">Pago mensual estimado</p>
                 <p className="text-3xl font-bold text-orange-700">
                   ${estimatedMonthly.toLocaleString()}<span className="text-lg font-normal">/mes</span>
                 </p>
-                <p className="text-xs text-orange-500 mt-1">*Precio final: ${property.sale_price?.toLocaleString()}</p>
+                <p className="text-xs text-orange-500 mt-1">
+                  {simDownPayment > 0
+                    ? `Enganche: $${simDownPayment.toLocaleString()} · ${simTermMonths} meses`
+                    : `*Precio final: $${property.sale_price?.toLocaleString()}`
+                  }
+                </p>
               </div>
 
               {/* Benefits */}

@@ -123,9 +123,9 @@ async def get_client_full(client_id: str):
     return _format_client_full(result.data)
 
 
-@router.get("/{client_id}", response_model=ClientWithSale)
+@router.get("/{client_id}")
 async def get_client(client_id: str):
-    """Get a single client with sale information."""
+    """Get a single client with ALL fields (including credit, KYC) + sale info."""
     import re
     # Validate UUID format to avoid Supabase errors
     if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', client_id, re.I):
@@ -158,7 +158,9 @@ async def get_client(client_id: str):
             "property_address": prop_result.data[0]["address"] if prop_result.data else None,
         }
     
-    return _format_client_with_sale(result.data, sale_info)
+    # Return full client data (credit info, KYC, etc.) with ok flag
+    client_full = _format_client_full(result.data)
+    return {"ok": True, "client": client_full, "sale": sale_info}
 
 
 @router.post("", response_model=ClientResponse)
@@ -177,24 +179,30 @@ async def create_client(data: ClientCreate):
     return _format_client(result.data[0])
 
 
-@router.patch("/{client_id}", response_model=ClientResponse)
+@router.patch("/{client_id}")
+@router.put("/{client_id}")
 async def update_client(client_id: str, data: ClientUpdate):
-    """Update client details."""
+    """Update client details (PATCH or PUT). Returns full client data."""
     current = sb.table("clients").select("*").eq("id", client_id).single().execute()
     if not current.data:
         raise HTTPException(status_code=404, detail="Client not found")
     
     update_data = data.model_dump(exclude_none=True)
     
+    # Convert Decimal to float for JSON serialization
+    for key, val in update_data.items():
+        if hasattr(val, 'as_tuple'):  # Decimal
+            update_data[key] = float(val)
+    
     if not update_data:
-        return _format_client(current.data)
+        return {"ok": True, "client": _format_client_full(current.data)}
     
     result = sb.table("clients").update(update_data).eq("id", client_id).execute()
     
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to update client")
     
-    return _format_client(result.data[0])
+    return {"ok": True, "client": _format_client_full(result.data[0])}
 
 
 @router.delete("/{client_id}")

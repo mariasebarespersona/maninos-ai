@@ -39,6 +39,28 @@ export async function PATCH(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+    
+    const res = await fetch(`${API_URL}/api/clients/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    console.error('Error proxying to API:', error)
+    return NextResponse.json({ detail: 'API connection error' }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

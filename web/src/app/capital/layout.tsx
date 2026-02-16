@@ -30,16 +30,35 @@ interface NavItem {
   badge?: string
 }
 
-const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/capital', icon: LayoutDashboard },
-  { name: 'Solicitudes RTO', href: '/capital/applications', icon: FileCheck },
-  { name: 'Verificación KYC', href: '/capital/kyc', icon: ShieldCheck },
-  { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
-  { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
-  { name: 'Inversionistas', href: '/capital/investors', icon: Landmark },
-  { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
-  { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
-  { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
+interface NavSection {
+  title: string
+  items: NavItem[]
+}
+
+const navigationSections: NavSection[] = [
+  {
+    title: 'Clientes',
+    items: [
+      { name: 'Solicitudes RTO', href: '/capital/applications', icon: FileCheck },
+      { name: 'Filtrar Clientes', href: '/capital/qualify', icon: ShieldCheck },
+      { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
+      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
+    ],
+  },
+  {
+    title: 'Inversionistas',
+    items: [
+      { name: 'Inversionistas', href: '/capital/investors', icon: Landmark },
+      { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
+      { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
+    ],
+  },
+  {
+    title: 'Reportes',
+    items: [
+      { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
+    ],
+  },
 ]
 
 export default function CapitalLayout({ children }: { children: React.ReactNode }) {
@@ -131,34 +150,43 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
           </Link>
         </div>
 
-        {/* Navigation */}
-        <nav className="p-4 space-y-1">
-          {navigation.map((item) => {
-            const Icon = item.icon
-            const active = isActive(item.href)
-            
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={`
-                  flex items-center gap-3 px-4 py-3 rounded-md font-medium transition-colors
-                  ${active 
-                    ? 'text-gold-800' 
-                    : 'text-slate hover:text-charcoal hover:bg-sand/40'
-                  }
-                `}
-                style={active ? { backgroundColor: 'var(--gold-100)' } : {}}
-              >
-                <Icon className="w-5 h-5" strokeWidth={1.75} />
-                <span className="text-base">{item.name}</span>
-                {item.badge && (
-                  <span className="ml-auto badge badge-warning text-xs">{item.badge}</span>
-                )}
-              </Link>
-            )
-          })}
+        {/* Navigation — grouped by section */}
+        <nav className="p-4 space-y-5">
+          {navigationSections.map((section) => (
+            <div key={section.title}>
+              <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest"
+                 style={{ color: 'var(--ash)' }}>
+                {section.title}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  const active = isActive(item.href)
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`
+                        flex items-center gap-3 px-4 py-2.5 rounded-md font-medium transition-colors
+                        ${active 
+                          ? 'text-gold-800' 
+                          : 'text-slate hover:text-charcoal hover:bg-sand/40'
+                        }
+                      `}
+                      style={active ? { backgroundColor: 'var(--gold-100)' } : {}}
+                    >
+                      <Icon className="w-5 h-5" strokeWidth={1.75} />
+                      <span className="text-sm">{item.name}</span>
+                      {item.badge && (
+                        <span className="ml-auto badge badge-warning text-xs">{item.badge}</span>
+                      )}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* User section */}
@@ -258,6 +286,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
   const labels: Record<string, string> = {
     capital: 'Dashboard',
     applications: 'Solicitudes RTO',
+    qualify: 'Filtrar Clientes',
     kyc: 'Verificación KYC',
     contracts: 'Contratos',
     payments: 'Pagos',

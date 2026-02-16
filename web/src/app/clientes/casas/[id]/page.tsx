@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -15,7 +15,12 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  DollarSign,
+  Clock,
+  Key,
+  SlidersHorizontal,
+  ArrowRight,
 } from 'lucide-react'
 
 interface Property {
@@ -34,6 +39,132 @@ interface Property {
   is_renovated: boolean
   hud_number: string
   status: string
+}
+
+// ============================================================================
+// RTO SIMULATOR — lets clients see how down payment / months affect pricing
+// ============================================================================
+function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId: string }) {
+  const router = useRouter()
+
+  // Defaults: 5% down, 36 months
+  const MIN_DOWN_PCT = 0
+  const MAX_DOWN_PCT = 40
+  const MIN_MONTHS = 12
+  const MAX_MONTHS = 60
+  const STEP_MONTHS = 6
+
+  const [downPaymentPct, setDownPaymentPct] = useState(5)
+  const [termMonths, setTermMonths] = useState(36)
+
+  const downPaymentAmount = useMemo(() => Math.round(salePrice * (downPaymentPct / 100)), [salePrice, downPaymentPct])
+  const financeAmount = useMemo(() => salePrice - downPaymentAmount, [salePrice, downPaymentAmount])
+  const monthlyPayment = useMemo(() => {
+    if (termMonths <= 0) return 0
+    return Math.round(financeAmount / termMonths)
+  }, [financeAmount, termMonths])
+
+  const handleProceedRTO = () => {
+    // Save simulator params to sessionStorage so they carry through the purchase flow
+    sessionStorage.setItem('maninos_rto_sim', JSON.stringify({
+      down_payment_pct: downPaymentPct,
+      down_payment_amount: downPaymentAmount,
+      term_months: termMonths,
+      monthly_payment: monthlyPayment,
+      sale_price: salePrice,
+    }))
+    router.push(`/clientes/comprar/${propertyId}`)
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-1">
+        <SlidersHorizontal className="w-4 h-4 text-orange-600" />
+        <h3 className="font-semibold text-navy-900 text-sm">Simulador Rent-to-Own</h3>
+      </div>
+
+      {/* Monthly display */}
+      <div className="bg-orange-50 rounded-xl p-4 text-center border border-orange-200">
+        <p className="text-xs text-orange-600 mb-0.5">Pago mensual estimado</p>
+        <p className="text-3xl font-bold text-orange-700">
+          ${monthlyPayment.toLocaleString()}<span className="text-base font-normal">/mes</span>
+        </p>
+        <p className="text-xs text-orange-500 mt-1">por {termMonths} meses</p>
+      </div>
+
+      {/* Down payment slider */}
+      <div>
+        <div className="flex justify-between text-sm mb-1.5">
+          <span className="text-gray-600">Enganche</span>
+          <span className="font-semibold text-navy-900">${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
+        </div>
+        <input
+          type="range"
+          min={MIN_DOWN_PCT}
+          max={MAX_DOWN_PCT}
+          step={1}
+          value={downPaymentPct}
+          onChange={(e) => setDownPaymentPct(Number(e.target.value))}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+        />
+        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+          <span>0%</span>
+          <span>40%</span>
+        </div>
+      </div>
+
+      {/* Term months slider */}
+      <div>
+        <div className="flex justify-between text-sm mb-1.5">
+          <span className="text-gray-600">Plazo</span>
+          <span className="font-semibold text-navy-900">{termMonths} meses</span>
+        </div>
+        <input
+          type="range"
+          min={MIN_MONTHS}
+          max={MAX_MONTHS}
+          step={STEP_MONTHS}
+          value={termMonths}
+          onChange={(e) => setTermMonths(Number(e.target.value))}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+        />
+        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+          <span>12 meses</span>
+          <span>60 meses</span>
+        </div>
+      </div>
+
+      {/* Summary table */}
+      <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-600">Precio de venta</span>
+          <span className="font-medium">${salePrice.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">Enganche</span>
+          <span className="font-medium text-green-700">- ${downPaymentAmount.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between border-t pt-2">
+          <span className="text-gray-800 font-semibold">A financiar</span>
+          <span className="font-bold text-navy-900">${financeAmount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <button
+        onClick={handleProceedRTO}
+        className="w-full bg-orange-600 text-white font-bold py-3.5 rounded-xl hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
+      >
+        Solicitar Rent-to-Own
+        <ArrowRight className="w-4 h-4" />
+      </button>
+
+      <p className="text-xs text-gray-400 text-center leading-snug">
+        *Cifras estimadas. El pago final depende de la aprobación de Maninos Capital.
+      </p>
+    </div>
+  )
 }
 
 export default function PropertyDetailPage() {
@@ -271,8 +402,8 @@ export default function PropertyDetailPage() {
           
           {/* Sidebar - Purchase Card */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24">
-              <div className="text-center mb-6">
+            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24 space-y-5">
+              <div className="text-center">
                 <p className="text-gray-500 text-sm">Precio de venta</p>
                 <p className="text-4xl font-bold text-gold-600">
                   ${property.sale_price?.toLocaleString()}
@@ -281,32 +412,31 @@ export default function PropertyDetailPage() {
               
               {isAvailable ? (
                 <>
-                  {/* Main CTA */}
+                  {/* Contado CTA */}
                   <Link
                     href={`/clientes/comprar/${property.id}`}
-                    className="block w-full bg-gold-500 text-navy-900 text-center font-bold py-4 rounded-lg hover:bg-gold-400 transition-colors mb-3"
+                    className="block w-full bg-gold-500 text-navy-900 text-center font-bold py-3.5 rounded-xl hover:bg-gold-400 transition-colors"
                   >
-                    Comprar Esta Casa
+                    💵 Comprar al Contado
                   </Link>
-                  
-                  {/* Payment options summary */}
-                  <div className="flex gap-2 mb-6">
-                    <div className="flex-1 bg-green-50 rounded-lg p-2.5 text-center border border-green-200">
-                      <p className="text-xs font-semibold text-green-700">💵 Contado</p>
-                      <p className="text-xs text-green-600">Pago completo</p>
+
+                  {/* Divider */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200" />
                     </div>
-                    <div className="flex-1 bg-orange-50 rounded-lg p-2.5 text-center border border-orange-200">
-                      <p className="text-xs font-semibold text-orange-700">🔑 Rent-to-Own</p>
-                      <p className="text-xs text-orange-600">
-                        Desde ${Math.round((property.sale_price || 0) / 36).toLocaleString()}/mes
-                      </p>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="bg-white px-3 text-gray-400">o simula tu Rent-to-Own</span>
                     </div>
                   </div>
+
+                  {/* RTO Simulator */}
+                  <RTOSimulator salePrice={property.sale_price} propertyId={property.id} />
                 </>
               ) : (
                 <>
                   {/* SOLD / RESERVED badge */}
-                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-4 text-center">
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
                     <div className="text-3xl mb-2">
                       {property.status === 'sold' ? '🏷️' : '⏳'}
                     </div>
@@ -322,7 +452,7 @@ export default function PropertyDetailPage() {
                   
                   <Link
                     href="/clientes/casas"
-                    className="block w-full bg-navy-800 text-white text-center font-bold py-4 rounded-lg hover:bg-navy-700 transition-colors mb-3"
+                    className="block w-full bg-navy-800 text-white text-center font-bold py-4 rounded-lg hover:bg-navy-700 transition-colors"
                   >
                     Ver Otras Casas Disponibles
                   </Link>
@@ -346,7 +476,7 @@ export default function PropertyDetailPage() {
               </div>
               
               {/* Contact */}
-              <div className="mt-6 pt-6 border-t text-center">
+              <div className="mt-4 pt-4 border-t text-center">
                 <p className="text-sm text-gray-500 mb-2">¿Tienes preguntas?</p>
                 <p className="font-semibold text-navy-900">(832) 745-9600</p>
               </div>
