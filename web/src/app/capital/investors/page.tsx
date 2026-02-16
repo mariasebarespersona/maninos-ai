@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Landmark, Plus, User, DollarSign, Briefcase, Phone, Mail, TrendingUp, ArrowRight } from 'lucide-react'
+import { Landmark, Plus, User, DollarSign, Briefcase, Phone, Mail, TrendingUp, ArrowRight, FileText, Search } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
 interface Investor {
@@ -111,8 +111,8 @@ export default function InvestorsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Inversionistas</h1>
-          <p style={{ color: 'var(--slate)' }}>Gestión de capital e inversiones (Fondear)</p>
+          <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Seguimiento de Inversionistas</h1>
+          <p style={{ color: 'var(--slate)' }}>Perfiles, inversiones y notas promisorias</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" />

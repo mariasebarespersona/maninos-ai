@@ -18,6 +18,8 @@ import {
   BarChart3,
   ArrowRightLeft,
   Calculator,
+  FileText,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -46,7 +48,8 @@ const navigationSections: NavSection[] = [
   {
     title: 'Inversionistas',
     items: [
-      { name: 'Inversionistas', href: '/capital/investors', icon: Landmark },
+      { name: 'Seguimiento', href: '/capital/investors', icon: Users },
+      { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
       { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
       { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
     ],
