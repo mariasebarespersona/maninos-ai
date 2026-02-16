@@ -69,7 +69,7 @@ class RenovationItemUpdate(BaseModel):
 
 # ============ Materials Endpoints ============
 
-@router.get("/")
+@router.get("")
 async def list_materials(
     category: Optional[str] = None,
     active_only: bool = True
@@ -104,7 +104,7 @@ async def get_material(material_id: str):
     return result.data
 
 
-@router.post("/")
+@router.post("")
 async def create_material(material: MaterialCreate):
     """Create a new material in the catalog"""
     result = sb.table("materials").insert(material.model_dump()).execute()

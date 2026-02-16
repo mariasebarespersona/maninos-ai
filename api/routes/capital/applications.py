@@ -34,7 +34,7 @@ class ApplicationReview(BaseModel):
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_applications(status: Optional[str] = None):
     """List all RTO applications, optionally filtered by status."""
     try:

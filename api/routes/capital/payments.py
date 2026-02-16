@@ -32,7 +32,7 @@ class RecordPayment(BaseModel):
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_payments(
     contract_id: Optional[str] = None,
     status: Optional[str] = None,

@@ -51,7 +51,7 @@ class InvestmentCreate(BaseModel):
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_investors(status: Optional[str] = "active"):
     """List all investors."""
     try:
@@ -96,7 +96,7 @@ async def get_investor(investor_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/")
+@router.post("")
 async def create_investor(data: InvestorCreate):
     """Register a new investor."""
     try:

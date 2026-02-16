@@ -78,7 +78,7 @@ DOCUMENT_LABELS = {
 
 # ============ Endpoints ============
 
-@router.get("/")
+@router.get("")
 async def list_transfers(
     status: Optional[str] = None,
     transfer_type: Optional[str] = None,
@@ -109,7 +109,7 @@ async def list_transfers(
     return transfers
 
 
-@router.post("/")
+@router.post("")
 async def create_transfer(data: TransferCreate):
     """Create a new title transfer record (typically for manual purchases)"""
     from datetime import datetime

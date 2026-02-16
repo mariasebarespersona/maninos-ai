@@ -124,7 +124,7 @@ def _calculate_compound_schedule(loan_amount: float, monthly_rate: float, term_m
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_promissory_notes(
     status: Optional[str] = None,
     investor_id: Optional[str] = None,
@@ -200,7 +200,7 @@ async def get_promissory_note(note_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/")
+@router.post("")
 async def create_promissory_note(data: PromissoryNoteCreate):
     """Create a new promissory note."""
     try:

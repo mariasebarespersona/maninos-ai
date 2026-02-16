@@ -65,7 +65,7 @@ class DTIRequest(BaseModel):
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_contracts(status: Optional[str] = None):
     """List all RTO contracts."""
     try:
@@ -130,7 +130,7 @@ async def get_contract(contract_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/")
+@router.post("")
 async def create_contract(data: ContractCreate):
     """
     Create an RTO contract from an approved application.

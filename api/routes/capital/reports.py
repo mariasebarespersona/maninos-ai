@@ -311,7 +311,7 @@ def _generate_report_pdf(report_data: dict, period_label: str) -> bytes:
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_reports():
     """List all generated monthly reports."""
     try:

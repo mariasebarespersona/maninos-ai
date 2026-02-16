@@ -75,7 +75,7 @@ def _record_flow(flow_data: dict) -> dict:
 # ENDPOINTS
 # =============================================================================
 
-@router.get("/")
+@router.get("")
 async def list_flows(
     flow_type: Optional[str] = None,
     investor_id: Optional[str] = None,

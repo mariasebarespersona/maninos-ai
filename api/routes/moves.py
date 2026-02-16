@@ -159,7 +159,7 @@ async def get_move(move_id: str):
     return result.data[0]
 
 
-@router.get("/")
+@router.get("")
 async def list_moves(
     status: Optional[str] = Query(None),
     move_type: Optional[str] = Query(None),
@@ -185,7 +185,7 @@ async def list_moves(
     return result.data or []
 
 
-@router.post("/")
+@router.post("")
 async def create_move(data: MoveCreate):
     """Create a new move for a property."""
     # Verify property exists

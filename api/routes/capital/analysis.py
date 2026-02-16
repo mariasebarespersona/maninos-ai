@@ -282,7 +282,7 @@ async def get_property_analysis(property_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/")
+@router.get("")
 async def list_analyses(recommendation: Optional[str] = None):
     """List all acquisition analyses."""
     try:

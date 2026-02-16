@@ -61,6 +61,7 @@ app = FastAPI(
     description="Backend API for Maninos Homes & Capital",
     version="2.0.0",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 # CORS — allow Vercel production, preview deploys, and local dev
