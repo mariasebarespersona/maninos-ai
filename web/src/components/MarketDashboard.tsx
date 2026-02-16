@@ -25,8 +25,6 @@ import {
   Loader2,
   Plus,
   Trash2,
-  Smartphone,
-  ClipboardCheck,
   Download,
   LayoutGrid,
   Map,
@@ -39,6 +37,7 @@ import AddMarketListingModal from './AddMarketListingModal';
 import StripePaymentForm from './StripePaymentForm';
 import BillOfSaleTemplate, { type BillOfSaleData } from './BillOfSaleTemplate';
 import TitleApplicationTemplate, { type TitleApplicationData } from './TitleApplicationTemplate';
+import DesktopEvaluatorPanel from './DesktopEvaluatorPanel';
 
 // Dynamic import of map component (Leaflet doesn't support SSR)
 const MarketMapView = dynamic(() => import('./MarketMapView'), {
@@ -267,11 +266,8 @@ export default function MarketDashboard() {
   const [tdhcaResult, setTdhcaResult] = useState<any>(null);
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
 
-  // Evaluation report lookup state
-  const [evalReportNumber, setEvalReportNumber] = useState('');
-  const [evalReportLoading, setEvalReportLoading] = useState(false);
+  // Evaluation report state (set by DesktopEvaluatorPanel callback)
   const [evalReport, setEvalReport] = useState<any>(null);
-  const [evalReportError, setEvalReportError] = useState<string | null>(null);
 
   // Bill of Sale template state
   const [showBillOfSale, setShowBillOfSale] = useState(false);
@@ -563,9 +559,7 @@ export default function MarketDashboard() {
     setBillOfSaleData(null);
     setShowTitleApp(false);
     setTitleAppData(null);
-    setEvalReportNumber('');
     setEvalReport(null);
-    setEvalReportError(null);
   };
 
   // Navigation between steps (order: documents → checklist → payment → confirm)
@@ -631,35 +625,6 @@ export default function MarketDashboard() {
     }
   };
 
-  // Evaluation report lookup
-  const lookupEvalReport = async () => {
-    if (!evalReportNumber.trim()) return;
-    setEvalReportLoading(true);
-    setEvalReportError(null);
-    setEvalReport(null);
-    try {
-      const res = await fetch(`/api/evaluations/by-number/${encodeURIComponent(evalReportNumber.trim().toUpperCase())}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEvalReport(data);
-        // If listing is selected, link the evaluation
-        if (selectedListing?.id && data.id) {
-          fetch(`/api/evaluations/${data.id}/link`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ listing_id: selectedListing.id }),
-          }).catch(() => {});
-        }
-      } else {
-        const err = await res.json().catch(() => ({ detail: 'No encontrado' }));
-        setEvalReportError(err.detail || 'No encontrado');
-      }
-    } catch (err: any) {
-      setEvalReportError(err.message);
-    } finally {
-      setEvalReportLoading(false);
-    }
-  };
 
   // Toggle checklist item
   const toggleChecklistItem = (itemId: string) => {
@@ -2201,124 +2166,15 @@ export default function MarketDashboard() {
               </div>
             )}
             
-            {/* Step 2: Evaluation — Requires Report Number from Mobile */}
+            {/* Step 2: Evaluation — Interactive or Link Existing */}
             {purchaseStep === 'checklist' && (
-              <div className="p-6 space-y-5">
-                {/* Instructions */}
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
-                    <Smartphone className="w-7 h-7 text-amber-600" />
-                  </div>
-                  <h4 className="text-lg font-bold text-gray-900 mb-2">Evaluación desde la App Móvil</h4>
-                  <p className="text-sm text-gray-600 leading-relaxed mb-3">
-                    La evaluación se completa desde el móvil. El empleado genera un <strong>reporte con número único</strong> que debes introducir aquí.
-                  </p>
-                  <div className="bg-white rounded-xl p-3 text-left space-y-2 text-sm text-gray-700">
-                    <div className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</span><span>Abre la <strong>App Maninos</strong> → pestaña <strong>Evaluar</strong></span></div>
-                    <div className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</span><span>Sube fotos y/o edita el checklist manual</span></div>
-                    <div className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</span><span>Genera el <strong>reporte final</strong> → obtén el número (ej: EVL-260213-001)</span></div>
-                    <div className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">4</span><span>Introduce el número aquí abajo</span></div>
-                  </div>
-                </div>
-
-                {/* Report Number Input */}
-                <div className="bg-white border-2 border-indigo-200 rounded-2xl p-5">
-                  <label className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <ClipboardCheck className="w-4 h-4 text-indigo-600" />
-                    Número de Reporte de Evaluación *
-                  </label>
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      value={evalReportNumber}
-                      onChange={(e) => setEvalReportNumber(e.target.value.toUpperCase())}
-                      placeholder="EVL-YYMMDD-XXX"
-                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                    <button
-                      onClick={lookupEvalReport}
-                      disabled={evalReportLoading || !evalReportNumber.trim()}
-                      className="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-all flex items-center gap-2 text-sm"
-                    >
-                      {evalReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                      Buscar
-                    </button>
-                  </div>
-                  {evalReportError && (
-                    <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                      <XCircle className="w-3 h-3" /> {evalReportError}
-                    </p>
-                  )}
-                </div>
-
-                {/* Linked Report Preview */}
-                {evalReport && (
-                  <div className="border-2 border-green-200 bg-green-50 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="font-bold text-green-800">Reporte Vinculado</span>
-                      </div>
-                      <span className="text-sm font-mono font-bold text-indigo-700 bg-indigo-100 px-3 py-1 rounded-lg">{evalReport.report_number}</span>
-                    </div>
-                    {/* Score */}
-                    <div className="flex items-center gap-4">
-                      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl ${
-                        evalReport.recommendation === 'COMPRAR' ? 'bg-green-500' :
-                        evalReport.recommendation === 'NO COMPRAR' ? 'bg-red-500' : 'bg-amber-500'
-                      }`}>
-                        {evalReport.score}
-                      </div>
-                      <div>
-                        <p className={`text-sm font-bold ${
-                          evalReport.recommendation === 'COMPRAR' ? 'text-green-700' :
-                          evalReport.recommendation === 'NO COMPRAR' ? 'text-red-700' : 'text-amber-700'
-                        }`}>{evalReport.recommendation}</p>
-                        <p className="text-xs text-gray-600">{evalReport.recommendation_reason}</p>
-                      </div>
-                    </div>
-                    {/* AI Summary */}
-                    {evalReport.ai_summary && (
-                      <div className="bg-white rounded-xl p-3 border border-gray-100">
-                        <p className="text-xs font-semibold text-gray-500 mb-1">Resumen IA:</p>
-                        <p className="text-xs text-gray-700 leading-relaxed">{evalReport.ai_summary}</p>
-                      </div>
-                    )}
-                    {/* Extra Notes */}
-                    {evalReport.extra_notes?.length > 0 && (
-                      <div className="bg-white rounded-xl p-3 border border-purple-100">
-                        <p className="text-xs font-semibold text-purple-600 mb-1">Notas Extra del Empleado:</p>
-                        {evalReport.extra_notes.map((note: string, i: number) => (
-                          <p key={i} className="text-xs text-gray-700">• {note}</p>
-                        ))}
-                      </div>
-                    )}
-                    {/* Checklist summary */}
-                    {evalReport.checklist?.length > 0 && (
-                      <div className="grid grid-cols-5 gap-2 text-center">
-                        {[
-                          { n: evalReport.checklist.filter((c: any) => c.status === 'pass').length, l: 'OK', c: 'text-green-700 bg-green-100' },
-                          { n: evalReport.checklist.filter((c: any) => c.status === 'fail').length, l: 'Falla', c: 'text-red-700 bg-red-100' },
-                          { n: evalReport.checklist.filter((c: any) => c.status === 'warning').length, l: 'Alerta', c: 'text-amber-700 bg-amber-100' },
-                          { n: evalReport.checklist.filter((c: any) => c.status === 'needs_photo').length, l: 'Foto', c: 'text-blue-700 bg-blue-100' },
-                          { n: evalReport.checklist.filter((c: any) => c.status === 'not_evaluable').length, l: 'N/A', c: 'text-gray-600 bg-gray-100' },
-                        ].map((s, i) => (
-                          <div key={i} className={`rounded-lg py-1.5 ${s.c}`}>
-                            <p className="text-sm font-bold">{s.n}</p>
-                            <p className="text-[9px]">{s.l}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!evalReport && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                    <p className="text-xs text-amber-700">Introduce el número de reporte para poder continuar con el pago.</p>
-                  </div>
-                )}
+              <div className="p-6">
+                <DesktopEvaluatorPanel
+                  listingId={selectedListing?.id}
+                  onReportGenerated={(report) => {
+                    setEvalReport(report)
+                  }}
+                />
               </div>
             )}
             
@@ -2687,9 +2543,14 @@ export default function MarketDashboard() {
               {purchaseStep === 'checklist' && (
                 <button
                   onClick={() => setPurchaseStep('payment')}
-                  className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors btn-gold"
+                  disabled={!evalReport}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
+                    evalReport
+                      ? 'btn-gold'
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
-                  Ya evalué en el móvil — Siguiente
+                  Siguiente
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}

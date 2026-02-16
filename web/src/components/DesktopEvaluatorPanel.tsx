@@ -9,7 +9,10 @@ import {
 } from 'lucide-react'
 
 interface DesktopEvaluatorPanelProps {
-  propertyId: string
+  /** Property UUID (from /homes/properties/[id]) */
+  propertyId?: string
+  /** Market listing UUID (from MarketDashboard purchase flow) */
+  listingId?: string
   /** Called after a report is successfully generated & linked */
   onReportGenerated?: (report: any) => void
 }
@@ -21,9 +24,15 @@ interface DesktopEvaluatorPanelProps {
  *   2. Upload photos → AI fills checklist
  *   3. Manual edits on any item
  *   4. Extra notes
- *   5. Generate final report → auto-linked to this property
+ *   5. Generate final report → auto-linked to this property/listing
  */
-export default function DesktopEvaluatorPanel({ propertyId, onReportGenerated }: DesktopEvaluatorPanelProps) {
+export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportGenerated }: DesktopEvaluatorPanelProps) {
+  // Build the link payload depending on context
+  const linkPayload = propertyId
+    ? { property_id: propertyId }
+    : listingId
+      ? { listing_id: listingId }
+      : {}
   // Core state
   const [evaluationId, setEvaluationId] = useState<string | null>(null)
   const [reportNumber, setReportNumber] = useState<string | null>(null)
@@ -86,11 +95,11 @@ export default function DesktopEvaluatorPanel({ propertyId, onReportGenerated }:
       }
       const report = await lookupRes.json()
 
-      // Link to this property
+      // Link to this property/listing
       const linkRes = await fetch(`/api/evaluations/${report.id}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ property_id: propertyId }),
+        body: JSON.stringify(linkPayload),
       })
       if (!linkRes.ok) {
         setError('Error al vincular el reporte.')
@@ -217,11 +226,11 @@ export default function DesktopEvaluatorPanel({ propertyId, onReportGenerated }:
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
 
-      // Auto-link to this property
+      // Auto-link to this property/listing
       await fetch(`/api/evaluations/${evaluationId}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ property_id: propertyId }),
+        body: JSON.stringify(linkPayload),
       })
 
       setCompletedReport(data)
