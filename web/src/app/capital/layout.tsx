@@ -50,14 +50,14 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Seguimiento', href: '/capital/investors', icon: Users },
       { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
-      { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
-      { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
     ],
   },
   {
     title: 'Reportes',
     items: [
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
+      { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
+      { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
     ],
   },
 ]
@@ -290,7 +290,8 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     kyc: 'Verificación KYC',
     contracts: 'Contratos',
     payments: 'Pagos',
-    investors: 'Inversionistas',
+    investors: 'Seguimiento',
+    'promissory-notes': 'Promissory Notes',
     flows: 'Flujo Capital',
     analysis: 'Análisis',
     reports: 'Reportes',
