@@ -493,6 +493,203 @@ async def get_note_schedule(note_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{note_id}/pdf")
+async def download_promissory_note_pdf(note_id: str):
+    """Generate and download a PDF of the promissory note document."""
+    try:
+        from io import BytesIO
+        from fastapi.responses import Response
+        
+        result = sb.table("promissory_notes") \
+            .select("*, investors(id, name, email, phone, company)") \
+            .eq("id", note_id) \
+            .single() \
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
+        
+        note = result.data
+        investor = note.get("investors", {}) or {}
+        monthly_rate = float(note["monthly_rate"])
+        loan_amount = float(note["loan_amount"])
+        term_months = int(note["term_months"])
+        calc = _calculate_compound_schedule(loan_amount, monthly_rate, term_months)
+        
+        # Generate PDF
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        except ImportError:
+            raise HTTPException(status_code=500, detail="reportlab not installed")
+        
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter,
+                                rightMargin=0.75*inch, leftMargin=0.75*inch,
+                                topMargin=0.75*inch, bottomMargin=0.75*inch)
+        
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='DocTitle', parent=styles['Heading1'],
+                                  fontSize=16, alignment=TA_CENTER, spaceAfter=16,
+                                  textColor=colors.HexColor("#1a2744")))
+        styles.add(ParagraphStyle(name='Section', parent=styles['Heading2'],
+                                  fontSize=12, spaceAfter=8, spaceBefore=14,
+                                  textColor=colors.HexColor("#283242")))
+        styles.add(ParagraphStyle(name='Body', parent=styles['Normal'],
+                                  fontSize=10, leading=14, alignment=TA_JUSTIFY))
+        styles.add(ParagraphStyle(name='Right', parent=styles['Normal'],
+                                  alignment=TA_RIGHT, fontSize=9))
+        styles.add(ParagraphStyle(name='Center', parent=styles['Normal'],
+                                  alignment=TA_CENTER, fontSize=9))
+        
+        elements = []
+        fmt = lambda n: f"${n:,.2f}" if n else "$0.00"
+        
+        # Header
+        elements.append(Paragraph("PROMISSORY NOTE", styles['DocTitle']))
+        
+        # Meta
+        signed_date = note.get("signed_at", note.get("start_date", ""))
+        if signed_date:
+            try:
+                d = datetime.fromisoformat(str(signed_date).replace("Z", "+00:00"))
+                signed_str = d.strftime("%B %d, %Y")
+            except Exception:
+                signed_str = str(signed_date)
+        else:
+            signed_str = "_______________"
+        
+        city = note.get("signed_city", "Conroe")
+        state = note.get("signed_state", "Texas")
+        
+        meta_data = [
+            [f"Date: {signed_str}", f"City: {city}, {state}"],
+            [f"Amount: {fmt(loan_amount)}", f"Term: {term_months} months"],
+            [f"Annual Rate: {note.get('annual_rate', 12)}%", f"Total Due at Maturity: {fmt(calc['total_due'])}"],
+        ]
+        t = Table(meta_data, colWidths=[270, 270])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 16))
+        
+        # Body text
+        subscriber = note.get("subscriber_name", "Maninos Capital LLC")
+        lender = note.get("lender_name", investor.get("name", ""))
+        lender_co = note.get("lender_company", "")
+        
+        body_text = f"""
+        FOR VALUE RECEIVED, the undersigned <b>{subscriber}</b> ("Subscriber") promises to pay to the order of 
+        <b>{lender}</b>{f' ({lender_co})' if lender_co else ''} ("Lender"), the principal sum of 
+        <b>{fmt(loan_amount)}</b>, together with accrued interest at the rate of 
+        <b>{note.get('annual_rate', 12)}%</b> per annum, compounded monthly, for a period of 
+        <b>{term_months} months</b>, resulting in a total amount due at maturity of <b>{fmt(calc['total_due'])}</b>.
+        """
+        elements.append(Paragraph(body_text.strip(), styles['Body']))
+        elements.append(Spacer(1, 8))
+        
+        maturity = note.get("maturity_date", "")
+        mat_str = maturity
+        if maturity:
+            try:
+                mat_str = datetime.fromisoformat(str(maturity)).strftime("%B %d, %Y")
+            except Exception:
+                pass
+        
+        elements.append(Paragraph(f"<b>Maturity Date:</b> {mat_str}", styles['Body']))
+        elements.append(Spacer(1, 8))
+        
+        default_rate = note.get("default_interest_rate", 12)
+        elements.append(Paragraph(
+            f"In the event of default, interest shall accrue at the rate of <b>{default_rate}%</b> per annum on the outstanding balance.",
+            styles['Body']
+        ))
+        elements.append(Spacer(1, 16))
+        
+        # Schedule table
+        elements.append(Paragraph("Compound Interest Schedule", styles['Section']))
+        sched_header = ["Month", "Interest", "Payment", "Balance", "Pending"]
+        sched_rows = [sched_header]
+        for row in calc["schedule"]:
+            sched_rows.append([
+                str(row["term"]),
+                fmt(row["interest"]),
+                fmt(row["payment"]) if row["payment"] > 0 else "-",
+                fmt(row["capital"]),
+                fmt(row["pending"]),
+            ])
+        
+        t = Table(sched_rows, colWidths=[60, 90, 90, 110, 110])
+        style = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#283242")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f6")]),
+        ]
+        # Highlight last row
+        style.append(('BACKGROUND', (0, -1), (-1, -1), colors.HexColor("#e8f5e9")))
+        style.append(('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'))
+        t.setStyle(TableStyle(style))
+        elements.append(t)
+        elements.append(Spacer(1, 24))
+        
+        # Signature lines
+        elements.append(Paragraph("SIGNATURES", styles['Section']))
+        sig_data = [
+            ["_" * 40, "", "_" * 40],
+            [f"{subscriber}", "", f"{lender}"],
+            ["Subscriber", "", "Lender"],
+        ]
+        t = Table(sig_data, colWidths=[200, 60, 200])
+        t.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ]))
+        elements.append(t)
+        
+        # Footer
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph(
+            f"Generated {datetime.now().strftime('%m/%d/%Y %H:%M')} — Maninos Capital LLC — Confidential",
+            ParagraphStyle(name='PNFooter', parent=styles['Normal'], fontSize=7,
+                           textColor=colors.grey, alignment=TA_CENTER)
+        ))
+        
+        doc.build(elements)
+        pdf_bytes = buffer.getvalue()
+        
+        lender_safe = (lender or "note").replace(" ", "_")
+        filename = f"Promissory_Note_{lender_safe}_{note_id[:8]}.pdf"
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating promissory note PDF {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/{note_id}")
 async def delete_promissory_note(note_id: str):
     """Delete a draft promissory note."""

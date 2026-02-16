@@ -1,5 +1,5 @@
 """
-Capital Payments - RTO Payment management
+Capital Payments - RTO Payment management, Commissions, Insurance/Tax
 Phase 4: Gestionar Cartera
 """
 
@@ -26,6 +26,32 @@ class RecordPayment(BaseModel):
     payment_reference: Optional[str] = None
     notes: Optional[str] = None
     recorded_by: Optional[str] = "admin"
+
+
+class CommissionCreate(BaseModel):
+    """Create a commission record."""
+    sale_id: str
+    contract_id: Optional[str] = None
+    property_id: Optional[str] = None
+    client_id: Optional[str] = None
+    total_commission: float = 1000
+    found_by: Optional[str] = None
+    found_by_amount: float = 500
+    sold_by: Optional[str] = None
+    sold_by_amount: float = 500
+    notes: Optional[str] = None
+
+
+class InsuranceTaxUpdate(BaseModel):
+    """Update insurance/tax tracking on a contract."""
+    insurance_status: Optional[str] = None
+    insurance_provider: Optional[str] = None
+    insurance_policy_number: Optional[str] = None
+    insurance_expiry: Optional[str] = None
+    tax_responsibility: Optional[str] = None
+    annual_tax_amount: Optional[float] = None
+    tax_paid_through: Optional[str] = None
+    tax_status: Optional[str] = None
 
 
 # =============================================================================
@@ -219,13 +245,99 @@ async def get_payment_schedule(contract_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/mora-summary")
+async def get_mora_summary():
+    """
+    Client-level delinquency summary for mora management.
+    Shows each delinquent client with aggregated overdue info.
+    """
+    try:
+        today_str = date.today().isoformat()
+        today_d = date.today()
+        
+        # Get all overdue payments with contract+client+property
+        result = sb.table("rto_payments") \
+            .select("*, rto_contracts(id, client_id, property_id, monthly_rent, late_fee_per_day, grace_period_days, clients(id, name, email, phone), properties(address, city))") \
+            .in_("status", ["pending", "late"]) \
+            .lt("due_date", today_str) \
+            .order("due_date") \
+            .execute()
+        
+        overdue_payments = result.data or []
+        
+        # Aggregate by client
+        client_map: dict = {}
+        for p in overdue_payments:
+            contract = p.get("rto_contracts", {}) or {}
+            client = contract.get("clients", {}) or {}
+            prop = contract.get("properties", {}) or {}
+            cid = client.get("id") or contract.get("client_id", "unknown")
+            
+            due = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+            days_late = (today_d - due).days
+            grace = contract.get("grace_period_days", 5)
+            fee_per_day = float(contract.get("late_fee_per_day", 15))
+            late_fee = max(0, (days_late - grace)) * fee_per_day if days_late > grace else 0
+            
+            if cid not in client_map:
+                client_map[cid] = {
+                    "client_id": cid,
+                    "client_name": client.get("name", "N/A"),
+                    "client_email": client.get("email"),
+                    "client_phone": client.get("phone"),
+                    "property_address": prop.get("address", "N/A"),
+                    "property_city": prop.get("city"),
+                    "contract_id": contract.get("id"),
+                    "monthly_rent": float(contract.get("monthly_rent", 0)),
+                    "overdue_payments": 0,
+                    "total_overdue": 0.0,
+                    "total_late_fees": 0.0,
+                    "max_days_late": 0,
+                    "earliest_overdue": p["due_date"],
+                    "risk_level": "medium",
+                    "payment_ids": [],
+                }
+            
+            client_map[cid]["overdue_payments"] += 1
+            client_map[cid]["total_overdue"] += float(p.get("amount", 0))
+            client_map[cid]["total_late_fees"] += late_fee
+            client_map[cid]["max_days_late"] = max(client_map[cid]["max_days_late"], days_late)
+            client_map[cid]["payment_ids"].append(p["id"])
+        
+        # Set risk levels and sort
+        for info in client_map.values():
+            d = info["max_days_late"]
+            if d > 90:
+                info["risk_level"] = "critical"
+            elif d > 60:
+                info["risk_level"] = "high"
+            elif d > 30:
+                info["risk_level"] = "medium"
+            else:
+                info["risk_level"] = "low"
+        
+        clients_in_mora = sorted(client_map.values(), key=lambda x: x["max_days_late"], reverse=True)
+        
+        return {
+            "ok": True,
+            "clients_in_mora": clients_in_mora,
+            "total_clients": len(clients_in_mora),
+            "total_overdue_payments": len(overdue_payments),
+            "total_overdue_amount": round(sum(c["total_overdue"] for c in clients_in_mora), 2),
+            "total_late_fees": round(sum(c["total_late_fees"] for c in clients_in_mora), 2),
+        }
+    except Exception as e:
+        logger.error(f"Error getting mora summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/update-statuses")
 async def update_payment_statuses():
     """
     Batch update payment statuses based on current date.
     - scheduled → pending (if due date is within 5 days)
     - pending → late (if past due date)
-    Should be called periodically (e.g., daily cron).
+    Should be called periodically (e.g., daily cron) or on page load.
     """
     try:
         today = date.today()
@@ -245,6 +357,143 @@ async def update_payment_statuses():
         return {"ok": True, "message": "Payment statuses updated"}
     except Exception as e:
         logger.error(f"Error updating payment statuses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# COMMISSIONS
+# =============================================================================
+
+@router.get("/commissions")
+async def list_commissions(status: Optional[str] = None):
+    """List all RTO commissions."""
+    try:
+        query = sb.table("rto_commissions") \
+            .select("*, properties(address, city), clients(name)")
+        if status:
+            query = query.eq("status", status)
+        result = query.order("created_at", desc=True).execute()
+        commissions = result.data or []
+        
+        total_pending = sum(float(c.get("total_commission", 0)) for c in commissions if c.get("status") == "pending")
+        total_paid = sum(float(c.get("total_commission", 0)) for c in commissions if c.get("status") == "paid")
+        
+        return {
+            "ok": True,
+            "commissions": commissions,
+            "summary": {
+                "total": len(commissions),
+                "total_pending": total_pending,
+                "total_paid": total_paid,
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error listing commissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/commissions")
+async def create_commission(data: CommissionCreate):
+    """Create a commission record for an RTO sale."""
+    try:
+        commission_data = {
+            "sale_id": data.sale_id,
+            "contract_id": data.contract_id,
+            "property_id": data.property_id,
+            "client_id": data.client_id,
+            "total_commission": data.total_commission,
+            "found_by": data.found_by,
+            "found_by_amount": data.found_by_amount,
+            "sold_by": data.sold_by,
+            "sold_by_amount": data.sold_by_amount,
+            "notes": data.notes,
+            "status": "pending",
+        }
+        result = sb.table("rto_commissions").insert(commission_data).execute()
+        return {"ok": True, "commission": result.data[0] if result.data else None}
+    except Exception as e:
+        logger.error(f"Error creating commission: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/commissions/{commission_id}/pay")
+async def pay_commission(commission_id: str):
+    """Mark a commission as paid."""
+    try:
+        sb.table("rto_commissions").update({
+            "status": "paid",
+            "paid_at": datetime.utcnow().isoformat(),
+        }).eq("id", commission_id).execute()
+        return {"ok": True, "message": "Comisión pagada"}
+    except Exception as e:
+        logger.error(f"Error paying commission: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# INSURANCE / TAX TRACKING
+# =============================================================================
+
+@router.put("/contracts/{contract_id}/insurance-tax")
+async def update_insurance_tax(contract_id: str, data: InsuranceTaxUpdate):
+    """Update insurance and tax tracking for a contract."""
+    try:
+        update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
+        if not update:
+            return {"ok": True, "message": "Nada que actualizar"}
+        
+        sb.table("rto_contracts").update(update).eq("id", contract_id).execute()
+        return {"ok": True, "message": "Seguros/Impuestos actualizados"}
+    except Exception as e:
+        logger.error(f"Error updating insurance/tax for contract {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/insurance-alerts")
+async def get_insurance_alerts():
+    """Get contracts with expired or expiring insurance."""
+    try:
+        today_str = date.today().isoformat()
+        thirty_days = (date.today() + __import__('datetime').timedelta(days=30)).isoformat()
+        
+        contracts = sb.table("rto_contracts") \
+            .select("id, property_id, client_id, insurance_status, insurance_provider, insurance_expiry, tax_status, tax_paid_through, clients(name), properties(address)") \
+            .eq("status", "active") \
+            .execute().data or []
+        
+        alerts = []
+        for c in contracts:
+            issues = []
+            exp = c.get("insurance_expiry")
+            if exp and exp < today_str:
+                issues.append("insurance_expired")
+            elif exp and exp < thirty_days:
+                issues.append("insurance_expiring_soon")
+            
+            if c.get("insurance_status") == "expired":
+                issues.append("insurance_expired")
+            if c.get("insurance_status") == "pending":
+                issues.append("insurance_pending")
+            
+            tax_through = c.get("tax_paid_through")
+            if tax_through and tax_through < today_str:
+                issues.append("tax_overdue")
+            if c.get("tax_status") == "overdue":
+                issues.append("tax_overdue")
+            
+            if issues:
+                alerts.append({
+                    "contract_id": c["id"],
+                    "client_name": (c.get("clients") or {}).get("name", "N/A"),
+                    "property_address": (c.get("properties") or {}).get("address", "N/A"),
+                    "issues": list(set(issues)),
+                    "insurance_expiry": exp,
+                    "tax_paid_through": tax_through,
+                })
+        
+        return {"ok": True, "alerts": alerts, "total": len(alerts)}
+    except Exception as e:
+        logger.error(f"Error getting insurance alerts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

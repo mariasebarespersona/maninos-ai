@@ -69,6 +69,10 @@ interface PaymentCapacity {
   proposed_monthly: number
   qualifies: boolean
   ratio: number
+  dti_ratio: number // debt-to-income ratio (payment / gross income)
+  disposable_ratio: number // payment / disposable income
+  risk_level: 'low' | 'medium' | 'high' | 'critical'
+  warnings: string[]
 }
 
 export default function ApplicationDetailPage() {
@@ -481,7 +485,8 @@ export default function ApplicationDetailPage() {
 
   const calculateCapacity = () => {
     const totalIncome = monthlyIncome + otherIncome
-    const capacity = (totalIncome - monthlyExpenses) * 0.40
+    const disposable = totalIncome - monthlyExpenses
+    const capacity = disposable * 0.40 // max 40% of disposable
 
     const salePrice = app?.properties?.sale_price || 0
     const dp = app?.desired_down_payment || 0
@@ -496,14 +501,39 @@ export default function ApplicationDetailPage() {
     })
 
     const proposedMonthly = rtoCalc.monthlyPayment
+    const dtiRatio = totalIncome > 0 ? (proposedMonthly / totalIncome) * 100 : 100
+    const disposableRatio = disposable > 0 ? (proposedMonthly / disposable) * 100 : 100
+    
+    // Build warnings
+    const warnings: string[] = []
+    if (dtiRatio > 50) warnings.push('DTI > 50%: La cuota supera la mitad del ingreso bruto')
+    else if (dtiRatio > 35) warnings.push('DTI entre 35-50%: Riesgo moderado')
+    if (disposableRatio > 60) warnings.push('Cuota > 60% del ingreso disponible: Alto riesgo')
+    if (totalIncome < 2000) warnings.push('Ingreso mensual bajo (<$2,000)')
+    if (dp < salePrice * 0.10) warnings.push('Down payment < 10% del precio')
+    if ((client?.time_at_job_years ?? 0) < 1 && (client?.time_at_job_months ?? 0) < 6)
+      warnings.push('Menos de 6 meses en empleo actual')
+    if (!client?.employer_name) warnings.push('Sin información de empleador')
+    
+    // Risk level
+    let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low'
+    if (dtiRatio > 50 || disposableRatio > 70) riskLevel = 'critical'
+    else if (dtiRatio > 40 || disposableRatio > 55) riskLevel = 'high'
+    else if (dtiRatio > 30 || disposableRatio > 40) riskLevel = 'medium'
+
+    const qualifies = capacity >= proposedMonthly && dtiRatio <= 50
 
     setCapacityResult({
       monthly_net_income: totalIncome,
       monthly_fixed_expenses: monthlyExpenses,
       payment_capacity: capacity,
       proposed_monthly: proposedMonthly,
-      qualifies: capacity >= proposedMonthly,
-      ratio: totalIncome > 0 ? (proposedMonthly / totalIncome) * 100 : 0,
+      qualifies,
+      ratio: dtiRatio,
+      dti_ratio: dtiRatio,
+      disposable_ratio: disposableRatio,
+      risk_level: riskLevel,
+      warnings,
     })
   }
 
@@ -539,7 +569,7 @@ export default function ApplicationDetailPage() {
         body.down_payment = dp
         body.annual_rate = annualRatePct / 100
       }
-
+      
       const res = await fetch(`/api/capital/applications/${id}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -984,40 +1014,114 @@ export default function ApplicationDetailPage() {
 
             {/* Result */}
             {capacityResult && (
-              <div className={`p-4 rounded-lg border ${capacityResult.qualifies ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-3 mb-3">
-                  {capacityResult.qualifies ? (
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
-                  ) : (
-                    <XCircle className="w-6 h-6 text-red-600" />
-                  )}
-                  <p className={`font-semibold text-lg ${capacityResult.qualifies ? 'text-green-800' : 'text-red-800'}`}>
-                    {capacityResult.qualifies ? '✅ Cliente califica' : '❌ No califica'}
-                  </p>
+              <div className="space-y-4">
+                {/* Main verdict */}
+                <div className={`p-4 rounded-lg border ${capacityResult.qualifies ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    {capacityResult.qualifies ? (
+                      <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-600" />
+                    )}
+                    <div>
+                      <p className={`font-semibold text-lg ${capacityResult.qualifies ? 'text-green-800' : 'text-red-800'}`}>
+                        {capacityResult.qualifies ? '✅ Cliente califica' : '❌ No califica'}
+                      </p>
+                      <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                        Nivel de riesgo: <span className="font-semibold" style={{ color: 
+                          capacityResult.risk_level === 'critical' ? '#991b1b' :
+                          capacityResult.risk_level === 'high' ? 'var(--error)' :
+                          capacityResult.risk_level === 'medium' ? 'var(--warning)' : 'var(--success)'
+                        }}>
+                          {capacityResult.risk_level === 'critical' ? '⚫ Crítico' :
+                           capacityResult.risk_level === 'high' ? '🔴 Alto' :
+                           capacityResult.risk_level === 'medium' ? '🟡 Medio' : '🟢 Bajo'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm mb-3">
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Ingreso total</p>
+                      <p className="font-semibold">{fmt(capacityResult.monthly_net_income)}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Gastos fijos</p>
+                      <p className="font-semibold">{fmt(capacityResult.monthly_fixed_expenses)}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Ingreso disponible</p>
+                      <p className="font-bold" style={{ color: 'var(--gold-700)' }}>
+                        {fmt(capacityResult.monthly_net_income - capacityResult.monthly_fixed_expenses)}
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Capacidad de pago (40%)</p>
+                      <p className="font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(capacityResult.payment_capacity)}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Pago mensual propuesto</p>
+                      <p className="font-semibold">{fmt(capacityResult.proposed_monthly)}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--ash)' }}>Margen</p>
+                      <p className="font-semibold" style={{ color: capacityResult.payment_capacity >= capacityResult.proposed_monthly ? 'var(--success)' : 'var(--error)' }}>
+                        {fmt(capacityResult.payment_capacity - capacityResult.proposed_monthly)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Ratios */}
+                  <div className="grid grid-cols-2 gap-4 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.1)' }}>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span style={{ color: 'var(--ash)' }}>DTI (pago / ingreso bruto)</span>
+                        <span className="font-bold" style={{ color: capacityResult.dti_ratio > 40 ? 'var(--error)' : capacityResult.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)' }}>
+                          {capacityResult.dti_ratio.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all" 
+                          style={{ 
+                            width: `${Math.min(capacityResult.dti_ratio, 100)}%`,
+                            backgroundColor: capacityResult.dti_ratio > 40 ? 'var(--error)' : capacityResult.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)'
+                          }} />
+                      </div>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Máx recomendado: 40%</p>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span style={{ color: 'var(--ash)' }}>Pago / Disponible</span>
+                        <span className="font-bold" style={{ color: capacityResult.disposable_ratio > 55 ? 'var(--error)' : capacityResult.disposable_ratio > 40 ? 'var(--warning)' : 'var(--success)' }}>
+                          {capacityResult.disposable_ratio.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all" 
+                          style={{ 
+                            width: `${Math.min(capacityResult.disposable_ratio, 100)}%`,
+                            backgroundColor: capacityResult.disposable_ratio > 55 ? 'var(--error)' : capacityResult.disposable_ratio > 40 ? 'var(--warning)' : 'var(--success)'
+                          }} />
+                      </div>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Máx recomendado: 55%</p>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <p style={{ color: 'var(--ash)' }}>Ingreso total</p>
-                    <p className="font-semibold">{fmt(capacityResult.monthly_net_income)}</p>
+                {/* Warnings */}
+                {capacityResult.warnings.length > 0 && (
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--warning-light)', border: '1px solid #fcd34d' }}>
+                    <p className="text-xs font-semibold mb-2" style={{ color: 'var(--warning)' }}>⚠️ Alertas</p>
+                    <ul className="space-y-1">
+                      {capacityResult.warnings.map((w, i) => (
+                        <li key={i} className="text-xs flex items-start gap-1.5" style={{ color: '#92400e' }}>
+                          <span className="mt-0.5">•</span> {w}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <div>
-                    <p style={{ color: 'var(--ash)' }}>Gastos fijos</p>
-                    <p className="font-semibold">{fmt(capacityResult.monthly_fixed_expenses)}</p>
-                  </div>
-                  <div>
-                    <p style={{ color: 'var(--ash)' }}>Capacidad de pago (40%)</p>
-                    <p className="font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(capacityResult.payment_capacity)}</p>
-                  </div>
-                  <div>
-                    <p style={{ color: 'var(--ash)' }}>Pago mensual propuesto</p>
-                    <p className="font-semibold">{fmt(capacityResult.proposed_monthly)}</p>
-                  </div>
-                </div>
-
-                <p className="text-xs mt-3" style={{ color: 'var(--slate)' }}>
-                  Relación ingreso-deuda: {capacityResult.ratio.toFixed(1)}% (máx recomendado: 40%)
-                </p>
+                )}
               </div>
             )}
           </div>
@@ -1239,10 +1343,10 @@ export default function ApplicationDetailPage() {
                 <FileSignature className="w-4 h-4" />
                 Ir a Generar Contrato
               </Link>
-            </div>
-          )}
         </div>
-        )
+      )}
+    </div>
+  )
       })()}
 
       {/* =================== TAB: PAYMENTS =================== */}

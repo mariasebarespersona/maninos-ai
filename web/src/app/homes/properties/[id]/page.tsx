@@ -960,10 +960,10 @@ export default function PropertyDetailPage() {
                     <Landmark className="w-3 h-3" /> Transferencia RTO a Capital
                   </div>
                 )}
-                <TitleTransferCard 
-                  transfer={transfers.sale} 
-                  onUpdate={fetchTransfers}
-                />
+              <TitleTransferCard 
+                transfer={transfers.sale} 
+                onUpdate={fetchTransfers}
+              />
               </>
             ) : property.status === 'sold' ? (
               <div className="p-4 bg-amber-50 rounded-lg text-center text-amber-700 text-sm">

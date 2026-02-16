@@ -435,6 +435,122 @@ async def get_report(report_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/investor-statement")
+async def generate_investor_statement(investor_id: str, month: int = None, year: int = None):
+    """Generate an investor statement showing investments, returns, and promissory notes."""
+    try:
+        # Default to current month/year
+        today = date.today()
+        m = month or today.month
+        y = year or today.year
+        start_date = f"{y}-{m:02d}-01"
+        _, last_day = monthrange(y, m)
+        end_date = f"{y}-{m:02d}-{last_day}"
+        period_label = f"{MONTH_NAMES_ES[m]} {y}"
+
+        # Get investor
+        inv = sb.table("investors") \
+            .select("*") \
+            .eq("id", investor_id) \
+            .single() \
+            .execute()
+        if not inv.data:
+            raise HTTPException(status_code=404, detail="Inversionista no encontrado")
+        investor = inv.data
+
+        # Get investments
+        investments = sb.table("investments") \
+            .select("*, properties(address, city), rto_contracts(client_id, monthly_rent, status, clients(name))") \
+            .eq("investor_id", investor_id) \
+            .execute().data or []
+
+        # Get promissory notes
+        notes = sb.table("promissory_notes") \
+            .select("*") \
+            .eq("investor_id", investor_id) \
+            .execute().data or []
+
+        # Get capital flows for the month
+        flows = sb.table("capital_flows") \
+            .select("*") \
+            .eq("investor_id", investor_id) \
+            .gte("flow_date", start_date) \
+            .lte("flow_date", end_date) \
+            .order("flow_date") \
+            .execute().data or []
+
+        # Calculate totals
+        total_invested = sum(float(i.get("amount", 0)) for i in investments)
+        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in investments)
+        active_investments = [i for i in investments if i.get("status") == "active"]
+        expected_return = sum(float(i.get("amount", 0)) * float(i.get("expected_return_rate", 0) or 0) / 100 for i in active_investments)
+
+        active_notes = [n for n in notes if n.get("status") == "active"]
+        total_notes_issued = sum(float(n.get("loan_amount", 0)) for n in notes)
+        total_notes_due = sum(float(n.get("total_due", 0)) for n in active_notes)
+        total_notes_paid = sum(float(n.get("paid_amount", 0) or 0) for n in notes)
+
+        month_inflows = sum(abs(float(f.get("amount", 0))) for f in flows if float(f.get("amount", 0)) > 0)
+        month_outflows = sum(abs(float(f.get("amount", 0))) for f in flows if float(f.get("amount", 0)) < 0)
+
+        return {
+            "ok": True,
+            "statement": {
+                "investor": {
+                    "name": investor.get("name"),
+                    "company": investor.get("company"),
+                    "email": investor.get("email"),
+                    "status": investor.get("status"),
+                },
+                "period": period_label,
+                "summary": {
+                    "total_invested": total_invested,
+                    "total_returned": total_returned,
+                    "net_outstanding": total_invested - total_returned,
+                    "active_investments": len(active_investments),
+                    "expected_annual_return": expected_return,
+                    "notes_outstanding": total_notes_due,
+                    "notes_paid": total_notes_paid,
+                },
+                "investments": [{
+                    "id": i["id"],
+                    "property": i.get("properties", {}).get("address") if i.get("properties") else None,
+                    "client": (i.get("rto_contracts", {}) or {}).get("clients", {}).get("name") if i.get("rto_contracts") else None,
+                    "amount": float(i.get("amount", 0)),
+                    "expected_return_rate": float(i.get("expected_return_rate", 0) or 0),
+                    "status": i.get("status"),
+                    "return_amount": float(i.get("return_amount", 0) or 0),
+                } for i in investments],
+                "promissory_notes": [{
+                    "id": n["id"],
+                    "loan_amount": float(n.get("loan_amount", 0)),
+                    "annual_rate": float(n.get("annual_rate", 0)),
+                    "term_months": n.get("term_months"),
+                    "total_due": float(n.get("total_due", 0)),
+                    "paid_amount": float(n.get("paid_amount", 0) or 0),
+                    "status": n.get("status"),
+                    "maturity_date": n.get("maturity_date"),
+                } for n in notes],
+                "month_flows": [{
+                    "date": f.get("flow_date"),
+                    "type": f.get("flow_type"),
+                    "amount": float(f.get("amount", 0)),
+                    "description": f.get("description"),
+                } for f in flows],
+                "month_summary": {
+                    "inflows": month_inflows,
+                    "outflows": month_outflows,
+                    "net": month_inflows - month_outflows,
+                },
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating investor statement: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{report_id}/pdf")
 async def download_report_pdf(report_id: str):
     """Download or regenerate the report PDF."""

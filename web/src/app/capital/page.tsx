@@ -6,7 +6,8 @@ import {
   FileCheck, FileSignature, CreditCard, Landmark,
   TrendingUp, AlertTriangle, Clock, CheckCircle2,
   ArrowRight, DollarSign, Users, Building2,
-  BarChart3, ArrowRightLeft, Calculator
+  BarChart3, ArrowRightLeft, Calculator, Shield,
+  AlertCircle, ChevronRight, Phone
 } from 'lucide-react'
 
 interface DashboardKPIs {
@@ -32,29 +33,63 @@ interface Activity {
   date: string
 }
 
-// Uses Next.js proxy routes (/api/capital/...)
+interface CarteraHealth {
+  active_contracts: number
+  portfolio_value: number
+  monthly_expected: number
+  paid_this_month: number
+  collection_rate: number
+  delinquency_rate: number
+  total_overdue_payments: number
+  total_overdue_amount: number
+  total_late_fees_accrued: number
+  aging: {
+    '0_30_days': { count: number; amount: number }
+    '31_60_days': { count: number; amount: number }
+    '61_90_days': { count: number; amount: number }
+    '90_plus_days': { count: number; amount: number }
+  }
+  at_risk_clients: Array<{
+    client_id: string
+    client_name: string
+    client_phone: string | null
+    property_address: string
+    overdue_payments: number
+    overdue_amount: number
+    max_days_late: number
+    risk_level: string
+    contract_id: string
+  }>
+  clients_in_mora: number
+}
 
 export default function CapitalDashboardPage() {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
+  const [cartera, setCartera] = useState<CarteraHealth | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadDashboard()
+    // Trigger payment status updates on dashboard load
+    fetch('/api/capital/payments/update-statuses', { method: 'POST' }).catch(() => {})
   }, [])
 
   const loadDashboard = async () => {
     try {
-      const [summaryRes, activityRes] = await Promise.all([
+      const [summaryRes, activityRes, carteraRes] = await Promise.all([
         fetch(`/api/capital/dashboard/summary`),
         fetch(`/api/capital/dashboard/recent-activity`),
+        fetch(`/api/capital/dashboard/cartera-health`),
       ])
       
       const summaryData = await summaryRes.json()
       const activityData = await activityRes.json()
+      const carteraData = await carteraRes.json()
       
       if (summaryData.ok) setKpis(summaryData.kpis)
       if (activityData.ok) setActivities(activityData.activities)
+      if (carteraData.ok) setCartera(carteraData.cartera)
     } catch (err) {
       console.error('Error loading dashboard:', err)
     } finally {
@@ -86,7 +121,6 @@ export default function CapitalDashboardPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Pending Applications */}
         <Link href="/capital/applications" className="stat-card hover:border-gold-400 transition-colors group">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
@@ -99,7 +133,6 @@ export default function CapitalDashboardPage() {
           <div className="stat-label">Solicitudes Pendientes</div>
         </Link>
 
-        {/* Active Contracts */}
         <Link href="/capital/contracts" className="stat-card hover:border-gold-400 transition-colors group">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
@@ -112,7 +145,6 @@ export default function CapitalDashboardPage() {
           <div className="stat-label">Contratos Activos</div>
         </Link>
 
-        {/* Monthly Revenue */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
@@ -124,7 +156,6 @@ export default function CapitalDashboardPage() {
           <div className="stat-label">Ingreso Mensual Esperado</div>
         </div>
 
-        {/* Late Payments */}
         <Link href="/capital/payments?filter=overdue" className="stat-card hover:border-gold-400 transition-colors group">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
@@ -139,6 +170,132 @@ export default function CapitalDashboardPage() {
           <div className="stat-label">Pagos Atrasados</div>
         </Link>
       </div>
+
+      {/* Cartera Health Section */}
+      {cartera && (
+        <div className="card-luxury">
+          <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5" style={{ color: 'var(--navy-700)' }} />
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Salud de Cartera</h3>
+            </div>
+            <Link href="/capital/payments" className="text-sm font-medium flex items-center gap-1" style={{ color: 'var(--gold-600)' }}>
+              Ver todo <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="p-5">
+            {/* Top metrics row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Tasa Cobro</p>
+                <p className="text-xl font-bold mt-1" style={{ 
+                  color: cartera.collection_rate >= 90 ? 'var(--success)' : 
+                         cartera.collection_rate >= 70 ? 'var(--warning)' : 'var(--error)' 
+                }}>
+                  {cartera.collection_rate}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Tasa Morosidad</p>
+                <p className="text-xl font-bold mt-1" style={{ 
+                  color: cartera.delinquency_rate <= 5 ? 'var(--success)' : 
+                         cartera.delinquency_rate <= 15 ? 'var(--warning)' : 'var(--error)' 
+                }}>
+                  {cartera.delinquency_rate}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Monto en Riesgo</p>
+                <p className="text-xl font-bold mt-1" style={{ color: cartera.total_overdue_amount > 0 ? 'var(--error)' : 'var(--charcoal)' }}>
+                  {fmt(cartera.total_overdue_amount)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Late Fees Acumulados</p>
+                <p className="text-xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>
+                  {fmt(cartera.total_late_fees_accrued)}
+                </p>
+              </div>
+            </div>
+
+            {/* Aging Analysis */}
+            {cartera.total_overdue_payments > 0 && (
+              <div className="mb-5">
+                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>
+                  Aging de Cartera — {cartera.total_overdue_payments} pagos vencidos
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { key: '0_30_days' as const, label: '0-30 días', color: '#fbbf24' },
+                    { key: '31_60_days' as const, label: '31-60 días', color: '#f97316' },
+                    { key: '61_90_days' as const, label: '61-90 días', color: '#ef4444' },
+                    { key: '90_plus_days' as const, label: '90+ días', color: '#991b1b' },
+                  ].map(({ key, label, color }) => {
+                    const bucket = cartera.aging[key]
+                    return (
+                      <div key={key} className="text-center p-3 rounded-lg" style={{ backgroundColor: `${color}10` }}>
+                        <div className="w-3 h-3 rounded-full mx-auto mb-1" style={{ backgroundColor: color }} />
+                        <p className="text-xs font-medium" style={{ color: 'var(--slate)' }}>{label}</p>
+                        <p className="text-lg font-bold" style={{ color }}>{bucket.count}</p>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>{fmt(bucket.amount)}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* At-Risk Clients */}
+            {cartera.at_risk_clients.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>
+                  Clientes en Riesgo ({cartera.clients_in_mora})
+                </p>
+                <div className="space-y-2">
+                  {cartera.at_risk_clients.slice(0, 5).map((client) => (
+                    <Link
+                      key={client.client_id}
+                      href={`/capital/contracts/${client.contract_id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-sand/40 transition-colors"
+                      style={{ backgroundColor: 'var(--cream)' }}
+                    >
+                      <div className="w-2 h-8 rounded-full" style={{ 
+                        backgroundColor: client.risk_level === 'critical' ? '#991b1b' :
+                                         client.risk_level === 'high' ? '#ef4444' :
+                                         client.risk_level === 'medium' ? '#f97316' : '#fbbf24'
+                      }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>
+                          {client.client_name}
+                        </p>
+                        <p className="text-xs truncate" style={{ color: 'var(--slate)' }}>
+                          {client.property_address}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-sm" style={{ color: 'var(--error)' }}>
+                          {fmt(client.overdue_amount)}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--error)' }}>
+                          {client.max_days_late}d · {client.overdue_payments} pagos
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cartera.total_overdue_payments === 0 && (
+              <div className="text-center py-4">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--success)' }} />
+                <p className="font-medium" style={{ color: 'var(--success)' }}>Cartera al día</p>
+                <p className="text-sm" style={{ color: 'var(--slate)' }}>No hay pagos vencidos</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Second Row KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -169,7 +326,7 @@ export default function CapitalDashboardPage() {
         </div>
       </div>
 
-      {/* Quick Links to New Sections */}
+      {/* Quick Links */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Link href="/capital/flows" className="card-luxury p-4 flex items-center gap-3 hover:border-gold-400 transition-colors group">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--navy-100)' }}>
@@ -271,4 +428,3 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   )
 }
-

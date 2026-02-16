@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { 
   ArrowLeft, FileSignature, User, MapPin, DollarSign, 
   Calendar, Clock, CheckCircle2, AlertTriangle, 
-  Percent, TrendingUp, Play, Gift, Award, Download
+  Percent, TrendingUp, Play, Gift, Award, Download, Shield
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -33,6 +33,16 @@ interface ContractDetail {
   clients: Record<string, any>
   properties: Record<string, any>
   sales: Record<string, any>
+  // Insurance & Tax
+  insurance_required: boolean
+  insurance_status: string
+  insurance_provider: string | null
+  insurance_policy_number: string | null
+  insurance_expiry: string | null
+  tax_responsibility: string
+  annual_tax_amount: number | null
+  tax_paid_through: string | null
+  tax_status: string
 }
 
 interface Payment {
@@ -355,6 +365,95 @@ export default function ContractDetailPage() {
               <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>
                 Los documentos (Bill of Sale y Título) están disponibles en el portal del cliente.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Workflow Progress */}
+      <div className="card-luxury p-6">
+        <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Flujo del Contrato</h3>
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {[
+            { key: 'draft', label: 'Borrador', icon: '📝' },
+            { key: 'active', label: 'Activo', icon: '✅' },
+            { key: 'completed', label: 'Pagos Completados', icon: '💰' },
+            { key: 'delivered', label: 'Título Entregado', icon: '🏠' },
+          ].map((step, i, arr) => {
+            const steps = ['draft', 'pending_signature', 'active', 'completed', 'delivered']
+            const currentIdx = steps.indexOf(contract.status)
+            const stepIdx = steps.indexOf(step.key)
+            const isComplete = stepIdx <= currentIdx
+            const isCurrent = step.key === contract.status || 
+              (contract.status === 'pending_signature' && step.key === 'draft')
+            
+            return (
+              <div key={step.key} className="flex items-center gap-2 flex-shrink-0">
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                  isCurrent ? 'ring-2 ring-gold-400' : ''
+                }`} style={{ 
+                  backgroundColor: isComplete ? 'var(--success-light)' : 'var(--cream)',
+                  color: isComplete ? 'var(--success)' : 'var(--slate)',
+                }}>
+                  <span>{step.icon}</span>
+                  <span>{step.label}</span>
+                </div>
+                {i < arr.length - 1 && (
+                  <div className="w-8 h-0.5 flex-shrink-0" style={{ 
+                    backgroundColor: isComplete ? 'var(--success)' : 'var(--stone)' 
+                  }} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Insurance & Tax Tracking */}
+      {contract.status === 'active' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card-luxury p-6">
+            <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              <Shield className="w-5 h-5" /> Seguro
+            </h3>
+            <div className="space-y-3">
+              <InfoRow label="Requerido" value={contract.insurance_required ? 'Sí' : 'No'} />
+              <InfoRow label="Estado" value={
+                contract.insurance_status === 'active' ? '✅ Activo' :
+                contract.insurance_status === 'expired' ? '🔴 Vencido' :
+                contract.insurance_status === 'waived' ? '⚪ Exonerado' : '🟡 Pendiente'
+              } highlight={contract.insurance_status === 'expired'} />
+              {contract.insurance_provider && (
+                <InfoRow label="Proveedor" value={contract.insurance_provider} />
+              )}
+              {contract.insurance_policy_number && (
+                <InfoRow label="Póliza #" value={contract.insurance_policy_number} />
+              )}
+              {contract.insurance_expiry && (
+                <InfoRow label="Vencimiento" value={new Date(contract.insurance_expiry).toLocaleDateString('es-MX')} />
+              )}
+            </div>
+          </div>
+
+          <div className="card-luxury p-6">
+            <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              <DollarSign className="w-5 h-5" /> Impuestos
+            </h3>
+            <div className="space-y-3">
+              <InfoRow label="Responsable" value={
+                contract.tax_responsibility === 'tenant' ? 'Inquilino' :
+                contract.tax_responsibility === 'landlord' ? 'Propietario' : 'Compartido'
+              } />
+              <InfoRow label="Estado" value={
+                contract.tax_status === 'current' ? '✅ Al día' :
+                contract.tax_status === 'overdue' ? '🔴 Vencido' : '🟢 Adelantado'
+              } highlight={contract.tax_status === 'overdue'} />
+              {contract.annual_tax_amount && (
+                <InfoRow label="Monto Anual" value={fmt(contract.annual_tax_amount)} />
+              )}
+              {contract.tax_paid_through && (
+                <InfoRow label="Pagado hasta" value={new Date(contract.tax_paid_through).toLocaleDateString('es-MX')} />
+              )}
             </div>
           </div>
         </div>
