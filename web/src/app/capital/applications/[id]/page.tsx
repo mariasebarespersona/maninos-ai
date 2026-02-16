@@ -8,6 +8,8 @@ import {
   CheckCircle2, XCircle, HelpCircle, ArrowLeft,
   FileSignature, Calculator, ShieldCheck, ShieldAlert, Loader2,
   Home, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp,
+  CreditCard, FileText, Upload, Download, ExternalLink, Eye,
+  Calendar, Hash,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
@@ -78,7 +80,7 @@ export default function ApplicationDetailPage() {
   const [reviewing, setReviewing] = useState(false)
 
   // Active section
-  const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'terms'>('identity')
+  const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'terms' | 'payments' | 'documents'>('identity')
   
   // KYC
   const [kycStatus, setKycStatus] = useState<string>('unverified')
@@ -120,6 +122,25 @@ export default function ApplicationDetailPage() {
   const [monthlyExpenses, setMonthlyExpenses] = useState(0)
   const [capacityResult, setCapacityResult] = useState<PaymentCapacity | null>(null)
 
+  // Payments tab
+  const [contractId, setContractId] = useState<string | null>(null)
+  const [rtoPayments, setRtoPayments] = useState<any[]>([])
+  const [paymentsSummary, setPaymentsSummary] = useState<any>(null)
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(null)
+  const [paymentForm, setPaymentForm] = useState({
+    payment_method: 'zelle',
+    paid_amount: '',
+    payment_reference: '',
+    notes: '',
+  })
+  const [recordingPayment, setRecordingPayment] = useState(false)
+
+  // Documents tab
+  const [transferData, setTransferData] = useState<any>(null)
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null)
+
   useEffect(() => {
     loadApplication()
   }, [id])
@@ -143,6 +164,16 @@ export default function ApplicationDetailPage() {
         if (data.application.clients?.id) {
           loadKycStatus(data.application.clients.id)
           loadClientFull(data.application.clients.id)
+        }
+        // Load contract → payments
+        const saleData = data.application.sales
+        if (saleData?.rto_contract_id) {
+          setContractId(saleData.rto_contract_id)
+          loadPayments(saleData.rto_contract_id)
+        }
+        // Load documents for property
+        if (data.application.properties?.id) {
+          loadDocuments(data.application.properties.id)
         }
       }
     } catch (err) {
@@ -193,6 +224,99 @@ export default function ApplicationDetailPage() {
       }
     } catch (err) {
       console.error('Error loading client:', err)
+    }
+  }
+
+  // ========== Payments ==========
+
+  const loadPayments = async (cId: string) => {
+    setPaymentsLoading(true)
+    try {
+      const res = await fetch(`/api/capital/payments/schedule/${cId}`)
+      const data = await res.json()
+      if (data.ok) {
+        setRtoPayments(data.payments || [])
+        setPaymentsSummary(data.summary || null)
+      }
+    } catch (err) {
+      console.error('Error loading payments:', err)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }
+
+  const handleRecordPayment = async () => {
+    if (!recordingPaymentId || !paymentForm.paid_amount) {
+      toast.warning('Ingresa el monto pagado')
+      return
+    }
+    setRecordingPayment(true)
+    try {
+      const res = await fetch(`/api/capital/payments/${recordingPaymentId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method: paymentForm.payment_method,
+          paid_amount: parseFloat(paymentForm.paid_amount),
+          payment_reference: paymentForm.payment_reference || undefined,
+          notes: paymentForm.notes || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Pago registrado')
+        setRecordingPaymentId(null)
+        setPaymentForm({ payment_method: 'zelle', paid_amount: '', payment_reference: '', notes: '' })
+        if (contractId) loadPayments(contractId)
+        if (data.contract_completed) {
+          toast.success('🎉 ¡Contrato completado! Proceder a transferencia de título.')
+        }
+      } else {
+        toast.error(data.detail || 'Error al registrar pago')
+      }
+    } catch (err) {
+      toast.error('Error al registrar pago')
+    } finally {
+      setRecordingPayment(false)
+    }
+  }
+
+  // ========== Documents ==========
+
+  const loadDocuments = async (propertyId: string) => {
+    setDocsLoading(true)
+    try {
+      const res = await fetch(`/api/transfers/property/${propertyId}`)
+      const data = await res.json()
+      setTransferData(data)
+    } catch (err) {
+      console.error('Error loading documents:', err)
+    } finally {
+      setDocsLoading(false)
+    }
+  }
+
+  const handleDocUpload = async (transferId: string, docKey: string, file: File) => {
+    setUploadingDoc(docKey)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/transfers/${transferId}/document/${docKey}/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.file_url || data.ok) {
+        toast.success(`Documento "${docKey}" subido correctamente`)
+        // Reload documents
+        if (app?.properties?.id) loadDocuments(app.properties.id)
+      } else {
+        toast.error(data.detail || 'Error al subir documento')
+      }
+    } catch (err) {
+      toast.error('Error al subir documento')
+    } finally {
+      setUploadingDoc(null)
     }
   }
 
@@ -543,12 +667,14 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
-      {/* Tabs: Identidad + Capacidad de Pago + Términos */}
-      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--sand)' }}>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--sand)' }}>
         {([
           { key: 'identity' as const, label: 'Identidad', icon: ShieldCheck, done: kycVerified },
           { key: 'capacity' as const, label: 'Capacidad de Pago', icon: DollarSign, done: capacityResult?.qualifies ?? false },
-          { key: 'terms' as const, label: 'Términos y Decisión', icon: FileSignature, done: app.status === 'approved' },
+          { key: 'terms' as const, label: 'Términos', icon: FileSignature, done: app.status === 'approved' },
+          { key: 'payments' as const, label: 'Pagos', icon: CreditCard, done: paymentsSummary?.payments_remaining === 0 && (paymentsSummary?.total_payments || 0) > 0 },
+          { key: 'documents' as const, label: 'Documentos', icon: FileText, done: false },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -950,7 +1076,7 @@ export default function ApplicationDetailPage() {
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate text-sm">%</span>
                   </div>
-                </div>
+            </div>
             <div>
               <label className="label">Enganche</label>
               <div className="relative">
@@ -973,7 +1099,7 @@ export default function ApplicationDetailPage() {
                   <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
                     Calculado: {fmt(liveRTO.monthlyPayment)}/mes — dejar vacío para usar cálculo automático
                   </p>
-                </div>
+            </div>
           </div>
 
               {/* Interest breakdown */}
@@ -1008,7 +1134,7 @@ export default function ApplicationDetailPage() {
                   Fórmula: ({fmt(liveRTO.financeAmount)} × {annualRatePct}% × {(liveTM / 12).toFixed(1)} años) = {fmt(Math.round(liveRTO.totalInterest))} interés
                   &nbsp;→&nbsp; ({fmt(Math.round(liveRTO.totalToPay))} ÷ {liveTM} meses) = {fmt(liveRTO.monthlyPayment)}/mes (redondeado ↑$5)
                 </p>
-              </div>
+            </div>
 
               {/* Amortization Table */}
               {liveRTO.financeAmount > 0 && liveTM > 0 && liveMonthly > 0 && (
@@ -1019,12 +1145,12 @@ export default function ApplicationDetailPage() {
                     termMonths={liveTM}
                     title={`${app.clients?.name || 'Cliente'} — ${prop?.address || 'Propiedad'}`}
                   />
-                </div>
-              )}
+              </div>
+            )}
 
-              {/* Review Notes */}
-              <div className="mb-6">
-                <label className="label">Notas de Revisión</label>
+          {/* Review Notes */}
+          <div className="mb-6">
+            <label className="label">Notas de Revisión</label>
             <textarea
               value={reviewNotes}
               onChange={(e) => setReviewNotes(e.target.value)}
@@ -1045,7 +1171,7 @@ export default function ApplicationDetailPage() {
                   {capacityResult?.qualifies ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                   {capacityResult?.qualifies ? 'Capacidad de pago OK' : 'Capacidad de pago pendiente'}
                 </span>
-              </div>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
@@ -1118,6 +1244,445 @@ export default function ApplicationDetailPage() {
         </div>
         )
       })()}
+
+      {/* =================== TAB: PAYMENTS =================== */}
+      {activeTab === 'payments' && (
+        <div className="space-y-6">
+          {!contractId ? (
+            <div className="card-luxury p-8 text-center">
+              <CreditCard className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ash)' }} />
+              <h3 className="font-serif text-lg mb-2" style={{ color: 'var(--charcoal)' }}>Sin contrato activo</h3>
+              <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                Los pagos aparecerán una vez que el contrato RTO sea aprobado y activado.
+              </p>
+            </div>
+          ) : paymentsLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} />
+            </div>
+          ) : (
+            <>
+              {/* Payment Summary */}
+              {paymentsSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="card-luxury p-4 text-center">
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Pagos Hechos</p>
+                    <p className="font-serif text-2xl font-bold" style={{ color: 'var(--success)' }}>
+                      {paymentsSummary.payments_made}/{paymentsSummary.total_payments}
+                    </p>
+                  </div>
+                  <div className="card-luxury p-4 text-center">
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Total Pagado</p>
+                    <p className="font-serif text-2xl font-bold" style={{ color: 'var(--success)' }}>
+                      {fmt(paymentsSummary.total_paid)}
+                    </p>
+                  </div>
+                  <div className="card-luxury p-4 text-center">
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Restante</p>
+                    <p className="font-serif text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>
+                      {fmt(paymentsSummary.remaining_balance)}
+                    </p>
+                  </div>
+                  <div className="card-luxury p-4 text-center">
+                    <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Progreso</p>
+                    <p className="font-serif text-2xl font-bold" style={{ color: 'var(--gold-700)' }}>
+                      {paymentsSummary.completion_percentage}%
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Progress bar */}
+              {paymentsSummary && (
+                <div className="card-luxury p-4">
+                  <div className="flex justify-between text-xs mb-2">
+                    <span style={{ color: 'var(--slate)' }}>Progreso de pagos</span>
+                    <span style={{ color: 'var(--gold-700)' }}>{paymentsSummary.completion_percentage}%</span>
+                  </div>
+                  <div className="w-full h-3 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                    <div
+                      className="h-3 rounded-full transition-all"
+                      style={{
+                        width: `${paymentsSummary.completion_percentage}%`,
+                        backgroundColor: paymentsSummary.completion_percentage >= 100 ? 'var(--success)' : 'var(--gold-600)',
+                      }}
+                    />
+                  </div>
+                  {paymentsSummary.total_late_fees > 0 && (
+                    <p className="text-xs mt-2" style={{ color: 'var(--error)' }}>
+                      ⚠️ Late fees acumulados: {fmt(paymentsSummary.total_late_fees)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Payment table */}
+              <div className="card-luxury overflow-hidden">
+                <div className="p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+                  <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                    Calendario de Pagos
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y" style={{ borderColor: 'var(--sand)' }}>
+                    <thead style={{ backgroundColor: 'var(--cream)' }}>
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>#</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Fecha Vence</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Monto</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Estado</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Pagado</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Método</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Late Fee</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                      {rtoPayments.map((p: any) => {
+                        const pStyles: Record<string, { bg: string; color: string; label: string }> = {
+                          scheduled: { bg: 'var(--cream)', color: 'var(--slate)', label: 'Programado' },
+                          pending: { bg: 'var(--warning-light)', color: 'var(--warning)', label: 'Pendiente' },
+                          paid: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Pagado' },
+                          late: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Atrasado' },
+                          partial: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Parcial' },
+                          waived: { bg: 'var(--info-light)', color: 'var(--info)', label: 'Exonerado' },
+                        }
+                        const ps = pStyles[p.status] || pStyles.scheduled
+                        return (
+                          <tr key={p.id} className={p.status === 'paid' ? 'opacity-70' : ''}>
+                            <td className="px-4 py-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{p.payment_number}</td>
+                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--charcoal)' }}>
+                              {new Date(p.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td className="px-4 py-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fmt(p.amount)}</td>
+                            <td className="px-4 py-2">
+                              <span className="badge text-xs" style={{ backgroundColor: ps.bg, color: ps.color }}>{ps.label}</span>
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {p.paid_amount ? (
+                                <span style={{ color: 'var(--success)' }}>{fmt(p.paid_amount)}</span>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm capitalize" style={{ color: 'var(--slate)' }}>
+                              {p.payment_method || '—'}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {p.late_fee_amount > 0 ? (
+                                <span style={{ color: 'var(--error)' }}>{fmt(p.late_fee_amount)}</span>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2">
+                              {['pending', 'late', 'scheduled'].includes(p.status) && (
+                                <button
+                                  onClick={() => {
+                                    setRecordingPaymentId(p.id)
+                                    setPaymentForm(prev => ({ ...prev, paid_amount: String(p.amount) }))
+                                  }}
+                                  className="btn-ghost btn-sm text-xs"
+                                >
+                                  Registrar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {rtoPayments.length === 0 && (
+                  <div className="p-8 text-center text-sm" style={{ color: 'var(--ash)' }}>
+                    No hay pagos programados. El contrato debe estar activado.
+                  </div>
+                )}
+              </div>
+
+              {/* Record Payment Modal */}
+              {recordingPaymentId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                  <div className="card-luxury p-6 w-full max-w-md mx-4 space-y-4">
+                    <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Registrar Pago</h3>
+                    <div>
+                      <label className="label">Método de Pago</label>
+                      <select
+                        value={paymentForm.payment_method}
+                        onChange={(e) => setPaymentForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                        className="input"
+                        style={{ minHeight: 'auto' }}
+                      >
+                        <option value="zelle">Zelle</option>
+                        <option value="transfer">Transferencia</option>
+                        <option value="cash">Efectivo</option>
+                        <option value="check">Cheque</option>
+                        <option value="stripe">Stripe</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Monto Pagado</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+                        <input
+                          type="number"
+                          value={paymentForm.paid_amount}
+                          onChange={(e) => setPaymentForm(prev => ({ ...prev, paid_amount: e.target.value }))}
+                          className="input pl-8"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label">Referencia (opcional)</label>
+                      <input
+                        type="text"
+                        value={paymentForm.payment_reference}
+                        onChange={(e) => setPaymentForm(prev => ({ ...prev, payment_reference: e.target.value }))}
+                        placeholder="# de confirmación"
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Notas (opcional)</label>
+                      <input
+                        type="text"
+                        value={paymentForm.notes}
+                        onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
+                        className="input"
+                      />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={handleRecordPayment}
+                        disabled={recordingPayment}
+                        className="btn btn-sm flex-1 text-white"
+                        style={{ backgroundColor: 'var(--success)' }}
+                      >
+                        {recordingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                        Confirmar Pago
+                      </button>
+                      <button
+                        onClick={() => setRecordingPaymentId(null)}
+                        className="btn-ghost btn-sm flex-1"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* =================== TAB: DOCUMENTS =================== */}
+      {activeTab === 'documents' && (
+        <div className="space-y-6">
+          {docsLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} />
+            </div>
+          ) : (() => {
+            // Get the sale transfer (Maninos → Client)
+            const saleTransfer = transferData?.sale || null
+            const purchaseTransfer = transferData?.purchase || null
+            // Use sale transfer docs, or fallback to purchase
+            const mainTransfer = saleTransfer || purchaseTransfer
+
+            const DOC_LABELS: Record<string, { label: string; description: string }> = {
+              bill_of_sale: { label: 'Bill of Sale', description: 'Factura de compra-venta' },
+              titulo: { label: 'Título (TDHCA)', description: 'Título de propiedad manufacturada' },
+              title_application: { label: 'Aplicación Cambio de Título', description: 'Solicitud de transferencia de título' },
+            }
+
+            const PRIMARY_DOCS = ['bill_of_sale', 'titulo', 'title_application']
+
+            const getDocInfo = (checklist: any, key: string) => {
+              if (!checklist || !checklist[key]) return { checked: false, fileUrl: null }
+              const val = checklist[key]
+              if (typeof val === 'boolean') return { checked: val, fileUrl: null }
+              if (typeof val === 'object') return { checked: val.checked || !!val.file_url, fileUrl: val.file_url || null }
+              return { checked: false, fileUrl: null }
+            }
+
+            return (
+              <>
+                {!mainTransfer ? (
+                  <div className="card-luxury p-8 text-center">
+                    <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ash)' }} />
+                    <h3 className="font-serif text-lg mb-2" style={{ color: 'var(--charcoal)' }}>Sin documentos aún</h3>
+                    <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                      Los documentos se generarán cuando el contrato sea aprobado y activado.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Transfer Info */}
+                    <div className="card-luxury p-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                            Transferencia: {mainTransfer.from_name} → {mainTransfer.to_name}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                            Estado: {mainTransfer.status} • ID: {mainTransfer.id?.slice(0, 8)}...
+                          </p>
+                        </div>
+                        {mainTransfer.tracking_number && (
+                          <span className="badge text-xs" style={{ backgroundColor: 'var(--info-light)', color: 'var(--info)' }}>
+                            # {mainTransfer.tracking_number}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Primary Documents */}
+                    <div className="card-luxury overflow-hidden">
+                      <div className="p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+                        <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                          Documentos del Cliente
+                        </h3>
+                      </div>
+                      <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                        {PRIMARY_DOCS.map((docKey) => {
+                          const info = getDocInfo(mainTransfer.documents_checklist, docKey)
+                          const label = DOC_LABELS[docKey] || { label: docKey, description: '' }
+                          return (
+                            <div key={docKey} className="p-4 flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                  {info.checked ? (
+                                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                  ) : (
+                                    <FileText className="w-4 h-4 text-gray-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
+                                    {label.label}
+                                  </p>
+                                  <p className="text-xs truncate" style={{ color: 'var(--ash)' }}>
+                                    {label.description}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {info.fileUrl && (
+                                  <a
+                                    href={info.fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn-ghost btn-sm text-xs inline-flex items-center gap-1"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    Ver
+                                  </a>
+                                )}
+                                {info.fileUrl && (
+                                  <a
+                                    href={info.fileUrl}
+                                    download
+                                    className="btn-ghost btn-sm text-xs inline-flex items-center gap-1"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === docKey ? 'opacity-50 pointer-events-none' : ''}`}>
+                                  {uploadingDoc === docKey ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Upload className="w-3.5 h-3.5" />
+                                  )}
+                                  Subir
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0]
+                                      if (file) handleDocUpload(mainTransfer.id, docKey, file)
+                                      e.target.value = ''
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Other Documents */}
+                    {(() => {
+                      const otherDocs = Object.keys(mainTransfer.documents_checklist || {}).filter(
+                        (k) => !PRIMARY_DOCS.includes(k)
+                      )
+                      if (otherDocs.length === 0) return null
+                      return (
+                        <div className="card-luxury overflow-hidden">
+                          <div className="p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+                            <h3 className="font-serif text-base" style={{ color: 'var(--ink)' }}>
+                              Documentos Adicionales
+                            </h3>
+                          </div>
+                          <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                            {otherDocs.map((docKey) => {
+                              const info = getDocInfo(mainTransfer.documents_checklist, docKey)
+                              const EXTRA_LABELS: Record<string, string> = {
+                                tax_receipt: 'Recibo de Impuestos',
+                                id_copies: 'Copias de Identificación',
+                                lien_release: 'Liberación de Gravamen',
+                                notarized_forms: 'Formularios Notarizados',
+                              }
+                              return (
+                                <div key={docKey} className="p-4 flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${info.checked ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                      {info.checked ? (
+                                        <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                      ) : (
+                                        <Hash className="w-3 h-3 text-gray-400" />
+                                      )}
+                                    </div>
+                                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                                      {EXTRA_LABELS[docKey] || docKey.replace(/_/g, ' ')}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {info.fileUrl && (
+                                      <a href={info.fileUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm text-xs inline-flex items-center gap-1">
+                                        <Eye className="w-3.5 h-3.5" /> Ver
+                                      </a>
+                                    )}
+                                    <label className={`btn-ghost btn-sm text-xs inline-flex items-center gap-1 cursor-pointer ${uploadingDoc === docKey ? 'opacity-50 pointer-events-none' : ''}`}>
+                                      {uploadingDoc === docKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                      Subir
+                                      <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0]
+                                          if (file) handleDocUpload(mainTransfer.id, docKey, file)
+                                          e.target.value = ''
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
+
     </div>
   )
 }
