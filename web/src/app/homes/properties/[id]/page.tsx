@@ -38,6 +38,7 @@ import { useToast } from '@/components/ui/Toast'
 import TitleTransferCard from '@/components/TitleTransferCard'
 import BillOfSaleTemplate from '@/components/BillOfSaleTemplate'
 import TitleApplicationTemplate from '@/components/TitleApplicationTemplate'
+import DesktopEvaluatorPanel from '@/components/DesktopEvaluatorPanel'
 
 interface Property {
   id: string
@@ -1072,7 +1073,7 @@ export default function PropertyDetailPage() {
           </div>
         )}
 
-        {/* Evaluation Report Section (replaces old checklist) */}
+        {/* Evaluation Section — interactive evaluator or completed report */}
         {evalReport ? (
           <div className="card-luxury p-6">
             <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
@@ -1201,42 +1202,15 @@ export default function PropertyDetailPage() {
               </div>
             )}
           </div>
-        ) : property.checklist_completed && Object.keys(property.checklist_data || {}).length > 0 ? (
-          /* Fallback: old checklist for properties without evaluation report */
-          <div className="card-luxury p-6">
-            <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5 text-gold-500" />
-              Checklist de Inspección (Compra)
-              <span className="ml-auto text-sm font-normal text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" />
-                {Object.values(property.checklist_data).filter(Boolean).length}/{Object.keys(property.checklist_data).length} completado
-              </span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Object.entries(property.checklist_data).map(([key, checked]) => (
-                <div 
-                  key={key}
-                  className={`flex items-center gap-3 p-3 rounded-lg border ${
-                    checked 
-                      ? 'bg-emerald-50 border-emerald-200' 
-                      : 'bg-red-50 border-red-200'
-                  }`}
-                >
-                  {checked ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-red-300 flex-shrink-0" />
-                  )}
-                  <span className={`text-sm font-medium capitalize ${
-                    checked ? 'text-emerald-700' : 'text-red-700'
-                  }`}>
-                    {key.replace(/_/g, ' ').replace(/-/g, ' ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        ) : (
+          /* Interactive evaluator — create new or link existing */
+          <DesktopEvaluatorPanel
+            propertyId={property.id}
+            onReportGenerated={(report) => {
+              setEvalReport(report)
+            }}
+          />
+        )}
       </div>
 
       {/* ========== MODALS ========== */}
