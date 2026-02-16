@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  User, MapPin, DollarSign, Briefcase, Clock,
+import { 
+  User, MapPin, DollarSign, Briefcase, Clock, 
   CheckCircle2, XCircle, HelpCircle, ArrowLeft,
   FileSignature, Calculator, ShieldCheck, ShieldAlert, Loader2,
   Home, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
+import AmortizationTable from '@/components/capital/AmortizationTable'
 
 interface ApplicationDetail {
   id: string
@@ -78,7 +79,7 @@ export default function ApplicationDetailPage() {
 
   // Active section
   const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'terms'>('identity')
-
+  
   // KYC
   const [kycStatus, setKycStatus] = useState<string>('unverified')
   const [kycVerified, setKycVerified] = useState(false)
@@ -205,7 +206,7 @@ export default function ApplicationDetailPage() {
         setKycStatus(data.kyc_status || 'unverified')
         setKycVerified(data.kyc_verified || false)
         setKycFailReason(data.failure_reason || null)
-        if (data.kyc_session_id && !data.kyc_verified &&
+        if (data.kyc_session_id && !data.kyc_verified && 
             ['pending', 'requires_input'].includes(data.kyc_status || '')) {
           checkKycSession(clientId)
         }
@@ -399,7 +400,7 @@ export default function ApplicationDetailPage() {
 
         if (monthlyRent) {
           // Capital overrode the monthly rent manually
-          body.monthly_rent = parseFloat(monthlyRent)
+        body.monthly_rent = parseFloat(monthlyRent)
         } else {
           // Auto-calculate using the RTO formula with interest
           const rtoCalc = calculateRTOMonthly({
@@ -421,7 +422,7 @@ export default function ApplicationDetailPage() {
         body: JSON.stringify(body),
       })
       const data = await res.json()
-
+      
       if (data.ok) {
         const messages: Record<string, string> = {
           approved: '✅ Solicitud aprobada. Procede a crear el contrato.',
@@ -430,7 +431,7 @@ export default function ApplicationDetailPage() {
           under_review: '🔍 Solicitud marcada en revisión.',
         }
         toast.success(messages[status] || 'Solicitud actualizada')
-
+        
         if (status === 'approved') {
           router.push('/capital/contracts')
         } else {
@@ -478,7 +479,7 @@ export default function ApplicationDetailPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Back button */}
-      <button
+      <button 
         onClick={() => router.push('/capital/applications')}
         className="btn-ghost btn-sm"
       >
@@ -497,9 +498,9 @@ export default function ApplicationDetailPage() {
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Home className="w-8 h-8" style={{ color: 'var(--ash)' }} />
-                </div>
+          </div>
               )}
-            </div>
+        </div>
           )}
 
           {/* Client info */}
@@ -510,7 +511,7 @@ export default function ApplicationDetailPage() {
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm" style={{ color: 'var(--slate)' }}>
               <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{app.clients?.email}</span>
               <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{app.clients?.phone}</span>
-            </div>
+      </div>
 
             {/* Property + RTO params */}
             {prop && (
@@ -518,21 +519,21 @@ export default function ApplicationDetailPage() {
                 <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
                   <span style={{ color: 'var(--ash)' }}>Casa:</span>{' '}
                   <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{prop.address}{prop.city ? `, ${prop.city}` : ''}</span>
-                </div>
+          </div>
                 <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
                   <span style={{ color: 'var(--ash)' }}>Precio:</span>{' '}
                   <span className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(salePrice)}</span>
-                </div>
+        </div>
                 {desiredDP > 0 && (
                   <div className="bg-green-50 rounded-lg px-3 py-1.5 text-sm">
                     <span className="text-green-700">Enganche: {fmt(desiredDP)}</span>
-                  </div>
+          </div>
                 )}
                 <div className="bg-orange-50 rounded-lg px-3 py-1.5 text-sm">
                   <span className="text-orange-700">{desiredTM} meses · ~{fmt(estimatedMonthly)}/mes</span>
                 </div>
-              </div>
-            )}
+            </div>
+          )}
           </div>
 
           {/* Status */}
@@ -571,85 +572,85 @@ export default function ApplicationDetailPage() {
       {activeTab === 'identity' && (
         <div className="card-luxury p-6 space-y-5">
           <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-            Verificación de Identidad (KYC)
+          Verificación de Identidad (KYC)
           </h2>
 
           {/* Current status */}
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              {kycVerified ? (
-                <>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
-                    <ShieldCheck className="w-5 h-5" style={{ color: 'var(--success)' }} />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: 'var(--success)' }}>Identidad Verificada ✅</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            {kycVerified ? (
+              <>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
+                  <ShieldCheck className="w-5 h-5" style={{ color: 'var(--success)' }} />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: 'var(--success)' }}>Identidad Verificada ✅</p>
                     <p className="text-xs" style={{ color: 'var(--ash)' }}>
                       {client?.kyc_verified_at ? `Verificado el ${new Date(client.kyc_verified_at).toLocaleDateString('es-MX')}` : 'Verificado correctamente'}
                       {client?.kyc_type ? ` — Tipo: ${client.kyc_type}` : ''}
                     </p>
-                  </div>
-                </>
-              ) : kycStatus === 'failed' || kycStatus === 'requires_input' ? (
-                <>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
-                    <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
-                  </div>
-                  <div>
+                </div>
+              </>
+            ) : kycStatus === 'failed' || kycStatus === 'requires_input' ? (
+              <>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
+                  <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
+                </div>
+                <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Verificación Fallida ❌</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                      {kycFailReason || 'La verificación de identidad no fue exitosa. Se puede reintentar.'}
-                    </p>
-                  </div>
-                </>
-              ) : kycStatus === 'pending' ? (
-                <>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--warning-light)' }}>
-                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
-                  </div>
-                  <div>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                    {kycFailReason || 'La verificación de identidad no fue exitosa. Se puede reintentar.'}
+                  </p>
+                </div>
+              </>
+            ) : kycStatus === 'pending' ? (
+              <>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--warning-light)' }}>
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
+                </div>
+                <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Verificación en Proceso ⏳</p>
                     <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente está completando la verificación en Stripe</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--cream)' }}>
-                    <ShieldAlert className="w-5 h-5" style={{ color: 'var(--slate)' }} />
-                  </div>
-                  <div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--cream)' }}>
+                  <ShieldAlert className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+                </div>
+                <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--slate)' }}>No Verificado</p>
                     <p className="text-xs" style={{ color: 'var(--ash)' }}>Se requiere verificación de identidad antes de aprobar</p>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {!kycVerified && ['pending', 'requires_input'].includes(kycStatus) && (
-                <button onClick={handleCheckKycStatus} disabled={kycLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                  style={{ backgroundColor: 'var(--info)', opacity: kycLoading ? 0.6 : 1 }}>
-                  {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
-                  Consultar Estado
-                </button>
-              )}
-              {!kycVerified && (
-                <>
-                  <button onClick={() => handleKycVerify('stripe')} disabled={kycLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                    style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
-                    {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                    {kycStatus === 'failed' || kycStatus === 'requires_input' ? 'Reintentar Stripe' : 'Stripe Identity'}
-                  </button>
-                  <button onClick={() => handleKycVerify('manual')} disabled={kycLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
-                    style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
-                    Verificar Manual
-                  </button>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            )}
           </div>
+          <div className="flex gap-2 flex-wrap">
+            {!kycVerified && ['pending', 'requires_input'].includes(kycStatus) && (
+              <button onClick={handleCheckKycStatus} disabled={kycLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                style={{ backgroundColor: 'var(--info)', opacity: kycLoading ? 0.6 : 1 }}>
+                {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+                Consultar Estado
+              </button>
+            )}
+            {!kycVerified && (
+              <>
+                <button onClick={() => handleKycVerify('stripe')} disabled={kycLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                  style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
+                  {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                  {kycStatus === 'failed' || kycStatus === 'requires_input' ? 'Reintentar Stripe' : 'Stripe Identity'}
+                </button>
+                <button onClick={() => handleKycVerify('manual')} disabled={kycLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
+                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
+                  Verificar Manual
+                </button>
+              </>
+            )}
+          </div>
+        </div>
 
           {/* Client details */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
@@ -664,7 +665,7 @@ export default function ApplicationDetailPage() {
                 <InfoRow label="Teléfono" value={app.clients?.phone} />
                 <InfoRow label="Estado Civil" value={client?.marital_status || 'No proporcionado'} />
                 <InfoRow label="Tipo Residencia" value={client?.residence_type || 'No proporcionado'} />
-              </div>
+      </div>
             </div>
             <div>
               <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
@@ -713,7 +714,7 @@ export default function ApplicationDetailPage() {
                   <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
                     <Briefcase className="w-4 h-4" />
                     Información Laboral
-                  </h3>
+          </h3>
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Empleador actual</label>
@@ -749,7 +750,7 @@ export default function ApplicationDetailPage() {
                 </div>
 
                 {/* Personal info */}
-                <div>
+            <div>
                   <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
                     <User className="w-4 h-4" />
                     Información Personal
@@ -799,10 +800,10 @@ export default function ApplicationDetailPage() {
                           value={refNum === 1 ? creditForm.ref1_relationship : creditForm.ref2_relationship}
                           onChange={(e) => setCreditForm(p => ({ ...p, [`ref${refNum}_relationship`]: e.target.value }))}
                           className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
-                        />
-                      </div>
+                />
+              </div>
                     ))}
-                  </div>
+            </div>
                 </div>
 
                 <button
@@ -827,7 +828,7 @@ export default function ApplicationDetailPage() {
             </p>
 
             <div className="grid md:grid-cols-3 gap-4">
-              <div>
+            <div>
                 <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ingresos mensuales netos ($)</label>
                 <input type="number" value={monthlyIncome} onChange={(e) => setMonthlyIncome(Number(e.target.value))}
                   className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
@@ -927,18 +928,18 @@ export default function ApplicationDetailPage() {
                 <div>
                   <label className="label">Plazo (meses) *</label>
                   <select value={termMonths} onChange={(e) => setTermMonths(e.target.value)} className="input">
-                    <option value="">Seleccionar</option>
-                    <option value="12">12 meses (1 año)</option>
+                <option value="">Seleccionar</option>
+                <option value="12">12 meses (1 año)</option>
                     <option value="18">18 meses</option>
-                    <option value="24">24 meses (2 años)</option>
+                <option value="24">24 meses (2 años)</option>
                     <option value="30">30 meses</option>
-                    <option value="36">36 meses (3 años)</option>
+                <option value="36">36 meses (3 años)</option>
                     <option value="42">42 meses</option>
-                    <option value="48">48 meses (4 años)</option>
+                <option value="48">48 meses (4 años)</option>
                     <option value="54">54 meses</option>
-                    <option value="60">60 meses (5 años)</option>
-                  </select>
-                </div>
+                <option value="60">60 meses (5 años)</option>
+              </select>
+            </div>
                 <div>
                   <label className="label">Tasa Anual (%)</label>
                   <div className="relative">
@@ -950,16 +951,16 @@ export default function ApplicationDetailPage() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate text-sm">%</span>
                   </div>
                 </div>
-                <div>
-                  <label className="label">Enganche</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+            <div>
+              <label className="label">Enganche</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
                       placeholder={desiredDP ? String(desiredDP) : '0'}
-                      className="input pl-8"
-                    />
-                  </div>
-                </div>
+                  className="input pl-8"
+                />
+              </div>
+            </div>
                 <div>
                   <label className="label">Renta Mensual (override)</label>
                   <div className="relative">
@@ -973,16 +974,16 @@ export default function ApplicationDetailPage() {
                     Calculado: {fmt(liveRTO.monthlyPayment)}/mes — dejar vacío para usar cálculo automático
                   </p>
                 </div>
-              </div>
+          </div>
 
               {/* Interest breakdown */}
               <div className="card-flat p-4 mb-6">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center text-sm">
-                  <div>
+                <div>
                     <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>A Financiar</p>
                     <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(liveRTO.financeAmount)}</p>
-                  </div>
-                  <div>
+                </div>
+                <div>
                     <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Interés Total</p>
                     <p className="font-semibold" style={{ color: 'var(--warning)' }}>{fmt(Math.round(liveRTO.totalInterest))}</p>
                   </div>
@@ -993,34 +994,46 @@ export default function ApplicationDetailPage() {
                   <div>
                     <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total</p>
                     <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(Math.round(totalRTOIncome))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
-                    <p className="font-serif font-semibold" style={{ color: margin >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(Math.round(margin))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
-                    <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{roi.toFixed(1)}%</p>
-                  </div>
                 </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
+                    <p className="font-serif font-semibold" style={{ color: margin >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(Math.round(margin))}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
+                    <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{roi.toFixed(1)}%</p>
+                </div>
+              </div>
                 <p className="text-xs mt-3 text-center" style={{ color: 'var(--ash)' }}>
                   Fórmula: ({fmt(liveRTO.financeAmount)} × {annualRatePct}% × {(liveTM / 12).toFixed(1)} años) = {fmt(Math.round(liveRTO.totalInterest))} interés
                   &nbsp;→&nbsp; ({fmt(Math.round(liveRTO.totalToPay))} ÷ {liveTM} meses) = {fmt(liveRTO.monthlyPayment)}/mes (redondeado ↑$5)
                 </p>
               </div>
 
+              {/* Amortization Table */}
+              {liveRTO.financeAmount > 0 && liveTM > 0 && liveMonthly > 0 && (
+                <div className="mb-6">
+                  <AmortizationTable
+                    principal={liveRTO.financeAmount}
+                    monthlyPayment={liveMonthly}
+                    termMonths={liveTM}
+                    title={`${app.clients?.name || 'Cliente'} — ${prop?.address || 'Propiedad'}`}
+                  />
+                </div>
+              )}
+
               {/* Review Notes */}
               <div className="mb-6">
                 <label className="label">Notas de Revisión</label>
-                <textarea
-                  value={reviewNotes}
-                  onChange={(e) => setReviewNotes(e.target.value)}
-                  placeholder="Notas sobre la decisión..."
-                  className="input"
-                  rows={3}
-                  style={{ minHeight: 'auto' }}
-                />
-              </div>
+            <textarea
+              value={reviewNotes}
+              onChange={(e) => setReviewNotes(e.target.value)}
+              placeholder="Notas sobre la decisión..."
+              className="input"
+              rows={3}
+              style={{ minHeight: 'auto' }}
+            />
+          </div>
 
               {/* Readiness indicator */}
               <div className="mb-4 flex flex-wrap gap-2 text-xs">
@@ -1034,56 +1047,56 @@ export default function ApplicationDetailPage() {
                 </span>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => handleReview('approved')}
-                  disabled={reviewing}
-                  className="btn btn-sm text-white"
-                  style={{ backgroundColor: 'var(--success)' }}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Aprobar
-                </button>
-                <button
-                  onClick={() => handleReview('rejected')}
-                  disabled={reviewing}
-                  className="btn-danger btn-sm"
-                >
-                  <XCircle className="w-4 h-4" />
-                  Rechazar
-                </button>
-                <button
-                  onClick={() => handleReview('needs_info')}
-                  disabled={reviewing}
-                  className="btn-secondary btn-sm"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                  Solicitar Más Info
-                </button>
-                <button
-                  onClick={() => handleReview('under_review')}
-                  disabled={reviewing}
-                  className="btn-ghost btn-sm"
-                >
-                  En Revisión
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-3">
+            <button 
+              onClick={() => handleReview('approved')}
+              disabled={reviewing}
+              className="btn btn-sm text-white"
+              style={{ backgroundColor: 'var(--success)' }}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Aprobar
+            </button>
+            <button 
+              onClick={() => handleReview('rejected')}
+              disabled={reviewing}
+              className="btn-danger btn-sm"
+            >
+              <XCircle className="w-4 h-4" />
+              Rechazar
+            </button>
+            <button 
+              onClick={() => handleReview('needs_info')}
+              disabled={reviewing}
+              className="btn-secondary btn-sm"
+            >
+              <HelpCircle className="w-4 h-4" />
+              Solicitar Más Info
+            </button>
+            <button 
+              onClick={() => handleReview('under_review')}
+              disabled={reviewing}
+              className="btn-ghost btn-sm"
+            >
+              En Revisión
+            </button>
+          </div>
+        </div>
+      )}
 
-          {/* Review Result (if already reviewed) */}
-          {app.review_notes && !canReview && (
-            <div className="card-luxury p-6">
-              <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Resultado de Revisión</h3>
-              <p style={{ color: 'var(--charcoal)' }}>{app.review_notes}</p>
-              {app.reviewed_at && (
-                <p className="text-sm mt-2" style={{ color: 'var(--ash)' }}>
-                  Revisado por {app.reviewed_by || 'Admin'} el {new Date(app.reviewed_at).toLocaleDateString('es-MX')}
-                </p>
-              )}
-            </div>
+      {/* Review Result (if already reviewed) */}
+      {app.review_notes && !canReview && (
+        <div className="card-luxury p-6">
+          <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Resultado de Revisión</h3>
+          <p style={{ color: 'var(--charcoal)' }}>{app.review_notes}</p>
+          {app.reviewed_at && (
+            <p className="text-sm mt-2" style={{ color: 'var(--ash)' }}>
+              Revisado por {app.reviewed_by || 'Admin'} el {new Date(app.reviewed_at).toLocaleDateString('es-MX')}
+            </p>
           )}
+        </div>
+      )}
 
           {/* Approved — link to generate contract */}
           {app.status === 'approved' && (
