@@ -470,6 +470,7 @@ function EvaluatorPanel() {
   const [previews, setPreviews] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(true);
   const [showPhotos, setShowPhotos] = useState(false);
+  const [showPhotoGuide, setShowPhotoGuide] = useState(true);
   const [showExtraNotes, setShowExtraNotes] = useState(false);
   const [copiedNumber, setCopiedNumber] = useState(false);
 
@@ -679,6 +680,27 @@ function EvaluatorPanel() {
     not_evaluable: checklist.filter(i => i.status === 'not_evaluable').length,
   };
 
+  // Items that can be evaluated from photos (matches backend PHOTO_EVALUABLE_IDS)
+  const PHOTO_EVALUABLE_IDS = new Set([
+    'marco_acero', 'suelos_subfloor', 'techo_techumbre', 'paredes_ventanas',
+    'regaderas_tinas', 'electricidad', 'plomeria', 'ac', 'gas',
+    'vin_revisado', 'precio_costo_obra', 'reparaciones_30', 'costos_extra',
+    'año', 'condiciones', 'numero_cuartos', 'lista_reparaciones', 'recorrido_completo',
+  ]);
+
+  // Checklist items that still need photos
+  const neededPhotos = checklist.filter(
+    item => PHOTO_EVALUABLE_IDS.has(item.id) && (item.status === 'pending' || item.status === 'needs_photo')
+  );
+
+  // Group needed photos by category
+  const groupedNeededPhotos = neededPhotos.reduce((acc: Record<string, any[]>, item: any) => {
+    const cat = item.category || 'Otro';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
+    return acc;
+  }, {});
+
   const getRecStyle = (rec: string) => {
     if (rec === 'COMPRAR') return 'from-green-500 to-emerald-600';
     if (rec === 'NO COMPRAR') return 'from-red-500 to-rose-600';
@@ -773,6 +795,81 @@ function EvaluatorPanel() {
                   <p className="text-[8px]">{s.l}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ─── PHOTO GUIDE: What photos to take ─── */}
+          {neededPhotos.length > 0 && (
+            <div className="bg-[#0f1a2e] border-2 border-blue-500/20 rounded-2xl overflow-hidden">
+              <button
+                onClick={() => setShowPhotoGuide(!showPhotoGuide)}
+                className="w-full px-4 py-3 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">📸</span>
+                  <span className="text-sm font-semibold text-blue-300">
+                    Guía de Fotos — {neededPhotos.length} pendientes
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-full">
+                    {checklist.filter(i => PHOTO_EVALUABLE_IDS.has(i.id) && i.status !== 'pending' && i.status !== 'needs_photo').length}/{checklist.filter(i => PHOTO_EVALUABLE_IDS.has(i.id)).length}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-blue-400 transition-transform ${showPhotoGuide ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {showPhotoGuide && (
+                <div className="px-4 pb-4 space-y-3">
+                  <p className="text-[10px] text-blue-300/70 bg-blue-500/10 rounded-lg px-3 py-2">
+                    📷 Toma estas fotos para que la IA pueda evaluar cada punto. La lista se reduce cuando subas fotos.
+                  </p>
+                  {Object.entries(groupedNeededPhotos).map(([category, items]: [string, any[]]) => (
+                    <div key={category}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-xs">{categoryIcons[category] || '📌'}</span>
+                        <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">{category}</span>
+                        <span className="text-[10px] text-blue-400">({items.length})</span>
+                      </div>
+                      <div className="space-y-1">
+                        {items.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-start gap-2 bg-white/[0.03] border border-blue-500/10 rounded-xl px-3 py-2"
+                          >
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-white/90">{item.label}</p>
+                              {item.photo_hint && (
+                                <p className="text-[10px] text-blue-300/70 mt-0.5 leading-relaxed">
+                                  📷 {item.photo_hint}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {neededPhotos.length <= 3 && (
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-2.5 text-center">
+                      <p className="text-[10px] text-green-400 font-medium">
+                        🎯 ¡Ya casi! Solo faltan {neededPhotos.length} foto{neededPhotos.length !== 1 ? 's' : ''}.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* All photos covered */}
+          {checklist.length > 0 && neededPhotos.length === 0 && (
+            <div className="bg-green-500/10 border-2 border-green-500/20 rounded-2xl p-4 flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-green-300">✅ Todas las fotos cubiertas</p>
+                <p className="text-[10px] text-green-400/70">La IA evaluó todos los puntos fotográficos. Revisa y genera el reporte.</p>
+              </div>
             </div>
           )}
 

@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Camera, Loader2, Plus, X, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, AlertTriangle, HelpCircle, Save, Wand2,
   Sparkles, FileText, StickyNote, Image as ImageIcon, RotateCcw,
-  Edit3, Hash, Copy, Upload,
+  Edit3, Hash, Copy, Upload, ListChecks, CircleDot,
 } from 'lucide-react'
 
 interface DesktopEvaluatorPanelProps {
@@ -51,6 +51,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
   const [previews, setPreviews] = useState<string[]>([])
   const [showChecklist, setShowChecklist] = useState(true)
   const [showPhotos, setShowPhotos] = useState(true)
+  const [showPhotoGuide, setShowPhotoGuide] = useState(true)
   const [showExtraNotes, setShowExtraNotes] = useState(false)
   const [copiedNumber, setCopiedNumber] = useState(false)
 
@@ -323,6 +324,27 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
     not_evaluable: checklist.filter(i => i.status === 'not_evaluable').length,
   }
 
+  // Items that can be evaluated from photos (matches backend PHOTO_EVALUABLE_IDS)
+  const PHOTO_EVALUABLE_IDS = new Set([
+    'marco_acero', 'suelos_subfloor', 'techo_techumbre', 'paredes_ventanas',
+    'regaderas_tinas', 'electricidad', 'plomeria', 'ac', 'gas',
+    'vin_revisado', 'precio_costo_obra', 'reparaciones_30', 'costos_extra',
+    'año', 'condiciones', 'numero_cuartos', 'lista_reparaciones', 'recorrido_completo',
+  ])
+
+  // Checklist items that still need photos (pending or needs_photo AND photo-evaluable)
+  const neededPhotos = checklist.filter(
+    item => PHOTO_EVALUABLE_IDS.has(item.id) && (item.status === 'pending' || item.status === 'needs_photo')
+  )
+
+  // Group needed photos by category
+  const groupedNeededPhotos = neededPhotos.reduce((acc: Record<string, any[]>, item: any) => {
+    const cat = item.category || 'Otro'
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(item)
+    return acc
+  }, {})
+
   const getRecStyle = (rec: string) => {
     if (rec === 'COMPRAR') return 'bg-emerald-50 border-emerald-200 text-emerald-700'
     if (rec === 'NO COMPRAR') return 'bg-red-50 border-red-200 text-red-700'
@@ -473,6 +495,85 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
                   <p className="text-[10px] font-medium">{s.l}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ─── PHOTO GUIDE: What photos to take ─── */}
+          {neededPhotos.length > 0 && (
+            <div className="border-2 border-blue-200 rounded-xl overflow-hidden bg-gradient-to-b from-blue-50 to-white">
+              <button
+                onClick={() => setShowPhotoGuide(!showPhotoGuide)}
+                className="w-full px-4 py-3 flex items-center justify-between bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-900">
+                    📸 Guía de Fotos — {neededPhotos.length} fotos necesarias
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                    {checklist.filter(i => PHOTO_EVALUABLE_IDS.has(i.id) && i.status !== 'pending' && i.status !== 'needs_photo').length}/{checklist.filter(i => PHOTO_EVALUABLE_IDS.has(i.id)).length} cubiertas
+                  </span>
+                  {showPhotoGuide ? <ChevronUp className="w-4 h-4 text-blue-400" /> : <ChevronDown className="w-4 h-4 text-blue-400" />}
+                </div>
+              </button>
+              {showPhotoGuide && (
+                <div className="p-4 space-y-3">
+                  <p className="text-xs text-blue-700 bg-blue-100 rounded-lg px-3 py-2 flex items-start gap-2">
+                    <Camera className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Toma estas fotos para que la IA pueda evaluar cada punto del checklist.
+                      A medida que subas fotos y las analices, esta lista se irá reduciendo automáticamente.
+                    </span>
+                  </p>
+                  {Object.entries(groupedNeededPhotos).map(([category, items]: [string, any[]]) => (
+                    <div key={category}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-sm">{categoryIcons[category] || '📌'}</span>
+                        <span className="text-xs font-bold text-navy-700 uppercase tracking-wider">{category}</span>
+                        <span className="text-[10px] text-blue-500">({items.length})</span>
+                      </div>
+                      <div className="space-y-1.5 ml-1">
+                        {items.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-start gap-2.5 bg-white border border-blue-100 rounded-lg px-3 py-2.5 hover:border-blue-300 transition-colors"
+                          >
+                            <CircleDot className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-navy-800">{item.label}</p>
+                              {item.photo_hint && (
+                                <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">
+                                  📷 {item.photo_hint}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {neededPhotos.length <= 3 && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                      <p className="text-xs text-emerald-700 font-medium">
+                        🎯 ¡Ya casi! Solo faltan {neededPhotos.length} foto{neededPhotos.length !== 1 ? 's' : ''} por cubrir.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* All photos covered banner */}
+          {checklist.length > 0 && neededPhotos.length === 0 && (
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-800">✅ Todas las fotos cubiertas</p>
+                <p className="text-xs text-emerald-600">La IA ha podido evaluar todos los puntos fotográficos del checklist. Revisa los resultados y genera el reporte.</p>
+              </div>
             </div>
           )}
 
