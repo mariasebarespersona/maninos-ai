@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { 
-  User, MapPin, DollarSign, Briefcase, Clock, 
+import Link from 'next/link'
+import {
+  User, MapPin, DollarSign, Briefcase, Clock,
   CheckCircle2, XCircle, HelpCircle, ArrowLeft,
-  FileSignature, Calculator, ShieldCheck, ShieldAlert, Loader2
+  FileSignature, Calculator, ShieldCheck, ShieldAlert, Loader2,
+  Home, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp,
 } from 'lucide-react'
-import { useToast } from '@/components/ui/Toast'
+import { toast } from '@/components/ui/Toast'
 
 interface ApplicationDetail {
   id: string
@@ -27,28 +29,60 @@ interface ApplicationDetail {
   sales: Record<string, any>
 }
 
-interface DTIResult {
-  dti: number | null
-  qualifies: boolean
-  message: string
-  details: Record<string, number>
+interface ClientInfo {
+  id: string
+  name: string
+  email: string
+  phone: string
+  terreno: string
+  status: string
+  address: string
+  city: string
+  state: string
+  date_of_birth: string | null
+  marital_status: string | null
+  employer_name: string | null
+  occupation: string | null
+  employer_phone: string | null
+  monthly_income: number | null
+  time_at_job_years: number | null
+  time_at_job_months: number | null
+  other_income_source: boolean
+  other_income_amount: number | null
+  personal_references: Array<{ name: string; phone: string; relationship: string }>
+  kyc_verified: boolean
+  kyc_status: string
+  kyc_verified_at: string | null
+  kyc_type: string | null
+  kyc_failure_reason: string | null
+  residence_type: string | null
 }
 
-// Uses Next.js proxy routes (/api/capital/...)
+interface PaymentCapacity {
+  monthly_net_income: number
+  monthly_fixed_expenses: number
+  payment_capacity: number
+  proposed_monthly: number
+  qualifies: boolean
+  ratio: number
+}
 
 export default function ApplicationDetailPage() {
   const { id } = useParams()
   const router = useRouter()
-  const toast = useToast()
   const [app, setApp] = useState<ApplicationDetail | null>(null)
+  const [client, setClient] = useState<ClientInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [reviewing, setReviewing] = useState(false)
-  const [dti, setDti] = useState<DTIResult | null>(null)
-  
+
+  // Active section
+  const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'terms'>('identity')
+
   // KYC
   const [kycStatus, setKycStatus] = useState<string>('unverified')
   const [kycVerified, setKycVerified] = useState(false)
   const [kycLoading, setKycLoading] = useState(false)
+  const [kycFailReason, setKycFailReason] = useState<string | null>(null)
 
   // Review form
   const [reviewNotes, setReviewNotes] = useState('')
@@ -56,11 +90,110 @@ export default function ApplicationDetailPage() {
   const [termMonths, setTermMonths] = useState('')
   const [downPayment, setDownPayment] = useState('')
 
+  // Credit form (expanded)
+  const [showCreditForm, setShowCreditForm] = useState(false)
+  const [savingCredit, setSavingCredit] = useState(false)
+  const [creditForm, setCreditForm] = useState({
+    employer_name: '',
+    occupation: '',
+    employer_phone: '',
+    monthly_income: '',
+    time_at_job_years: '',
+    time_at_job_months: '',
+    other_income_amount: '',
+    residence_type: '',
+    marital_status: '',
+    ref1_name: '',
+    ref1_phone: '',
+    ref1_relationship: '',
+    ref2_name: '',
+    ref2_phone: '',
+    ref2_relationship: '',
+  })
+
+  // Payment capacity
+  const [monthlyIncome, setMonthlyIncome] = useState(0)
+  const [otherIncome, setOtherIncome] = useState(0)
+  const [monthlyExpenses, setMonthlyExpenses] = useState(0)
+  const [capacityResult, setCapacityResult] = useState<PaymentCapacity | null>(null)
+
   useEffect(() => {
     loadApplication()
   }, [id])
 
-  const [kycFailReason, setKycFailReason] = useState<string | null>(null)
+  // ========== Data Loading ==========
+
+  const loadApplication = async () => {
+    try {
+      const res = await fetch(`/api/capital/applications/${id}`)
+      const data = await res.json()
+      if (data.ok) {
+        setApp(data.application)
+        // Pre-fill contract terms from desired params
+        if (data.application.desired_term_months) {
+          setTermMonths(String(data.application.desired_term_months))
+        }
+        if (data.application.desired_down_payment) {
+          setDownPayment(String(data.application.desired_down_payment))
+        }
+        // Load KYC status + full client data
+        if (data.application.clients?.id) {
+          loadKycStatus(data.application.clients.id)
+          loadClientFull(data.application.clients.id)
+        }
+      }
+    } catch (err) {
+      console.error('Error loading application:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadClientFull = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/clients/${clientId}`)
+      const data = await res.json()
+      const c = data.client || data
+      if (c?.id) {
+        setClient(c)
+        // Pre-fill credit form
+        setMonthlyIncome(c.monthly_income || 0)
+        setOtherIncome(c.other_income_amount || 0)
+        setCreditForm(prev => ({
+          ...prev,
+          employer_name: c.employer_name || '',
+          occupation: c.occupation || '',
+          employer_phone: c.employer_phone || '',
+          monthly_income: c.monthly_income?.toString() || '',
+          time_at_job_years: c.time_at_job_years?.toString() || '',
+          time_at_job_months: c.time_at_job_months?.toString() || '',
+          other_income_amount: c.other_income_amount?.toString() || '',
+          residence_type: c.residence_type || '',
+          marital_status: c.marital_status || '',
+        }))
+        if (c.personal_references?.length >= 1) {
+          setCreditForm(prev => ({
+            ...prev,
+            ref1_name: c.personal_references[0]?.name || '',
+            ref1_phone: c.personal_references[0]?.phone || '',
+            ref1_relationship: c.personal_references[0]?.relationship || '',
+          }))
+        }
+        if (c.personal_references?.length >= 2) {
+          setCreditForm(prev => ({
+            ...prev,
+            ref2_name: c.personal_references[1]?.name || '',
+            ref2_phone: c.personal_references[1]?.phone || '',
+            ref2_relationship: c.personal_references[1]?.relationship || '',
+          }))
+        }
+      }
+    } catch (err) {
+      console.error('Error loading client:', err)
+    }
+  }
+
+  // ========== KYC ==========
 
   const loadKycStatus = async (clientId: string) => {
     try {
@@ -70,9 +203,7 @@ export default function ApplicationDetailPage() {
         setKycStatus(data.kyc_status || 'unverified')
         setKycVerified(data.kyc_verified || false)
         setKycFailReason(data.failure_reason || null)
-        
-        // If session exists and status is pending, auto-check with Stripe
-        if (data.kyc_session_id && !data.kyc_verified && 
+        if (data.kyc_session_id && !data.kyc_verified &&
             ['pending', 'requires_input'].includes(data.kyc_status || '')) {
           checkKycSession(clientId)
         }
@@ -131,11 +262,14 @@ export default function ApplicationDetailPage() {
         const res = await fetch('/api/capital/kyc/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: app.clients.id })
+          body: JSON.stringify({
+            client_id: app.clients.id,
+            return_url: window.location.href,
+          })
         })
         const data = await res.json()
-        if (data.ok && data.url) {
-          window.open(data.url, '_blank')
+        if (data.ok && (data.url || data.verification_url)) {
+          window.open(data.url || data.verification_url, '_blank')
           setKycStatus('pending')
           toast.success('Sesión de verificación creada. Se abrió en nueva pestaña.')
         } else if (data.already_verified) {
@@ -149,7 +283,12 @@ export default function ApplicationDetailPage() {
         const res = await fetch('/api/capital/kyc/manual-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: app.clients.id, verified_by: 'admin' })
+          body: JSON.stringify({
+            client_id: app.clients.id,
+            verified_by: 'admin',
+            id_type: 'manual',
+            notes: 'Verificado manualmente desde portal Capital',
+          })
         })
         const data = await res.json()
         if (data.ok) {
@@ -168,52 +307,72 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  const loadApplication = async () => {
+  // ========== Credit Form ==========
+
+  const saveCreditInfo = async () => {
+    if (!app?.clients?.id) return
+    setSavingCredit(true)
     try {
-      const res = await fetch(`/api/capital/applications/${id}`)
+      const refs = []
+      if (creditForm.ref1_name) refs.push({ name: creditForm.ref1_name, phone: creditForm.ref1_phone, relationship: creditForm.ref1_relationship })
+      if (creditForm.ref2_name) refs.push({ name: creditForm.ref2_name, phone: creditForm.ref2_phone, relationship: creditForm.ref2_relationship })
+
+      const res = await fetch(`/api/clients/${app.clients.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employer_name: creditForm.employer_name || null,
+          occupation: creditForm.occupation || null,
+          employer_phone: creditForm.employer_phone || null,
+          monthly_income: creditForm.monthly_income ? parseFloat(creditForm.monthly_income) : null,
+          time_at_job_years: creditForm.time_at_job_years ? parseInt(creditForm.time_at_job_years) : null,
+          time_at_job_months: creditForm.time_at_job_months ? parseInt(creditForm.time_at_job_months) : null,
+          other_income_amount: creditForm.other_income_amount ? parseFloat(creditForm.other_income_amount) : null,
+          other_income_source: !!creditForm.other_income_amount,
+          residence_type: creditForm.residence_type || null,
+          marital_status: creditForm.marital_status || null,
+          personal_references: refs.length > 0 ? refs : null,
+        }),
+      })
       const data = await res.json()
-      if (data.ok) {
-        setApp(data.application)
-        // Pre-fill from desired terms
-        if (data.application.desired_term_months) {
-          setTermMonths(String(data.application.desired_term_months))
-        }
-        if (data.application.desired_down_payment) {
-          setDownPayment(String(data.application.desired_down_payment))
-        }
-        // Load KYC status
-        if (data.application.clients?.id) {
-          loadKycStatus(data.application.clients.id)
-        }
+      if (data.ok !== false) {
+        toast.success('Información crediticia guardada')
+        setMonthlyIncome(parseFloat(creditForm.monthly_income) || 0)
+        setOtherIncome(parseFloat(creditForm.other_income_amount) || 0)
+        loadClientFull(app.clients.id)
+      } else {
+        toast.error(data.detail || 'Error al guardar')
       }
     } catch (err) {
-      console.error('Error loading application:', err)
+      toast.error('Error de conexión')
     } finally {
-      setLoading(false)
+      setSavingCredit(false)
     }
   }
 
-  const calculateDTI = async () => {
-    if (!app || !monthlyRent) {
-      toast.warning('Ingresa la renta mensual propuesta para calcular DTI')
-      return
-    }
-    try {
-      const res = await fetch(`/api/capital/contracts/calculate-dti`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: app.clients.id,
-          monthly_rent: parseFloat(monthlyRent),
-          other_monthly_debts: 0,
-        })
-      })
-      const data = await res.json()
-      if (data.ok) setDti(data)
-    } catch (err) {
-      toast.error('Error al calcular DTI')
-    }
+  // ========== Payment Capacity ==========
+
+  const calculateCapacity = () => {
+    const totalIncome = monthlyIncome + otherIncome
+    const capacity = (totalIncome - monthlyExpenses) * 0.40
+
+    const salePrice = app?.properties?.sale_price || 0
+    const dp = app?.desired_down_payment || 0
+    const tm = app?.desired_term_months || 36
+    const financeAmount = salePrice - dp
+    const proposedMonthly = tm > 0 ? financeAmount / tm : 0
+
+    setCapacityResult({
+      monthly_net_income: totalIncome,
+      monthly_fixed_expenses: monthlyExpenses,
+      payment_capacity: capacity,
+      proposed_monthly: proposedMonthly,
+      qualifies: capacity >= proposedMonthly,
+      ratio: totalIncome > 0 ? (proposedMonthly / totalIncome) * 100 : 0,
+    })
   }
+
+  // ========== Review ==========
 
   const handleReview = async (status: 'approved' | 'rejected' | 'needs_info' | 'under_review') => {
     setReviewing(true)
@@ -221,25 +380,36 @@ export default function ApplicationDetailPage() {
       const body: Record<string, any> = {
         status,
         review_notes: reviewNotes || undefined,
+        reviewed_by: 'admin',
       }
       if (status === 'approved') {
-        if (!monthlyRent || !termMonths) {
-          toast.warning('Completa la renta mensual y el plazo antes de aprobar')
-          setReviewing(false)
-          return
+        if (!monthlyRent && !termMonths) {
+          // Use desired params if no manual override
+          const salePrice = app?.properties?.sale_price || 0
+          const dp = app?.desired_down_payment || 0
+          const tm = app?.desired_term_months || 36
+          body.monthly_rent = tm > 0 ? Math.round((salePrice - dp) / tm) : 0
+          body.term_months = tm
+          body.down_payment = dp
+        } else {
+          if (!monthlyRent || !termMonths) {
+            toast.warning('Completa la renta mensual y el plazo antes de aprobar')
+            setReviewing(false)
+            return
+          }
+          body.monthly_rent = parseFloat(monthlyRent)
+          body.term_months = parseInt(termMonths)
+          body.down_payment = downPayment ? parseFloat(downPayment) : 0
         }
-        body.monthly_rent = parseFloat(monthlyRent)
-        body.term_months = parseInt(termMonths)
-        body.down_payment = downPayment ? parseFloat(downPayment) : 0
       }
-      
-      const res = await fetch(`/api/capital/applications/${id}`, {
-        method: 'PUT',
+
+      const res = await fetch(`/api/capital/applications/${id}/review`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       const data = await res.json()
-      
+
       if (data.ok) {
         const messages: Record<string, string> = {
           approved: '✅ Solicitud aprobada. Procede a crear el contrato.',
@@ -248,7 +418,7 @@ export default function ApplicationDetailPage() {
           under_review: '🔍 Solicitud marcada en revisión.',
         }
         toast.success(messages[status] || 'Solicitud actualizada')
-        
+
         if (status === 'approved') {
           router.push('/capital/contracts')
         } else {
@@ -269,7 +439,7 @@ export default function ApplicationDetailPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--gold-600)' }} />
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} />
       </div>
     )
   }
@@ -279,332 +449,605 @@ export default function ApplicationDetailPage() {
   }
 
   const canReview = ['submitted', 'under_review', 'needs_info'].includes(app.status)
+  const prop = app.properties
+  const salePrice = prop?.sale_price || 0
+  const desiredDP = app.desired_down_payment || 0
+  const desiredTM = app.desired_term_months || 36
+  const estimatedMonthly = desiredTM > 0 ? Math.round((salePrice - desiredDP) / desiredTM) : 0
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-4xl">
+    <div className="space-y-6 animate-fade-in">
       {/* Back button */}
-      <button 
+      <button
         onClick={() => router.push('/capital/applications')}
         className="btn-ghost btn-sm"
       >
         <ArrowLeft className="w-4 h-4" />
-        Volver a Solicitudes
+        Volver a Clientes
       </button>
 
-      {/* Header */}
-      <div className="card-luxury p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>
-              Solicitud RTO - {app.clients?.name}
+      {/* Client header with property */}
+      <div className="card-luxury p-5">
+        <div className="flex flex-col md:flex-row gap-5">
+          {/* Property photo */}
+          {prop && (
+            <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+              {prop.photos?.[0] ? (
+                <img src={prop.photos[0]} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Home className="w-8 h-8" style={{ color: 'var(--ash)' }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Client info */}
+          <div className="flex-1">
+            <h1 className="font-serif text-xl mb-1" style={{ color: 'var(--ink)' }}>
+              {app.clients?.name || 'Cliente'}
             </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>
-              {app.properties?.address}{app.properties?.city ? `, ${app.properties.city}` : ''}
-            </p>
-          </div>
-          <StatusBadge status={app.status} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Client Info */}
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-            <User className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-            Información del Cliente
-          </h3>
-          <div className="space-y-3">
-            <InfoRow label="Nombre" value={app.clients?.name} />
-            <InfoRow label="Email" value={app.clients?.email} />
-            <InfoRow label="Teléfono" value={app.clients?.phone} />
-            <InfoRow label="Empleador" value={app.employer_name || app.clients?.employer_name || 'No proporcionado'} />
-            <InfoRow label="Estado Laboral" value={app.employment_status || 'No proporcionado'} />
-            <InfoRow label="Tiempo en Trabajo" value={app.time_at_job || 'No proporcionado'} />
-            <InfoRow 
-              label="Ingreso Mensual" 
-              value={app.monthly_income ? fmt(app.monthly_income) : (app.clients?.monthly_income ? fmt(app.clients.monthly_income) : 'No proporcionado')} 
-              highlight={!!app.monthly_income}
-            />
-          </div>
-        </div>
-
-        {/* Property Info */}
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-            <MapPin className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-            Información de la Propiedad
-          </h3>
-          <div className="space-y-3">
-            <InfoRow label="Dirección" value={app.properties?.address} />
-            <InfoRow label="Ciudad" value={`${app.properties?.city || 'N/A'}, ${app.properties?.state || 'TX'}`} />
-            <InfoRow label="Precio de Venta" value={fmt(app.properties?.sale_price || 0)} highlight />
-            <InfoRow label="Año" value={app.properties?.year || 'N/A'} />
-            <InfoRow label="Tamaño" value={app.properties?.square_feet ? `${app.properties.square_feet} sqft` : 'N/A'} />
-            <InfoRow label="Cuartos" value={`${app.properties?.bedrooms || '?'} hab / ${app.properties?.bathrooms || '?'} baños`} />
-          </div>
-          {app.properties?.photos?.[0] && (
-            <div className="mt-4">
-              <img 
-                src={app.properties.photos[0]} 
-                alt="Propiedad" 
-                className="w-full h-40 object-cover rounded-md"
-              />
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm" style={{ color: 'var(--slate)' }}>
+              <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{app.clients?.email}</span>
+              <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{app.clients?.phone}</span>
             </div>
-          )}
+
+            {/* Property + RTO params */}
+            {prop && (
+              <div className="mt-3 flex flex-wrap gap-3">
+                <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
+                  <span style={{ color: 'var(--ash)' }}>Casa:</span>{' '}
+                  <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{prop.address}{prop.city ? `, ${prop.city}` : ''}</span>
+                </div>
+                <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
+                  <span style={{ color: 'var(--ash)' }}>Precio:</span>{' '}
+                  <span className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(salePrice)}</span>
+                </div>
+                {desiredDP > 0 && (
+                  <div className="bg-green-50 rounded-lg px-3 py-1.5 text-sm">
+                    <span className="text-green-700">Enganche: {fmt(desiredDP)}</span>
+                  </div>
+                )}
+                <div className="bg-orange-50 rounded-lg px-3 py-1.5 text-sm">
+                  <span className="text-orange-700">{desiredTM} meses · ~{fmt(estimatedMonthly)}/mes</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Status */}
+          <div className="flex-shrink-0">
+            <StatusBadge status={app.status} />
+          </div>
         </div>
       </div>
 
-      {/* KYC Verification */}
-      <div className="card-luxury p-6">
-        <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-          <ShieldCheck className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-          Verificación de Identidad (KYC)
-        </h3>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            {kycVerified ? (
-              <>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
-                  <ShieldCheck className="w-5 h-5" style={{ color: 'var(--success)' }} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--success)' }}>Identidad Verificada ✅</p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente ha sido verificado correctamente</p>
-                </div>
-              </>
-            ) : kycStatus === 'failed' || kycStatus === 'requires_input' ? (
-              <>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
-                  <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>
-                    Verificación Fallida ❌
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                    {kycFailReason || 'La verificación de identidad no fue exitosa. Se puede reintentar.'}
-                  </p>
-                </div>
-              </>
-            ) : kycStatus === 'pending' ? (
-              <>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--warning-light)' }}>
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>
-                    Verificación en Proceso ⏳
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                    El cliente está completando la verificación en Stripe
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--cream)' }}>
-                  <ShieldAlert className="w-5 h-5" style={{ color: 'var(--slate)' }} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--slate)' }}>
-                    No Verificado
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                    Se requiere verificación de identidad antes de aprobar
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {/* Refresh / Check status button - show when pending or failed */}
-            {!kycVerified && ['pending', 'requires_input'].includes(kycStatus) && (
-              <button onClick={handleCheckKycStatus} disabled={kycLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                style={{ backgroundColor: 'var(--info)', opacity: kycLoading ? 0.6 : 1 }}>
-                {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
-                Consultar Estado
-              </button>
-            )}
-            {/* Verify buttons - show when not verified */}
-            {!kycVerified && (
-              <>
-                <button onClick={() => handleKycVerify('stripe')} disabled={kycLoading}
+      {/* Tabs: Identidad + Capacidad de Pago + Términos */}
+      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--sand)' }}>
+        {([
+          { key: 'identity' as const, label: 'Identidad', icon: ShieldCheck, done: kycVerified },
+          { key: 'capacity' as const, label: 'Capacidad de Pago', icon: DollarSign, done: capacityResult?.qualifies ?? false },
+          { key: 'terms' as const, label: 'Términos y Decisión', icon: FileSignature, done: app.status === 'approved' },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
+            style={{
+              color: activeTab === tab.key ? 'var(--gold-700)' : 'var(--slate)',
+              borderColor: activeTab === tab.key ? 'var(--gold-700)' : 'transparent',
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+              {tab.done && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* =================== TAB: IDENTITY =================== */}
+      {activeTab === 'identity' && (
+        <div className="card-luxury p-6 space-y-5">
+          <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+            Verificación de Identidad (KYC)
+          </h2>
+
+          {/* Current status */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              {kycVerified ? (
+                <>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-light)' }}>
+                    <ShieldCheck className="w-5 h-5" style={{ color: 'var(--success)' }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--success)' }}>Identidad Verificada ✅</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                      {client?.kyc_verified_at ? `Verificado el ${new Date(client.kyc_verified_at).toLocaleDateString('es-MX')}` : 'Verificado correctamente'}
+                      {client?.kyc_type ? ` — Tipo: ${client.kyc_type}` : ''}
+                    </p>
+                  </div>
+                </>
+              ) : kycStatus === 'failed' || kycStatus === 'requires_input' ? (
+                <>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
+                    <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Verificación Fallida ❌</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                      {kycFailReason || 'La verificación de identidad no fue exitosa. Se puede reintentar.'}
+                    </p>
+                  </div>
+                </>
+              ) : kycStatus === 'pending' ? (
+                <>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--warning-light)' }}>
+                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Verificación en Proceso ⏳</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente está completando la verificación en Stripe</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--cream)' }}>
+                    <ShieldAlert className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--slate)' }}>No Verificado</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Se requiere verificación de identidad antes de aprobar</p>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {!kycVerified && ['pending', 'requires_input'].includes(kycStatus) && (
+                <button onClick={handleCheckKycStatus} disabled={kycLoading}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                  style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
-                  {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                  {kycStatus === 'failed' || kycStatus === 'requires_input' ? 'Reintentar Stripe' : 'Stripe Identity'}
+                  style={{ backgroundColor: 'var(--info)', opacity: kycLoading ? 0.6 : 1 }}>
+                  {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+                  Consultar Estado
                 </button>
-                <button onClick={() => handleKycVerify('manual')} disabled={kycLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
-                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
-                  Verificar Manual
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Financial Analysis + Review */}
-      {canReview && (
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-            <Calculator className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-            Análisis y Términos del Contrato
-          </h3>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className="label">Renta Mensual *</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                <input 
-                  type="number" 
-                  value={monthlyRent} 
-                  onChange={(e) => setMonthlyRent(e.target.value)}
-                  placeholder="695"
-                  className="input pl-8"
-                />
-              </div>
+              )}
+              {!kycVerified && (
+                <>
+                  <button onClick={() => handleKycVerify('stripe')} disabled={kycLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                    style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
+                    {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                    {kycStatus === 'failed' || kycStatus === 'requires_input' ? 'Reintentar Stripe' : 'Stripe Identity'}
+                  </button>
+                  <button onClick={() => handleKycVerify('manual')} disabled={kycLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
+                    style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
+                    Verificar Manual
+                  </button>
+                </>
+              )}
             </div>
+          </div>
+
+          {/* Client details */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
             <div>
-              <label className="label">Plazo (meses) *</label>
-              <select 
-                value={termMonths} 
-                onChange={(e) => setTermMonths(e.target.value)}
-                className="input"
-              >
-                <option value="">Seleccionar</option>
-                <option value="12">12 meses (1 año)</option>
-                <option value="24">24 meses (2 años)</option>
-                <option value="36">36 meses (3 años)</option>
-                <option value="48">48 meses (4 años)</option>
-                <option value="60">60 meses (5 años)</option>
-              </select>
+              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                <User className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                Datos del Cliente
+              </h3>
+              <div className="space-y-2">
+                <InfoRow label="Nombre" value={app.clients?.name} />
+                <InfoRow label="Email" value={app.clients?.email} />
+                <InfoRow label="Teléfono" value={app.clients?.phone} />
+                <InfoRow label="Estado Civil" value={client?.marital_status || 'No proporcionado'} />
+                <InfoRow label="Tipo Residencia" value={client?.residence_type || 'No proporcionado'} />
+              </div>
             </div>
             <div>
-              <label className="label">Enganche</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                <input 
-                  type="number" 
-                  value={downPayment} 
-                  onChange={(e) => setDownPayment(e.target.value)}
-                  placeholder="0"
-                  className="input pl-8"
-                />
+              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                <MapPin className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                Datos de la Propiedad
+              </h3>
+              <div className="space-y-2">
+                <InfoRow label="Dirección" value={prop?.address} />
+                <InfoRow label="Ciudad" value={`${prop?.city || 'N/A'}, ${prop?.state || 'TX'}`} />
+                <InfoRow label="Precio de Venta" value={fmt(salePrice)} highlight />
+                <InfoRow label="Año" value={prop?.year || 'N/A'} />
+                <InfoRow label="Cuartos" value={`${prop?.bedrooms || '?'} hab / ${prop?.bathrooms || '?'} baños`} />
               </div>
             </div>
-          </div>
-
-          {/* Quick Financial Preview */}
-          {monthlyRent && termMonths && (
-            <div className="card-flat mb-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total RTO</p>
-                  <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
-                    {fmt(parseFloat(monthlyRent) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : 0))}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Precio Venta</p>
-                  <p className="font-serif text-lg font-semibold" style={{ color: 'var(--charcoal)' }}>
-                    {fmt(app.properties?.sale_price || 0)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
-                  <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
-                    {fmt((parseFloat(monthlyRent) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : 0)) - (app.properties?.sale_price || 0))}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
-                  <p className="font-serif text-lg font-semibold" style={{ color: 'var(--info)' }}>
-                    {app.properties?.sale_price ? (
-                      ((parseFloat(monthlyRent) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : 0)) / app.properties.sale_price * 100 - 100).toFixed(1)
-                    ) : '0'}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* DTI Calculator */}
-          <div className="flex items-center gap-3 mb-6">
-            <button onClick={calculateDTI} className="btn-secondary btn-sm">
-              <Calculator className="w-4 h-4" />
-              Calcular DTI
-            </button>
-            {dti && (
-              <div className={`badge ${dti.qualifies ? 'badge-success' : 'badge-error'}`}>
-                DTI: {dti.dti !== null ? `${dti.dti}%` : 'N/A'} {dti.qualifies ? '✅' : '❌'}
-              </div>
-            )}
-          </div>
-
-          {/* Review Notes */}
-          <div className="mb-6">
-            <label className="label">Notas de Revisión</label>
-            <textarea
-              value={reviewNotes}
-              onChange={(e) => setReviewNotes(e.target.value)}
-              placeholder="Notas sobre la decisión..."
-              className="input"
-              rows={3}
-              style={{ minHeight: 'auto' }}
-            />
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={() => handleReview('approved')}
-              disabled={reviewing}
-              className="btn btn-sm text-white"
-              style={{ backgroundColor: 'var(--success)' }}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Aprobar
-            </button>
-            <button 
-              onClick={() => handleReview('rejected')}
-              disabled={reviewing}
-              className="btn-danger btn-sm"
-            >
-              <XCircle className="w-4 h-4" />
-              Rechazar
-            </button>
-            <button 
-              onClick={() => handleReview('needs_info')}
-              disabled={reviewing}
-              className="btn-secondary btn-sm"
-            >
-              <HelpCircle className="w-4 h-4" />
-              Solicitar Más Info
-            </button>
-            <button 
-              onClick={() => handleReview('under_review')}
-              disabled={reviewing}
-              className="btn-ghost btn-sm"
-            >
-              En Revisión
-            </button>
           </div>
         </div>
       )}
 
-      {/* Review Result (if already reviewed) */}
-      {app.review_notes && !canReview && (
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Resultado de Revisión</h3>
-          <p style={{ color: 'var(--charcoal)' }}>{app.review_notes}</p>
-          {app.reviewed_at && (
-            <p className="text-sm mt-2" style={{ color: 'var(--ash)' }}>
-              Revisado por {app.reviewed_by || 'Admin'} el {new Date(app.reviewed_at).toLocaleDateString('es-MX')}
+      {/* =================== TAB: CAPACITY =================== */}
+      {activeTab === 'capacity' && (
+        <div className="space-y-5">
+          {/* Credit Application Form */}
+          <div className="card-luxury">
+            <button
+              onClick={() => setShowCreditForm(!showCreditForm)}
+              className="w-full p-5 flex items-center justify-between text-left"
+            >
+              <div>
+                <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                  Solicitud de Crédito
+                </h2>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--ash)' }}>
+                  Información laboral, ingresos y referencias del cliente
+                </p>
+              </div>
+              {showCreditForm
+                ? <ChevronUp className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+                : <ChevronDown className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+              }
+            </button>
+
+            {showCreditForm && (
+              <div className="px-5 pb-5 border-t space-y-5" style={{ borderColor: 'var(--sand)' }}>
+                {/* Información Laboral */}
+                <div className="pt-4">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                    <Briefcase className="w-4 h-4" />
+                    Información Laboral
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Empleador actual</label>
+                      <input type="text" value={creditForm.employer_name} onChange={(e) => setCreditForm(p => ({ ...p, employer_name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                    </div>
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ocupación / Cargo</label>
+                      <input type="text" value={creditForm.occupation} onChange={(e) => setCreditForm(p => ({ ...p, occupation: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                    </div>
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Teléfono del empleador</label>
+                      <input type="text" value={creditForm.employer_phone} onChange={(e) => setCreditForm(p => ({ ...p, employer_phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                    </div>
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ingreso mensual ($)</label>
+                      <input type="number" value={creditForm.monthly_income} onChange={(e) => setCreditForm(p => ({ ...p, monthly_income: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Tiempo en empleo (años)</label>
+                        <input type="number" value={creditForm.time_at_job_years} onChange={(e) => setCreditForm(p => ({ ...p, time_at_job_years: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Meses</label>
+                        <input type="number" value={creditForm.time_at_job_months} onChange={(e) => setCreditForm(p => ({ ...p, time_at_job_months: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Otra fuente de ingresos ($)</label>
+                      <input type="number" value={creditForm.other_income_amount} onChange={(e) => setCreditForm(p => ({ ...p, other_income_amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Personal info */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                    <User className="w-4 h-4" />
+                    Información Personal
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Estado civil</label>
+                      <select value={creditForm.marital_status} onChange={(e) => setCreditForm(p => ({ ...p, marital_status: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
+                        <option value="">Seleccionar</option>
+                        <option value="soltero">Soltero(a)</option>
+                        <option value="casado">Casado(a)</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Tipo de residencia</label>
+                      <select value={creditForm.residence_type} onChange={(e) => setCreditForm(p => ({ ...p, residence_type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
+                        <option value="">Seleccionar</option>
+                        <option value="propia">Propia</option>
+                        <option value="rentada">Rentada</option>
+                        <option value="otra">Otra</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* References */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                    <User className="w-4 h-4" />
+                    Referencias Personales
+                  </h3>
+                  <div className="space-y-3">
+                    {[1, 2].map((refNum) => (
+                      <div key={refNum} className="grid grid-cols-3 gap-2">
+                        <input type="text" placeholder={`Referencia ${refNum} - Nombre`}
+                          value={refNum === 1 ? creditForm.ref1_name : creditForm.ref2_name}
+                          onChange={(e) => setCreditForm(p => ({ ...p, [`ref${refNum}_name`]: e.target.value }))}
+                          className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                        />
+                        <input type="text" placeholder="Teléfono"
+                          value={refNum === 1 ? creditForm.ref1_phone : creditForm.ref2_phone}
+                          onChange={(e) => setCreditForm(p => ({ ...p, [`ref${refNum}_phone`]: e.target.value }))}
+                          className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                        />
+                        <input type="text" placeholder="Relación"
+                          value={refNum === 1 ? creditForm.ref1_relationship : creditForm.ref2_relationship}
+                          onChange={(e) => setCreditForm(p => ({ ...p, [`ref${refNum}_relationship`]: e.target.value }))}
+                          className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={saveCreditInfo}
+                  disabled={savingCredit}
+                  className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--gold-700)' }}
+                >
+                  {savingCredit ? 'Guardando...' : 'Guardar Información Crediticia'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Payment Capacity Calculator */}
+          <div className="card-luxury p-5 space-y-4">
+            <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+              Cálculo de Capacidad de Pago
+            </h2>
+            <p className="text-sm" style={{ color: 'var(--ash)' }}>
+              Fórmula: <strong>Capacidad = (Ingresos Netos - Gastos Fijos) × 40%</strong>
             </p>
+
+            <div className="grid md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ingresos mensuales netos ($)</label>
+                <input type="number" value={monthlyIncome} onChange={(e) => setMonthlyIncome(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Otros ingresos ($)</label>
+                <input type="number" value={otherIncome} onChange={(e) => setOtherIncome(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Gastos fijos mensuales ($)</label>
+                <input type="number" value={monthlyExpenses} onChange={(e) => setMonthlyExpenses(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                  placeholder="Renta, servicios, préstamos..."
+                />
+              </div>
+            </div>
+
+            <button onClick={calculateCapacity}
+              className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+              style={{ backgroundColor: 'var(--gold-700)' }}
+            >
+              Calcular Capacidad
+            </button>
+
+            {/* Result */}
+            {capacityResult && (
+              <div className={`p-4 rounded-lg border ${capacityResult.qualifies ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  {capacityResult.qualifies ? (
+                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-red-600" />
+                  )}
+                  <p className={`font-semibold text-lg ${capacityResult.qualifies ? 'text-green-800' : 'text-red-800'}`}>
+                    {capacityResult.qualifies ? '✅ Cliente califica' : '❌ No califica'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <p style={{ color: 'var(--ash)' }}>Ingreso total</p>
+                    <p className="font-semibold">{fmt(capacityResult.monthly_net_income)}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: 'var(--ash)' }}>Gastos fijos</p>
+                    <p className="font-semibold">{fmt(capacityResult.monthly_fixed_expenses)}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: 'var(--ash)' }}>Capacidad de pago (40%)</p>
+                    <p className="font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(capacityResult.payment_capacity)}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: 'var(--ash)' }}>Pago mensual propuesto</p>
+                    <p className="font-semibold">{fmt(capacityResult.proposed_monthly)}</p>
+                  </div>
+                </div>
+
+                <p className="text-xs mt-3" style={{ color: 'var(--slate)' }}>
+                  Relación ingreso-deuda: {capacityResult.ratio.toFixed(1)}% (máx recomendado: 40%)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =================== TAB: TERMS & DECISION =================== */}
+      {activeTab === 'terms' && (
+        <div className="space-y-6">
+          {/* Contract Terms */}
+          {canReview && (
+            <div className="card-luxury p-6">
+              <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                <Calculator className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
+                Términos del Contrato
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div>
+                  <label className="label">Renta Mensual *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+                    <input type="number" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)}
+                      placeholder={String(estimatedMonthly) || '695'}
+                      className="input pl-8"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Plazo (meses) *</label>
+                  <select value={termMonths} onChange={(e) => setTermMonths(e.target.value)} className="input">
+                    <option value="">Seleccionar</option>
+                    <option value="12">12 meses (1 año)</option>
+                    <option value="24">24 meses (2 años)</option>
+                    <option value="36">36 meses (3 años)</option>
+                    <option value="48">48 meses (4 años)</option>
+                    <option value="60">60 meses (5 años)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Enganche</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
+                      placeholder="0"
+                      className="input pl-8"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Preview */}
+              {(monthlyRent || estimatedMonthly) && termMonths && (
+                <div className="card-flat mb-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total RTO</p>
+                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
+                        {fmt((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Precio Venta</p>
+                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        {fmt(salePrice)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
+                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
+                        {fmt(((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP)) - salePrice)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
+                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--info)' }}>
+                        {salePrice ? (
+                          (((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP)) / salePrice * 100 - 100).toFixed(1)
+                        ) : '0'}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Review Notes */}
+              <div className="mb-6">
+                <label className="label">Notas de Revisión</label>
+                <textarea
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder="Notas sobre la decisión..."
+                  className="input"
+                  rows={3}
+                  style={{ minHeight: 'auto' }}
+                />
+              </div>
+
+              {/* Readiness indicator */}
+              <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${kycVerified ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  {kycVerified ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  {kycVerified ? 'Identidad verificada' : 'Identidad pendiente'}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${capacityResult?.qualifies ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  {capacityResult?.qualifies ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  {capacityResult?.qualifies ? 'Capacidad de pago OK' : 'Capacidad de pago pendiente'}
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleReview('approved')}
+                  disabled={reviewing}
+                  className="btn btn-sm text-white"
+                  style={{ backgroundColor: 'var(--success)' }}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Aprobar
+                </button>
+                <button
+                  onClick={() => handleReview('rejected')}
+                  disabled={reviewing}
+                  className="btn-danger btn-sm"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Rechazar
+                </button>
+                <button
+                  onClick={() => handleReview('needs_info')}
+                  disabled={reviewing}
+                  className="btn-secondary btn-sm"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  Solicitar Más Info
+                </button>
+                <button
+                  onClick={() => handleReview('under_review')}
+                  disabled={reviewing}
+                  className="btn-ghost btn-sm"
+                >
+                  En Revisión
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Review Result (if already reviewed) */}
+          {app.review_notes && !canReview && (
+            <div className="card-luxury p-6">
+              <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Resultado de Revisión</h3>
+              <p style={{ color: 'var(--charcoal)' }}>{app.review_notes}</p>
+              {app.reviewed_at && (
+                <p className="text-sm mt-2" style={{ color: 'var(--ash)' }}>
+                  Revisado por {app.reviewed_by || 'Admin'} el {new Date(app.reviewed_at).toLocaleDateString('es-MX')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Approved — link to generate contract */}
+          {app.status === 'approved' && (
+            <div className="card-luxury p-5 text-center space-y-3" style={{ backgroundColor: 'var(--success-light)' }}>
+              <CheckCircle2 className="w-8 h-8 mx-auto" style={{ color: 'var(--success)' }} />
+              <p className="font-semibold" style={{ color: 'var(--success)' }}>
+                Cliente aprobado para Rent-to-Own
+              </p>
+              <Link
+                href="/capital/contracts"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: 'var(--gold-700)' }}
+              >
+                <FileSignature className="w-4 h-4" />
+                Ir a Generar Contrato
+              </Link>
+            </div>
           )}
         </div>
       )}
@@ -616,7 +1059,7 @@ function InfoRow({ label, value, highlight }: { label: string; value: string | n
   return (
     <div className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: 'var(--sand)' }}>
       <span className="text-sm" style={{ color: 'var(--slate)' }}>{label}</span>
-      <span className={`text-sm font-medium ${highlight ? '' : ''}`} 
+      <span className="text-sm font-medium"
             style={{ color: highlight ? 'var(--gold-700)' : 'var(--charcoal)' }}>
         {value || 'N/A'}
       </span>
@@ -636,4 +1079,3 @@ function StatusBadge({ status }: { status: string }) {
   const s = styles[status] || styles.submitted
   return <span className="badge" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
 }
-

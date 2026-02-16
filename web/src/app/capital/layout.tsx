@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   BarChart3,
   ArrowRightLeft,
-  ShieldCheck,
   Calculator,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
@@ -39,8 +38,7 @@ const navigationSections: NavSection[] = [
   {
     title: 'Clientes',
     items: [
-      { name: 'Solicitudes RTO', href: '/capital/applications', icon: FileCheck },
-      { name: 'Filtrar Clientes', href: '/capital/qualify', icon: ShieldCheck },
+      { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
       { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
     ],
@@ -285,8 +283,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
   
   const labels: Record<string, string> = {
     capital: 'Dashboard',
-    applications: 'Solicitudes RTO',
-    qualify: 'Filtrar Clientes',
+    applications: 'Clientes RTO',
     kyc: 'Verificación KYC',
     contracts: 'Contratos',
     payments: 'Pagos',

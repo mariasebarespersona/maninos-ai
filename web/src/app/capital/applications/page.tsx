@@ -2,40 +2,67 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { FileCheck, User, MapPin, DollarSign, Clock, Eye, Filter } from 'lucide-react'
+import {
+  Users, Search, ShieldCheck, DollarSign, Home,
+  Clock, CheckCircle2, XCircle, ArrowRight, Loader2,
+  AlertTriangle, Filter,
+} from 'lucide-react'
 
-interface RTOApplication {
+interface Application {
   id: string
   status: string
-  monthly_income: number | null
-  employment_status: string | null
-  employer_name: string | null
-  time_at_job: string | null
   desired_term_months: number | null
   desired_down_payment: number | null
-  review_notes: string | null
-  reviewed_at: string | null
+  monthly_income: number | null
   created_at: string
-  clients: { id: string; name: string; email: string; phone: string; monthly_income?: number }
-  properties: { id: string; address: string; city: string; state: string; sale_price: number; photos?: string[] }
-  sales: { id: string; sale_price: number; status: string }
+  clients: {
+    id: string
+    name: string
+    email: string
+    phone: string
+    kyc_verified: boolean
+    kyc_status: string
+  }
+  properties: {
+    id: string
+    address: string
+    city: string
+    state: string
+    sale_price: number
+    photos: string[]
+  }
+  sales: {
+    id: string
+    sale_price: number
+    status: string
+  }
+}
+
+type StatusFilter = 'all' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'needs_info'
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; icon: typeof Clock }> = {
+  submitted: { label: 'Nuevo', bg: 'var(--warning-light)', color: 'var(--warning)', icon: Clock },
+  under_review: { label: 'En Revisión', bg: 'var(--info-light)', color: 'var(--info)', icon: Search },
+  needs_info: { label: 'Info Pendiente', bg: '#fff3cd', color: '#856404', icon: AlertTriangle },
+  approved: { label: 'Aprobado', bg: 'var(--success-light)', color: 'var(--success)', icon: CheckCircle2 },
+  rejected: { label: 'Rechazado', bg: 'var(--error-light)', color: 'var(--error)', icon: XCircle },
 }
 
 export default function ApplicationsPage() {
-  const [applications, setApplications] = useState<RTOApplication[]>([])
+  const [applications, setApplications] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('')
+  const [filter, setFilter] = useState<StatusFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     loadApplications()
-  }, [filter])
+  }, [])
 
   const loadApplications = async () => {
     try {
-      const params = filter ? `?status=${filter}` : ''
-      const res = await fetch(`/api/capital/applications${params}`)
+      const res = await fetch('/api/capital/applications')
       const data = await res.json()
-      if (data.ok) setApplications(data.applications)
+      if (data.ok) setApplications(data.applications || [])
     } catch (err) {
       console.error('Error loading applications:', err)
     } finally {
@@ -43,133 +70,176 @@ export default function ApplicationsPage() {
     }
   }
 
-  const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n)
+  const filtered = applications.filter((app) => {
+    if (filter !== 'all' && app.status !== filter) return false
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const name = app.clients?.name?.toLowerCase() || ''
+      const email = app.clients?.email?.toLowerCase() || ''
+      const addr = app.properties?.address?.toLowerCase() || ''
+      if (!name.includes(q) && !email.includes(q) && !addr.includes(q)) return false
+    }
+    return true
+  })
 
-  const statusStyles: Record<string, { bg: string; color: string; label: string }> = {
-    submitted: { bg: 'var(--warning-light)', color: 'var(--warning)', label: 'Pendiente' },
-    under_review: { bg: 'var(--info-light)', color: 'var(--info)', label: 'En Revisión' },
-    needs_info: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Info Requerida' },
-    approved: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Aprobada' },
-    rejected: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Rechazada' },
-    cancelled: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Cancelada' },
+  const stats = {
+    total: applications.length,
+    submitted: applications.filter(a => a.status === 'submitted').length,
+    under_review: applications.filter(a => a.status === 'under_review').length,
+    approved: applications.filter(a => a.status === 'approved').length,
+    rejected: applications.filter(a => a.status === 'rejected').length,
+  }
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Solicitudes RTO</h1>
-          <p style={{ color: 'var(--slate)' }}>
-            Revisión y aprobación de solicitudes Rent-to-Own
-          </p>
+      <div>
+        <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>
+          Clientes RTO
+        </h1>
+        <p className="mt-1" style={{ color: 'var(--slate)' }}>
+          Solicitudes, verificación de identidad y capacidad de pago
+        </p>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {[
+          { label: 'Total', value: stats.total, color: 'var(--charcoal)' },
+          { label: 'Nuevos', value: stats.submitted, color: 'var(--warning)' },
+          { label: 'En Revisión', value: stats.under_review, color: 'var(--info)' },
+          { label: 'Aprobados', value: stats.approved, color: 'var(--success)' },
+          { label: 'Rechazados', value: stats.rejected, color: 'var(--error)' },
+        ].map((s) => (
+          <div key={s.label} className="card-luxury p-3 text-center">
+            <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--ash)' }} />
+          <input
+            type="text"
+            placeholder="Buscar por nombre, email o dirección..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm"
+            style={{ borderColor: 'var(--stone)', backgroundColor: 'white' }}
+          />
         </div>
-        
-        {/* Filter */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4" style={{ color: 'var(--ash)' }} />
-          <select 
-            value={filter} 
-            onChange={(e) => setFilter(e.target.value)}
-            className="input py-2 px-3 text-sm"
-            style={{ minHeight: 'auto', width: 'auto' }}
-          >
-            <option value="">Todas</option>
-            <option value="submitted">Pendientes</option>
-            <option value="under_review">En Revisión</option>
-            <option value="needs_info">Info Requerida</option>
-            <option value="approved">Aprobadas</option>
-            <option value="rejected">Rechazadas</option>
-          </select>
+
+        {/* Status filter */}
+        <div className="flex gap-1.5 flex-wrap">
+          {(['all', 'submitted', 'under_review', 'approved', 'rejected'] as StatusFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filter === f ? 'text-white' : ''
+              }`}
+              style={{
+                backgroundColor: filter === f ? 'var(--gold-700)' : 'var(--cream)',
+                color: filter === f ? 'white' : 'var(--slate)',
+              }}
+            >
+              {f === 'all' ? 'Todos' : STATUS_CONFIG[f]?.label || f}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Applications List */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--gold-600)' }} />
-        </div>
-      ) : applications.length === 0 ? (
-        <div className="card-luxury p-12 text-center">
-          <FileCheck className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-          <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>
-            No hay solicitudes {filter ? `con estado "${statusStyles[filter]?.label || filter}"` : ''}
-          </h3>
-          <p className="mt-2" style={{ color: 'var(--slate)' }}>
-            Las solicitudes RTO del Portal Clientes aparecerán aquí
+      {/* Client cards */}
+      {filtered.length === 0 ? (
+        <div className="card-luxury p-10 text-center">
+          <Users className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--ash)' }} />
+          <p style={{ color: 'var(--slate)' }}>
+            {applications.length === 0 ? 'No hay solicitudes RTO todavía' : 'No hay resultados con los filtros aplicados'}
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {applications.map((app) => {
-            const s = statusStyles[app.status] || statusStyles.submitted
+        <div className="space-y-3">
+          {filtered.map((app) => {
+            const statusCfg = STATUS_CONFIG[app.status] || STATUS_CONFIG.submitted
+            const StatusIcon = statusCfg.icon
+            const kycOk = app.clients?.kyc_verified
+            const hasIncome = !!app.monthly_income
+
             return (
               <Link
                 key={app.id}
                 href={`/capital/applications/${app.id}`}
-                className="card-luxury block hover:border-gold-400 transition-colors"
+                className="card-luxury p-4 flex items-center gap-4 hover:border-gold-400 transition-colors group"
               >
-                <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Left: Client + Property Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                             style={{ backgroundColor: 'var(--gold-100)' }}>
-                          <User className="w-5 h-5" style={{ color: 'var(--gold-700)' }} />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold" style={{ color: 'var(--ink)' }}>
-                            {app.clients?.name || 'Cliente'}
-                          </h3>
-                          <p className="text-sm" style={{ color: 'var(--slate)' }}>
-                            {app.clients?.email} · {app.clients?.phone}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="ml-13 space-y-1 mt-3">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
-                          <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                            {app.properties?.address}{app.properties?.city ? `, ${app.properties.city}` : ''}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
-                          <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                            Precio: {fmt(app.properties?.sale_price || 0)}
-                            {app.monthly_income ? ` · Ingresos: ${fmt(app.monthly_income)}/mes` : ''}
-                          </span>
-                        </div>
-                        {app.desired_term_months && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
-                            <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                              Plazo deseado: {app.desired_term_months} meses
-                              {app.desired_down_payment ? ` · Enganche: ${fmt(app.desired_down_payment)}` : ''}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                {/* Photo */}
+                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                  {app.properties?.photos?.[0] ? (
+                    <img src={app.properties.photos[0]} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Home className="w-6 h-6" style={{ color: 'var(--ash)' }} />
                     </div>
+                  )}
+                </div>
 
-                    {/* Right: Status + Date */}
-                    <div className="text-right flex-shrink-0">
-                      <span className="badge" style={{ backgroundColor: s.bg, color: s.color }}>
-                        {s.label}
-                      </span>
-                      <p className="text-xs mt-2" style={{ color: 'var(--ash)' }}>
-                        {new Date(app.created_at).toLocaleDateString('es-MX', { 
-                          day: 'numeric', month: 'short', year: 'numeric' 
-                        })}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2 justify-end" style={{ color: 'var(--gold-600)' }}>
-                        <Eye className="w-4 h-4" />
-                        <span className="text-xs font-medium">Ver detalle</span>
-                      </div>
-                    </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
+                      {app.clients?.name || 'Sin nombre'}
+                    </p>
+                    <span className="badge text-[10px]" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>
+                      {statusCfg.label}
+                    </span>
                   </div>
+                  <p className="text-sm truncate" style={{ color: 'var(--slate)' }}>
+                    {app.properties?.address}, {app.properties?.city}
+                  </p>
+                  <div className="flex items-center gap-4 mt-1.5 text-xs" style={{ color: 'var(--ash)' }}>
+                    <span className="font-medium" style={{ color: 'var(--gold-700)' }}>
+                      {fmt(app.properties?.sale_price || 0)}
+                    </span>
+                    {app.desired_down_payment != null && (
+                      <span>Enganche: {fmt(app.desired_down_payment)}</span>
+                    )}
+                    {app.desired_term_months != null && (
+                      <span>{app.desired_term_months} meses</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Verification badges */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: kycOk ? 'var(--success-light)' : 'var(--cream)' }}
+                    title={kycOk ? 'Identidad verificada' : 'Identidad pendiente'}
+                  >
+                    <ShieldCheck className="w-4 h-4" style={{ color: kycOk ? 'var(--success)' : 'var(--ash)' }} />
+                  </div>
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: hasIncome ? 'var(--success-light)' : 'var(--cream)' }}
+                    title={hasIncome ? 'Info financiera disponible' : 'Capacidad de pago pendiente'}
+                  >
+                    <DollarSign className="w-4 h-4" style={{ color: hasIncome ? 'var(--success)' : 'var(--ash)' }} />
+                  </div>
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--slate)' }} />
                 </div>
               </Link>
             )
@@ -179,4 +249,3 @@ export default function ApplicationsPage() {
     </div>
   )
 }
-
