@@ -20,6 +20,7 @@ import {
   Calculator,
   FileText,
   Users,
+  BookOpen,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -56,6 +57,7 @@ const navigationSections: NavSection[] = [
     title: 'Reportes',
     items: [
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
+      { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
       { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
       { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
     ],
@@ -295,6 +297,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     flows: 'Flujo Capital',
     analysis: 'Análisis',
     reports: 'Reportes',
+    accounting: 'Contabilidad',
     new: 'Nuevo',
     review: 'Revisar',
   }

@@ -14,6 +14,7 @@ from .reports import router as reports_router
 from .capital_flows import router as flows_router
 from .analysis import router as analysis_router
 from .promissory_notes import router as promissory_notes_router
+from .accounting import router as accounting_router
 
 router = APIRouter()
 
@@ -27,4 +28,5 @@ router.include_router(reports_router)
 router.include_router(flows_router)
 router.include_router(analysis_router)
 router.include_router(promissory_notes_router)
+router.include_router(accounting_router)
 
