@@ -32,6 +32,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Landmark,
 } from 'lucide-react'
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -636,6 +637,39 @@ export default function PropertyDetailPage() {
           </div>
         </div>
 
+        {/* RTO Context Banner — shown when property has a sale transfer to Capital */}
+        {transfers.sale && transfers.sale.to_name === 'Maninos Capital LLC' && (
+          <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-start gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0">
+              <Landmark className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-purple-900 text-sm">
+                🏛 Propiedad gestionada por Maninos Capital (RTO)
+              </h3>
+              <p className="text-purple-700 text-xs mt-1">
+                Esta propiedad fue adquirida por Capital para un contrato Rent-to-Own. 
+                Los documentos de transferencia deben estar a nombre de <strong>Maninos Capital LLC</strong>.
+              </p>
+              <div className="flex items-center gap-4 mt-2 text-xs text-purple-600">
+                <span className="flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" />
+                  Estado docs: <strong className="ml-1">
+                    {transfers.sale.status === 'completed' ? '✅ Completado' 
+                      : transfers.sale.status === 'in_progress' ? '⏳ En proceso'
+                      : '📋 Pendiente'}
+                  </strong>
+                </span>
+                {property.status === 'reserved' && (
+                  <span className="text-orange-600 font-medium">
+                    ⚠️ Pendiente: marcar como vendida al activar contrato
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Details Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Info */}
@@ -918,15 +952,26 @@ export default function PropertyDetailPage() {
               </div>
             )}
 
-            {/* Sale Transfer: Maninos → Client (only for sold properties) */}
+            {/* Sale Transfer: Maninos → Capital (RTO) or Maninos → Client */}
             {transfers.sale ? (
-              <TitleTransferCard 
-                transfer={transfers.sale} 
-                onUpdate={fetchTransfers}
-              />
+              <>
+                {transfers.sale.to_name === 'Maninos Capital LLC' && (
+                  <div className="text-xs text-purple-600 font-medium flex items-center gap-1 mb-1 ml-1">
+                    <Landmark className="w-3 h-3" /> Transferencia RTO a Capital
+                  </div>
+                )}
+                <TitleTransferCard 
+                  transfer={transfers.sale} 
+                  onUpdate={fetchTransfers}
+                />
+              </>
             ) : property.status === 'sold' ? (
               <div className="p-4 bg-amber-50 rounded-lg text-center text-amber-700 text-sm">
                 Transferencia de venta pendiente de registro
+              </div>
+            ) : property.status === 'reserved' ? (
+              <div className="p-4 bg-purple-50 rounded-lg text-center text-purple-600 text-sm">
+                Propiedad reservada — los documentos de venta se generarán cuando Capital apruebe la solicitud RTO
               </div>
             ) : null}
           </div>

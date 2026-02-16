@@ -178,6 +178,40 @@ async def review_application(application_id: str, review: ApplicationReview):
                 .execute()
             
             if not existing_transfer.data:
+                # Look for existing purchase transfer (Seller → Homes) to carry over documents
+                purchase_transfer = sb.table("title_transfers") \
+                    .select("documents_checklist") \
+                    .eq("property_id", application["property_id"]) \
+                    .eq("transfer_type", "purchase") \
+                    .execute()
+                
+                # Build documents checklist, copying any existing docs from purchase
+                docs_checklist = {
+                    "bill_of_sale": False,
+                    "titulo": False,
+                    "title_application": False,
+                    "tax_receipt": False,
+                    "id_copies": False,
+                    "lien_release": False,
+                    "notarized_forms": False,
+                }
+                
+                if purchase_transfer.data:
+                    purchase_docs = purchase_transfer.data[0].get("documents_checklist", {})
+                    for doc_key in ["bill_of_sale", "titulo", "title_application", "tax_receipt", "id_copies", "lien_release", "notarized_forms"]:
+                        src = purchase_docs.get(doc_key)
+                        if src and isinstance(src, dict) and src.get("file_url"):
+                            # Copy the file URL from the purchase transfer
+                            docs_checklist[doc_key] = {
+                                "checked": True,
+                                "file_url": src["file_url"],
+                                "uploaded_at": src.get("uploaded_at"),
+                                "copied_from": "purchase_transfer",
+                            }
+                            logger.info(f"[capital] Copied {doc_key} from purchase transfer for property {application['property_id']}")
+                        elif src and isinstance(src, bool) and src:
+                            docs_checklist[doc_key] = True
+                
                 sb.table("title_transfers").insert({
                     "property_id": application["property_id"],
                     "sale_id": application["sale_id"],
@@ -185,17 +219,10 @@ async def review_application(application_id: str, review: ApplicationReview):
                     "from_name": "Maninos Homes LLC",
                     "to_name": "Maninos Capital LLC",
                     "status": "pending",
-                    "documents_checklist": {
-                        "bill_of_sale": False,
-                        "titulo": False,
-                        "title_application": False,
-                        "tax_receipt": False,
-                        "id_copies": False,
-                        "lien_release": False,
-                        "notarized_forms": False,
-                    },
+                    "documents_checklist": docs_checklist,
                     "notes": f"Adquisición RTO - Capital adquiere propiedad de Homes. Solicitud {application_id}"
                 }).execute()
+                logger.info(f"[capital] Title transfer Homes→Capital created for property {application['property_id']}")
         
         elif review.status == "rejected":
             # Update sale status back and re-publish property

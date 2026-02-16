@@ -89,8 +89,8 @@ async def sync_capital_to_homes():
     Sync Capital actions back to Homes.
     
     - When an RTO application is rejected → re-publish property
-    - When an RTO contract is completed → mark property as sold
-    - When an RTO contract is delivered → mark property as sold
+    - When an RTO contract is active → mark property as sold (Capital bought it)
+    - When an RTO contract is completed/delivered → ensure property is sold
     """
     try:
         synced = 0
@@ -103,6 +103,16 @@ async def sync_capital_to_homes():
         
         for app in (rejected_apps.data or []):
             # Check if the property is still in a state that should be changed
+            # But only if the sale is actually cancelled (not just under review)
+            sale = sb.table("sales") \
+                .select("status") \
+                .eq("id", app["sale_id"]) \
+                .execute()
+            
+            sale_cancelled = sale.data and sale.data[0].get("status") == "cancelled"
+            if not sale_cancelled:
+                continue
+            
             prop = sb.table("properties") \
                 .select("status") \
                 .eq("id", app["property_id"]) \
@@ -116,10 +126,30 @@ async def sync_capital_to_homes():
                 synced += 1
                 logger.info(f"[portal_links] Property {app['property_id']} re-published (RTO rejected)")
         
-        # 2. Delivered contracts → ensure property is sold
+        # 2. Active contracts → ensure property is sold (Capital has purchased from Homes)
+        active_contracts = sb.table("rto_contracts") \
+            .select("id, property_id, status") \
+            .in_("status", ["active", "late"]) \
+            .execute()
+        
+        for contract in (active_contracts.data or []):
+            prop = sb.table("properties") \
+                .select("status") \
+                .eq("id", contract["property_id"]) \
+                .single() \
+                .execute()
+            
+            if prop.data and prop.data["status"] != "sold":
+                sb.table("properties").update({
+                    "status": "sold",
+                }).eq("id", contract["property_id"]).execute()
+                synced += 1
+                logger.info(f"[portal_links] Property {contract['property_id']} marked SOLD (active RTO contract)")
+        
+        # 3. Delivered/completed contracts → ensure property is sold
         delivered = sb.table("rto_contracts") \
             .select("id, property_id, status") \
-            .eq("status", "delivered") \
+            .in_("status", ["completed", "delivered"]) \
             .execute()
         
         for contract in (delivered.data or []):

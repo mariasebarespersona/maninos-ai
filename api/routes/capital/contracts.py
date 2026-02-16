@@ -386,6 +386,20 @@ async def activate_contract(contract_id: str, data: ContractActivate):
             "status": "rto_active"
         }).eq("id", c["sale_id"]).execute()
         
+        # Mark property as sold (Capital has effectively purchased it from Homes)
+        sb.table("properties").update({
+            "status": "sold"
+        }).eq("id", c["property_id"]).execute()
+        logger.info(f"[capital] Property {c['property_id']} marked as SOLD (Capital contract activated)")
+        
+        # Update Homes→Capital transfer to in_progress (contract active, docs being processed)
+        sb.table("title_transfers").update({
+            "status": "in_progress",
+        }).eq("property_id", c["property_id"]) \
+          .eq("to_name", "Maninos Capital LLC") \
+          .eq("transfer_type", "sale") \
+          .execute()
+        
         # Update client status
         sb.table("clients").update({
             "status": "rto_active"

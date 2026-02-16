@@ -523,6 +523,21 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               </span>
             </div>
 
+            {/* RTO summary info */}
+            {sale.sale_type === 'rto' && (sale.rto_term_months || sale.rto_down_payment || sale.rto_monthly_payment) && (
+              <div className="flex items-center gap-3 mt-2 text-xs text-purple-600 bg-purple-50 px-3 py-1.5 rounded-lg w-fit">
+                {sale.rto_down_payment != null && sale.rto_down_payment > 0 && (
+                  <span>Enganche: <strong>${sale.rto_down_payment.toLocaleString()}</strong></span>
+                )}
+                {sale.rto_term_months && (
+                  <span>Plazo: <strong>{sale.rto_term_months} meses</strong></span>
+                )}
+                {sale.rto_monthly_payment && (
+                  <span>Mensual: <strong>${sale.rto_monthly_payment.toLocaleString()}</strong></span>
+                )}
+              </div>
+            )}
+
             {/* Quick Action Buttons (expandable sections) */}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {/* Commission toggle */}
@@ -570,7 +585,17 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
 
           {/* Actions */}
           <div className="flex gap-2 flex-shrink-0">
-            {sale.status === 'pending' && (
+            {/* RTO sales: link to Capital portal */}
+            {sale.sale_type === 'rto' && (
+              <Link
+                href="/capital/applications"
+                className="btn-ghost text-sm py-2 flex items-center gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+              >
+                <Landmark className="w-4 h-4" />
+                Ver en Capital
+              </Link>
+            )}
+            {sale.status === 'pending' && sale.sale_type !== 'rto' && (
               <>
                 <button 
                   onClick={() => setShowPaymentModal(true)}
@@ -675,48 +700,86 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
         {/* Documents (expandable) */}
         {showDocs && (
           <div className="mt-3 pt-3 border-t border-navy-100">
-            <div className="p-4 bg-navy-50 rounded-xl">
-              <h4 className="font-semibold text-navy-800 mb-3 flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Documentos de la Venta
-              </h4>
-              <p className="text-xs text-navy-500 mb-3">
-                Estos documentos se comparten con el cliente al realizar la compra.
-              </p>
-              <div className="space-y-2">
-                {/* Bill of Sale */}
-                <DocRow 
-                  label="Bill of Sale" 
-                  description="Factura de compra-venta"
-                  status={sale.status === 'completed' ? 'ready' : 'pending'}
-                  saleId={sale.id}
-                />
-                {/* Title Application */}
-                <DocRow 
-                  label="Aplicación Cambio de Título" 
-                  description="Formulario TDHCA"
-                  status="template"
-                  saleId={sale.id}
-                />
-                {/* Title */}
-                <DocRow 
-                  label="Título (TDHCA)" 
-                  description="Título de la propiedad"
-                  status="pending"
-                  saleId={sale.id}
-                />
+            {sale.sale_type === 'rto' ? (
+              /* RTO: Show Capital transfer info */
+              <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+                <h4 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
+                  <Landmark className="w-4 h-4" />
+                  Documentos RTO — Maninos Capital
+                </h4>
+                <p className="text-xs text-purple-600 mb-3">
+                  Los documentos de esta venta están a nombre de <strong>Maninos Capital LLC</strong>.
+                  Capital gestiona la transferencia de documentos al cliente al completar el contrato RTO.
+                </p>
+                <div className="space-y-2">
+                  <DocRow 
+                    label="Bill of Sale" 
+                    description="Homes → Capital"
+                    status={['rto_approved', 'rto_active', 'completed'].includes(sale.status) ? 'ready' : 'pending'}
+                    saleId={sale.id}
+                  />
+                  <DocRow 
+                    label="Título (TDHCA)" 
+                    description="Transferencia a Capital"
+                    status={['rto_active', 'completed'].includes(sale.status) ? 'ready' : 'pending'}
+                    saleId={sale.id}
+                  />
+                  <DocRow 
+                    label="Aplicación Cambio de Título" 
+                    description="TDHCA a nombre de Capital"
+                    status={['rto_active', 'completed'].includes(sale.status) ? 'ready' : 'pending'}
+                    saleId={sale.id}
+                  />
+                </div>
+                {sale.property_id && (
+                  <Link 
+                    href={`/homes/properties/${sale.property_id}`}
+                    className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1 mt-3"
+                  >
+                    Ver transferencia completa en propiedad →
+                  </Link>
+                )}
               </div>
-              
-              {/* Link to property for full doc management */}
-              {sale.property_id && (
-                <Link 
-                  href={`/homes/properties/${sale.property_id}`}
-                  className="text-sm text-gold-600 hover:text-gold-700 flex items-center gap-1 mt-3"
-                >
-                  Ver documentos completos en propiedad →
-                </Link>
-              )}
-            </div>
+            ) : (
+              /* Contado: Original direct sale docs */
+              <div className="p-4 bg-navy-50 rounded-xl">
+                <h4 className="font-semibold text-navy-800 mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Documentos de la Venta
+                </h4>
+                <p className="text-xs text-navy-500 mb-3">
+                  Estos documentos se comparten con el cliente al realizar la compra.
+                </p>
+                <div className="space-y-2">
+                  <DocRow 
+                    label="Bill of Sale" 
+                    description="Factura de compra-venta"
+                    status={sale.status === 'completed' ? 'ready' : 'pending'}
+                    saleId={sale.id}
+                  />
+                  <DocRow 
+                    label="Aplicación Cambio de Título" 
+                    description="Formulario TDHCA"
+                    status="template"
+                    saleId={sale.id}
+                  />
+                  <DocRow 
+                    label="Título (TDHCA)" 
+                    description="Título de la propiedad"
+                    status="pending"
+                    saleId={sale.id}
+                  />
+                </div>
+                {sale.property_id && (
+                  <Link 
+                    href={`/homes/properties/${sale.property_id}`}
+                    className="text-sm text-gold-600 hover:text-gold-700 flex items-center gap-1 mt-3"
+                  >
+                    Ver documentos completos en propiedad →
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
