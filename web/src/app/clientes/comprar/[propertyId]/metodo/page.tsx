@@ -18,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
+import { calculateRTOMonthly } from '@/lib/rto-calculator'
 
 interface Property {
   id: string
@@ -156,12 +157,17 @@ export default function PaymentMethodPage() {
 
   const property = clientData.property
 
-  // Pull from simulator if available, otherwise default 36mo
+  // Pull from simulator if available, otherwise calculate with formula
   const simRaw = typeof window !== 'undefined' ? sessionStorage.getItem('maninos_rto_sim') : null
   const simParams = simRaw ? JSON.parse(simRaw) : null
-  const estimatedMonthly = simParams?.monthly_payment ?? Math.round((property.sale_price || 0) / 36)
   const simTermMonths = simParams?.term_months ?? 36
   const simDownPayment = simParams?.down_payment_amount ?? 0
+  const estimatedMonthly = simParams?.monthly_payment
+    ?? calculateRTOMonthly({
+      salePrice: property.sale_price || 0,
+      downPayment: 0,
+      termMonths: 36,
+    }).monthlyPayment
 
   return (
     <div className="min-h-screen bg-slate-50">

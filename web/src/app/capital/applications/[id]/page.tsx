@@ -10,6 +10,7 @@ import {
   Home, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
+import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
 
 interface ApplicationDetail {
   id: string
@@ -89,6 +90,7 @@ export default function ApplicationDetailPage() {
   const [monthlyRent, setMonthlyRent] = useState('')
   const [termMonths, setTermMonths] = useState('')
   const [downPayment, setDownPayment] = useState('')
+  const [annualRatePct, setAnnualRatePct] = useState(DEFAULT_ANNUAL_RATE * 100) // editable %
 
   // Credit form (expanded)
   const [showCreditForm, setShowCreditForm] = useState(false)
@@ -359,8 +361,16 @@ export default function ApplicationDetailPage() {
     const salePrice = app?.properties?.sale_price || 0
     const dp = app?.desired_down_payment || 0
     const tm = app?.desired_term_months || 36
-    const financeAmount = salePrice - dp
-    const proposedMonthly = tm > 0 ? financeAmount / tm : 0
+
+    // Use the real RTO formula with interest
+    const rtoCalc = calculateRTOMonthly({
+      salePrice,
+      downPayment: dp,
+      termMonths: tm,
+      annualRate: annualRatePct / 100,
+    })
+
+    const proposedMonthly = rtoCalc.monthlyPayment
 
     setCapacityResult({
       monthly_net_income: totalIncome,
@@ -383,24 +393,26 @@ export default function ApplicationDetailPage() {
         reviewed_by: 'admin',
       }
       if (status === 'approved') {
-        if (!monthlyRent && !termMonths) {
-          // Use desired params if no manual override
-          const salePrice = app?.properties?.sale_price || 0
-          const dp = app?.desired_down_payment || 0
-          const tm = app?.desired_term_months || 36
-          body.monthly_rent = tm > 0 ? Math.round((salePrice - dp) / tm) : 0
-          body.term_months = tm
-          body.down_payment = dp
-        } else {
-          if (!monthlyRent || !termMonths) {
-            toast.warning('Completa la renta mensual y el plazo antes de aprobar')
-            setReviewing(false)
-            return
-          }
+        const sp = app?.properties?.sale_price || 0
+        const dp = downPayment ? parseFloat(downPayment) : (app?.desired_down_payment || 0)
+        const tm = termMonths ? parseInt(termMonths) : (app?.desired_term_months || 36)
+
+        if (monthlyRent) {
+          // Capital overrode the monthly rent manually
           body.monthly_rent = parseFloat(monthlyRent)
-          body.term_months = parseInt(termMonths)
-          body.down_payment = downPayment ? parseFloat(downPayment) : 0
+        } else {
+          // Auto-calculate using the RTO formula with interest
+          const rtoCalc = calculateRTOMonthly({
+            salePrice: sp,
+            downPayment: dp,
+            termMonths: tm,
+            annualRate: annualRatePct / 100,
+          })
+          body.monthly_rent = rtoCalc.monthlyPayment
         }
+        body.term_months = tm
+        body.down_payment = dp
+        body.annual_rate = annualRatePct / 100
       }
 
       const res = await fetch(`/api/capital/applications/${id}/review`, {
@@ -453,7 +465,15 @@ export default function ApplicationDetailPage() {
   const salePrice = prop?.sale_price || 0
   const desiredDP = app.desired_down_payment || 0
   const desiredTM = app.desired_term_months || 36
-  const estimatedMonthly = desiredTM > 0 ? Math.round((salePrice - desiredDP) / desiredTM) : 0
+
+  // Real RTO formula for the header display
+  const headerRTO = calculateRTOMonthly({
+    salePrice,
+    downPayment: desiredDP,
+    termMonths: desiredTM,
+    annualRate: annualRatePct / 100,
+  })
+  const estimatedMonthly = headerRTO.monthlyPayment
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -878,7 +898,22 @@ export default function ApplicationDetailPage() {
       )}
 
       {/* =================== TAB: TERMS & DECISION =================== */}
-      {activeTab === 'terms' && (
+      {activeTab === 'terms' && (() => {
+        // Live RTO calculation based on the editable fields
+        const liveDP = downPayment ? parseFloat(downPayment) : desiredDP
+        const liveTM = termMonths ? parseInt(termMonths) : desiredTM
+        const liveRTO = calculateRTOMonthly({
+          salePrice,
+          downPayment: liveDP,
+          termMonths: liveTM,
+          annualRate: annualRatePct / 100,
+        })
+        const liveMonthly = monthlyRent ? parseFloat(monthlyRent) : liveRTO.monthlyPayment
+        const totalRTOIncome = liveMonthly * liveTM + liveDP
+        const margin = totalRTOIncome - salePrice
+        const roi = salePrice > 0 ? ((totalRTOIncome / salePrice) * 100 - 100) : 0
+
+        return (
         <div className="space-y-6">
           {/* Contract Terms */}
           {canReview && (
@@ -888,73 +923,91 @@ export default function ApplicationDetailPage() {
                 Términos del Contrato
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div>
-                  <label className="label">Renta Mensual *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                    <input type="number" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)}
-                      placeholder={String(estimatedMonthly) || '695'}
-                      className="input pl-8"
-                    />
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div>
                   <label className="label">Plazo (meses) *</label>
                   <select value={termMonths} onChange={(e) => setTermMonths(e.target.value)} className="input">
                     <option value="">Seleccionar</option>
                     <option value="12">12 meses (1 año)</option>
+                    <option value="18">18 meses</option>
                     <option value="24">24 meses (2 años)</option>
+                    <option value="30">30 meses</option>
                     <option value="36">36 meses (3 años)</option>
+                    <option value="42">42 meses</option>
                     <option value="48">48 meses (4 años)</option>
+                    <option value="54">54 meses</option>
                     <option value="60">60 meses (5 años)</option>
                   </select>
+                </div>
+                <div>
+                  <label className="label">Tasa Anual (%)</label>
+                  <div className="relative">
+                    <input type="number" step="0.5" min="0" max="100"
+                      value={annualRatePct}
+                      onChange={(e) => setAnnualRatePct(Number(e.target.value))}
+                      className="input pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate text-sm">%</span>
+                  </div>
                 </div>
                 <div>
                   <label className="label">Enganche</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
-                      placeholder="0"
+                      placeholder={desiredDP ? String(desiredDP) : '0'}
                       className="input pl-8"
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="label">Renta Mensual (override)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+                    <input type="number" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)}
+                      placeholder={String(liveRTO.monthlyPayment)}
+                      className="input pl-8"
+                    />
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                    Calculado: {fmt(liveRTO.monthlyPayment)}/mes — dejar vacío para usar cálculo automático
+                  </p>
+                </div>
               </div>
 
-              {/* Financial Preview */}
-              {(monthlyRent || estimatedMonthly) && termMonths && (
-                <div className="card-flat mb-6">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total RTO</p>
-                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
-                        {fmt((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP))}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Precio Venta</p>
-                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--charcoal)' }}>
-                        {fmt(salePrice)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
-                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--success)' }}>
-                        {fmt(((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP)) - salePrice)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
-                      <p className="font-serif text-lg font-semibold" style={{ color: 'var(--info)' }}>
-                        {salePrice ? (
-                          (((parseFloat(monthlyRent) || estimatedMonthly) * parseInt(termMonths) + (downPayment ? parseFloat(downPayment) : desiredDP)) / salePrice * 100 - 100).toFixed(1)
-                        ) : '0'}%
-                      </p>
-                    </div>
+              {/* Interest breakdown */}
+              <div className="card-flat p-4 mb-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>A Financiar</p>
+                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(liveRTO.financeAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Interés Total</p>
+                    <p className="font-semibold" style={{ color: 'var(--warning)' }}>{fmt(Math.round(liveRTO.totalInterest))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Total a Pagar</p>
+                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(Math.round(liveRTO.totalToPay))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total</p>
+                    <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(Math.round(totalRTOIncome))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
+                    <p className="font-serif font-semibold" style={{ color: margin >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(Math.round(margin))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
+                    <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{roi.toFixed(1)}%</p>
                   </div>
                 </div>
-              )}
+                <p className="text-xs mt-3 text-center" style={{ color: 'var(--ash)' }}>
+                  Fórmula: ({fmt(liveRTO.financeAmount)} × {annualRatePct}% × {(liveTM / 12).toFixed(1)} años) = {fmt(Math.round(liveRTO.totalInterest))} interés
+                  &nbsp;→&nbsp; ({fmt(Math.round(liveRTO.totalToPay))} ÷ {liveTM} meses) = {fmt(liveRTO.monthlyPayment)}/mes (redondeado ↑$5)
+                </p>
+              </div>
 
               {/* Review Notes */}
               <div className="mb-6">
@@ -1050,7 +1103,8 @@ export default function ApplicationDetailPage() {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

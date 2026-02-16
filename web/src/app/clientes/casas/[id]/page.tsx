@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   ArrowRight,
 } from 'lucide-react'
+import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
 
 interface Property {
   id: string
@@ -58,11 +59,15 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
   const [termMonths, setTermMonths] = useState(36)
 
   const downPaymentAmount = useMemo(() => Math.round(salePrice * (downPaymentPct / 100)), [salePrice, downPaymentPct])
-  const financeAmount = useMemo(() => salePrice - downPaymentAmount, [salePrice, downPaymentAmount])
-  const monthlyPayment = useMemo(() => {
-    if (termMonths <= 0) return 0
-    return Math.round(financeAmount / termMonths)
-  }, [financeAmount, termMonths])
+
+  const rto = useMemo(() => calculateRTOMonthly({
+    salePrice,
+    downPayment: downPaymentAmount,
+    termMonths,
+  }), [salePrice, downPaymentAmount, termMonths])
+
+  const financeAmount = rto.financeAmount
+  const monthlyPayment = rto.monthlyPayment
 
   const handleProceedRTO = () => {
     // Save simulator params to sessionStorage so they carry through the purchase flow
@@ -71,6 +76,9 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       down_payment_amount: downPaymentAmount,
       term_months: termMonths,
       monthly_payment: monthlyPayment,
+      annual_rate: rto.annualRate,
+      total_interest: rto.totalInterest,
+      total_to_pay: rto.totalToPay,
       sale_price: salePrice,
     }))
     router.push(`/clientes/comprar/${propertyId}`)
@@ -145,9 +153,17 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           <span className="text-gray-600">Enganche</span>
           <span className="font-medium text-green-700">- ${downPaymentAmount.toLocaleString()}</span>
         </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">A financiar</span>
+          <span className="font-medium">${financeAmount.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">Interés ({(rto.annualRate * 100).toFixed(0)}% anual × {(termMonths / 12).toFixed(1)} años)</span>
+          <span className="font-medium text-orange-600">+ ${Math.round(rto.totalInterest).toLocaleString()}</span>
+        </div>
         <div className="flex justify-between border-t pt-2">
-          <span className="text-gray-800 font-semibold">A financiar</span>
-          <span className="font-bold text-navy-900">${financeAmount.toLocaleString()}</span>
+          <span className="text-gray-800 font-semibold">Total a pagar</span>
+          <span className="font-bold text-navy-900">${Math.round(rto.totalToPay).toLocaleString()}</span>
         </div>
       </div>
 
