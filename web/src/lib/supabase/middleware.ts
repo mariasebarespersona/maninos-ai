@@ -71,7 +71,7 @@ export async function updateSession(request: NextRequest) {
 
   // ─── Employee/Admin Portal Routes ─────────────────────────
   // Public admin routes that don't require authentication
-  const publicAdminRoutes = ['/login', '/auth/callback', '/api/', '/mobile']
+  const publicAdminRoutes = ['/login', '/auth/callback', '/api/', '/mobile'] // /mobile redirects to /homes
   const isPublicAdminRoute = publicAdminRoutes.some(route => 
     pathname.startsWith(route)
   ) || pathname === '/'

@@ -496,6 +496,67 @@
 }
 
 /* ============================================================================
+   MOBILE-FIRST RESPONSIVE ENHANCEMENTS
+   Ensures the desktop layouts feel comfortable on small screens
+   ============================================================================ */
+
+/* On mobile: tighter spacing, smaller fonts for dense data */
+@media (max-width: 640px) {
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1.125rem; }
+  
+  .stat-value {
+    font-size: 1.75rem;
+  }
+  
+  .stat-card {
+    padding: 0.875rem;
+  }
+  
+  /* Tables: horizontal scroll */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .table th, .table td {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+  
+  /* Cards: slightly tighter on mobile */
+  .card-luxury {
+    border-radius: 0.625rem;
+  }
+  
+  /* Badges smaller on mobile */
+  .badge {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.625rem;
+  }
+}
+
+/* Touch-friendly: minimum tap target for interactive elements */
+@media (pointer: coarse) {
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+  
+  /* Smaller inline buttons/icons exempt */
+  .badge, .inline-action {
+    min-height: auto;
+  }
+}
+
+/* Safe area insets for phones with notch/home bar */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ============================================================================
    PRINT STYLES
    ============================================================================ */
 @media print {

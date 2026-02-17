@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
+import AIChatWidget from '@/components/AIChatWidget'
 
 interface NavItem {
   name: string
@@ -272,11 +273,14 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
           </div>
         </header>
 
-        {/* Content */}
-        <main className="p-4 lg:p-6 min-h-[calc(100vh-4rem)]">
+        {/* Content — extra bottom padding for floating chat widget */}
+        <main className="p-4 lg:p-6 min-h-[calc(100vh-4rem)] pb-24">
           {children}
         </main>
       </div>
+
+      {/* AI Chat Widget */}
+      <AIChatWidget />
     </div>
   )
 }

@@ -1,16 +1,18 @@
-import Link from 'next/link'
-import { Home, User, Phone } from 'lucide-react'
+'use client'
 
-export const metadata = {
-  title: 'Portal Clientes - Maninos Homes',
-  description: 'Tu casa móvil en Texas. Casas renovadas, listas para vivir.',
-}
+import { useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Home, User, Phone, X, Menu } from 'lucide-react'
 
 export default function ClientPortalLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const pathname = usePathname()
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* Header */}
@@ -18,7 +20,7 @@ export default function ClientPortalLayout({
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link href="/clientes" className="flex items-center gap-3">
+            <Link href="/clientes" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
               <div className="w-10 h-10 bg-gold-500 rounded-lg flex items-center justify-center">
                 <Home className="w-6 h-6 text-navy-900" />
               </div>
@@ -28,7 +30,7 @@ export default function ClientPortalLayout({
               </div>
             </Link>
             
-            {/* Navigation */}
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-6">
               <Link 
                 href="/clientes/casas" 
@@ -46,12 +48,52 @@ export default function ClientPortalLayout({
             </nav>
             
             {/* Mobile menu button */}
-            <button className="md:hidden p-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+            <button 
+              className="md:hidden p-2"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            >
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
             </button>
           </div>
+
+          {/* Mobile Navigation Dropdown */}
+          {mobileMenuOpen && (
+            <nav className="md:hidden pb-4 border-t border-navy-800 pt-3 space-y-1 animate-fade-in">
+              <Link 
+                href="/clientes/casas" 
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-4 py-3 rounded-lg transition-colors ${
+                  pathname.startsWith('/clientes/casas')
+                    ? 'bg-navy-800 text-gold-400'
+                    : 'text-gray-300 hover:bg-navy-800 hover:text-white'
+                }`}
+              >
+                🏠 Ver Casas
+              </Link>
+              <Link 
+                href="/clientes/mi-cuenta" 
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-4 py-3 rounded-lg transition-colors ${
+                  pathname.startsWith('/clientes/mi-cuenta')
+                    ? 'bg-navy-800 text-gold-400'
+                    : 'text-gray-300 hover:bg-navy-800 hover:text-white'
+                }`}
+              >
+                👤 Mi Cuenta
+              </Link>
+              <a
+                href="tel:8327459600"
+                className="block px-4 py-3 rounded-lg text-gray-300 hover:bg-navy-800 hover:text-white transition-colors"
+              >
+                📞 Llamar: (832) 745-9600
+              </a>
+            </nav>
+          )}
         </div>
       </header>
       
@@ -93,7 +135,7 @@ export default function ClientPortalLayout({
               <ul className="space-y-2 text-gray-400">
                 <li className="flex items-center gap-2">
                   <Phone className="w-4 h-4" />
-                  <span>(832) 745-9600</span>
+                  <a href="tel:8327459600" className="hover:text-gold-400">(832) 745-9600</a>
                 </li>
                 <li>Houston, Texas</li>
               </ul>
@@ -108,5 +150,3 @@ export default function ClientPortalLayout({
     </div>
   )
 }
-
-

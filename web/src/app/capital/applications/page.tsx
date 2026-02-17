@@ -184,7 +184,7 @@ export default function ApplicationsPage() {
               <Link
                 key={app.id}
                 href={`/capital/applications/${app.id}`}
-                className="card-luxury p-4 flex items-center gap-4 hover:border-gold-400 transition-colors group"
+                className="card-luxury p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 hover:border-gold-400 transition-colors group"
               >
                 {/* Photo */}
                 <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
@@ -210,7 +210,7 @@ export default function ApplicationsPage() {
                   <p className="text-sm truncate" style={{ color: 'var(--slate)' }}>
                     {app.properties?.address}, {app.properties?.city}
                   </p>
-                  <div className="flex items-center gap-4 mt-1.5 text-xs" style={{ color: 'var(--ash)' }}>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1.5 text-xs" style={{ color: 'var(--ash)' }}>
                     <span className="font-medium" style={{ color: 'var(--gold-700)' }}>
                       {fmt(app.properties?.sale_price || 0)}
                     </span>

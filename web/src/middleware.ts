@@ -1,22 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
-// Mobile user-agent patterns
-const MOBILE_UA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i
-
 export async function middleware(request: NextRequest) {
-  const pathname = request.nextUrl.pathname
-  
-  // Auto-redirect mobile devices visiting "/" to "/mobile"
-  if (pathname === '/') {
-    const ua = request.headers.get('user-agent') || ''
-    if (MOBILE_UA.test(ua)) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/mobile'
-      return NextResponse.redirect(url)
-    }
-  }
-  
+  // No more mobile redirect — the desktop app is fully responsive.
+  // All devices use the same /homes experience with a floating AI chat widget.
   return await updateSession(request)
 }
 
@@ -34,5 +21,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
-
-

@@ -224,7 +224,7 @@ export default function CapitalDashboardPage() {
                 <p className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>
                   Aging de Cartera — {cartera.total_overdue_payments} pagos vencidos
                 </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { key: '0_30_days' as const, label: '0-30 días', color: '#fbbf24' },
                     { key: '31_60_days' as const, label: '31-60 días', color: '#f97316' },

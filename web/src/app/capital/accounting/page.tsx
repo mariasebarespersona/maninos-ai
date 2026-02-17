@@ -769,6 +769,7 @@ function ChartOfAccountsTab() {
         </div>
       ) : (
         <div className="card-luxury overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ backgroundColor: 'var(--pearl)' }}>
@@ -782,6 +783,7 @@ function ChartOfAccountsTab() {
               {tree.map(node => <AccountRow key={node.id} node={node} depth={0} />)}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

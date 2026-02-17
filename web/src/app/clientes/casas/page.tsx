@@ -132,7 +132,7 @@ export default function HouseCatalog() {
           
           {/* Expanded Filters */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t grid md:grid-cols-4 gap-4">
+            <div className="mt-4 pt-4 border-t grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
                 <select

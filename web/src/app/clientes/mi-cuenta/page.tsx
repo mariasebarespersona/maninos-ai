@@ -235,13 +235,13 @@ export default function ClientDashboard() {
       <div className="bg-navy-900 text-white">
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gold-500 rounded-full flex items-center justify-center">
-                <User className="w-8 h-8 text-navy-900" />
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gold-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <User className="w-6 h-6 sm:w-8 sm:h-8 text-navy-900" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold">Hola, {client.name.split(' ')[0]}</h1>
-                <p className="text-gray-300">{client.email}</p>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold truncate">Hola, {client.name.split(' ')[0]}</h1>
+                <p className="text-gray-300 text-sm sm:text-base truncate">{client.email}</p>
               </div>
             </div>
             
@@ -314,9 +314,9 @@ export default function ClientDashboard() {
                 <div className="divide-y">
                   {sales.map(sale => (
                     <div key={sale.id} className="p-6">
-                      <div className="flex gap-4">
+                      <div className="flex flex-col sm:flex-row gap-4">
                         {/* Property image */}
-                        <div className="w-24 h-24 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="w-full sm:w-24 h-40 sm:h-24 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                           {sale.properties?.photos?.[0] ? (
                             <img
                               src={sale.properties.photos[0]}

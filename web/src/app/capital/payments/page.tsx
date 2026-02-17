@@ -233,35 +233,35 @@ export default function PaymentsPage() {
           <p style={{ color: 'var(--slate)' }}>Cobros mensuales, morosidad y seguimiento</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-md border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+        <div className="flex items-center gap-3 overflow-x-auto">
+          <div className="flex rounded-md border overflow-hidden flex-shrink-0" style={{ borderColor: 'var(--stone)' }}>
             <button 
               onClick={() => setView('all')}
-              className={`px-4 py-2 text-sm font-medium transition-colors`}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap`}
               style={{ backgroundColor: view === 'all' ? 'var(--navy-800)' : 'var(--white)', color: view === 'all' ? 'white' : 'var(--slate)' }}
             >Todos</button>
             <button 
               onClick={() => setView('overdue')}
-              className={`px-4 py-2 text-sm font-medium transition-colors`}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap`}
               style={{ backgroundColor: view === 'overdue' ? 'var(--error)' : 'var(--white)', color: view === 'overdue' ? 'white' : 'var(--slate)' }}
             >
-              <AlertTriangle className="w-4 h-4 inline mr-1" />
+              <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
               Atrasados
             </button>
             <button 
               onClick={() => setView('mora')}
-              className={`px-4 py-2 text-sm font-medium transition-colors`}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap`}
               style={{ backgroundColor: view === 'mora' ? '#991b1b' : 'var(--white)', color: view === 'mora' ? 'white' : 'var(--slate)' }}
             >
-              <Shield className="w-4 h-4 inline mr-1" />
+              <Shield className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
               Mora
             </button>
             <button 
               onClick={() => setView('commissions')}
-              className={`px-4 py-2 text-sm font-medium transition-colors`}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap`}
               style={{ backgroundColor: view === 'commissions' ? 'var(--gold-700)' : 'var(--white)', color: view === 'commissions' ? 'white' : 'var(--slate)' }}
             >
-              <Coins className="w-4 h-4 inline mr-1" />
+              <Coins className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
               Comisiones
             </button>
           </div>
