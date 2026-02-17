@@ -1,22 +1,22 @@
 """
-AI Assistant API — Answers questions about real app data.
+AI Assistant API — Intelligent answers about real app data using LLM + Tool Calling.
 
-Used from the mobile PWA app. Supports:
-- Text queries ("¿cuándo pagó Juan?", "¿cuántas casas tenemos?")
-- Voice transcription (receives audio, returns text answer)
-- Property evaluation with photos/videos against 26-point checklist
-- ONLY uses real database data (never hallucinates)
-- Access to ALL Homes + Capital data
+Architecture:
+1. User asks a question (text or voice)
+2. LLM receives the question + a set of database query TOOLS
+3. LLM decides which queries to run (function calling)
+4. We execute those queries against Supabase
+5. Results are fed back to the LLM
+6. LLM formulates a natural, accurate answer based on REAL data
 
-Safety: The AI MUST ONLY return data from the database.
-It should REFUSE to answer questions outside the app scope.
+Safety: The AI MUST ONLY return data from the database. Never hallucinate.
 """
 
 import logging
 import os
 import json
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Optional, Any
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
@@ -42,427 +42,1230 @@ class ChatResponse(BaseModel):
 
 
 # ============================================================================
-# COMPREHENSIVE DATA CONTEXT — ALL TABLES (with real column names)
+# DATABASE QUERY TOOLS — The LLM can call any of these
 # ============================================================================
 
-def _get_full_db_context() -> str:
-    """
-    Fetch comprehensive stats from ALL database tables.
-    Uses only columns that actually exist in the DB.
-    """
-    context_parts = []
+TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_properties",
+            "description": (
+                "Query the properties/houses database. Returns property details including "
+                "status, purchase_price, sale_price, city, address, bedrooms, bathrooms, sqft, year. "
+                "Statuses: acquired, renovating, published, reserved, sold, in_transit."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by property status (acquired, renovating, published, reserved, sold, in_transit). Leave empty for all.",
+                    },
+                    "city": {
+                        "type": "string",
+                        "description": "Filter by city name. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include full property details (address, bedrooms, etc). If false, just counts and totals.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_sales",
+            "description": (
+                "Query sales records. Each sale has: sale_type ('contado' for cash or 'rto' for rent-to-own), "
+                "status (pending, paid, completed, cancelled), sale_price, client_id, property_id, created_at. "
+                "Use this for questions about sales count, revenue, how many sold at contado vs RTO, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sale_type": {
+                        "type": "string",
+                        "enum": ["contado", "rto"],
+                        "description": "Filter by sale type: 'contado' (cash) or 'rto' (rent-to-own). Leave empty for all.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by sale status: pending, paid, completed, cancelled. Leave empty for all.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD). Leave empty for all time.",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD). Leave empty for today.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include client names and property addresses. If false, just totals.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_clients",
+            "description": (
+                "Query client records. Each client has: name, email, phone, status (lead, active, completed), "
+                "kyc_verified, kyc_status, monthly_income, monthly_expenses. "
+                "Use this for questions about how many clients, client details, who has been verified, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by client status: lead, active, completed. Leave empty for all.",
+                    },
+                    "name_search": {
+                        "type": "string",
+                        "description": "Search for a client by name (partial match). Leave empty for all.",
+                    },
+                    "kyc_verified": {
+                        "type": "boolean",
+                        "description": "Filter by KYC verification status. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include names, emails, phones. If false, just counts.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_rto_contracts",
+            "description": (
+                "Query RTO (Rent-to-Own) contracts. Each contract has: status (draft, pending_activation, active, "
+                "completed, defaulted), monthly_rent, purchase_price, down_payment, annual_rate, term_months, "
+                "start_date, end_date, client_id, property_id. "
+                "Use for questions about active contracts, monthly rent totals, portfolio value, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by contract status: draft, pending_activation, active, completed, defaulted. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include client names and property addresses.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_rto_payments",
+            "description": (
+                "Query RTO payment records. Each payment has: status (scheduled, pending, paid, late, overdue, partial, waived), "
+                "amount (expected), paid_amount, due_date, paid_date, payment_number, payment_method, late_fee. "
+                "Related to a contract which links to a client and property. "
+                "Use for questions about payments collected, overdue payments, payment history, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by payment status: scheduled, pending, paid, late, overdue, partial, waived. Leave empty for all.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Filter payments with due_date >= this date (YYYY-MM-DD).",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "Filter payments with due_date <= this date (YYYY-MM-DD).",
+                    },
+                    "include_client_info": {
+                        "type": "boolean",
+                        "description": "If true, include client names and property addresses via contract join.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_rto_applications",
+            "description": (
+                "Query RTO applications/solicitudes. Each application has: status (submitted, under_review, approved, rejected), "
+                "desired_term_months, desired_down_payment, monthly_income, created_at, client_id, property_id. "
+                "Use for questions about how many applications, approved/rejected counts, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status: submitted, under_review, approved, rejected. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include client names and property addresses.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_investors",
+            "description": (
+                "Query investor records. Each investor has: name, email, phone, status (active, inactive), "
+                "total_invested, available_capital, expected_return, actual_return. "
+                "Use for questions about investors, total investment, capital available, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by investor status: active, inactive. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include individual investor details.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_promissory_notes",
+            "description": (
+                "Query promissory notes (pagarés). Each note has: investor_id, principal_amount, interest_rate, "
+                "maturity_date, status (active, matured, paid, cancelled), total_paid, remaining_balance. "
+                "Use for questions about promissory notes, maturity dates, amounts owed to investors, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by note status: active, matured, paid, cancelled. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include investor names and full note details.",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_renovations",
+            "description": (
+                "Query renovation/repair records. Each renovation has: property_id, status (pending, in_progress, completed, cancelled), "
+                "total_cost, notes. Related to a property. "
+                "Use for questions about active renovations, renovation costs, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by renovation status: pending, in_progress, completed, cancelled. Leave empty for all.",
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "If true, include property addresses and costs.",
+                        "default": True,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_market_listings",
+            "description": (
+                "Query scraped market listings (from Facebook Marketplace etc). Each listing has: "
+                "source, address, city, listing_price, price_type (full_price, down_payment), "
+                "estimated_full_price, is_qualified, status, bedrooms, bathrooms, sqft. "
+                "Use for questions about available market listings, qualified properties, scraping results."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "is_qualified": {
+                        "type": "boolean",
+                        "description": "Filter by qualification status. Leave empty for all.",
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "Filter by source (facebook_marketplace, etc). Leave empty for all.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return. Default 30.",
+                        "default": 30,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_commissions",
+            "description": (
+                "Query sales commissions. Each commission has: sale_id, agent_name, role (found_by, sold_by), "
+                "commission_amount, status (pending, paid), paid_date. "
+                "Use for questions about commissions earned, pending commissions, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by commission status: pending, paid. Leave empty for all.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_title_transfers",
+            "description": (
+                "Query title transfer records. Each transfer tracks ownership change of a property. "
+                "Has: property_id, status (pending, in_progress, completed), transfer_type, from_entity, to_entity. "
+                "Use for questions about title transfer status, pending transfers, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by transfer status: pending, in_progress, completed. Leave empty for all.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_team_members",
+            "description": (
+                "Query team/employee records. Each user has: name, role, email, is_active. "
+                "Use for questions about the team, who works here, roles, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_accounting",
+            "description": (
+                "Query accounting/financial data from capital_transactions and capital_accounts tables. "
+                "Transactions have: type (income, expense, transfer), amount, description, category, date, account_id. "
+                "Accounts have: name, code, account_type (asset, liability, equity, income, expense), balance. "
+                "Bank accounts have: name, balance, account_type (checking, savings, cash). "
+                "Use for questions about finances, income, expenses, bank balances, accounting."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "what": {
+                        "type": "string",
+                        "enum": ["transactions", "accounts", "bank_accounts", "summary"],
+                        "description": "What accounting data to query. 'summary' returns all high-level totals.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Start date filter for transactions (YYYY-MM-DD).",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "End date filter for transactions (YYYY-MM-DD).",
+                    },
+                },
+                "required": ["what"],
+            },
+        },
+    },
+]
 
-    # --- HOMES PORTAL ---
-    context_parts.append("=== PORTAL HOMES (Propiedades & Ventas) ===")
 
+# ============================================================================
+# TOOL EXECUTION — Run the database queries
+# ============================================================================
+
+def _execute_tool(name: str, args: dict) -> dict:
+    """Execute a database query tool and return the results."""
     try:
-        props = sb.table("properties").select(
+        if name == "query_properties":
+            return _exec_query_properties(args)
+        elif name == "query_sales":
+            return _exec_query_sales(args)
+        elif name == "query_clients":
+            return _exec_query_clients(args)
+        elif name == "query_rto_contracts":
+            return _exec_query_rto_contracts(args)
+        elif name == "query_rto_payments":
+            return _exec_query_rto_payments(args)
+        elif name == "query_rto_applications":
+            return _exec_query_rto_applications(args)
+        elif name == "query_investors":
+            return _exec_query_investors(args)
+        elif name == "query_promissory_notes":
+            return _exec_query_promissory_notes(args)
+        elif name == "query_renovations":
+            return _exec_query_renovations(args)
+        elif name == "query_market_listings":
+            return _exec_query_market_listings(args)
+        elif name == "query_commissions":
+            return _exec_query_commissions(args)
+        elif name == "query_title_transfers":
+            return _exec_query_title_transfers(args)
+        elif name == "query_team_members":
+            return _exec_query_team(args)
+        elif name == "query_accounting":
+            return _exec_query_accounting(args)
+        else:
+            return {"error": f"Unknown tool: {name}"}
+    except Exception as e:
+        logger.error(f"[AI Tool] Error executing {name}: {e}")
+        return {"error": str(e)}
+
+
+def _exec_query_properties(args: dict) -> dict:
+    query = sb.table("properties").select(
             "id, status, sale_price, purchase_price, city, state, address, "
-            "year, square_feet, bedrooms, bathrooms",
-            count="exact"
-        ).execute()
-        if props.data:
+        "year, square_feet, bedrooms, bathrooms, photos"
+    )
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+    if args.get("city"):
+        query = query.ilike("city", f"%{args['city']}%")
+    result = query.execute()
+    data = result.data or []
+
+    # Always include summary stats
             status_counts = {}
             cities = {}
             total_purchase = 0
             total_sale = 0
-            for p in props.data:
+    for p in data:
                 s = p.get("status", "unknown")
                 status_counts[s] = status_counts.get(s, 0) + 1
-                c = p.get("city", "unknown")
+        c = p.get("city") or "unknown"
                 cities[c] = cities.get(c, 0) + 1
                 total_purchase += float(p.get("purchase_price") or 0)
                 total_sale += float(p.get("sale_price") or 0)
-            context_parts.append(f"PROPIEDADES ({len(props.data)} total):")
-            context_parts.append(f"  Por estado: {status_counts}")
-            context_parts.append(f"  Por ciudad: {cities}")
-            context_parts.append(f"  Inversión total compras: ${total_purchase:,.0f}")
-            context_parts.append(f"  Valor total venta: ${total_sale:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch properties: {e}")
 
-    try:
-        sales = sb.table("sales").select(
-            "id, status, sale_type, sale_price, created_at",
-            count="exact"
-        ).execute()
-        if sales.data:
-            sale_types = {}
-            sale_statuses = {}
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "by_city": cities,
+        "total_purchase_value": total_purchase,
+        "total_sale_value": total_sale,
+    }
+
+    if args.get("include_details"):
+        result_dict["properties"] = [
+            {
+                "address": p.get("address"),
+                "city": p.get("city"),
+                "status": p.get("status"),
+                "purchase_price": p.get("purchase_price"),
+                "sale_price": p.get("sale_price"),
+                "bedrooms": p.get("bedrooms"),
+                "bathrooms": p.get("bathrooms"),
+                "year": p.get("year"),
+            }
+            for p in data[:30]
+        ]
+
+    return result_dict
+
+
+def _exec_query_sales(args: dict) -> dict:
+    select_fields = "id, status, sale_type, sale_price, payment_method, created_at, client_id, property_id"
+    if args.get("include_details"):
+        select_fields += ", clients(name, email), properties(address, city)"
+    query = sb.table("sales").select(select_fields)
+
+    if args.get("sale_type"):
+        query = query.eq("sale_type", args["sale_type"])
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+    if args.get("date_from"):
+        query = query.gte("created_at", args["date_from"])
+    if args.get("date_to"):
+        query = query.lte("created_at", args["date_to"])
+
+    result = query.order("created_at", desc=True).execute()
+    data = result.data or []
+
+    type_counts = {}
+    status_counts = {}
             total_revenue = 0
-            for s in sales.data:
+    for s in data:
                 st = s.get("sale_type", "unknown")
-                sale_types[st] = sale_types.get(st, 0) + 1
+        type_counts[st] = type_counts.get(st, 0) + 1
                 ss = s.get("status", "unknown")
-                sale_statuses[ss] = sale_statuses.get(ss, 0) + 1
+        status_counts[ss] = status_counts.get(ss, 0) + 1
                 total_revenue += float(s.get("sale_price") or 0)
-            context_parts.append(f"VENTAS ({len(sales.data)} total):")
-            context_parts.append(f"  Tipos: {sale_types}")
-            context_parts.append(f"  Estados: {sale_statuses}")
-            context_parts.append(f"  Revenue total: ${total_revenue:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch sales: {e}")
 
-    try:
-        clients = sb.table("clients").select("id, name, status, email, phone", count="exact").execute()
-        if clients.data:
-            client_statuses = {}
-            for c in clients.data:
-                cs = c.get("status", "unknown")
-                client_statuses[cs] = client_statuses.get(cs, 0) + 1
-            context_parts.append(f"CLIENTES ({len(clients.data)} total):")
-            context_parts.append(f"  Por estado: {client_statuses}")
-            context_parts.append(f"  Nombres: {', '.join(c.get('name', '?') for c in clients.data[:20])}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch clients: {e}")
+    result_dict = {
+        "total": len(data),
+        "by_type": type_counts,
+        "by_status": status_counts,
+        "total_revenue": total_revenue,
+    }
 
-    try:
-        listings = sb.table("market_listings").select(
-            "id, status, is_qualified, source, listing_price, city",
-            count="exact"
-        ).execute()
-        if listings.data:
-            qualified = sum(1 for l in listings.data if l.get("is_qualified"))
-            sources = {}
-            for l in listings.data:
-                src = l.get("source", "unknown")
-                sources[src] = sources.get(src, 0) + 1
-            context_parts.append(f"LISTINGS MERCADO ({len(listings.data)} total, {qualified} calificados):")
-            context_parts.append(f"  Fuentes: {sources}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch listings: {e}")
+    if args.get("include_details"):
+        result_dict["sales"] = [
+            {
+                "client_name": s.get("clients", {}).get("name") if s.get("clients") else None,
+                "property_address": s.get("properties", {}).get("address") if s.get("properties") else None,
+                "property_city": s.get("properties", {}).get("city") if s.get("properties") else None,
+                "sale_type": s.get("sale_type"),
+                "status": s.get("status"),
+                "sale_price": s.get("sale_price"),
+                "created_at": s.get("created_at"),
+            }
+            for s in data[:30]
+        ]
 
-    try:
-        renovations = sb.table("renovations").select(
-            "id, property_id, status, total_cost",
-            count="exact"
-        ).execute()
-        if renovations.data:
-            reno_statuses = {}
-            for r in renovations.data:
-                rs = r.get("status", "unknown")
-                reno_statuses[rs] = reno_statuses.get(rs, 0) + 1
-            total_cost = sum(float(r.get("total_cost") or 0) for r in renovations.data)
-            context_parts.append(f"RENOVACIONES ({len(renovations.data)} total):")
-            context_parts.append(f"  Estados: {reno_statuses}")
-            context_parts.append(f"  Costo total: ${total_cost:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch renovations: {e}")
+    return result_dict
 
-    try:
-        transfers = sb.table("title_transfers").select(
-            "id, property_id, status",
-            count="exact"
-        ).execute()
-        if transfers.data:
-            transfer_statuses = {}
-            for t in transfers.data:
-                ts = t.get("status", "unknown")
-                transfer_statuses[ts] = transfer_statuses.get(ts, 0) + 1
-            context_parts.append(f"TRANSFERENCIAS DE TÍTULO ({len(transfers.data)} total):")
-            context_parts.append(f"  Estados: {transfer_statuses}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch transfers: {e}")
 
-    # --- TEAM ---
-    context_parts.append("\n=== EQUIPO ===")
+def _exec_query_clients(args: dict) -> dict:
+    select_fields = "id, name, email, phone, status, kyc_verified, kyc_status, monthly_income, monthly_expenses"
+    query = sb.table("clients").select(select_fields)
 
-    try:
-        users = sb.table("users").select("id, name, role, is_active").execute()
-        if users.data:
-            active = [u for u in users.data if u.get("is_active", True)]
-            roles = {}
-            for u in active:
-                r = u.get("role", "unknown")
-                roles[r] = roles.get(r, 0) + 1
-            context_parts.append(f"EQUIPO ({len(active)} activos de {len(users.data)} total):")
-            context_parts.append(f"  Roles: {roles}")
-            context_parts.append(f"  Nombres: {', '.join(u.get('name', '?') for u in active)}")
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+    if args.get("name_search"):
+        query = query.ilike("name", f"%{args['name_search']}%")
+    if args.get("kyc_verified") is not None:
+        query = query.eq("kyc_verified", args["kyc_verified"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    kyc_counts = {"verified": 0, "not_verified": 0}
+    for c in data:
+        cs = c.get("status", "unknown")
+        status_counts[cs] = status_counts.get(cs, 0) + 1
+        if c.get("kyc_verified"):
+            kyc_counts["verified"] += 1
         else:
-            context_parts.append("EQUIPO: No hay usuarios registrados aún")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch users: {e}")
+            kyc_counts["not_verified"] += 1
 
-    # --- CAPITAL PORTAL ---
-    context_parts.append("\n=== PORTAL CAPITAL (RTO - Rent to Own) ===")
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "kyc_summary": kyc_counts,
+    }
 
-    try:
-        contracts = sb.table("rto_contracts").select(
-            "id, status, monthly_rent, purchase_price, client_id, property_id, "
-            "start_date, end_date, down_payment",
-            count="exact"
-        ).execute()
-        if contracts.data:
-            active = sum(1 for c in contracts.data if c.get("status") == "active")
-            total_monthly = sum(float(c.get("monthly_rent") or 0) for c in contracts.data if c.get("status") == "active")
-            total_portfolio = sum(float(c.get("purchase_price") or 0) for c in contracts.data if c.get("status") == "active")
-            context_parts.append(f"CONTRATOS RTO ({len(contracts.data)} total, {active} activos):")
-            context_parts.append(f"  Renta mensual esperada: ${total_monthly:,.0f}")
-            context_parts.append(f"  Valor cartera activa: ${total_portfolio:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch contracts: {e}")
+    if args.get("include_details") or args.get("name_search"):
+        result_dict["clients"] = [
+            {
+                "name": c.get("name"),
+                "email": c.get("email"),
+                "phone": c.get("phone"),
+                "status": c.get("status"),
+                "kyc_verified": c.get("kyc_verified"),
+                "monthly_income": c.get("monthly_income"),
+            }
+            for c in data[:30]
+        ]
 
-    try:
-        payments = sb.table("rto_payments").select(
-            "id, status, amount, paid_amount, due_date, paid_date",
-            count="exact"
-        ).execute()
-        if payments.data:
-            paid = sum(1 for p in payments.data if p.get("status") == "paid")
-            overdue = sum(1 for p in payments.data if p.get("status") in ("overdue", "late"))
-            pending = sum(1 for p in payments.data if p.get("status") == "pending")
-            total_collected = sum(float(p.get("paid_amount") or 0) for p in payments.data if p.get("status") == "paid")
-            context_parts.append(f"PAGOS RTO ({len(payments.data)} total):")
-            context_parts.append(f"  Pagados: {paid}, Vencidos: {overdue}, Pendientes: {pending}")
-            context_parts.append(f"  Total cobrado: ${total_collected:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch payments: {e}")
+    return result_dict
 
-    try:
-        apps = sb.table("rto_applications").select("id, status", count="exact").execute()
-        if apps.data:
-            app_statuses = {}
-            for a in apps.data:
+
+def _exec_query_rto_contracts(args: dict) -> dict:
+    select_fields = (
+        "id, status, monthly_rent, purchase_price, down_payment, annual_rate, "
+        "term_months, start_date, end_date, client_id, property_id"
+    )
+    if args.get("include_details"):
+        select_fields += ", clients(name), properties(address, city)"
+    query = sb.table("rto_contracts").select(select_fields)
+
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    total_monthly = 0
+    total_portfolio = 0
+    total_down = 0
+    for c in data:
+        cs = c.get("status", "unknown")
+        status_counts[cs] = status_counts.get(cs, 0) + 1
+        if c.get("status") == "active":
+            total_monthly += float(c.get("monthly_rent") or 0)
+            total_portfolio += float(c.get("purchase_price") or 0)
+        total_down += float(c.get("down_payment") or 0)
+
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "active_monthly_rent_total": total_monthly,
+        "active_portfolio_value": total_portfolio,
+        "total_down_payments": total_down,
+    }
+
+    if args.get("include_details"):
+        result_dict["contracts"] = [
+            {
+                "client_name": c.get("clients", {}).get("name") if c.get("clients") else None,
+                "property_address": c.get("properties", {}).get("address") if c.get("properties") else None,
+                "status": c.get("status"),
+                "monthly_rent": c.get("monthly_rent"),
+                "purchase_price": c.get("purchase_price"),
+                "down_payment": c.get("down_payment"),
+                "term_months": c.get("term_months"),
+                "start_date": c.get("start_date"),
+                "end_date": c.get("end_date"),
+            }
+            for c in data[:20]
+        ]
+
+    return result_dict
+
+
+def _exec_query_rto_payments(args: dict) -> dict:
+    select_fields = "id, status, amount, paid_amount, due_date, paid_date, payment_number, payment_method, late_fee, contract_id"
+    if args.get("include_client_info"):
+        select_fields = (
+            "id, status, amount, paid_amount, due_date, paid_date, payment_number, payment_method, late_fee, "
+            "rto_contracts(id, client_id, property_id, clients(name), properties(address))"
+        )
+    query = sb.table("rto_payments").select(select_fields)
+
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+    if args.get("date_from"):
+        query = query.gte("due_date", args["date_from"])
+    if args.get("date_to"):
+        query = query.lte("due_date", args["date_to"])
+
+    result = query.order("due_date", desc=True).limit(200).execute()
+    data = result.data or []
+
+    status_counts = {}
+    total_expected = 0
+    total_collected = 0
+    total_late_fees = 0
+    for p in data:
+        ps = p.get("status", "unknown")
+        status_counts[ps] = status_counts.get(ps, 0) + 1
+        total_expected += float(p.get("amount") or 0)
+        if ps == "paid":
+            total_collected += float(p.get("paid_amount") or p.get("amount") or 0)
+        total_late_fees += float(p.get("late_fee") or 0)
+
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "total_expected": total_expected,
+        "total_collected": total_collected,
+        "total_late_fees": total_late_fees,
+    }
+
+    if args.get("include_client_info"):
+        result_dict["payments"] = [
+            {
+                "client_name": (p.get("rto_contracts") or {}).get("clients", {}).get("name") if p.get("rto_contracts") else None,
+                "property": (p.get("rto_contracts") or {}).get("properties", {}).get("address") if p.get("rto_contracts") else None,
+                "status": p.get("status"),
+                "amount": p.get("amount"),
+                "paid_amount": p.get("paid_amount"),
+                "due_date": p.get("due_date"),
+                "paid_date": p.get("paid_date"),
+                "payment_number": p.get("payment_number"),
+            }
+            for p in data[:30]
+        ]
+
+    return result_dict
+
+
+def _exec_query_rto_applications(args: dict) -> dict:
+    select_fields = "id, status, desired_term_months, desired_down_payment, monthly_income, created_at"
+    if args.get("include_details"):
+        select_fields += ", clients(name, email), properties(address, city, sale_price)"
+    query = sb.table("rto_applications").select(select_fields)
+
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.order("created_at", desc=True).execute()
+    data = result.data or []
+
+    status_counts = {}
+    for a in data:
                 s = a.get("status", "unknown")
-                app_statuses[s] = app_statuses.get(s, 0) + 1
-            context_parts.append(f"SOLICITUDES RTO ({len(apps.data)} total): {app_statuses}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch applications: {e}")
+        status_counts[s] = status_counts.get(s, 0) + 1
 
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+    }
+
+    if args.get("include_details"):
+        result_dict["applications"] = [
+            {
+                "client_name": a.get("clients", {}).get("name") if a.get("clients") else None,
+                "property_address": a.get("properties", {}).get("address") if a.get("properties") else None,
+                "status": a.get("status"),
+                "desired_down_payment": a.get("desired_down_payment"),
+                "desired_term_months": a.get("desired_term_months"),
+                "created_at": a.get("created_at"),
+            }
+            for a in data[:20]
+        ]
+
+    return result_dict
+
+
+def _exec_query_investors(args: dict) -> dict:
+    query = sb.table("investors").select(
+        "id, name, email, phone, status, total_invested, available_capital, expected_return, actual_return"
+    )
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    total_invested = 0
+    total_available = 0
+    for inv in data:
+        s = inv.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+        total_invested += float(inv.get("total_invested") or 0)
+        total_available += float(inv.get("available_capital") or 0)
+
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "total_invested": total_invested,
+        "total_available_capital": total_available,
+    }
+
+    if args.get("include_details"):
+        result_dict["investors"] = [
+            {
+                "name": inv.get("name"),
+                "status": inv.get("status"),
+                "total_invested": inv.get("total_invested"),
+                "available_capital": inv.get("available_capital"),
+                "expected_return": inv.get("expected_return"),
+                "actual_return": inv.get("actual_return"),
+            }
+            for inv in data[:20]
+        ]
+
+    return result_dict
+
+
+def _exec_query_promissory_notes(args: dict) -> dict:
+    select_fields = "id, investor_id, principal_amount, interest_rate, maturity_date, status, total_paid, remaining_balance"
+    if args.get("include_details"):
+        select_fields += ", investors(name)"
+    query = sb.table("promissory_notes").select(select_fields)
+
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    total_principal = 0
+    total_remaining = 0
+    for n in data:
+        s = n.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+        total_principal += float(n.get("principal_amount") or 0)
+        total_remaining += float(n.get("remaining_balance") or 0)
+
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "total_principal": total_principal,
+        "total_remaining_balance": total_remaining,
+    }
+
+    if args.get("include_details"):
+        result_dict["notes"] = [
+            {
+                "investor_name": n.get("investors", {}).get("name") if n.get("investors") else None,
+                "principal_amount": n.get("principal_amount"),
+                "interest_rate": n.get("interest_rate"),
+                "maturity_date": n.get("maturity_date"),
+                "status": n.get("status"),
+                "total_paid": n.get("total_paid"),
+                "remaining_balance": n.get("remaining_balance"),
+            }
+            for n in data[:20]
+        ]
+
+    return result_dict
+
+
+def _exec_query_renovations(args: dict) -> dict:
+    select_fields = "id, property_id, status, total_cost, notes"
+    if args.get("include_details", True):
+        select_fields += ", properties(address, city)"
+    query = sb.table("renovations").select(select_fields)
+
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    total_cost = 0
+    for r in data:
+        s = r.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+        total_cost += float(r.get("total_cost") or 0)
+
+    result_dict = {
+        "total": len(data),
+        "by_status": status_counts,
+        "total_cost": total_cost,
+    }
+
+    if args.get("include_details", True):
+        result_dict["renovations"] = [
+            {
+                "property_address": r.get("properties", {}).get("address") if r.get("properties") else None,
+                "city": r.get("properties", {}).get("city") if r.get("properties") else None,
+                "status": r.get("status"),
+                "total_cost": r.get("total_cost"),
+            }
+            for r in data[:20]
+        ]
+
+    return result_dict
+
+
+def _exec_query_market_listings(args: dict) -> dict:
+    query = sb.table("market_listings").select(
+        "id, source, address, city, state, listing_price, price_type, estimated_full_price, "
+        "is_qualified, status, bedrooms, bathrooms, sqft, scraped_at"
+    )
+
+    if args.get("is_qualified") is not None:
+        query = query.eq("is_qualified", args["is_qualified"])
+    if args.get("source"):
+        query = query.eq("source", args["source"])
+
+    limit = args.get("limit", 30)
+    result = query.order("scraped_at", desc=True).limit(limit).execute()
+    data = result.data or []
+
+    qualified = sum(1 for l in data if l.get("is_qualified"))
+    sources = {}
+    price_types = {}
+    for l in data:
+        src = l.get("source", "unknown")
+        sources[src] = sources.get(src, 0) + 1
+        pt = l.get("price_type", "unknown")
+        price_types[pt] = price_types.get(pt, 0) + 1
+
+        return {
+        "total": len(data),
+        "qualified": qualified,
+        "by_source": sources,
+        "by_price_type": price_types,
+        "listings": [
+            {
+                "address": l.get("address"),
+                "city": l.get("city"),
+                "price": l.get("listing_price"),
+                "price_type": l.get("price_type"),
+                "estimated_full_price": l.get("estimated_full_price"),
+                "qualified": l.get("is_qualified"),
+                "source": l.get("source"),
+            }
+            for l in data[:20]
+        ],
+    }
+
+
+def _exec_query_commissions(args: dict) -> dict:
     try:
-        investors = sb.table("investors").select(
-            "id, name, status, total_invested, available_capital",
-            count="exact"
-        ).execute()
-        if investors.data:
-            active_inv = [i for i in investors.data if i.get("status") == "active"]
-            total_invested = sum(float(i.get("total_invested") or 0) for i in active_inv)
-            available = sum(float(i.get("available_capital") or 0) for i in active_inv)
-            context_parts.append(f"INVERSORES ({len(active_inv)} activos):")
-            context_parts.append(f"  Total invertido: ${total_invested:,.0f}")
-            context_parts.append(f"  Capital disponible: ${available:,.0f}")
-    except Exception as e:
-        logger.warning(f"[AI] Could not fetch investors: {e}")
+        query = sb.table("sales_commissions").select(
+            "id, sale_id, agent_name, role, commission_amount, status, paid_date"
+        )
+        if args.get("status"):
+            query = query.eq("status", args["status"])
+        result = query.execute()
+        data = result.data or []
 
-    return "\n".join(context_parts) if context_parts else "No hay datos disponibles."
+        status_counts = {}
+        total = 0
+        for c in data:
+            s = c.get("status", "unknown")
+            status_counts[s] = status_counts.get(s, 0) + 1
+            total += float(c.get("commission_amount") or 0)
 
-
-# ============================================================================
-# SMART QUERY — Direct DB queries for common questions
-# ============================================================================
-
-def _query_specific_data(query: str) -> Optional[dict]:
-    """
-    Try to answer specific queries directly from the database.
-    Returns data dict if found, None if needs LLM.
-    """
-    query_lower = query.lower()
-
-    # Property counts
-    if any(kw in query_lower for kw in ["cuántas casas", "cuantas casas", "how many houses", "propiedades", "inventario"]):
-        result = sb.table("properties").select("status, city, address, purchase_price, sale_price", count="exact").execute()
-        counts = {}
-        for p in result.data:
-            s = p.get("status", "unknown")
-            counts[s] = counts.get(s, 0) + 1
         return {
-            "type": "property_count",
-            "total": len(result.data),
-            "by_status": counts,
-            "properties": [{"address": p.get("address"), "status": p.get("status"), "city": p.get("city")} for p in result.data[:15]],
-        }
-
-    # Sales / revenue
-    if any(kw in query_lower for kw in ["cuánto vendimos", "cuanto vendimos", "ventas", "sales", "revenue"]):
-        now = datetime.now()
-        start = f"{now.year}-{now.month:02d}-01"
-        result = sb.table("sales").select("*").gte("created_at", start).execute()
-        total = sum(float(s.get("sale_price", 0)) for s in result.data)
-        return {
-            "type": "sales_summary",
-            "month": now.strftime("%B %Y"),
-            "count": len(result.data),
+            "total": len(data),
+            "by_status": status_counts,
             "total_amount": total,
-            "sales": [{"id": s["id"], "price": s.get("sale_price"), "type": s.get("sale_type")} for s in result.data],
-        }
-
-    # Overdue / late payments
-    if any(kw in query_lower for kw in ["vencido", "overdue", "atrasado", "mora", "late"]):
-        result = sb.table("rto_payments").select("*, rto_contracts(*, clients(name))") \
-            .in_("status", ["overdue", "late"]).execute()
-        return {
-            "type": "overdue_payments",
-            "count": len(result.data),
-            "payments": result.data[:10],
-        }
-
-    # RTO clients count
-    if any(kw in query_lower for kw in ["clientes rto", "clientes en rto", "rto clients", "cuantos clientes"]):
-        contracts = sb.table("rto_contracts").select("id, status, client_id, clients(name)") \
-            .eq("status", "active").execute()
-        return {
-            "type": "rto_clients",
-            "active_count": len(contracts.data),
-            "clients": [{"name": c.get("clients", {}).get("name", "?"), "contract_id": c["id"]} for c in (contracts.data or [])[:20]],
-        }
-
-    # Team / employees
-    if any(kw in query_lower for kw in ["equipo", "team", "empleados", "employees", "quién trabaja", "quien trabaja"]):
-        users = sb.table("users").select("*").execute()
-        active = [u for u in (users.data or []) if u.get("is_active", True)]
-        return {
-            "type": "team",
-            "count": len(active),
-            "members": [{"name": u.get("name"), "role": u.get("role")} for u in active],
-        }
-
-    # Renovations
-    if any(kw in query_lower for kw in ["renovación", "renovacion", "renovation", "obra", "reparaciones"]):
-        renos = sb.table("renovations").select("*, properties(address, city)") \
-            .in_("status", ["pending", "in_progress"]).execute()
-        return {
-            "type": "renovations",
-            "active_count": len(renos.data or []),
-            "renovations": [
+            "commissions": [
                 {
-                    "property": r.get("properties", {}).get("address") if r.get("properties") else "?",
-                    "status": r.get("status"),
-                    "total_cost": r.get("total_cost"),
+                    "agent_name": c.get("agent_name"),
+                    "role": c.get("role"),
+                    "amount": c.get("commission_amount"),
+                    "status": c.get("status"),
                 }
-                for r in (renos.data or [])[:10]
+                for c in data[:20]
             ],
         }
+    except Exception:
+        return {"total": 0, "note": "Commissions table may not exist yet."}
 
-    # Market listings
-    if any(kw in query_lower for kw in ["mercado", "market", "listing", "facebook", "scraping"]):
-        listings = sb.table("market_listings").select("id, status, is_qualified, source, listing_price, address, city") \
-            .order("scraped_at", desc=True).limit(20).execute()
-        qualified = sum(1 for l in (listings.data or []) if l.get("is_qualified"))
+
+def _exec_query_title_transfers(args: dict) -> dict:
+    query = sb.table("title_transfers").select(
+        "id, property_id, status, transfer_type, from_entity, to_entity, properties(address, city)"
+    )
+    if args.get("status"):
+        query = query.eq("status", args["status"])
+
+    result = query.execute()
+    data = result.data or []
+
+    status_counts = {}
+    for t in data:
+        s = t.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+
         return {
-            "type": "market_listings",
-            "total_shown": len(listings.data or []),
-            "qualified": qualified,
-            "listings": [
-                {"address": l.get("address"), "city": l.get("city"), "price": l.get("listing_price"), "source": l.get("source"), "qualified": l.get("is_qualified")}
-                for l in (listings.data or [])
-            ],
-        }
+        "total": len(data),
+        "by_status": status_counts,
+        "transfers": [
+            {
+                "property_address": t.get("properties", {}).get("address") if t.get("properties") else None,
+                "status": t.get("status"),
+                "from_entity": t.get("from_entity"),
+                "to_entity": t.get("to_entity"),
+            }
+            for t in data[:20]
+        ],
+    }
 
-    # Search for specific client by name
-    for prefix in ["cliente ", "client ", "pagó ", "pago ", "info de ", "datos de "]:
-        if prefix in query_lower:
-            name_part = query_lower.split(prefix)[-1].strip().rstrip("?").strip()
-            if len(name_part) > 2:
-                result = sb.table("clients").select("*").ilike("name", f"%{name_part}%").execute()
-                if result.data:
-                    client = result.data[0]
-                    # Also get their payments
-                    payments = sb.table("rto_payments") \
-                        .select("*, rto_contracts!inner(client_id)") \
-                        .eq("rto_contracts.client_id", client["id"]) \
-                        .order("due_date", desc=True) \
-                        .limit(5).execute()
-                    # Also get their sales
-                    sales = sb.table("sales").select("*") \
-                        .eq("client_id", client["id"]).execute()
+
+def _exec_query_team(args: dict) -> dict:
+    result = sb.table("users").select("id, name, role, email, is_active").execute()
+    data = result.data or []
+    active = [u for u in data if u.get("is_active", True)]
+    roles = {}
+    for u in active:
+        r = u.get("role", "unknown")
+        roles[r] = roles.get(r, 0) + 1
+
+        return {
+        "total_active": len(active),
+        "total_registered": len(data),
+        "by_role": roles,
+        "members": [{"name": u.get("name"), "role": u.get("role"), "email": u.get("email")} for u in active],
+    }
+
+
+def _exec_query_accounting(args: dict) -> dict:
+    what = args.get("what", "summary")
+
+    if what == "bank_accounts":
+        try:
+            result = sb.table("capital_bank_accounts").select("id, name, account_type, balance, bank_name").execute()
+            data = result.data or []
+            total = sum(float(b.get("balance") or 0) for b in data)
+            return {
+                "total_balance": total,
+                "count": len(data),
+                "accounts": [
+                    {"name": b.get("name"), "type": b.get("account_type"), "balance": b.get("balance"), "bank": b.get("bank_name")}
+                    for b in data
+                ],
+            }
+        except Exception:
+            return {"note": "Bank accounts table may not exist yet.", "total_balance": 0}
+
+    if what == "accounts":
+        try:
+            result = sb.table("capital_accounts").select("id, name, code, account_type, balance").execute()
+            data = result.data or []
+            type_totals = {}
+            for a in data:
+                at = a.get("account_type", "unknown")
+                type_totals[at] = type_totals.get(at, 0) + float(a.get("balance") or 0)
                     return {
-                        "type": "client_info",
-                        "client": client,
-                        "recent_payments": payments.data if payments.data else [],
-                        "sales": sales.data if sales.data else [],
-                    }
+                "total_accounts": len(data),
+                "totals_by_type": type_totals,
+                "accounts": [
+                    {"name": a.get("name"), "code": a.get("code"), "type": a.get("account_type"), "balance": a.get("balance")}
+                    for a in data[:30]
+                ],
+            }
+        except Exception:
+            return {"note": "Capital accounts table may not exist yet."}
 
-    return None
+    if what == "transactions":
+        try:
+            query = sb.table("capital_transactions").select(
+                "id, type, amount, description, category, date, account_id"
+            )
+            if args.get("date_from"):
+                query = query.gte("date", args["date_from"])
+            if args.get("date_to"):
+                query = query.lte("date", args["date_to"])
+            result = query.order("date", desc=True).limit(50).execute()
+            data = result.data or []
+
+            income = sum(float(t.get("amount") or 0) for t in data if t.get("type") == "income")
+            expenses = sum(float(t.get("amount") or 0) for t in data if t.get("type") == "expense")
+
+            return {
+                "total_transactions": len(data),
+                "total_income": income,
+                "total_expenses": expenses,
+                "net": income - expenses,
+                "transactions": [
+                    {
+                        "type": t.get("type"),
+                        "amount": t.get("amount"),
+                        "description": t.get("description"),
+                        "category": t.get("category"),
+                        "date": t.get("date"),
+                    }
+                    for t in data[:20]
+                ],
+            }
+        except Exception:
+            return {"note": "Capital transactions table may not exist yet."}
+
+    # summary
+    summary = {}
+    for sub in ["bank_accounts", "accounts", "transactions"]:
+        summary[sub] = _exec_query_accounting({"what": sub, **{k: v for k, v in args.items() if k != "what"}})
+    return summary
 
 
 # ============================================================================
-# ENDPOINTS
+# SYSTEM PROMPT
+# ============================================================================
+
+SYSTEM_PROMPT = """Eres el asistente de datos de Maninos AI — la plataforma de casas móviles de Maninos Capital LLC en Texas.
+
+REGLAS ESTRICTAS:
+1. SOLO responde con datos REALES del sistema. NUNCA inventes datos.
+2. Si no tienes la información, llama a las herramientas/tools para obtener los datos de la base de datos.
+3. Responde en español, de forma breve y directa.
+4. Si te preguntan algo fuera del ámbito de Maninos, di "Esa pregunta está fuera del ámbito de Maninos AI."
+5. Usa emojis moderadamente para hacer las respuestas más legibles.
+6. Si muestras montos de dinero, usa formato: $1,234
+7. SIEMPRE llama a las herramientas antes de responder — NUNCA respondas sin datos reales.
+8. Puedes llamar MÚLTIPLES herramientas a la vez si necesitas datos cruzados.
+
+CONTEXTO DEL NEGOCIO:
+- Maninos compra casas móviles, las renueva, y las vende
+- Venta "contado" = cliente paga el total de una vez
+- Venta "RTO" (Rent-to-Own) = cliente paga enganche + pagos mensuales
+- Portal Homes: gestión de propiedades, compras, renovaciones, ventas  
+- Portal Capital: gestión de contratos RTO, pagos mensuales, inversores, contabilidad
+- Regla compra: max 60% del valor de mercado
+- Comisiones: $1,000 RTO, $1,500 contado. Split 50/50 entre found_by y sold_by.
+
+CÓMO USAR LAS HERRAMIENTAS:
+- Para preguntas sobre casas/propiedades → query_properties
+- Para preguntas sobre ventas, contado vs RTO → query_sales (usa sale_type para filtrar)
+- Para preguntas sobre clientes → query_clients
+- Para preguntas sobre contratos RTO → query_rto_contracts
+- Para preguntas sobre pagos mensuales RTO → query_rto_payments
+- Para preguntas sobre solicitudes RTO → query_rto_applications
+- Para preguntas sobre inversores → query_investors
+- Para preguntas sobre pagarés/promissory notes → query_promissory_notes
+- Para preguntas sobre renovaciones → query_renovations
+- Para preguntas sobre listings del mercado/Facebook → query_market_listings
+- Para preguntas sobre comisiones → query_commissions
+- Para preguntas sobre transferencias de título → query_title_transfers
+- Para preguntas sobre el equipo → query_team_members
+- Para preguntas sobre finanzas/contabilidad → query_accounting
+
+FECHA ACTUAL: {current_date}"""
+
+
+# ============================================================================
+# MAIN CHAT ENDPOINT
 # ============================================================================
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    AI chat endpoint — answers questions about real app data.
-    RULE: Only uses real database data, never hallucinate.
+    AI chat endpoint — LLM + Tool Calling for accurate database answers.
+    
+    Flow:
+    1. Send user question to LLM with database tools
+    2. LLM decides which queries to run
+    3. Execute queries against Supabase
+    4. Feed results back to LLM
+    5. LLM generates accurate answer
     """
-    logger.info(f"[AI Assistant] Query: {request.query}")
+    logger.info(f"[AI Chat] Query: {request.query}")
 
-    # Try direct database query first (faster, more accurate)
-    direct_data = _query_specific_data(request.query)
-    if direct_data:
-        answer = _format_direct_answer(direct_data)
-        return ChatResponse(
-            answer=answer,
-            data=direct_data,
-            sources=["database"],
-        )
-
-    # Fall back to LLM with real data context
     try:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import SystemMessage, HumanMessage
+        import openai
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return ChatResponse(
-                answer="AI no configurada. Falta OPENAI_API_KEY.",
+                answer="⚠️ AI no configurada. Falta OPENAI_API_KEY.",
                 sources=["error"],
             )
 
-        llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,
-            api_key=api_key,
-        )
+        client = openai.OpenAI(api_key=api_key)
 
-        db_context = _get_full_db_context()
+        system_prompt = SYSTEM_PROMPT.replace("{current_date}", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
         messages = [
-            SystemMessage(content=f"""Eres el asistente de datos de Maninos AI — la plataforma de casas móviles de Maninos Capital LLC.
-REGLAS ESTRICTAS:
-1. SOLO responde con datos REALES del sistema. NUNCA inventes datos.
-2. Si no tienes la información, di "No tengo esa información en el sistema."
-3. Responde en español, de forma breve y directa.
-4. Si te preguntan algo fuera del ámbito de Maninos (casas móviles, clientes, pagos, ventas, renovaciones, equipo, inversores), di "Esa pregunta está fuera del ámbito de Maninos AI."
-5. Usa emojis para hacer las respuestas más legibles.
-6. Si muestras montos de dinero, usa formato con comas: $1,234.56
-
-CONTEXTO DEL NEGOCIO:
-- Maninos compra casas móviles, las renueva, y las vende (contado o RTO - Rent to Own)
-- Portal Homes: gestión de propiedades, compras, renovaciones, ventas
-- Portal Capital: gestión de contratos RTO, pagos mensuales, inversores
-- Equipo: Gabriel (Operaciones), Abigail (Tesorería)
-- Regla compra: max 60% del valor de mercado
-- Regla venta: max 80% del valor de mercado
-- Comisiones: $1,000 RTO, $1,500 contado. Split 50/50 entre found_by y sold_by.
-
-DATOS ACTUALES DEL SISTEMA:
-{db_context}
-
-FECHA ACTUAL: {datetime.now().strftime('%Y-%m-%d %H:%M')}"""),
-            HumanMessage(content=request.query),
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request.query},
         ]
 
-        response = await llm.ainvoke(messages)
+        # Step 1: Initial call — LLM decides which tools to call
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=TOOLS_SCHEMA,
+            tool_choice="auto",
+            temperature=0,
+        )
+
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        # If no tool calls, LLM answered directly (out of scope question, etc.)
+        if not tool_calls:
+            return ChatResponse(
+                answer=response_message.content or "No tengo información para responder.",
+                sources=["ai"],
+            )
+
+        # Step 2: Execute all tool calls
+        messages.append(response_message)  # Add assistant's response with tool calls
+
+        all_tool_data = {}
+        for tool_call in tool_calls:
+            fn_name = tool_call.function.name
+            try:
+                fn_args = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError:
+                fn_args = {}
+
+            logger.info(f"[AI Chat] Calling tool: {fn_name}({fn_args})")
+            tool_result = _execute_tool(fn_name, fn_args)
+            all_tool_data[fn_name] = tool_result
+
+            # Add tool result to messages
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(tool_result, default=str, ensure_ascii=False),
+            })
+
+        # Step 3: Final call — LLM answers with the real data
+        final_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0,
+        )
+
+        answer = final_response.choices[0].message.content or "No pude procesar la respuesta."
+
+        # Collect which tools were called for transparency
+        tools_used = [tc.function.name for tc in tool_calls]
+        logger.info(f"[AI Chat] Tools used: {tools_used}")
 
         return ChatResponse(
-            answer=response.content,
-            sources=["database", "ai"],
+            answer=answer,
+            data=all_tool_data if all_tool_data else None,
+            sources=["database", "ai"] if all_tool_data else ["ai"],
         )
 
     except Exception as e:
-        logger.error(f"[AI Assistant] LLM error: {e}")
+        logger.error(f"[AI Chat] Error: {e}", exc_info=True)
         return ChatResponse(
-            answer=f"Error procesando tu pregunta. Intenta de nuevo.",
+            answer=f"❌ Error procesando tu pregunta: {str(e)[:100]}. Intenta de nuevo.",
             sources=["error"],
         )
 
+
+# ============================================================================
+# VOICE ENDPOINT
+# ============================================================================
 
 @router.post("/voice")
 async def voice_query(audio: UploadFile = File(...)):
     """
     Voice query endpoint — transcribes audio and answers the question.
-    Used from the mobile PWA app for hands-free operation.
     """
     try:
         import openai
@@ -599,7 +1402,6 @@ async def evaluate_property(files: list[UploadFile] = File(...)):
     """
     AI property evaluation — analyzes photos against 28-point checklist.
     Uses GPT-4o Vision. Returns evaluation + which items need more photos.
-    The frontend can then ask the user for specific photos and re-evaluate.
     """
     logger.info(f"[AI Evaluator] Received {len(files)} files for evaluation")
 
@@ -727,8 +1529,6 @@ IMPORTANTE:
 
         logger.info(f"[AI Evaluator] Sending {len(image_contents)} images to GPT-4o...")
 
-        # NOTE: Do NOT use response_format={"type": "json_object"} here.
-        # It causes GPT-4o to refuse image analysis. Instead we parse JSON manually.
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -750,7 +1550,6 @@ IMPORTANTE:
         result_text = response.choices[0].message.content
         logger.info(f"[AI Evaluator] Raw response length: {len(result_text) if result_text else 0}")
 
-        # Handle None or empty response
         if not result_text:
             refusal = getattr(response.choices[0].message, 'refusal', None)
             logger.error(f"[AI Evaluator] GPT-4o returned empty. Refusal: {refusal}, finish: {response.choices[0].finish_reason}")
@@ -759,12 +1558,11 @@ IMPORTANTE:
                 detail=f"La IA no pudo procesar las fotos. Intenta con fotos más claras o en otro formato (JPG). {f'Motivo: {refusal}' if refusal else ''}"
             )
 
-        # Extract JSON from response (may be wrapped in ```json ... ``` or plain)
+        # Extract JSON from response
         import re
         json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result_text, re.DOTALL)
         json_str = json_match.group(1).strip() if json_match else result_text.strip()
         
-        # Also handle case where response starts with text before JSON
         if not json_str.startswith('{'):
             brace_idx = json_str.find('{')
             if brace_idx >= 0:
@@ -776,7 +1574,6 @@ IMPORTANTE:
         if "checklist" not in result:
             result["checklist"] = []
         if "summary" not in result:
-            # Build summary from checklist
             statuses = [item.get("status", "not_evaluable") for item in result["checklist"]]
             result["summary"] = {
                 "total_items": len(CHECKLIST_ITEMS),
@@ -787,7 +1584,6 @@ IMPORTANTE:
                 "not_evaluable": statuses.count("not_evaluable"),
             }
         if "photos_needed" not in result:
-            # Build from needs_photo items
             result["photos_needed"] = []
             for item in result.get("checklist", []):
                 if item.get("status") == "needs_photo":
@@ -814,75 +1610,3 @@ IMPORTANTE:
     except Exception as e:
         logger.error(f"[AI Evaluator] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# HELPERS
-# ============================================================================
-
-def _format_direct_answer(data: dict) -> str:
-    """Format a direct database query result into a human-readable answer."""
-    dtype = data.get("type", "")
-
-    if dtype == "property_count":
-        parts = [f"🏠 Tenemos **{data['total']}** propiedades en total."]
-        for status, count in data["by_status"].items():
-            emoji = {"acquired": "📦", "renovating": "🔧", "published": "📢", "sold": "💰", "in_transit": "🚚"}.get(status, "•")
-            parts.append(f"  {emoji} {status}: {count}")
-        return "\n".join(parts)
-
-    if dtype == "sales_summary":
-        if data["count"] == 0:
-            return f"📊 En {data['month']} aún no hay ventas registradas."
-        return (
-            f"📊 En **{data['month']}** hubo **{data['count']}** ventas "
-            f"por un total de **${data['total_amount']:,.2f}**."
-        )
-
-    if dtype == "overdue_payments":
-        if data["count"] == 0:
-            return "✅ No hay pagos vencidos. ¡Todo al día!"
-        return f"⚠️ Hay **{data['count']}** pagos vencidos/atrasados."
-
-    if dtype == "rto_clients":
-        if data["active_count"] == 0:
-            return "No hay clientes con contratos RTO activos."
-        names = ", ".join(c["name"] for c in data["clients"][:10])
-        return f"👥 Hay **{data['active_count']}** clientes con contrato RTO activo.\nAlgunos: {names}"
-
-    if dtype == "team":
-        if data["count"] == 0:
-            return "👥 No hay miembros del equipo registrados aún."
-        parts = [f"👥 Equipo activo: **{data['count']}** personas."]
-        for m in data["members"]:
-            parts.append(f"  • {m['name']} — {m['role']}")
-        return "\n".join(parts)
-
-    if dtype == "renovations":
-        if data["active_count"] == 0:
-            return "🔧 No hay renovaciones activas en este momento."
-        parts = [f"🔧 Hay **{data['active_count']}** renovaciones activas:"]
-        for r in data["renovations"]:
-            parts.append(f"  • {r['property']} — {r['status']} (${float(r.get('total_cost') or 0):,.0f})")
-        return "\n".join(parts)
-
-    if dtype == "market_listings":
-        return (
-            f"🔍 Últimos {data['total_shown']} listings del mercado. "
-            f"**{data['qualified']}** califican según nuestros filtros."
-        )
-
-    if dtype == "client_info":
-        client = data["client"]
-        name = client.get("name", "Desconocido")
-        status = client.get("status", "unknown")
-        phone = client.get("phone", "N/A")
-        answer = f"👤 **{name}**\n  Estado: {status}\n  Tel: {phone}"
-        if data.get("recent_payments"):
-            last = data["recent_payments"][0]
-            answer += f"\n  Último pago: ${float(last.get('amount', 0)):,.2f} ({last.get('due_date', 'N/A')})"
-        if data.get("sales"):
-            answer += f"\n  Ventas: {len(data['sales'])}"
-        return answer
-
-    return "✅ Datos encontrados en el sistema."
