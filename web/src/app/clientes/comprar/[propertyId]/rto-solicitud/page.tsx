@@ -12,8 +12,10 @@ import {
   Clock,
   FileText,
   Shield,
+  ShieldCheck,
   Key,
-  Loader2
+  Loader2,
+  UserCheck,
 } from 'lucide-react'
 import confetti from 'canvas-confetti'
 
@@ -155,20 +157,27 @@ export default function RTOConfirmationPage() {
                         },
                         {
                           step: 2,
+                          title: 'Verificación de identidad',
+                          description: 'Te pediremos que verifiques tu identidad desde tu cuenta. Entra a "Mi Cuenta" y sigue las instrucciones cuando aparezca la solicitud.',
+                          time: 'Desde tu cuenta',
+                          icon: ShieldCheck
+                        },
+                        {
+                          step: 3,
                           title: 'Te contactamos',
                           description: 'Un asesor te llamará para discutir los términos del contrato',
                           time: 'Después de revisión',
                           icon: Phone
                         },
                         {
-                          step: 3,
-                          title: 'Documentación',
-                          description: 'Recopilaremos información adicional para completar tu perfil',
+                          step: 4,
+                          title: 'Documentación y capacidad de pago',
+                          description: 'Evaluaremos tu información financiera para completar tu perfil',
                           time: 'Durante llamada',
                           icon: FileText
                         },
                         {
-                          step: 4,
+                          step: 5,
                           title: 'Firma de contrato',
                           description: 'Si todo está en orden, firmas el contrato y te mudas',
                           time: 'Una vez aprobado',
@@ -225,6 +234,24 @@ export default function RTOConfirmationPage() {
                   Te hemos enviado un correo de confirmación con los detalles de tu solicitud.
                   Revisa tu bandeja de entrada.
                 </p>
+              </div>
+
+              {/* KYC Info Box */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 mb-6 border border-blue-200">
+                <div className="flex items-start gap-3">
+                  <UserCheck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-blue-800 mb-1">Verificación de identidad</p>
+                    <p className="text-sm text-blue-700 mb-2">
+                      Como parte del proceso, te pediremos que verifiques tu identidad.
+                      Cuando nuestro equipo lo solicite, aparecerá un aviso en tu cuenta.
+                    </p>
+                    <p className="text-sm text-blue-700">
+                      Entra a <Link href="/clientes/mi-cuenta" className="font-semibold underline">Mi Cuenta</Link> y 
+                      sigue las instrucciones. Solo necesitas un documento de identidad (licencia, pasaporte o ID).
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* RTO Info Box */}
