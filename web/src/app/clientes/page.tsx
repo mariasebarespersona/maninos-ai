@@ -66,26 +66,32 @@ function Hero() {
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url('${bgImage}')` }}
       />
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 100%)' }} />
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.25) 100%)' }} />
 
       <div className="relative z-10 w-full max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
-        <div className="max-w-xl">
+        <div className="max-w-2xl">
           <h1
-            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-[1.1] tracking-tight opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.1s', animationFillMode: 'forwards', textShadow: '0 2px 20px rgba(0,0,0,0.5)' }}
+            className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.08] tracking-tight opacity-0 animate-fade-in-up"
+            style={{ animationDelay: '0.1s', animationFillMode: 'forwards', textShadow: '0 3px 30px rgba(0,0,0,0.7), 0 1px 4px rgba(0,0,0,0.5)' }}
           >
             Tu nuevo hogar en Texas
           </h1>
           <p
-            className="text-lg text-white/90 mt-5 leading-relaxed opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.25s', animationFillMode: 'forwards', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}
+            className="text-xl sm:text-2xl text-white mt-4 leading-snug font-medium opacity-0 animate-fade-in-up"
+            style={{ animationDelay: '0.2s', animationFillMode: 'forwards', textShadow: '0 2px 16px rgba(0,0,0,0.6)' }}
+          >
+            Un lugar seguro para tu familia.
+          </p>
+          <p
+            className="text-base sm:text-lg text-white/85 mt-3 leading-relaxed opacity-0 animate-fade-in-up"
+            style={{ animationDelay: '0.3s', animationFillMode: 'forwards', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}
           >
             Casas móviles listas para mudarte. Compra al contado o con financiamiento flexible.
           </p>
 
           <div
             className="mt-8 opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.4s', animationFillMode: 'forwards' }}
+            style={{ animationDelay: '0.45s', animationFillMode: 'forwards' }}
           >
             <Link
               href="/clientes/casas"
@@ -113,7 +119,7 @@ function TrustNumbers({ stats }: { stats: Stats | null }) {
       icon: <TrendingDown className="w-5 h-5" />,
       value: 'Hasta 20%',
       label: 'por debajo del mercado',
-      detail: 'Compramos al 60% del valor y vendemos al 80%',
+      detail: 'Precios competitivos vs. el mercado local',
     },
     {
       icon: <Home className="w-5 h-5" />,
