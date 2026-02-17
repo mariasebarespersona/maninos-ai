@@ -5,7 +5,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url)
-    const res = await fetch(`${API}/api/capital/analysis/${url.search}`, { cache: 'no-store' })
+    const res = await fetch(`${API}/api/capital/analysis${url.search}`, { cache: 'no-store' })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (error) {
