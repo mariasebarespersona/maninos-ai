@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { Home, User, Phone, X, Menu } from 'lucide-react'
+import { User, Phone, X, Menu, Mail, MapPin, ChevronRight, MessageCircle } from 'lucide-react'
 
 export default function ClientPortalLayout({
   children,
@@ -11,139 +12,265 @@ export default function ClientPortalLayout({
   children: React.ReactNode
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
   const pathname = usePathname()
 
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [pathname])
+
+  const navLinks = [
+    { href: '/clientes/casas', label: 'Comprar' },
+    { href: '/clientes/mi-cuenta', label: 'Mi Cuenta' },
+  ]
+
+  const isActive = (href: string) => pathname.startsWith(href)
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Header */}
-      <header className="bg-navy-900 text-white sticky top-0 z-50">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+    <div className="portal-clientes min-h-screen bg-white">
+
+      {/* ═══════════ HEADER ═══════════ */}
+      <header
+        className={`sticky top-0 z-50 transition-all duration-300 ${
+          scrolled
+            ? 'mn-glass-dark shadow-lg'
+            : 'bg-transparent'
+        }`}
+        style={!scrolled ? { background: 'linear-gradient(180deg, rgba(0,35,61,0.85) 0%, transparent 100%)' } : undefined}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 sm:h-20">
+
             {/* Logo */}
-            <Link href="/clientes" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
-              <div className="w-10 h-10 bg-gold-500 rounded-lg flex items-center justify-center">
-                <Home className="w-6 h-6 text-navy-900" />
-              </div>
-              <div>
-                <span className="font-bold text-lg">Maninos Homes</span>
-                <span className="text-gold-400 text-xs block -mt-1">Tu hogar en Texas</span>
-              </div>
+            <Link href="/clientes" className="flex items-center gap-3 group">
+              <Image
+                src="/images/maninos-logo.png"
+                alt="Maninos Homes"
+                width={100}
+                height={46}
+                className="mn-logo-white h-8 sm:h-10 w-auto transition-transform group-hover:scale-105"
+                priority
+              />
             </Link>
-            
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-6">
-              <Link 
-                href="/clientes/casas" 
-                className="text-gray-300 hover:text-white transition-colors"
+
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    isActive(link.href)
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  {link.label}
+                </Link>
+              ))}
+
+              <div className="w-px h-6 bg-white/20 mx-2" />
+
+              {/* WhatsApp CTA */}
+              <a
+                href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa%20en%20Maninos%20Homes"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 bg-[#25d366] text-white hover:bg-[#20bd5a] shadow-md hover:shadow-lg"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
               >
-                Ver Casas
-              </Link>
-              <Link 
-                href="/clientes/mi-cuenta" 
-                className="flex items-center gap-2 bg-gold-500 text-navy-900 px-4 py-2 rounded-lg font-medium hover:bg-gold-400 transition-colors"
+                <MessageCircle className="w-4 h-4" />
+                WhatsApp
+              </a>
+
+              <Link
+                href="/clientes/mi-cuenta"
+                className="ml-2 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-white border border-white/30 hover:bg-white hover:text-[#004274]"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
               >
                 <User className="w-4 h-4" />
-                Mi Cuenta
+                Acceder
               </Link>
             </nav>
-            
-            {/* Mobile menu button */}
-            <button 
-              className="md:hidden p-2"
+
+            {/* Mobile menu toggle */}
+            <button
+              className="md:hidden p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
             >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
 
-          {/* Mobile Navigation Dropdown */}
+          {/* Mobile Nav Overlay */}
           {mobileMenuOpen && (
-            <nav className="md:hidden pb-4 border-t border-navy-800 pt-3 space-y-1 animate-fade-in">
-              <Link 
-                href="/clientes/casas" 
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition-colors ${
-                  pathname.startsWith('/clientes/casas')
-                    ? 'bg-navy-800 text-gold-400'
-                    : 'text-gray-300 hover:bg-navy-800 hover:text-white'
-                }`}
-              >
-                🏠 Ver Casas
-              </Link>
-              <Link 
-                href="/clientes/mi-cuenta" 
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition-colors ${
-                  pathname.startsWith('/clientes/mi-cuenta')
-                    ? 'bg-navy-800 text-gold-400'
-                    : 'text-gray-300 hover:bg-navy-800 hover:text-white'
-                }`}
-              >
-                👤 Mi Cuenta
-              </Link>
-              <a
-                href="tel:8327459600"
-                className="block px-4 py-3 rounded-lg text-gray-300 hover:bg-navy-800 hover:text-white transition-colors"
-              >
-                📞 Llamar: (832) 745-9600
-              </a>
+            <nav className="md:hidden pb-6 pt-2 space-y-1 mn-animate-fade-in">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center justify-between px-4 py-3.5 rounded-xl transition-colors ${
+                    isActive(link.href)
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/80 hover:bg-white/10 hover:text-white'
+                  }`}
+                  style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 600 }}
+                >
+                  {link.label}
+                  <ChevronRight className="w-4 h-4 opacity-50" />
+                </Link>
+              ))}
+
+              <div className="pt-2 flex flex-col gap-2">
+                <a
+                  href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa%20en%20Maninos%20Homes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white font-semibold bg-[#25d366] hover:bg-[#20bd5a]"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Escríbenos por WhatsApp
+                </a>
+                <a
+                  href="tel:8327459600"
+                  className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  <Phone className="w-5 h-5" />
+                  (832) 745-9600
+                </a>
+              </div>
             </nav>
           )}
         </div>
       </header>
-      
-      {/* Main content */}
-      <main>
+
+      {/* ═══════════ MAIN CONTENT ═══════════ */}
+      <main className="min-h-screen">
         {children}
       </main>
-      
-      {/* Footer */}
-      <footer className="bg-navy-900 text-white mt-20">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid md:grid-cols-4 gap-8">
+
+      {/* ═══════════ FOOTER ═══════════ */}
+      <footer style={{ background: 'var(--mn-blue-dark)' }} className="text-white">
+        {/* Gold accent line */}
+        <div className="h-1 mn-gradient-gold" />
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+
             {/* Brand */}
-            <div className="md:col-span-2">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-gold-500 rounded-lg flex items-center justify-center">
-                  <Home className="w-6 h-6 text-navy-900" />
-                </div>
-                <span className="font-bold text-xl">Maninos Homes</span>
-              </div>
-              <p className="text-gray-400 mb-4">
-                Tu casa móvil en Texas. Casas renovadas y listas para vivir.
-                Compra segura al contado con transferencia de título directo.
+            <div className="lg:col-span-2">
+              <Image
+                src="/images/maninos-logo.png"
+                alt="Maninos Homes"
+                width={160}
+                height={74}
+                className="mn-logo-white h-12 w-auto mb-6"
+              />
+              <p className="text-white/60 text-base leading-relaxed mb-6 max-w-md" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                Apoyamos a la comunidad hispana en Texas en la búsqueda del sueño americano.
+                Ofrecemos hogares dignos y accesibles de la más alta calidad.
+              </p>
+              <p className="text-sm font-semibold tracking-wide uppercase" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
+                &ldquo;Tu hogar, nuestro compromiso&rdquo;
               </p>
             </div>
-            
-            {/* Links */}
+
+            {/* Quick Links */}
             <div>
-              <h4 className="font-semibold mb-4">Enlaces</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><Link href="/clientes/casas" className="hover:text-gold-400">Ver Casas</Link></li>
-                <li><Link href="/clientes/mi-cuenta" className="hover:text-gold-400">Mi Cuenta</Link></li>
+              <h4 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
+                Navegación
+              </h4>
+              <ul className="space-y-3">
+                {[
+                  { href: '/clientes', label: 'Inicio' },
+                  { href: '/clientes/casas', label: 'Ver Casas' },
+                  { href: '/clientes/mi-cuenta', label: 'Mi Cuenta' },
+                  { href: 'https://www.tdhca.texas.gov/', label: 'TDHCA Texas', external: true },
+                ].map((link) => (
+                  <li key={link.href}>
+                    {link.external ? (
+                      <a
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-white/60 hover:text-white transition-colors text-sm flex items-center gap-1"
+                        style={{ fontFamily: "'Mulish', sans-serif" }}
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link
+                        href={link.href}
+                        className="text-white/60 hover:text-white transition-colors text-sm"
+                        style={{ fontFamily: "'Mulish', sans-serif" }}
+                      >
+                        {link.label}
+                      </Link>
+                    )}
+                  </li>
+                ))}
               </ul>
             </div>
-            
+
             {/* Contact */}
             <div>
-              <h4 className="font-semibold mb-4">Contacto</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li className="flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  <a href="tel:8327459600" className="hover:text-gold-400">(832) 745-9600</a>
+              <h4 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
+                Contacto
+              </h4>
+              <ul className="space-y-4">
+                <li>
+                  <a href="tel:8327459600" className="flex items-center gap-3 text-white/60 hover:text-white transition-colors text-sm group">
+                    <Phone className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--mn-gold)' }} />
+                    <span>(832) 745-9600</span>
+                  </a>
                 </li>
-                <li>Houston, Texas</li>
+                <li>
+                  <a href="mailto:info@maninoshomes.com" className="flex items-center gap-3 text-white/60 hover:text-white transition-colors text-sm group">
+                    <Mail className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--mn-gold)' }} />
+                    <span>info@maninoshomes.com</span>
+                  </a>
+                </li>
+                <li className="flex items-start gap-3 text-white/60 text-sm">
+                  <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--mn-gold)' }} />
+                  <span>15891 Old Houston Rd.<br />Conroe, TX 77302</span>
+                </li>
               </ul>
+
+              {/* WhatsApp CTA */}
+              <a
+                href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa%20en%20Maninos%20Homes"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-semibold bg-[#25d366] hover:bg-[#20bd5a] transition-colors text-sm w-full"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
+              >
+                <MessageCircle className="w-4 h-4" />
+                WhatsApp
+              </a>
             </div>
           </div>
-          
-          <div className="border-t border-navy-800 mt-8 pt-8 text-center text-gray-500 text-sm">
-            <p>© {new Date().getFullYear()} Maninos Homes LLC. Todos los derechos reservados.</p>
+
+          {/* Bottom bar */}
+          <div className="border-t border-white/10 mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-white/40 text-xs" style={{ fontFamily: "'Mulish', sans-serif" }}>
+              © {new Date().getFullYear()} Maninos Homes LLC. Todos los derechos reservados.
+            </p>
+            <div className="flex items-center gap-6">
+              <a href="https://www.maninoshomes.com" target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white/60 text-xs transition-colors">
+                maninoshomes.com
+              </a>
+            </div>
           </div>
         </div>
       </footer>

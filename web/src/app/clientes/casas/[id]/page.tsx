@@ -18,9 +18,11 @@ import {
   Loader2,
   DollarSign,
   Clock,
-  Key,
   SlidersHorizontal,
   ArrowRight,
+  Phone,
+  MessageCircle,
+  Home,
 } from 'lucide-react'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
 
@@ -48,7 +50,6 @@ interface Property {
 function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId: string }) {
   const router = useRouter()
 
-  // Defaults: 5% down, 36 months
   const MIN_DOWN_PCT = 0
   const MAX_DOWN_PCT = 40
   const MIN_MONTHS = 12
@@ -70,7 +71,6 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
   const monthlyPayment = rto.monthlyPayment
 
   const handleProceedRTO = () => {
-    // Save simulator params to sessionStorage so they carry through the purchase flow
     sessionStorage.setItem('maninos_rto_sim', JSON.stringify({
       down_payment_pct: downPaymentPct,
       down_payment_amount: downPaymentAmount,
@@ -88,24 +88,39 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center gap-2 mb-1">
-        <SlidersHorizontal className="w-4 h-4 text-orange-600" />
-        <h3 className="font-semibold text-navy-900 text-sm">Simulador Rent-to-Own</h3>
+        <SlidersHorizontal className="w-4 h-4" style={{ color: 'var(--mn-gold)' }} />
+        <h3
+          className="font-bold text-sm"
+          style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
+        >
+          Simulador Rent-to-Own
+        </h3>
       </div>
 
       {/* Monthly display */}
-      <div className="bg-orange-50 rounded-xl p-4 text-center border border-orange-200">
-        <p className="text-xs text-orange-600 mb-0.5">Pago mensual estimado</p>
-        <p className="text-3xl font-bold text-orange-700">
-          ${monthlyPayment.toLocaleString()}<span className="text-base font-normal">/mes</span>
+      <div
+        className="rounded-xl p-5 text-center"
+        style={{ background: 'var(--mn-blue-50)', border: '1px solid var(--mn-blue-100)' }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}>
+          Pago mensual estimado
         </p>
-        <p className="text-xs text-orange-500 mt-1">por {termMonths} meses</p>
+        <p className="text-3xl font-black" style={{ color: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+          ${monthlyPayment.toLocaleString()}
+          <span className="text-base font-normal" style={{ color: 'var(--mn-gray)' }}>/mes</span>
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--mn-gray)' }}>
+          por {termMonths} meses
+        </p>
       </div>
 
       {/* Down payment slider */}
       <div>
         <div className="flex justify-between text-sm mb-1.5">
-          <span className="text-gray-600">Enganche</span>
-          <span className="font-semibold text-navy-900">${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
+          <span style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>Enganche</span>
+          <span className="font-bold" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+            ${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)
+          </span>
         </div>
         <input
           type="range"
@@ -114,9 +129,10 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           step={1}
           value={downPaymentPct}
           onChange={(e) => setDownPaymentPct(Number(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+          style={{ accentColor: 'var(--mn-blue)' }}
         />
-        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+        <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--mn-gray-light)' }}>
           <span>0%</span>
           <span>40%</span>
         </div>
@@ -125,8 +141,10 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       {/* Term months slider */}
       <div>
         <div className="flex justify-between text-sm mb-1.5">
-          <span className="text-gray-600">Plazo</span>
-          <span className="font-semibold text-navy-900">{termMonths} meses</span>
+          <span style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>Plazo</span>
+          <span className="font-bold" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+            {termMonths} meses
+          </span>
         </div>
         <input
           type="range"
@@ -135,48 +153,51 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           step={STEP_MONTHS}
           value={termMonths}
           onChange={(e) => setTermMonths(Number(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+          style={{ accentColor: 'var(--mn-blue)' }}
         />
-        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+        <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--mn-gray-light)' }}>
           <span>12 meses</span>
           <span>60 meses</span>
         </div>
       </div>
 
       {/* Summary table */}
-      <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+      <div className="rounded-xl p-4 space-y-2.5 text-sm" style={{ background: 'var(--mn-light)' }}>
         <div className="flex justify-between">
-          <span className="text-gray-600">Precio de venta</span>
-          <span className="font-medium">${salePrice.toLocaleString()}</span>
+          <span style={{ color: 'var(--mn-gray)' }}>Precio de venta</span>
+          <span className="font-semibold" style={{ color: 'var(--mn-dark)' }}>${salePrice.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Enganche</span>
-          <span className="font-medium text-green-700">- ${downPaymentAmount.toLocaleString()}</span>
+          <span style={{ color: 'var(--mn-gray)' }}>Enganche</span>
+          <span className="font-semibold" style={{ color: '#16a34a' }}>- ${downPaymentAmount.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">A financiar</span>
-          <span className="font-medium">${financeAmount.toLocaleString()}</span>
+          <span style={{ color: 'var(--mn-gray)' }}>A financiar</span>
+          <span className="font-semibold" style={{ color: 'var(--mn-dark)' }}>${financeAmount.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Interés ({(rto.annualRate * 100).toFixed(0)}% anual × {(termMonths / 12).toFixed(1)} años)</span>
-          <span className="font-medium text-orange-600">+ ${Math.round(rto.totalInterest).toLocaleString()}</span>
+          <span style={{ color: 'var(--mn-gray)' }}>Interés ({(rto.annualRate * 100).toFixed(0)}% × {(termMonths / 12).toFixed(1)} años)</span>
+          <span className="font-semibold" style={{ color: 'var(--mn-gold-dark)' }}>+ ${Math.round(rto.totalInterest).toLocaleString()}</span>
         </div>
-        <div className="flex justify-between border-t pt-2">
-          <span className="text-gray-800 font-semibold">Total a pagar</span>
-          <span className="font-bold text-navy-900">${Math.round(rto.totalToPay).toLocaleString()}</span>
+        <div className="flex justify-between border-t pt-2.5" style={{ borderColor: 'var(--mn-light-300)' }}>
+          <span className="font-bold" style={{ color: 'var(--mn-dark)' }}>Total a pagar</span>
+          <span className="font-black" style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}>
+            ${Math.round(rto.totalToPay).toLocaleString()}
+          </span>
         </div>
       </div>
 
       {/* CTA */}
       <button
         onClick={handleProceedRTO}
-        className="w-full bg-orange-600 text-white font-bold py-3.5 rounded-xl hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
+        className="w-full btn-brand btn-brand-primary flex items-center justify-center gap-2 !py-3.5 !rounded-xl !text-base"
       >
         Solicitar Rent-to-Own
         <ArrowRight className="w-4 h-4" />
       </button>
 
-      <p className="text-xs text-gray-400 text-center leading-snug">
+      <p className="text-xs text-center leading-snug" style={{ color: 'var(--mn-gray)' }}>
         *Cifras estimadas. El pago final depende de la aprobación de Maninos Capital.
       </p>
     </div>
@@ -234,8 +255,9 @@ export default function PropertyDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--mn-blue)' }} />
+        <p className="text-sm" style={{ color: 'var(--mn-gray)' }}>Cargando propiedad…</p>
       </div>
     )
   }
@@ -243,33 +265,37 @@ export default function PropertyDetailPage() {
   if (!property) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>Propiedad no encontrada</p>
+        <p style={{ color: 'var(--mn-gray)' }}>Propiedad no encontrada</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Breadcrumb */}
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
-          <Link 
-            href="/clientes/casas" 
-            className="flex items-center gap-2 text-gray-600 hover:text-navy-900"
+    <div className="min-h-screen" style={{ background: 'var(--mn-light)' }}>
+
+      {/* ═══════════ BREADCRUMB ═══════════ */}
+      <div className="bg-white border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <Link
+            href="/clientes/casas"
+            className="inline-flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80"
+            style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
           >
             <ArrowLeft className="w-4 h-4" />
             Volver al catálogo
           </Link>
         </div>
       </div>
-      
-      <div className="container mx-auto px-4 py-8">
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main Content */}
+
+          {/* ═══════════ LEFT — GALLERY + INFO ═══════════ */}
           <div className="lg:col-span-2 space-y-6">
+
             {/* Photo Gallery */}
-            <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-              <div className="relative h-[400px] bg-gray-200">
+            <div className="bg-white rounded-2xl overflow-hidden shadow-sm" style={{ border: '1px solid var(--mn-light-200)' }}>
+              <div className="relative aspect-[16/10] sm:aspect-[16/9] bg-gray-100">
                 {property.photos?.length > 0 ? (
                   <>
                     <img
@@ -278,60 +304,72 @@ export default function PropertyDetailPage() {
                       className="w-full h-full object-cover"
                     />
                     
-                    {/* Navigation buttons */}
                     {property.photos.length > 1 && (
                       <>
                         <button
                           onClick={prevPhoto}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+                          style={{ background: 'rgba(0,35,61,0.6)', backdropFilter: 'blur(4px)' }}
                         >
-                          <ChevronLeft className="w-6 h-6" />
+                          <ChevronLeft className="w-5 h-5" />
                         </button>
                         <button
                           onClick={nextPhoto}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+                          style={{ background: 'rgba(0,35,61,0.6)', backdropFilter: 'blur(4px)' }}
                         >
-                          <ChevronRight className="w-6 h-6" />
+                          <ChevronRight className="w-5 h-5" />
                         </button>
                         
-                        {/* Photo counter */}
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+                        <div
+                          className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-semibold"
+                          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+                        >
                           {currentPhotoIndex + 1} / {property.photos.length}
                         </div>
                       </>
                     )}
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                    <span className="text-6xl">🏠</span>
+                  <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--mn-light-200)' }}>
+                    <Home className="w-16 h-16" style={{ color: 'var(--mn-gray-light)' }} />
                   </div>
                 )}
-                
+
                 {!isAvailable && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <span className="bg-red-600 text-white font-bold text-2xl px-6 py-3 rounded-lg transform -rotate-12 shadow-lg">
+                    <span
+                      className="text-white font-black text-2xl px-6 py-3 rounded-xl shadow-lg transform -rotate-6"
+                      style={{ background: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}
+                    >
                       {property.status === 'sold' ? 'VENDIDA' : 'RESERVADA'}
                     </span>
                   </div>
                 )}
-                
+
                 {isAvailable && property.is_renovated && (
-                  <span className="absolute top-4 left-4 bg-green-500 text-white font-bold px-3 py-1 rounded">
-                    RENOVADA
+                  <span
+                    className="absolute top-4 left-4 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-sm"
+                    style={{ background: '#16a34a', fontFamily: "'Montserrat', sans-serif" }}
+                  >
+                    Renovada
                   </span>
                 )}
               </div>
-              
-              {/* Photo thumbnails */}
+
+              {/* Thumbnails */}
               {property.photos?.length > 1 && (
-                <div className="p-4 flex gap-2 overflow-x-auto">
+                <div className="p-3 sm:p-4 flex gap-2 overflow-x-auto no-scrollbar">
                   {property.photos.map((photo, index) => (
                     <button
                       key={index}
                       onClick={() => setCurrentPhotoIndex(index)}
-                      className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${
-                        index === currentPhotoIndex ? 'border-gold-500' : 'border-transparent'
+                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden transition-all ${
+                        index === currentPhotoIndex
+                          ? 'ring-2 ring-offset-1 scale-95'
+                          : 'opacity-60 hover:opacity-100'
                       }`}
+                      style={index === currentPhotoIndex ? { ringColor: 'var(--mn-blue)' } : undefined}
                     >
                       <img
                         src={photo}
@@ -343,95 +381,116 @@ export default function PropertyDetailPage() {
                 </div>
               )}
             </div>
-            
+
             {/* Property Info */}
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <h1 className="text-2xl font-bold text-navy-900 mb-2">
+            <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm" style={{ border: '1px solid var(--mn-light-200)' }}>
+              <h1
+                className="text-2xl sm:text-3xl font-black mb-2"
+                style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
+              >
                 {property.address}
               </h1>
-              
-              <div className="flex items-center gap-2 text-gray-600 mb-6">
-                <MapPin className="w-4 h-4" />
-                <span>{property.city || 'Texas'}, {property.state || 'TX'} {property.zip_code}</span>
+
+              <div className="flex items-center gap-2 mb-8">
+                <MapPin className="w-4 h-4" style={{ color: 'var(--mn-gray)' }} />
+                <span style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+                  {property.city || 'Texas'}, {property.state || 'TX'} {property.zip_code}
+                </span>
               </div>
-              
-              {/* Features */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-6 border-y">
-                {property.bedrooms && (
+
+              {/* Features Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 py-6 border-y" style={{ borderColor: 'var(--mn-light-200)' }}>
+                {property.bedrooms > 0 && (
                   <div className="text-center">
-                    <Bed className="w-6 h-6 mx-auto text-gold-600 mb-2" />
-                    <p className="font-bold text-navy-900">{property.bedrooms}</p>
-                    <p className="text-sm text-gray-500">Habitaciones</p>
-                  </div>
-                )}
-                {property.bathrooms && (
-                  <div className="text-center">
-                    <Bath className="w-6 h-6 mx-auto text-gold-600 mb-2" />
-                    <p className="font-bold text-navy-900">{property.bathrooms}</p>
-                    <p className="text-sm text-gray-500">Baños</p>
-                  </div>
-                )}
-                {property.square_feet && (
-                  <div className="text-center">
-                    <Square className="w-6 h-6 mx-auto text-gold-600 mb-2" />
-                    <p className="font-bold text-navy-900">{property.square_feet}</p>
-                    <p className="text-sm text-gray-500">Pies cuadrados</p>
-                  </div>
-                )}
-                {property.year && (
-                  <div className="text-center">
-                    <Calendar className="w-6 h-6 mx-auto text-gold-600 mb-2" />
-                    <p className="font-bold text-navy-900">{property.year}</p>
-                    <p className="text-sm text-gray-500">Año</p>
-                  </div>
-                )}
-              </div>
-              
-              {/* Details */}
-              <div className="mt-6">
-                <h3 className="font-semibold text-navy-900 mb-4">Detalles de la propiedad</h3>
-                <div className="grid md:grid-cols-2 gap-4 text-sm">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">Tipo</span>
-                    <span className="font-medium">Casa Móvil</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">Estado</span>
-                    <span className="font-medium">Texas</span>
-                  </div>
-                  {property.hud_number && (
-                    <div className="flex justify-between py-2 border-b">
-                      <span className="text-gray-600">HUD Number</span>
-                      <span className="font-medium">{property.hud_number}</span>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
+                      <Bed className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
                     </div>
-                  )}
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">Condición</span>
-                    <span className="font-medium text-green-600">
-                      {property.is_renovated ? 'Renovada' : 'Original'}
-                    </span>
+                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.bedrooms}</p>
+                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Habitaciones</p>
                   </div>
+                )}
+                {property.bathrooms > 0 && (
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
+                      <Bath className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
+                    </div>
+                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.bathrooms}</p>
+                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Baños</p>
+                  </div>
+                )}
+                {property.square_feet > 0 && (
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
+                      <Square className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
+                    </div>
+                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.square_feet}</p>
+                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Pies²</p>
+                  </div>
+                )}
+                {property.year > 0 && (
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
+                      <Calendar className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
+                    </div>
+                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.year}</p>
+                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Año</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Details Table */}
+              <div className="mt-6">
+                <h3
+                  className="font-bold text-sm uppercase tracking-wider mb-4"
+                  style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  Detalles
+                </h3>
+                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-0">
+                  {[
+                    { label: 'Tipo', value: 'Casa Móvil' },
+                    { label: 'Estado', value: 'Texas' },
+                    ...(property.hud_number ? [{ label: 'HUD Number', value: property.hud_number }] : []),
+                    { label: 'Condición', value: property.is_renovated ? 'Renovada' : 'Original', color: property.is_renovated ? '#16a34a' : undefined },
+                  ].map((item) => (
+                    <div key={item.label} className="flex justify-between py-3 border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
+                      <span className="text-sm" style={{ color: 'var(--mn-gray)' }}>{item.label}</span>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: item.color || 'var(--mn-dark)', fontFamily: "'Mulish', sans-serif" }}
+                      >
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
-          
-          {/* Sidebar - Purchase Card */}
+
+          {/* ═══════════ RIGHT — SIDEBAR ═══════════ */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24 space-y-5">
-              <div className="text-center">
-                <p className="text-gray-500 text-sm">Precio de venta</p>
-                <p className="text-4xl font-bold text-gold-600">
+            <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 space-y-6" style={{ border: '1px solid var(--mn-light-200)' }}>
+
+              {/* Price */}
+              <div className="text-center pb-5 border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
+                <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--mn-gray)', fontFamily: "'Montserrat', sans-serif" }}>
+                  Precio de venta
+                </p>
+                <p
+                  className="text-4xl font-black"
+                  style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
+                >
                   ${property.sale_price?.toLocaleString()}
                 </p>
               </div>
-              
+
               {isAvailable ? (
                 <>
                   {/* Contado CTA */}
                   <Link
                     href={`/clientes/comprar/${property.id}`}
-                    className="block w-full bg-gold-500 text-navy-900 text-center font-bold py-3.5 rounded-xl hover:bg-gold-400 transition-colors"
+                    className="block w-full btn-brand btn-brand-gold text-center !py-3.5 !rounded-xl !text-base"
                   >
                     💵 Comprar al Contado
                   </Link>
@@ -439,10 +498,12 @@ export default function PropertyDetailPage() {
                   {/* Divider */}
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-gray-200" />
+                      <div className="w-full border-t" style={{ borderColor: 'var(--mn-light-300)' }} />
                     </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="bg-white px-3 text-gray-400">o simula tu Rent-to-Own</span>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="px-3" style={{ background: 'white', color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+                        o simula tu Rent-to-Own
+                      </span>
                     </div>
                   </div>
 
@@ -451,50 +512,68 @@ export default function PropertyDetailPage() {
                 </>
               ) : (
                 <>
-                  {/* SOLD / RESERVED badge */}
-                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
+                  <div className="rounded-xl p-5 text-center" style={{ background: 'var(--mn-light)', border: '1.5px solid var(--mn-light-300)' }}>
                     <div className="text-3xl mb-2">
                       {property.status === 'sold' ? '🏷️' : '⏳'}
                     </div>
-                    <p className="font-bold text-red-700 text-lg">
+                    <p className="font-black text-lg" style={{ color: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}>
                       {property.status === 'sold' ? 'VENDIDA' : 'RESERVADA'}
                     </p>
-                    <p className="text-red-600 text-sm mt-1">
-                      {property.status === 'sold' 
-                        ? 'Esta propiedad ya ha sido vendida.' 
+                    <p className="text-sm mt-1" style={{ color: 'var(--mn-gray)' }}>
+                      {property.status === 'sold'
+                        ? 'Esta propiedad ya ha sido vendida.'
                         : 'Esta propiedad tiene una venta en proceso.'}
                     </p>
                   </div>
-                  
+
                   <Link
                     href="/clientes/casas"
-                    className="block w-full bg-navy-800 text-white text-center font-bold py-4 rounded-lg hover:bg-navy-700 transition-colors"
+                    className="block w-full btn-brand btn-brand-primary text-center !py-3.5 !rounded-xl"
                   >
                     Ver Otras Casas Disponibles
                   </Link>
                 </>
               )}
-              
+
               {/* Trust badges */}
-              <div className="space-y-3 pt-4 border-t">
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                  <span>Casa inspeccionada y verificada</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <Shield className="w-5 h-5 text-green-500" />
-                  <span>Dos opciones de pago seguras</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <FileText className="w-5 h-5 text-green-500" />
-                  <span>Título transferido a tu nombre</span>
-                </div>
+              <div className="space-y-3 pt-5 border-t" style={{ borderColor: 'var(--mn-light-200)' }}>
+                {[
+                  { icon: CheckCircle, text: 'Casa inspeccionada y verificada', color: '#16a34a' },
+                  { icon: Shield, text: 'Dos opciones de pago seguras', color: '#16a34a' },
+                  { icon: FileText, text: 'Título transferido a tu nombre', color: '#16a34a' },
+                ].map((item) => (
+                  <div key={item.text} className="flex items-center gap-3">
+                    <item.icon className="w-4 h-4 flex-shrink-0" style={{ color: item.color }} />
+                    <span className="text-sm" style={{ color: 'var(--mn-dark-600)', fontFamily: "'Mulish', sans-serif" }}>{item.text}</span>
+                  </div>
+                ))}
               </div>
-              
+
               {/* Contact */}
-              <div className="mt-4 pt-4 border-t text-center">
-                <p className="text-sm text-gray-500 mb-2">¿Tienes preguntas?</p>
-                <p className="font-semibold text-navy-900">(832) 745-9600</p>
+              <div className="pt-5 border-t text-center space-y-3" style={{ borderColor: 'var(--mn-light-200)' }}>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--mn-gray)', fontFamily: "'Montserrat', sans-serif" }}>
+                  ¿Tienes preguntas?
+                </p>
+                <div className="flex gap-2">
+                  <a
+                    href="tel:8327459600"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                    style={{ background: 'var(--mn-blue-50)', color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
+                  >
+                    <Phone className="w-4 h-4" />
+                    Llamar
+                  </a>
+                  <a
+                    href={`https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+                    style={{ background: '#25d366', fontFamily: "'Montserrat', sans-serif" }}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    WhatsApp
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -503,4 +582,3 @@ export default function PropertyDetailPage() {
     </div>
   )
 }
-

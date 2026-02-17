@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Home, Mail, Loader2, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
+import Image from 'next/image'
+import { Mail, Loader2, ArrowRight, AlertCircle, CheckCircle, Shield, Home } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { signInWithMagicLink, getClientUser, getAppBaseUrl } from '@/lib/supabase/client-auth'
 
@@ -19,10 +20,8 @@ export default function ClientLoginPage() {
   const [error, setError] = useState('')
   const [emailSent, setEmailSent] = useState(false)
 
-  // Show error if callback failed
   const callbackError = searchParams.get('error')
 
-  // Check if already logged in
   useEffect(() => {
     if (callbackError === 'auth_callback_failed') {
       setError('El enlace ha expirado o es inválido. Por favor solicita uno nuevo.')
@@ -56,7 +55,6 @@ export default function ClientLoginPage() {
     setLoading(true)
     
     try {
-      // First check if this email exists in our clients table
       const lookupRes = await fetch(`/api/public/clients/lookup?email=${encodeURIComponent(email)}`)
       const lookupData = await lookupRes.json()
       
@@ -66,8 +64,6 @@ export default function ClientLoginPage() {
         return
       }
       
-      // Send magic link via Supabase Auth
-      // Include the next URL so after verification the user lands on the right page
       const callbackUrl = `${getAppBaseUrl()}/clientes/auth/callback?next=${encodeURIComponent(nextUrl)}`
       const { error: authError } = await signInWithMagicLink(email, callbackUrl)
       
@@ -78,7 +74,6 @@ export default function ClientLoginPage() {
         return
       }
       
-      // Success - email sent
       setEmailSent(true)
       toast.success('¡Enlace enviado a tu correo!')
       
@@ -93,67 +88,111 @@ export default function ClientLoginPage() {
   if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
+        <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--mn-blue)' }} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full">
+    <div
+      className="min-h-screen flex items-center justify-center py-12 px-4 relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #00233d 0%, #004274 50%, #005a9e 100%)' }}
+    >
+      {/* Decorative */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle, rgba(163,141,72,0.15) 0%, transparent 70%)' }} />
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,90,158,0.3) 0%, transparent 70%)' }} />
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+          backgroundSize: '32px 32px'
+        }} />
+      </div>
+
+      <div className="relative max-w-md w-full mn-animate-fade-up">
+
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/clientes" className="inline-flex items-center gap-3">
-            <div className="w-12 h-12 bg-gold-500 rounded-xl flex items-center justify-center">
-              <Home className="w-7 h-7 text-navy-900" />
-            </div>
-            <span className="font-bold text-2xl text-navy-900">Maninos Homes</span>
+          <Link href="/clientes" className="inline-block">
+            <Image
+              src="/images/maninos-logo.png"
+              alt="Maninos Homes"
+              width={160}
+              height={74}
+              className="mn-logo-white h-12 w-auto mx-auto"
+              priority
+            />
           </Link>
         </div>
-        
+
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h1 className="text-2xl font-bold text-navy-900 text-center mb-2">
-            Accede a tu cuenta
-          </h1>
-          <p className="text-gray-600 text-center mb-8">
-            Te enviaremos un enlace seguro a tu correo
-          </p>
-          
+        <div className="bg-white rounded-2xl shadow-2xl p-8 sm:p-10" style={{ border: '1px solid var(--mn-light-200)' }}>
+
+          <div className="text-center mb-8">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: 'var(--mn-blue-50)' }}
+            >
+              <Shield className="w-7 h-7" style={{ color: 'var(--mn-blue)' }} />
+            </div>
+            <h1
+              className="text-2xl font-black mb-2"
+              style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
+            >
+              Accede a tu cuenta
+            </h1>
+            <p style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+              Te enviaremos un enlace seguro a tu correo
+            </p>
+          </div>
+
           {emailSent ? (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="text-center py-6 mn-animate-scale-in">
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
+                style={{ background: 'rgba(22, 163, 74, 0.1)' }}
+              >
+                <CheckCircle className="w-8 h-8" style={{ color: '#16a34a' }} />
               </div>
-              <h2 className="font-semibold text-navy-900 mb-2">
+              <h2
+                className="font-bold text-lg mb-2"
+                style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
+              >
                 ¡Revisa tu correo!
               </h2>
-              <p className="text-gray-600 text-sm mb-4">
-                Te hemos enviado un enlace seguro a <strong>{email}</strong>.
+              <p className="text-sm mb-6" style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+                Te hemos enviado un enlace seguro a{' '}
+                <strong style={{ color: 'var(--mn-dark)' }}>{email}</strong>.
                 <br />
                 Haz clic en el enlace para acceder a tu cuenta.
               </p>
-              <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-700">
-                <p>💡 Si no ves el correo, revisa tu carpeta de spam.</p>
+              <div
+                className="rounded-xl p-4 text-sm"
+                style={{ background: 'var(--mn-blue-50)', color: 'var(--mn-blue)', fontFamily: "'Mulish', sans-serif" }}
+              >
+                💡 Si no ves el correo, revisa tu carpeta de spam.
               </div>
               <button
                 onClick={() => {
                   setEmailSent(false)
                   setEmail('')
                 }}
-                className="mt-6 text-sm text-gold-600 hover:text-gold-700 font-medium"
+                className="mt-6 text-sm font-semibold hover:underline"
+                style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
               >
                 Usar otro correo
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="mb-5">
+                <label
+                  className="block text-xs font-bold uppercase tracking-wider mb-2"
+                  style={{ color: 'var(--mn-dark-600)', fontFamily: "'Montserrat', sans-serif" }}
+                >
                   Correo electrónico
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--mn-gray)' }} />
                   <input
                     type="email"
                     value={email}
@@ -162,24 +201,26 @@ export default function ClientLoginPage() {
                       setError('')
                     }}
                     placeholder="tu@email.com"
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500 ${
-                      error ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className="input-brand w-full !pl-11"
+                    style={error ? { borderColor: '#b91c1c' } : undefined}
                   />
                 </div>
               </div>
-              
+
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-700">{error}</p>
+                <div
+                  className="mb-5 p-3.5 rounded-xl flex items-start gap-2.5"
+                  style={{ background: 'rgba(185, 28, 28, 0.06)', border: '1px solid rgba(185, 28, 28, 0.15)' }}
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#b91c1c' }} />
+                  <p className="text-sm" style={{ color: '#b91c1c', fontFamily: "'Mulish', sans-serif" }}>{error}</p>
                 </div>
               )}
-              
+
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gold-500 text-navy-900 font-bold py-3 rounded-lg hover:bg-gold-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full btn-brand btn-brand-primary !py-3.5 !rounded-xl !text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
@@ -193,32 +234,32 @@ export default function ClientLoginPage() {
                   </>
                 )}
               </button>
-              
-              <div className="mt-4 text-center">
-                <p className="text-xs text-gray-400">
-                  Sin contraseñas. Recibirás un enlace seguro por email.
-                </p>
-              </div>
+
+              <p className="mt-4 text-center text-xs" style={{ color: 'var(--mn-gray)' }}>
+                Sin contraseñas. Recibirás un enlace seguro por email.
+              </p>
             </form>
           )}
-          
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-500">
+
+          <div className="mt-8 text-center pt-6 border-t" style={{ borderColor: 'var(--mn-light-200)' }}>
+            <p className="text-sm mb-1" style={{ color: 'var(--mn-gray)' }}>
               ¿Aún no has comprado con nosotros?
             </p>
-            <Link 
-              href="/clientes/casas" 
-              className="text-sm text-gold-600 hover:text-gold-700 font-medium"
+            <Link
+              href="/clientes/casas"
+              className="inline-flex items-center gap-1 text-sm font-semibold hover:underline"
+              style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
             >
-              Ver casas disponibles →
+              Ver casas disponibles
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
-        
+
         {/* Help */}
-        <p className="text-center text-gray-500 text-sm mt-6">
+        <p className="text-center text-sm mt-8" style={{ color: 'rgba(255,255,255,0.5)', fontFamily: "'Mulish', sans-serif" }}>
           ¿Necesitas ayuda? Llámanos al{' '}
-          <a href="tel:+18327459600" className="text-gold-600 hover:underline">
+          <a href="tel:+18327459600" className="font-semibold hover:underline" style={{ color: '#c4af6a' }}>
             (832) 745-9600
           </a>
         </p>

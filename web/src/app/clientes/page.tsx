@@ -1,8 +1,13 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
-import { Home, Shield, FileText, MapPin, ArrowRight, Star, CheckCircle } from 'lucide-react'
+import { 
+  Home, Shield, FileText, ArrowRight, Star, CheckCircle, 
+  MessageCircle, Phone, Sparkles, Heart, Users, BadgeCheck,
+  ChevronRight, Wrench, MapPin
+} from 'lucide-react'
 
 interface Stats {
   total_available: number
@@ -23,182 +28,341 @@ export default function ClientPortalHome() {
   }, [])
 
   return (
-    <div>
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-navy-900 via-navy-800 to-navy-900 text-white overflow-hidden">
-        {/* Background pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0" style={{
-            backgroundImage: 'radial-gradient(circle at 25px 25px, white 2px, transparent 0)',
-            backgroundSize: '50px 50px'
+    <div className="portal-clientes">
+      
+      {/* ═══════════════════════════════════════════════════
+          HERO SECTION — Full-bleed immersive
+          ═══════════════════════════════════════════════════ */}
+      <section className="relative min-h-[90vh] flex items-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #00233d 0%, #004274 40%, #005a9e 100%)' }}>
+        {/* Decorative shapes */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle, rgba(163,141,72,0.15) 0%, transparent 70%)' }} />
+          <div className="absolute bottom-0 left-0 w-full h-64" style={{ background: 'linear-gradient(0deg, rgba(0,35,61,0.6) 0%, transparent 100%)' }} />
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,90,158,0.3) 0%, transparent 70%)' }} />
+          {/* Subtle dot pattern */}
+          <div className="absolute inset-0 opacity-[0.04]" style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+            backgroundSize: '32px 32px'
           }} />
         </div>
-        
-        <div className="container mx-auto px-4 py-20 md:py-32 relative">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 bg-gold-500/20 text-gold-400 px-4 py-2 rounded-full text-sm mb-6">
-              <Star className="w-4 h-4" />
-              <span>Casas renovadas en Texas</span>
-            </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32 w-full">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
             
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Tu Casa Móvil
-              <span className="text-gold-400"> Lista para Vivir</span>
-            </h1>
-            
-            <p className="text-xl text-gray-300 mb-8 leading-relaxed">
-              Casas móviles completamente renovadas en Texas. 
-              Compra segura al contado con transferencia de título directo a tu nombre.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link 
-                href="/clientes/casas" 
-                className="inline-flex items-center justify-center gap-2 bg-gold-500 text-navy-900 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gold-400 transition-all hover:scale-105"
+            {/* Left — Copy */}
+            <div className="mn-animate-fade-up">
+              <div 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold mb-8 mn-animate-fade-up mn-stagger-1"
+                style={{ background: 'rgba(163,141,72,0.2)', color: '#c4af6a', fontFamily: "'Montserrat', sans-serif" }}
               >
-                Ver Casas Disponibles
-                <ArrowRight className="w-5 h-5" />
-              </Link>
-              
-              <Link 
-                href="/clientes/mi-cuenta" 
-                className="inline-flex items-center justify-center gap-2 border-2 border-white/30 text-white px-8 py-4 rounded-lg font-medium hover:bg-white/10 transition-colors"
+                <Sparkles className="w-4 h-4" />
+                Casas renovadas listas para vivir
+              </div>
+
+              <h1 
+                className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-6 mn-animate-fade-up mn-stagger-2"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
               >
-                Tengo una Compra
-              </Link>
+                Tu Hogar en Texas
+                <span className="block" style={{ color: '#c4af6a' }}>
+                  Comienza Aquí
+                </span>
+              </h1>
+
+              <p className="text-lg sm:text-xl text-white/70 leading-relaxed mb-10 max-w-lg mn-animate-fade-up mn-stagger-3" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                Apoyamos a la comunidad hispana con casas móviles renovadas de alta calidad.
+                Compra al contado o con plan de financiamiento.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 mn-animate-fade-up mn-stagger-4">
+                <Link
+                  href="/clientes/casas"
+                  className="btn-brand btn-brand-gold group"
+                  style={{ fontSize: '1.0625rem', padding: '1rem 2rem' }}
+                >
+                  Ver Casas Disponibles
+                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                </Link>
+
+                <a
+                  href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa%20en%20Maninos%20Homes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-brand btn-brand-whatsapp"
+                  style={{ fontSize: '1.0625rem', padding: '1rem 2rem' }}
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Escríbenos
+                </a>
+              </div>
+
+              {/* Stats bar */}
+              {stats && stats.total_available > 0 && (
+                <div className="grid grid-cols-3 gap-6 mt-14 pt-8 border-t border-white/10 mn-animate-fade-up mn-stagger-5">
+                  <div>
+                    <p className="text-3xl sm:text-4xl font-black" style={{ color: '#c4af6a', fontFamily: "'Montserrat', sans-serif" }}>
+                      {stats.total_available}
+                    </p>
+                    <p className="text-white/50 text-sm mt-1" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                      Casas disponibles
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-3xl sm:text-4xl font-black" style={{ color: '#c4af6a', fontFamily: "'Montserrat', sans-serif" }}>
+                      {stats.cities_count}
+                    </p>
+                    <p className="text-white/50 text-sm mt-1" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                      Ciudades en TX
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-3xl sm:text-4xl font-black" style={{ color: '#c4af6a', fontFamily: "'Montserrat', sans-serif" }}>
+                      ${Math.round(stats.price_range.avg / 1000)}k
+                    </p>
+                    <p className="text-white/50 text-sm mt-1" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                      Precio promedio
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {/* Stats */}
-            {stats && stats.total_available > 0 && (
-              <div className="grid grid-cols-3 gap-6 mt-12 pt-8 border-t border-white/10">
-                <div>
-                  <p className="text-3xl font-bold text-gold-400">{stats.total_available}</p>
-                  <p className="text-gray-400 text-sm">Casas disponibles</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-gold-400">{stats.cities_count}</p>
-                  <p className="text-gray-400 text-sm">Ciudades en Texas</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-gold-400">
-                    ${Math.round(stats.price_range.avg / 1000)}k
+
+            {/* Right — Visual card stack */}
+            <div className="hidden lg:block relative mn-animate-fade-up mn-stagger-3">
+              <div className="relative">
+                {/* Floating testimonial */}
+                <div className="absolute -top-4 -left-8 z-20 bg-white rounded-2xl shadow-2xl p-5 max-w-[240px] mn-animate-slide-right mn-stagger-5" style={{ animationDelay: '0.8s' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-700 leading-snug" style={{ fontFamily: "'Mulish', sans-serif" }}>
+                    &ldquo;Excelente servicio. Mi familia ya tiene su casa propia.&rdquo;
                   </p>
-                  <p className="text-gray-400 text-sm">Precio promedio</p>
+                  <p className="text-xs text-gray-400 mt-2 font-semibold" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+                    — Familia Rodríguez, Houston
+                  </p>
+                </div>
+
+                {/* Main visual */}
+                <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-8 border border-white/10">
+                  <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br from-white/5 to-white/10 flex items-center justify-center">
+                    <Image
+                      src="/images/maninos-logo.png"
+                      alt="Maninos Homes"
+                      width={280}
+                      height={130}
+                      className="mn-logo-white opacity-30"
+                    />
+                  </div>
+                  <div className="mt-6 flex items-center justify-between">
+                    <div>
+                      <p className="text-white font-bold text-lg" style={{ fontFamily: "'Montserrat', sans-serif" }}>Casa renovada</p>
+                      <p className="text-white/50 text-sm flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5" /> Texas
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-white/40">Desde</p>
+                      <p className="text-2xl font-black" style={{ color: '#c4af6a', fontFamily: "'Montserrat', sans-serif" }}>
+                        {stats ? `$${(stats.price_range.min / 1000).toFixed(0)}k` : '$20k'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Floating badge */}
+                <div className="absolute -bottom-4 -right-4 z-20 flex items-center gap-2 px-5 py-3 rounded-xl shadow-xl mn-animate-slide-right mn-stagger-6" style={{ background: '#004274', animationDelay: '1s' }}>
+                  <BadgeCheck className="w-5 h-5 text-white" />
+                  <span className="text-white text-sm font-bold" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+                    Título verificado
+                  </span>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
+
+        {/* Wave separator */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg viewBox="0 0 1440 80" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
+            <path d="M0 80H1440V20C1440 20 1320 60 1140 50C960 40 720 0 540 20C360 40 120 60 0 40V80Z" fill="white"/>
+          </svg>
+        </div>
       </section>
-      
-      {/* Features Section */}
-      <section className="py-20 bg-white">
-        <div className="container mx-auto px-4">
+
+      {/* ═══════════════════════════════════════════════════
+          WHY CHOOSE US — Value proposition
+          ═══════════════════════════════════════════════════ */}
+      <section className="py-20 sm:py-28 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-navy-900 mb-4">
+            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
               ¿Por qué elegirnos?
+            </p>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-5" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+              Tu hogar, nuestro compromiso
             </h2>
-            <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-              Ofrecemos un proceso simple, transparente y seguro para que consigas tu casa móvil.
+            <p className="text-lg max-w-2xl mx-auto" style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+              Más que vender casas, construimos hogares. Acompañamos a cada familia en todo el proceso.
             </p>
           </div>
-          
-          <div className="grid md:grid-cols-3 gap-8">
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
             <FeatureCard
-              icon={<Home className="w-8 h-8" />}
-              title="Casas Renovadas"
-              description="Todas nuestras casas están completamente renovadas con materiales de calidad, listas para que te mudes."
+              icon={<Wrench className="w-7 h-7" />}
+              title="Casas 100% Renovadas"
+              description="Cada casa pasa por una renovación completa: plomería, electricidad, pisos, techo y pintura. Lista para que te mudes."
+              delay={1}
             />
             <FeatureCard
-              icon={<Shield className="w-8 h-8" />}
-              title="Pago Seguro"
-              description="Paga de forma segura con tarjeta a través de Stripe. Tu información está protegida."
+              icon={<Shield className="w-7 h-7" />}
+              title="Compra Segura"
+              description="Proceso transparente con documentos verificados. Tu pago está protegido y el título se transfiere directamente a tu nombre."
+              delay={2}
             />
             <FeatureCard
-              icon={<FileText className="w-8 h-8" />}
-              title="Título Directo"
-              description="Recibe el título de propiedad directamente a tu nombre. Sin intermediarios ni complicaciones."
+              icon={<Heart className="w-7 h-7" />}
+              title="Comunidad Hispana"
+              description="Hablamos tu idioma. Entendemos tus necesidades. Te acompañamos en cada paso hacia tu nuevo hogar."
+              delay={3}
+            />
+            <FeatureCard
+              icon={<FileText className="w-7 h-7" />}
+              title="Financiamiento Disponible"
+              description="¿No puedes pagar al contado? Ofrecemos planes de Renta con Opción a Compra (RTO) flexibles y accesibles."
+              delay={4}
+            />
+            <FeatureCard
+              icon={<BadgeCheck className="w-7 h-7" />}
+              title="Títulos Limpios"
+              description="Verificamos cada título con TDHCA (Texas Department of Housing). Sin deudas, sin problemas."
+              delay={5}
+            />
+            <FeatureCard
+              icon={<Users className="w-7 h-7" />}
+              title="Equipo Dedicado"
+              description="Nuestro equipo de profesionales está disponible para resolver cualquier duda. ¡Llámanos o escríbenos!"
+              delay={6}
             />
           </div>
         </div>
       </section>
-      
-      {/* How it Works */}
-      <section className="py-20 bg-slate-50">
-        <div className="container mx-auto px-4">
+
+      {/* ═══════════════════════════════════════════════════
+          HOW IT WORKS — Step by step
+          ═══════════════════════════════════════════════════ */}
+      <section className="py-20 sm:py-28 mn-gradient-mesh">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-navy-900 mb-4">
+            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
+              Proceso Simple
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-black mb-5" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
               ¿Cómo funciona?
             </h2>
-            <p className="text-gray-600 text-lg">
-              En 4 simples pasos tendrás tu nueva casa
+            <p className="text-lg max-w-2xl mx-auto" style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+              En 4 sencillos pasos, tu nuevo hogar estará listo
             </p>
           </div>
-          
-          <div className="grid md:grid-cols-4 gap-6">
-            <StepCard
-              number={1}
-              title="Elige tu casa"
-              description="Navega nuestro catálogo y encuentra la casa perfecta para ti."
-            />
-            <StepCard
-              number={2}
-              title="Ingresa tus datos"
-              description="Proporciona tu información y la ubicación donde colocarás la casa."
-            />
-            <StepCard
-              number={3}
-              title="Realiza el pago"
-              description="Paga de forma segura con tarjeta. Aceptamos todas las tarjetas principales."
-            />
-            <StepCard
-              number={4}
-              title="Recibe tu título"
-              description="Procesamos la transferencia y recibes el título a tu nombre."
-            />
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              { num: 1, title: 'Elige tu casa', desc: 'Explora nuestro catálogo con fotos, precios y ubicaciones.', icon: <Home className="w-6 h-6" /> },
+              { num: 2, title: 'Contáctanos', desc: 'Escríbenos por WhatsApp o llámanos para resolver tus dudas.', icon: <MessageCircle className="w-6 h-6" /> },
+              { num: 3, title: 'Realiza el pago', desc: 'Paga al contado o elige nuestro plan de financiamiento RTO.', icon: <Shield className="w-6 h-6" /> },
+              { num: 4, title: 'Recibe tu título', desc: 'Procesamos la transferencia y el título queda a tu nombre.', icon: <FileText className="w-6 h-6" /> },
+            ].map((step) => (
+              <div key={step.num} className={`relative mn-animate-fade-up mn-stagger-${step.num}`}>
+                <div className="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-xl transition-all duration-300 group h-full">
+                  {/* Step number */}
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 text-white transition-transform group-hover:scale-110"
+                    style={{ background: 'var(--mn-blue)' }}
+                  >
+                    {step.icon}
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest mb-2" style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}>
+                    Paso {step.num}
+                  </div>
+                  <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+                    {step.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+                    {step.desc}
+                  </p>
+                </div>
+                {/* Connector */}
+                {step.num < 4 && (
+                  <div className="hidden lg:flex absolute top-1/2 -right-4 transform -translate-y-1/2 z-10">
+                    <ChevronRight className="w-6 h-6" style={{ color: 'var(--mn-gray-light)' }} />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </section>
-      
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-gold-500 to-gold-600">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-navy-900 mb-4">
-            ¿Listo para encontrar tu nueva casa?
+
+      {/* ═══════════════════════════════════════════════════
+          CTA SECTION — Warm & inviting
+          ═══════════════════════════════════════════════════ */}
+      <section className="relative py-20 sm:py-28 overflow-hidden" style={{ background: 'var(--mn-blue)' }}>
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(163,141,72,0.2) 0%, transparent 70%)' }} />
+          <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,90,158,0.3) 0%, transparent 70%)' }} />
+        </div>
+
+        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white mb-6 leading-tight" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+            ¿Listo para encontrar
+            <span style={{ color: '#c4af6a' }}> tu nuevo hogar</span>?
           </h2>
-          <p className="text-navy-800 text-lg mb-8 max-w-2xl mx-auto">
-            Explora nuestro catálogo de casas disponibles y da el primer paso hacia tu nuevo hogar.
+          <p className="text-lg text-white/70 mb-10 max-w-2xl mx-auto" style={{ fontFamily: "'Mulish', sans-serif" }}>
+            Explora nuestro catálogo o contáctanos directamente. 
+            Estamos aquí para ayudarte a dar el primer paso.
           </p>
-          <Link 
-            href="/clientes/casas" 
-            className="inline-flex items-center gap-2 bg-navy-900 text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-navy-800 transition-colors"
-          >
-            Ver Casas Disponibles
-            <ArrowRight className="w-5 h-5" />
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/clientes/casas"
+              className="btn-brand btn-brand-gold group"
+              style={{ fontSize: '1.0625rem', padding: '1rem 2.5rem' }}
+            >
+              Ver Casas
+              <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            </Link>
+            <a
+              href="tel:8327459600"
+              className="btn-brand btn-brand-outline"
+              style={{ fontSize: '1.0625rem', padding: '1rem 2.5rem', borderColor: 'rgba(255,255,255,0.3)', color: 'white' }}
+            >
+              <Phone className="w-5 h-5" />
+              Llámanos: (832) 745-9600
+            </a>
+          </div>
         </div>
       </section>
-      
-      {/* Trust Section */}
-      <section className="py-16 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center items-center gap-8 text-gray-400">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span>Empresa registrada en Texas</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span>Pagos seguros con Stripe</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span>Títulos verificados</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span>+100 familias felices</span>
-            </div>
+
+      {/* ═══════════════════════════════════════════════════
+          TRUST BAR
+          ═══════════════════════════════════════════════════ */}
+      <section className="py-12 bg-white border-t" style={{ borderColor: 'var(--mn-light-200)' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap justify-center items-center gap-x-10 gap-y-4">
+            {[
+              'Empresa registrada en Texas',
+              'Pagos 100% seguros',
+              'Títulos verificados por TDHCA',
+              '+200 familias atendidas',
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--mn-blue)' }} />
+                <span className="text-sm font-medium" style={{ color: 'var(--mn-dark-600)', fontFamily: "'Mulish', sans-serif" }}>
+                  {item}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -206,53 +370,35 @@ export default function ClientPortalHome() {
   )
 }
 
-function FeatureCard({ 
-  icon, 
-  title, 
-  description 
-}: { 
+/* ─── Sub-components ─── */
+
+function FeatureCard({
+  icon,
+  title,
+  description,
+  delay = 1,
+}: {
   icon: React.ReactNode
   title: string
-  description: string 
+  description: string
+  delay?: number
 }) {
   return (
-    <div className="bg-slate-50 rounded-2xl p-8 text-center hover:shadow-lg transition-shadow">
-      <div className="w-16 h-16 bg-gold-100 text-gold-600 rounded-xl flex items-center justify-center mx-auto mb-6">
-        {icon}
+    <div className={`group mn-animate-fade-up mn-stagger-${delay}`}>
+      <div className="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-xl hover:border-transparent transition-all duration-300 h-full">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 text-white transition-all group-hover:scale-110 group-hover:shadow-lg"
+          style={{ background: 'var(--mn-blue)' }}
+        >
+          {icon}
+        </div>
+        <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+          {title}
+        </h3>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
+          {description}
+        </p>
       </div>
-      <h3 className="text-xl font-bold text-navy-900 mb-3">{title}</h3>
-      <p className="text-gray-600">{description}</p>
     </div>
   )
 }
-
-function StepCard({ 
-  number, 
-  title, 
-  description 
-}: { 
-  number: number
-  title: string
-  description: string 
-}) {
-  return (
-    <div className="relative">
-      <div className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-        <div className="w-12 h-12 bg-gold-500 text-navy-900 rounded-full flex items-center justify-center font-bold text-xl mb-4">
-          {number}
-        </div>
-        <h3 className="font-bold text-navy-900 mb-2">{title}</h3>
-        <p className="text-gray-600 text-sm">{description}</p>
-      </div>
-      
-      {/* Arrow connector (hidden on last item) */}
-      {number < 4 && (
-        <div className="hidden md:block absolute top-1/2 -right-3 transform -translate-y-1/2">
-          <ArrowRight className="w-6 h-6 text-gray-300" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-
