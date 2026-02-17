@@ -366,10 +366,9 @@ export default function PropertyDetailPage() {
                       onClick={() => setCurrentPhotoIndex(index)}
                       className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden transition-all ${
                         index === currentPhotoIndex
-                          ? 'ring-2 ring-offset-1 scale-95'
+                          ? 'ring-2 ring-offset-1 scale-95 ring-[#004274]'
                           : 'opacity-60 hover:opacity-100'
                       }`}
-                      style={index === currentPhotoIndex ? { ringColor: 'var(--mn-blue)' } : undefined}
                     >
                       <img
                         src={photo}
