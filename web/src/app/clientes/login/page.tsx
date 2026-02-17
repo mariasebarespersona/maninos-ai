@@ -92,16 +92,16 @@ export default function ClientLoginPage() {
               <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="w-7 h-7 text-green-600" />
               </div>
-              <h2 className="font-semibold text-lg text-[#222] mb-2">¡Revisa tu correo!</h2>
-              <p className="text-sm text-gray-500 mb-6">
-                Te enviamos un enlace seguro a <strong className="text-[#222]">{email}</strong>. Haz clic para acceder.
+              <h2 className="font-bold text-[18px] text-[#222] mb-2" style={{ letterSpacing: '-0.02em' }}>¡Revisa tu correo!</h2>
+              <p className="text-[14px] text-[#717171] mb-6">
+                Te enviamos un enlace seguro a <strong className="text-[#222] font-semibold">{email}</strong>. Haz clic para acceder.
               </p>
-              <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-700">
+              <div className="bg-blue-50 rounded-lg p-3 text-[13px] text-blue-700">
                 Si no lo ves, revisa tu carpeta de spam.
               </div>
               <button
                 onClick={() => { setEmailSent(false); setEmail('') }}
-                className="mt-6 text-sm font-medium text-gray-500 underline hover:text-[#222]"
+                className="mt-6 text-[13px] font-medium text-[#717171] underline hover:text-[#222]"
               >
                 Usar otro correo
               </button>
@@ -109,13 +109,13 @@ export default function ClientLoginPage() {
           ) : (
             <>
               <div className="text-center mb-6">
-                <h1 className="text-xl font-bold text-[#222] mb-1">Accede a tu cuenta</h1>
-                <p className="text-sm text-gray-500">Te enviaremos un enlace seguro por email</p>
+                <h1 className="text-[20px] font-bold text-[#222] mb-1" style={{ letterSpacing: '-0.02em' }}>Accede a tu cuenta</h1>
+                <p className="text-[14px] text-[#717171]">Te enviaremos un enlace seguro por email</p>
               </div>
 
               <form onSubmit={handleSubmit}>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-[#222] mb-1.5">Correo electrónico</label>
+                  <label className="block text-[13px] font-semibold text-[#222] mb-1.5">Correo electrónico</label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
@@ -123,7 +123,7 @@ export default function ClientLoginPage() {
                       value={email}
                       onChange={e => { setEmail(e.target.value); setError('') }}
                       placeholder="tu@email.com"
-                      className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent transition-colors ${
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl border text-[14px] focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent transition-colors ${
                         error ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white'
                       }`}
                     />
@@ -140,7 +140,7 @@ export default function ClientLoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[15px] transition-colors disabled:opacity-50"
                   style={{ background: '#0068b7' }}
                 >
                   {loading ? (
@@ -150,7 +150,7 @@ export default function ClientLoginPage() {
                   )}
                 </button>
 
-                <p className="mt-3 text-center text-xs text-gray-400">
+                <p className="mt-3 text-center text-[12px] text-[#b0b0b0]">
                   Sin contraseñas. Recibirás un enlace seguro.
                 </p>
               </form>
@@ -158,16 +158,16 @@ export default function ClientLoginPage() {
           )}
 
           <div className="mt-6 pt-6 border-t border-gray-100 text-center">
-            <p className="text-sm text-gray-500 mb-1">¿Aún no has comprado con nosotros?</p>
-            <Link href="/clientes/casas" className="text-sm font-semibold text-[#004274] hover:underline inline-flex items-center gap-1">
+            <p className="text-[13px] text-[#717171] mb-1">¿Aún no has comprado con nosotros?</p>
+            <Link href="/clientes/casas" className="text-[13px] font-semibold text-[#004274] hover:underline inline-flex items-center gap-1">
               Ver casas disponibles <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-[12px] text-[#b0b0b0] mt-6">
           ¿Necesitas ayuda? Llámanos al{' '}
-          <a href="tel:+18327459600" className="font-medium text-gray-500 hover:underline">(832) 745-9600</a>
+          <a href="tel:+18327459600" className="font-medium text-[#717171] hover:underline">(832) 745-9600</a>
         </p>
       </div>
     </div>

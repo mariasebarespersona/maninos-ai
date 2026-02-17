@@ -67,14 +67,14 @@ export default function ClientPortalLayout({
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+                  className={`px-4 py-2 rounded-full text-[14px] font-semibold transition-all duration-200 ${
                     isActive(link.href)
                       ? useTransparent
                         ? 'bg-white/15 text-white'
                         : 'bg-gray-100 text-gray-900'
                       : useTransparent
                         ? 'text-white/80 hover:text-white hover:bg-white/10'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        : 'text-[#484848] hover:text-[#222] hover:bg-gray-50'
                   }`}
                 >
                   {link.label}
@@ -85,10 +85,10 @@ export default function ClientPortalLayout({
 
               <a
                 href="tel:8327459600"
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-full text-[13px] font-medium transition-all ${
                   useTransparent
                     ? 'text-white/70 hover:text-white hover:bg-white/10'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    : 'text-[#717171] hover:text-[#222] hover:bg-gray-50'
                 }`}
               >
                 (832) 745-9600
@@ -96,10 +96,10 @@ export default function ClientPortalLayout({
 
               <Link
                 href="/clientes/mi-cuenta"
-                className={`ml-1 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 border ${
+                className={`ml-1 flex items-center gap-2 px-4 py-2.5 rounded-full text-[14px] font-semibold transition-all duration-200 border ${
                   useTransparent
                     ? 'border-white/30 text-white hover:bg-white hover:text-gray-900'
-                    : 'border-gray-300 text-gray-700 hover:shadow-md hover:border-gray-400'
+                    : 'border-gray-300 text-[#484848] hover:shadow-md hover:border-gray-400'
                 }`}
               >
                 <User className="w-4 h-4" />
@@ -162,7 +162,7 @@ export default function ClientPortalLayout({
       <main>{children}</main>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-[#f7f7f7] border-t border-gray-200">
+      <footer className="bg-[#fafafa] border-t border-gray-200">
         <div className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10 py-12">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
 
@@ -175,7 +175,7 @@ export default function ClientPortalLayout({
                 height={55}
                 className="h-8 w-auto mb-4"
               />
-              <p className="text-sm text-gray-500 leading-relaxed">
+              <p className="text-[13px] text-[#717171] leading-relaxed">
                 Casas móviles renovadas en Texas.
                 Apoyamos a la comunidad hispana.
               </p>
@@ -183,7 +183,7 @@ export default function ClientPortalLayout({
 
             {/* Links */}
             <div>
-              <h4 className="text-sm font-bold text-gray-900 mb-4">Explorar</h4>
+              <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Explorar</h4>
               <ul className="space-y-2.5">
                 {[
                   { href: '/clientes', label: 'Inicio' },
@@ -191,7 +191,7 @@ export default function ClientPortalLayout({
                   { href: '/clientes/mi-cuenta', label: 'Mi Cuenta' },
                 ].map(l => (
                   <li key={l.href}>
-                    <Link href={l.href} className="text-sm text-gray-500 hover:text-gray-900 transition-colors hover:underline">
+                    <Link href={l.href} className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline">
                       {l.label}
                     </Link>
                   </li>
@@ -201,35 +201,35 @@ export default function ClientPortalLayout({
 
             {/* Resources */}
             <div>
-              <h4 className="text-sm font-bold text-gray-900 mb-4">Recursos</h4>
+              <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Recursos</h4>
               <ul className="space-y-2.5">
-                <li><a href="https://www.tdhca.texas.gov/" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hover:underline">TDHCA Texas</a></li>
-                <li><a href="https://www.maninoshomes.com" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hover:underline">maninoshomes.com</a></li>
+                <li><a href="https://www.tdhca.texas.gov/" target="_blank" rel="noopener noreferrer" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline">TDHCA Texas</a></li>
+                <li><a href="https://www.maninoshomes.com" target="_blank" rel="noopener noreferrer" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline">maninoshomes.com</a></li>
               </ul>
             </div>
 
             {/* Contact */}
             <div>
-              <h4 className="text-sm font-bold text-gray-900 mb-4">Contacto</h4>
+              <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Contacto</h4>
               <ul className="space-y-2.5">
                 <li>
-                  <a href="tel:8327459600" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hover:underline flex items-center gap-2">
+                  <a href="tel:8327459600" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5" /> (832) 745-9600
                   </a>
                 </li>
                 <li>
-                  <a href="mailto:info@maninoshomes.com" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hover:underline flex items-center gap-2">
+                  <a href="mailto:info@maninoshomes.com" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
                     <Mail className="w-3.5 h-3.5" /> info@maninoshomes.com
                   </a>
                 </li>
-                <li className="text-sm text-gray-500 flex items-start gap-2">
+                <li className="text-[13px] text-[#717171] flex items-start gap-2">
                   <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 15891 Old Houston Rd., Conroe TX 77302
                 </li>
               </ul>
               <a
                 href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!"
                 target="_blank" rel="noopener noreferrer"
-                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-semibold bg-[#25d366] hover:bg-[#20bd5a] transition-colors"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-[13px] font-semibold bg-[#25d366] hover:bg-[#20bd5a] transition-colors"
               >
                 <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
               </a>
@@ -238,10 +238,10 @@ export default function ClientPortalLayout({
 
           {/* Bottom */}
           <div className="border-t border-gray-200 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-gray-400">
+            <p className="text-[12px] text-[#b0b0b0]">
               © {new Date().getFullYear()} Maninos Homes LLC · Todos los derechos reservados
             </p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
+            <div className="flex items-center gap-1 text-[12px] text-[#b0b0b0]">
               <Globe className="w-3 h-3" /> Español
             </div>
           </div>

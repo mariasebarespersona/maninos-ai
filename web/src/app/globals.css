@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Mulish:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -92,19 +92,19 @@
   }
 
   body {
-    font-family: 'Mulish', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: var(--ivory);
     color: var(--charcoal);
     font-size: 16px;
     line-height: 1.6;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.011em;
   }
 
   h1, h2, h3, h4 {
-    font-family: 'Montserrat', -apple-system, sans-serif;
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
     color: var(--ink);
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
   }
 
   h1 { font-size: 2rem; line-height: 1.2; }
@@ -292,9 +292,12 @@
    ============================================================================ */
 
 .portal-clientes {
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #222222;
   background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; /* Inter OpenType features */
 }
 
 .portal-clientes h1,
@@ -302,10 +305,32 @@
 .portal-clientes h3,
 .portal-clientes h4,
 .portal-clientes h5 {
-  font-family: 'Montserrat', -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
   color: #222222;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+/* ─── Client Portal type scale ─── */
+.portal-clientes p,
+.portal-clientes span,
+.portal-clientes label,
+.portal-clientes li,
+.portal-clientes a {
+  letter-spacing: -0.011em;
+}
+
+/* Links inside portal */
+.portal-clientes .mn-link {
+  color: #004274;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.portal-clientes .mn-link:hover {
+  color: #0068b7;
+  text-decoration: underline;
 }
 
 /* Logo invert for dark backgrounds */

@@ -71,7 +71,7 @@ export default function HouseCatalog() {
 
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium border transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-[13px] font-semibold border transition-all ${
                 showFilters || hasActiveFilters
                   ? 'bg-[#222] text-white border-[#222]'
                   : 'border-gray-300 text-[#222] hover:border-[#222]'
@@ -98,14 +98,14 @@ export default function HouseCatalog() {
                 <FilterPill label={`Hasta $${Number(filters.maxPrice).toLocaleString()}`} onRemove={() => setFilters({ ...filters, maxPrice: '' })} />
               )}
               {hasActiveFilters && (
-                <button onClick={clearFilters} className="text-xs font-semibold text-[#222] underline whitespace-nowrap">
+                <button onClick={clearFilters} className="text-[12px] font-semibold text-[#222] underline whitespace-nowrap">
                   Limpiar
                 </button>
               )}
             </div>
 
-            <span className="text-sm whitespace-nowrap hidden sm:inline text-gray-500">
-              <strong className="text-[#222]">{properties.length}</strong> casas
+            <span className="text-[13px] whitespace-nowrap hidden sm:inline text-[#717171]">
+              <strong className="text-[#222] font-semibold">{properties.length}</strong> casas
             </span>
           </div>
 
@@ -113,12 +113,12 @@ export default function HouseCatalog() {
             <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-up pb-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Ciudad</label>
+                  <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Ciudad</label>
                   <div className="relative">
                     <select
                       value={filters.city}
                       onChange={e => setFilters({ ...filters, city: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-sm appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-[14px] appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
                     >
                       <option value="">Todas</option>
                       {cities.map(city => <option key={city} value={city}>{city}</option>)}
@@ -127,27 +127,27 @@ export default function HouseCatalog() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Precio mínimo</label>
+                  <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Precio mínimo</label>
                   <input
                     type="number" placeholder="$0"
                     value={filters.minPrice}
                     onChange={e => setFilters({ ...filters, minPrice: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Precio máximo</label>
+                  <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Precio máximo</label>
                   <input
                     type="number" placeholder="Sin límite"
                     value={filters.maxPrice}
                     onChange={e => setFilters({ ...filters, maxPrice: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
                   />
                 </div>
                 <div className="flex items-end">
                   <button
                     onClick={() => setShowFilters(false)}
-                    className="w-full px-6 py-3 rounded-xl text-white font-semibold text-sm bg-[#222] hover:bg-black transition-colors"
+                    className="w-full px-6 py-3 rounded-xl text-white font-semibold text-[14px] bg-[#222] hover:bg-black transition-colors"
                   >
                     Aplicar
                   </button>
@@ -161,7 +161,7 @@ export default function HouseCatalog() {
       {/* ── GRID ── */}
       <div className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10 py-8 sm:py-10">
         {!loading && properties.length > 0 && (
-          <h1 className="text-2xl font-bold text-[#222] mb-6">
+          <h1 className="text-[24px] sm:text-[28px] font-bold text-[#222] mb-6" style={{ letterSpacing: '-0.025em' }}>
             {hasActiveFilters ? 'Resultados' : 'Casas disponibles'}
           </h1>
         )}
@@ -182,7 +182,7 @@ export default function HouseCatalog() {
 
 function FilterPill({ label, icon, onRemove }: { label: string; icon?: React.ReactNode; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap bg-gray-100 text-[#222]">
+    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium whitespace-nowrap bg-gray-100 text-[#222]">
       {icon}{label}
       <button onClick={onRemove} className="ml-0.5 hover:opacity-70"><X className="w-3 h-3" /></button>
     </span>
@@ -204,12 +204,12 @@ function EmptyState({ hasActiveFilters, onClear }: { hasActiveFilters: boolean; 
   return (
     <div className="text-center py-20">
       <Home className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-[#222] mb-1">No hay casas disponibles</h3>
-      <p className="text-gray-500 mb-6">Intenta con otros filtros o vuelve pronto.</p>
+      <h3 className="text-[18px] font-semibold text-[#222] mb-1" style={{ letterSpacing: '-0.02em' }}>No hay casas disponibles</h3>
+      <p className="text-[15px] text-[#717171] mb-6">Intenta con otros filtros o vuelve pronto.</p>
       {hasActiveFilters && (
         <button
           onClick={onClear}
-          className="px-6 py-3 rounded-xl font-semibold text-sm text-[#222] border border-[#222] hover:bg-gray-50 transition-colors"
+          className="px-6 py-3 rounded-xl font-semibold text-[14px] text-[#222] border border-[#222] hover:bg-gray-50 transition-colors"
         >
           Limpiar filtros
         </button>
@@ -264,14 +264,14 @@ function PropertyCard({ property }: { property: Property }) {
 
         {/* Renovated badge */}
         {property.is_renovated && (
-          <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-[#222] text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-md shadow-sm">
+          <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-[#222] text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm">
             Renovada
           </span>
         )}
 
         {/* Photo count */}
         {property.photos?.length > 1 && (
-          <span className="absolute bottom-3 right-3 bg-black/50 text-white text-[11px] font-medium px-2 py-0.5 rounded-md backdrop-blur-sm">
+          <span className="absolute bottom-3 right-3 bg-black/50 text-white text-[11px] font-medium px-2 py-0.5 rounded-md backdrop-blur-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
             1/{property.photos.length}
           </span>
         )}
@@ -280,14 +280,14 @@ function PropertyCard({ property }: { property: Property }) {
       {/* Content — Airbnb-style, tight spacing */}
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-[15px] text-[#222] leading-snug">
+          <h3 className="font-semibold text-[15px] text-[#222] leading-snug" style={{ letterSpacing: '-0.01em' }}>
             {property.city || 'Texas'}, {property.state || 'TX'}
           </h3>
         </div>
-        <p className="text-sm text-gray-500 leading-snug">{property.address}</p>
+        <p className="text-[13px] text-[#717171] leading-snug">{property.address}</p>
 
         {/* Features inline */}
-        <div className="flex items-center gap-2 text-sm text-gray-500 mt-0.5">
+        <div className="flex items-center gap-2 text-[13px] text-[#717171] mt-0.5">
           {property.bedrooms > 0 && <span>{property.bedrooms} hab</span>}
           {property.bedrooms > 0 && property.bathrooms > 0 && <span>·</span>}
           {property.bathrooms > 0 && <span>{property.bathrooms} baños</span>}
@@ -295,7 +295,7 @@ function PropertyCard({ property }: { property: Property }) {
           {property.square_feet > 0 && <span>{property.square_feet} sqft</span>}
         </div>
 
-        <p className="font-bold text-[15px] text-[#222] mt-1">
+        <p className="font-bold text-[15px] text-[#222] mt-1" style={{ letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums' }}>
           ${property.sale_price?.toLocaleString()}
         </p>
       </div>

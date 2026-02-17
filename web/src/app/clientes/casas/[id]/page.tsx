@@ -62,25 +62,25 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <SlidersHorizontal className="w-4 h-4 text-gray-400" />
-        <h3 className="font-semibold text-sm text-[#222]">Simulador Rent-to-Own</h3>
+        <SlidersHorizontal className="w-4 h-4 text-[#717171]" />
+        <h3 className="font-bold text-[14px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>Simulador Rent-to-Own</h3>
       </div>
 
       {/* Monthly display */}
       <div className="bg-gray-50 rounded-xl p-5 text-center">
-        <p className="text-xs text-gray-500 font-medium mb-1">Pago mensual estimado</p>
-        <p className="text-3xl font-bold text-[#222]">
+        <p className="text-[12px] text-[#717171] font-medium mb-1 uppercase tracking-wide">Pago mensual estimado</p>
+        <p className="text-[32px] font-bold text-[#222]" style={{ letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
           ${rto.monthlyPayment.toLocaleString()}
-          <span className="text-base font-normal text-gray-400">/mes</span>
+          <span className="text-[16px] font-normal text-[#717171]">/mes</span>
         </p>
-        <p className="text-xs text-gray-400 mt-0.5">por {termMonths} meses</p>
+        <p className="text-[12px] text-[#b0b0b0] mt-0.5">por {termMonths} meses</p>
       </div>
 
       {/* Down payment slider */}
       <div>
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-500">Enganche</span>
-          <span className="font-semibold text-[#222]">${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
+        <div className="flex justify-between text-[14px] mb-2">
+          <span className="text-[#484848]">Enganche</span>
+          <span className="font-semibold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
         </div>
         <input
           type="range" min={0} max={40} step={1}
@@ -89,16 +89,16 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200"
           style={{ accentColor: '#222' }}
         />
-        <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+        <div className="flex justify-between text-[11px] text-[#b0b0b0] mt-1">
           <span>0%</span><span>40%</span>
         </div>
       </div>
 
       {/* Term slider */}
       <div>
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-500">Plazo</span>
-          <span className="font-semibold text-[#222]">{termMonths} meses</span>
+        <div className="flex justify-between text-[14px] mb-2">
+          <span className="text-[#484848]">Plazo</span>
+          <span className="font-semibold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>{termMonths} meses</span>
         </div>
         <input
           type="range" min={12} max={60} step={6}
@@ -107,13 +107,13 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200"
           style={{ accentColor: '#222' }}
         />
-        <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+        <div className="flex justify-between text-[11px] text-[#b0b0b0] mt-1">
           <span>12 meses</span><span>60 meses</span>
         </div>
       </div>
 
       {/* Summary */}
-      <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+      <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-[14px]">
         <Row label="Precio de venta" value={`$${salePrice.toLocaleString()}`} />
         <Row label="Enganche" value={`-$${downPaymentAmount.toLocaleString()}`} color="#16a34a" />
         <Row label="A financiar" value={`$${rto.financeAmount.toLocaleString()}`} />
@@ -127,14 +127,14 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       {/* CTA */}
       <button
         onClick={handleProceedRTO}
-        className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-semibold transition-colors"
-        style={{ background: '#0068b7' }}
+        className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-semibold text-[15px] transition-colors"
+        style={{ background: '#0068b7', letterSpacing: '-0.01em' }}
       >
         Solicitar Rent-to-Own
         <ArrowRight className="w-4 h-4" />
       </button>
 
-      <p className="text-[11px] text-center text-gray-400">
+      <p className="text-[11px] text-center text-[#b0b0b0]">
         *Cifras estimadas. El pago final depende de la aprobación.
       </p>
     </div>
@@ -144,8 +144,8 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
 function Row({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium" style={{ color: color || '#222' }}>{value}</span>
+      <span className="text-[#484848]">{label}</span>
+      <span className="font-semibold" style={{ color: color || '#222', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   )
 }
@@ -250,7 +250,7 @@ export default function PropertyDetailPage() {
         <div className="absolute top-4 left-4 z-20">
           <Link
             href="/clientes/casas"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white shadow-md text-sm font-medium text-[#222] hover:shadow-lg transition-shadow"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white shadow-md text-[13px] font-semibold text-[#222] hover:shadow-lg transition-shadow"
           >
             <ArrowLeft className="w-4 h-4" />
             Volver
@@ -281,7 +281,7 @@ export default function PropertyDetailPage() {
               {/* Show all photos button */}
               {property.photos.length > 5 && (
                 <button
-                  className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white text-sm font-semibold text-[#222] shadow-md hover:shadow-lg transition-shadow"
+                  className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white text-[13px] font-bold text-[#222] shadow-md hover:shadow-lg transition-shadow"
                   onClick={() => setLightboxOpen(true)}
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -336,15 +336,15 @@ export default function PropertyDetailPage() {
             <div className="pb-6 border-b border-gray-200">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-[#222] leading-tight">
+                  <h1 className="text-[24px] sm:text-[28px] font-bold text-[#222] leading-tight" style={{ letterSpacing: '-0.025em' }}>
                     {property.address}
                   </h1>
-                  <p className="text-gray-500 mt-1 flex items-center gap-1">
+                  <p className="text-[14px] text-[#717171] mt-1.5 flex items-center gap-1">
                     <MapPin className="w-4 h-4" />
                     {property.city || 'Texas'}, {property.state || 'TX'} {property.zip_code}
                   </p>
                 </div>
-                <p className="text-2xl sm:text-3xl font-bold text-[#222] whitespace-nowrap">
+                <p className="text-[24px] sm:text-[28px] font-bold text-[#222] whitespace-nowrap" style={{ letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
                   ${property.sale_price?.toLocaleString()}
                 </p>
               </div>
@@ -353,34 +353,34 @@ export default function PropertyDetailPage() {
             {/* Features row */}
             <div className="py-6 border-b border-gray-200 flex items-center gap-6 flex-wrap">
               {property.bedrooms > 0 && (
-                <div className="flex items-center gap-2">
-                  <Bed className="w-5 h-5 text-gray-400" />
-                  <span className="text-[#222]"><strong>{property.bedrooms}</strong> habitaciones</span>
+                <div className="flex items-center gap-2 text-[15px]">
+                  <Bed className="w-5 h-5 text-[#717171]" />
+                  <span className="text-[#484848]"><strong className="text-[#222] font-semibold">{property.bedrooms}</strong> habitaciones</span>
                 </div>
               )}
               {property.bathrooms > 0 && (
-                <div className="flex items-center gap-2">
-                  <Bath className="w-5 h-5 text-gray-400" />
-                  <span className="text-[#222]"><strong>{property.bathrooms}</strong> baños</span>
+                <div className="flex items-center gap-2 text-[15px]">
+                  <Bath className="w-5 h-5 text-[#717171]" />
+                  <span className="text-[#484848]"><strong className="text-[#222] font-semibold">{property.bathrooms}</strong> baños</span>
                 </div>
               )}
               {property.square_feet > 0 && (
-                <div className="flex items-center gap-2">
-                  <Square className="w-5 h-5 text-gray-400" />
-                  <span className="text-[#222]"><strong>{property.square_feet}</strong> sqft</span>
+                <div className="flex items-center gap-2 text-[15px]">
+                  <Square className="w-5 h-5 text-[#717171]" />
+                  <span className="text-[#484848]"><strong className="text-[#222] font-semibold">{property.square_feet}</strong> sqft</span>
                 </div>
               )}
               {property.year > 0 && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-gray-400" />
-                  <span className="text-[#222]">Año <strong>{property.year}</strong></span>
+                <div className="flex items-center gap-2 text-[15px]">
+                  <Calendar className="w-5 h-5 text-[#717171]" />
+                  <span className="text-[#484848]">Año <strong className="text-[#222] font-semibold">{property.year}</strong></span>
                 </div>
               )}
             </div>
 
             {/* What this place offers */}
             <div className="py-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-[#222] mb-4">Lo que ofrece esta casa</h2>
+              <h2 className="text-[20px] font-bold text-[#222] mb-4" style={{ letterSpacing: '-0.02em' }}>Lo que ofrece esta casa</h2>
               <div className="grid sm:grid-cols-2 gap-3">
                 {[
                   { icon: <CheckCircle className="w-5 h-5" />, label: 'Casa inspeccionada y verificada' },
@@ -391,8 +391,8 @@ export default function PropertyDetailPage() {
                   { icon: <Clock className="w-5 h-5" />, label: 'Proceso rápido y transparente' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3 py-2">
-                    <span className="text-gray-400">{item.icon}</span>
-                    <span className="text-sm text-gray-600">{item.label}</span>
+                    <span className="text-[#717171]">{item.icon}</span>
+                    <span className="text-[14px] text-[#484848]">{item.label}</span>
                   </div>
                 ))}
               </div>
@@ -400,7 +400,7 @@ export default function PropertyDetailPage() {
 
             {/* Details */}
             <div className="py-6">
-              <h2 className="text-xl font-semibold text-[#222] mb-4">Detalles de la propiedad</h2>
+              <h2 className="text-[20px] font-bold text-[#222] mb-4" style={{ letterSpacing: '-0.02em' }}>Detalles de la propiedad</h2>
               <div className="grid sm:grid-cols-2 gap-x-8">
                 {[
                   { label: 'Tipo', value: 'Casa Móvil' },
@@ -409,8 +409,8 @@ export default function PropertyDetailPage() {
                   { label: 'Condición', value: property.is_renovated ? 'Renovada ✓' : 'Original' },
                 ].map(item => (
                   <div key={item.label} className="flex justify-between py-3 border-b border-gray-100">
-                    <span className="text-sm text-gray-500">{item.label}</span>
-                    <span className="text-sm font-medium text-[#222]">{item.value}</span>
+                    <span className="text-[14px] text-[#717171]">{item.label}</span>
+                    <span className="text-[14px] font-semibold text-[#222]">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -426,8 +426,8 @@ export default function PropertyDetailPage() {
                   {/* Cash CTA */}
                   <Link
                     href={`/clientes/comprar/${property.id}`}
-                    className="block w-full text-center px-6 py-3.5 rounded-xl font-semibold transition-colors"
-                    style={{ background: '#0068b7', color: 'white' }}
+                    className="block w-full text-center px-6 py-3.5 rounded-xl font-semibold text-[15px] transition-colors"
+                    style={{ background: '#0068b7', color: 'white', letterSpacing: '-0.01em' }}
                   >
                     Comprar al contado
                   </Link>
@@ -435,7 +435,7 @@ export default function PropertyDetailPage() {
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
                     <div className="relative flex justify-center text-xs">
-                      <span className="bg-white px-3 text-gray-400">o simula tu financiamiento</span>
+                      <span className="bg-white px-3 text-[#b0b0b0] text-[13px]">o simula tu financiamiento</span>
                     </div>
                   </div>
 
@@ -443,15 +443,15 @@ export default function PropertyDetailPage() {
                 </>
               ) : (
                 <div className="text-center py-6">
-                  <p className="text-xl font-bold text-[#222] mb-1">
+                  <p className="text-[20px] font-bold text-[#222] mb-1" style={{ letterSpacing: '-0.02em' }}>
                     {property.status === 'sold' ? 'Vendida' : 'Reservada'}
                   </p>
-                  <p className="text-sm text-gray-500 mb-4">
+                  <p className="text-[14px] text-[#717171] mb-4">
                     {property.status === 'sold' ? 'Esta propiedad ya ha sido vendida.' : 'Venta en proceso.'}
                   </p>
                   <Link
                     href="/clientes/casas"
-                    className="inline-flex items-center gap-1 text-sm font-semibold text-[#222] underline"
+                    className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#222] underline"
                   >
                     Ver otras casas
                   </Link>
@@ -460,11 +460,11 @@ export default function PropertyDetailPage() {
 
               {/* Contact */}
               <div className="pt-5 border-t border-gray-200 space-y-2">
-                <p className="text-xs text-gray-500 font-medium text-center">¿Tienes preguntas?</p>
+                <p className="text-[12px] text-[#b0b0b0] font-medium text-center">¿Tienes preguntas?</p>
                 <div className="flex gap-2">
                   <a
                     href="tel:8327459600"
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-[#222] border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#222] border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                   >
                     <Phone className="w-4 h-4" />
                     Llamar
@@ -472,7 +472,7 @@ export default function PropertyDetailPage() {
                   <a
                     href={`https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
                     target="_blank" rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:shadow-sm"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-sm"
                     style={{ background: '#25d366' }}
                   >
                     <MessageCircle className="w-4 h-4" />
