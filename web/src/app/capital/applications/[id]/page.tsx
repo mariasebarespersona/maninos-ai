@@ -133,6 +133,7 @@ export default function ApplicationDetailPage() {
   const [paymentsSummary, setPaymentsSummary] = useState<any>(null)
   const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(null)
+  const [expectedPaymentAmount, setExpectedPaymentAmount] = useState<number>(0)
   const [paymentForm, setPaymentForm] = useState({
     payment_method: 'zelle',
     paid_amount: '',
@@ -251,7 +252,9 @@ export default function ApplicationDetailPage() {
   }
 
   const handleRecordPayment = async () => {
-    if (!recordingPaymentId || !paymentForm.paid_amount) {
+    if (!recordingPaymentId) return
+    const finalAmount = paymentForm.paid_amount ? parseFloat(paymentForm.paid_amount) : expectedPaymentAmount
+    if (!finalAmount || finalAmount <= 0) {
       toast.warning('Ingresa el monto pagado')
       return
     }
@@ -262,7 +265,7 @@ export default function ApplicationDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           payment_method: paymentForm.payment_method,
-          paid_amount: parseFloat(paymentForm.paid_amount),
+          paid_amount: finalAmount,
           payment_reference: paymentForm.payment_reference || undefined,
           notes: paymentForm.notes || undefined,
         }),
@@ -1511,7 +1514,8 @@ export default function ApplicationDetailPage() {
                                 <button
                                   onClick={() => {
                                     setRecordingPaymentId(p.id)
-                                    setPaymentForm(prev => ({ ...prev, paid_amount: String(p.amount) }))
+                                    setExpectedPaymentAmount(p.amount)
+                                    setPaymentForm(prev => ({ ...prev, paid_amount: '' }))
                                   }}
                                   className="btn-ghost btn-sm text-xs"
                                 >
@@ -1560,9 +1564,15 @@ export default function ApplicationDetailPage() {
                           type="number"
                           value={paymentForm.paid_amount}
                           onChange={(e) => setPaymentForm(prev => ({ ...prev, paid_amount: e.target.value }))}
+                          placeholder={expectedPaymentAmount ? `${expectedPaymentAmount.toLocaleString('en-US')} (programado)` : '0'}
                           className="input pl-8"
                         />
                       </div>
+                      {expectedPaymentAmount > 0 && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                          Monto programado: ${expectedPaymentAmount.toLocaleString('en-US')}. Déjalo vacío para usar ese monto.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="label">Referencia (opcional)</label>

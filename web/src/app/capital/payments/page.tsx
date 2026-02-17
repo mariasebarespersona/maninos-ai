@@ -90,6 +90,7 @@ export default function PaymentsPage() {
   
   // Record payment modal
   const [recordingId, setRecordingId] = useState<string | null>(null)
+  const [expectedAmount, setExpectedAmount] = useState<number>(0) // scheduled amount for placeholder
   const [paymentMethod, setPaymentMethod] = useState('zelle')
   const [paidAmount, setPaidAmount] = useState('')
   const [paymentRef, setPaymentRef] = useState('')
@@ -163,7 +164,9 @@ export default function PaymentsPage() {
   }
 
   const handleRecordPayment = async () => {
-    if (!recordingId || !paidAmount) {
+    if (!recordingId) return
+    const finalAmount = paidAmount ? parseFloat(paidAmount) : expectedAmount
+    if (!finalAmount || finalAmount <= 0) {
       toast.warning('Ingresa el monto pagado')
       return
     }
@@ -174,7 +177,7 @@ export default function PaymentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           payment_method: paymentMethod,
-          paid_amount: parseFloat(paidAmount),
+          paid_amount: finalAmount,
           payment_reference: paymentRef || undefined,
           notes: paymentNotes || undefined,
         })
@@ -450,7 +453,8 @@ export default function PaymentsPage() {
                               <button 
                                 onClick={() => {
                                   setRecordingId(p.id)
-                                  setPaidAmount(String(p.amount))
+                                  setExpectedAmount(p.amount)
+                                  setPaidAmount('')
                                 }}
                                 className="btn-primary btn-sm text-xs"
                               >
@@ -595,8 +599,19 @@ export default function PaymentsPage() {
                 <label className="label">Monto Pagado</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                  <input type="number" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} className="input pl-8" />
+                  <input
+                    type="number"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(e.target.value)}
+                    placeholder={expectedAmount ? `${expectedAmount.toLocaleString('en-US')} (programado)` : '0'}
+                    className="input pl-8"
+                  />
                 </div>
+                {expectedAmount > 0 && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                    Monto programado: ${expectedAmount.toLocaleString('en-US')}. Déjalo vacío para usar ese monto.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="label">Referencia (opcional)</label>

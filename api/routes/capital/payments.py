@@ -155,11 +155,21 @@ async def record_payment(payment_id: str, data: RecordPayment):
         fee_per_day = float(contract.get("late_fee_per_day", 15))
         late_fee = max(0, (days_late - grace)) * fee_per_day if days_late > grace else 0
         
+        # Determine status: partial if paid less than scheduled, paid otherwise
+        scheduled_amount = float(p.get("amount", 0))
+        already_paid = float(p.get("paid_amount", 0) or 0)
+        new_total_paid = already_paid + data.paid_amount
+
+        if new_total_paid >= scheduled_amount:
+            payment_status = "paid"
+        else:
+            payment_status = "partial"
+
         # Update payment
         update_data = {
-            "status": "paid",
+            "status": payment_status,
             "paid_date": paid_date.isoformat(),
-            "paid_amount": data.paid_amount,
+            "paid_amount": new_total_paid,
             "payment_method": data.payment_method,
             "payment_reference": data.payment_reference,
             "days_late": days_late,
@@ -224,7 +234,7 @@ async def record_payment(payment_id: str, data: RecordPayment):
         remaining = sb.table("rto_payments") \
             .select("id") \
             .eq("rto_contract_id", contract_id) \
-            .in_("status", ["scheduled", "pending", "late"]) \
+            .in_("status", ["scheduled", "pending", "late", "partial"]) \
             .execute()
         
         all_paid = len(remaining.data or []) == 0
@@ -244,9 +254,18 @@ async def record_payment(payment_id: str, data: RecordPayment):
                 "contract_completed": True
             }
         
+        partial_msg = ""
+        if payment_status == "partial":
+            remaining_on_payment = scheduled_amount - new_total_paid
+            partial_msg = f" (pago parcial — faltan ${remaining_on_payment:,.2f})"
+
         return {
             "ok": True,
-            "message": f"Pago #{p['payment_number']} registrado exitosamente",
+            "message": f"Pago #{p['payment_number']} registrado: ${data.paid_amount:,.2f}{partial_msg}",
+            "paid_amount": data.paid_amount,
+            "total_paid": new_total_paid,
+            "scheduled_amount": scheduled_amount,
+            "status": payment_status,
             "late_fee": late_fee,
             "days_late": days_late,
             "contract_completed": False
