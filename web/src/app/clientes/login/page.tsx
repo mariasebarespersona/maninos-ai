@@ -95,15 +95,9 @@ export default function ClientLoginPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center py-12 px-4 relative overflow-hidden mn-grain"
-      style={{ background: 'linear-gradient(145deg, #00172b 0%, #00233d 30%, #004274 70%, #005a9e 100%)' }}
+      className="min-h-screen flex items-center justify-center py-12 px-4 relative"
+      style={{ background: 'linear-gradient(160deg, #00233d 0%, #004274 60%, #005a9e 100%)' }}
     >
-      {/* Decorative orbs + dot grid */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(163,141,72,0.12) 0%, transparent 60%)' }} />
-        <div className="absolute -bottom-32 -left-32 w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,90,158,0.25) 0%, transparent 60%)' }} />
-        <div className="absolute inset-0 mn-dots text-white/[0.03]" />
-      </div>
 
       <div className="relative max-w-md w-full mn-animate-fade-up">
 
@@ -121,8 +115,8 @@ export default function ClientLoginPage() {
           </Link>
         </div>
 
-        {/* Card — glass effect with gold corner accent */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8 sm:p-10 mn-corner-gold relative overflow-hidden" style={{ border: '1px solid var(--mn-light-200)' }}>
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-2xl p-8 sm:p-10 relative" style={{ border: '1px solid var(--mn-light-200)' }}>
 
           <div className="text-center mb-8">
             <div

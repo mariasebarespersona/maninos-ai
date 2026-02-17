@@ -12,17 +12,7 @@ import {
 } from 'lucide-react'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
 
-/* ═══════════════════════════════════════════════════════════════════
-   PROPERTY DETAIL — Immersive gallery + editorial
-   
-   Skill principles:
-   - Full-bleed immersive photo gallery with lightbox
-   - Overlapping price badge
-   - Scroll-triggered info reveal
-   - Bold typographic hierarchy
-   - Gold accent details
-   - Surprising hover states on gallery thumbs
-   ═══════════════════════════════════════════════════════════════════ */
+/* Property Detail — Clean gallery + professional layout */
 
 interface Property {
   id: string
@@ -559,7 +549,7 @@ export default function PropertyDetailPage() {
           {/* ────── RIGHT — SIDEBAR ────── */}
           <div className="lg:col-span-1">
             <div
-              className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 space-y-6 mn-hover-gold-line overflow-hidden"
+              className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 space-y-6 overflow-hidden"
               style={{ border: '1px solid var(--mn-light-200)' }}
             >
               {/* Price (mobile — hidden on desktop since overlapping strip shows it) */}
@@ -676,7 +666,7 @@ function FeatureBox({ icon, value, label }: { icon: React.ReactNode; value: stri
   return (
     <div className="text-center group">
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2 transition-all duration-300 group-hover:scale-110 group-hover:rotate-[-3deg]"
+        className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2 transition-transform duration-200 group-hover:scale-105"
         style={{ background: 'var(--mn-blue-50)', color: 'var(--mn-blue)' }}
       >
         {icon}

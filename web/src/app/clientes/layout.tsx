@@ -39,11 +39,13 @@ export default function ClientPortalLayout({
       {/* ═══════════ HEADER ═══════════ */}
       <header
         className={`sticky top-0 z-50 transition-all duration-300 ${
-          scrolled
-            ? 'mn-glass-dark shadow-lg'
-            : 'bg-transparent'
+          scrolled ? 'shadow-lg' : ''
         }`}
-        style={!scrolled ? { background: 'linear-gradient(180deg, rgba(0,35,61,0.85) 0%, transparent 100%)' } : undefined}
+        style={
+          scrolled
+            ? { background: 'rgba(0,35,61,0.95)', backdropFilter: 'blur(12px)' }
+            : { background: 'linear-gradient(180deg, rgba(0,35,61,0.85) 0%, transparent 100%)' }
+        }
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
@@ -163,7 +165,7 @@ export default function ClientPortalLayout({
       {/* ═══════════ FOOTER ═══════════ */}
       <footer style={{ background: 'var(--mn-blue-dark)' }} className="text-white">
         {/* Gold accent line */}
-        <div className="h-1 mn-gradient-gold" />
+        <div className="h-0.5" style={{ background: 'linear-gradient(90deg, var(--mn-gold-dark), var(--mn-gold), var(--mn-gold-dark))' }} />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
