@@ -58,8 +58,8 @@ export default function ClientPortalHome() {
    HERO — Dark, cinematic, ONE clear CTA
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Hero({ photoUrl }: { photoUrl?: string }) {
-  // Use actual Maninos property photo, fallback to stock manufactured home
-  const bgImage = photoUrl || 'https://images.pexels.com/photos/1396122/pexels-photo-1396122.jpeg?auto=compress&cs=tinysrgb&w=1920'
+  // Use actual Maninos property photo, fallback to local hero image
+  const bgImage = photoUrl || '/images/hero-mobile-homes.png'
 
   return (
     <section className="relative min-h-[85vh] flex items-center -mt-[76px] pt-[76px]" style={{ background: '#1a1a2e' }}>
