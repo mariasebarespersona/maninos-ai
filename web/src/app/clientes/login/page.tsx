@@ -141,7 +141,7 @@ export default function ClientLoginPage() {
                   type="submit"
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-50"
-                  style={{ background: '#FF385C' }}
+                  style={{ background: '#0068b7' }}
                 >
                   {loading ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>

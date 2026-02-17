@@ -40,9 +40,12 @@ export default function ClientPortalHome() {
       .catch(() => {})
   }, [])
 
+  // Use first property photo as hero background (authentic!)
+  const heroPhoto = featured.find(p => p.photos?.[0])?.photos?.[0]
+
   return (
     <div>
-      <Hero />
+      <Hero photoUrl={heroPhoto} />
       {featured.length > 0 && <FeaturedSection properties={featured} />}
       <ValueProps />
       <HowItWorks />
@@ -54,31 +57,32 @@ export default function ClientPortalHome() {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HERO — Dark, cinematic, ONE clear CTA
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function Hero() {
+function Hero({ photoUrl }: { photoUrl?: string }) {
+  // Use actual Maninos property photo, fallback to stock manufactured home
+  const bgImage = photoUrl || 'https://images.pexels.com/photos/1396122/pexels-photo-1396122.jpeg?auto=compress&cs=tinysrgb&w=1920'
+
   return (
     <section className="relative min-h-[85vh] flex items-center -mt-[76px] pt-[76px]" style={{ background: '#1a1a2e' }}>
-      {/* Background image with overlay */}
+      {/* Background image — actual Maninos property or stock mobile home */}
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{
-          backgroundImage: "url('https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1920&q=80')",
-        }}
+        style={{ backgroundImage: `url('${bgImage}')` }}
       />
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 100%)' }} />
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 100%)' }} />
 
       <div className="relative z-10 w-full max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
         <div className="max-w-xl">
           <h1
             className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-[1.1] tracking-tight opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}
+            style={{ animationDelay: '0.1s', animationFillMode: 'forwards', textShadow: '0 2px 20px rgba(0,0,0,0.5)' }}
           >
             Tu nuevo hogar en Texas
           </h1>
           <p
-            className="text-lg text-white/70 mt-5 leading-relaxed opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.25s', animationFillMode: 'forwards' }}
+            className="text-lg text-white/90 mt-5 leading-relaxed opacity-0 animate-fade-in-up"
+            style={{ animationDelay: '0.25s', animationFillMode: 'forwards', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}
           >
-            Casas móviles renovadas, listas para mudarte. Compra al contado o con financiamiento flexible.
+            Casas móviles listas para mudarte. Compra al contado o con financiamiento flexible.
           </p>
 
           <div
@@ -88,7 +92,7 @@ function Hero() {
             <Link
               href="/clientes/casas"
               className="inline-flex items-center gap-3 px-8 py-4 rounded-xl text-white font-bold text-base transition-all duration-200 hover:brightness-110 hover:scale-[1.02]"
-              style={{ background: '#FF385C', boxShadow: '0 4px 14px rgba(255,56,92,0.4)' }}
+              style={{ background: '#0068b7', boxShadow: '0 4px 14px rgba(0,104,183,0.4)' }}
             >
               <Search className="w-5 h-5" />
               Explorar casas disponibles
@@ -193,7 +197,7 @@ function ValueProps() {
   const { ref, isInView } = useInView()
 
   const items = [
-    { icon: <Wrench className="w-7 h-7" />, title: '100% Renovadas', desc: 'Plomería, electricidad, pisos, techo y pintura. Listas para mudarte.' },
+    { icon: <Home className="w-7 h-7" />, title: 'Calidad Garantizada', desc: 'Casas inspeccionadas y verificadas. Algunas completamente renovadas.' },
     { icon: <Shield className="w-7 h-7" />, title: 'Compra Segura', desc: 'Proceso transparente con documentos verificados y títulos limpios.' },
     { icon: <Heart className="w-7 h-7" />, title: 'Para Ti', desc: 'Hablamos español. Entendemos tus necesidades. Te acompañamos en cada paso.' },
     { icon: <FileText className="w-7 h-7" />, title: 'Financiamiento', desc: 'Planes Rent-to-Own flexibles si no puedes pagar al contado.' },

@@ -28,7 +28,6 @@ export default function ClientPortalLayout({
 
   const navLinks = [
     { href: '/clientes/casas', label: 'Casas' },
-    { href: '/clientes/mi-cuenta', label: 'Mi Cuenta' },
   ]
 
   const isActive = (href: string) => pathname.startsWith(href)

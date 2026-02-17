@@ -128,7 +128,7 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       <button
         onClick={handleProceedRTO}
         className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-semibold transition-colors"
-        style={{ background: '#FF385C' }}
+        style={{ background: '#0068b7' }}
       >
         Solicitar Rent-to-Own
         <ArrowRight className="w-4 h-4" />
@@ -427,7 +427,7 @@ export default function PropertyDetailPage() {
                   <Link
                     href={`/clientes/comprar/${property.id}`}
                     className="block w-full text-center px-6 py-3.5 rounded-xl font-semibold transition-colors"
-                    style={{ background: '#FF385C', color: 'white' }}
+                    style={{ background: '#0068b7', color: 'white' }}
                   >
                     Comprar al contado
                   </Link>
