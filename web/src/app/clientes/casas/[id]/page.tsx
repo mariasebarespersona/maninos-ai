@@ -1,30 +1,28 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useInView } from '@/hooks/useInView'
 import { 
-  ArrowLeft, 
-  MapPin, 
-  Bed, 
-  Bath, 
-  Square, 
-  Calendar,
-  CheckCircle,
-  Shield,
-  FileText,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  DollarSign,
-  Clock,
-  SlidersHorizontal,
-  ArrowRight,
-  Phone,
-  MessageCircle,
-  Home,
+  ArrowLeft, MapPin, Bed, Bath, Square, Calendar,
+  CheckCircle, Shield, FileText, ChevronLeft, ChevronRight,
+  Loader2, DollarSign, Clock, SlidersHorizontal, ArrowRight,
+  Phone, MessageCircle, Home, X, Maximize2, Sparkles
 } from 'lucide-react'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
+
+/* ═══════════════════════════════════════════════════════════════════
+   PROPERTY DETAIL — Immersive gallery + editorial
+   
+   Skill principles:
+   - Full-bleed immersive photo gallery with lightbox
+   - Overlapping price badge
+   - Scroll-triggered info reveal
+   - Bold typographic hierarchy
+   - Gold accent details
+   - Surprising hover states on gallery thumbs
+   ═══════════════════════════════════════════════════════════════════ */
 
 interface Property {
   id: string
@@ -44,12 +42,11 @@ interface Property {
   status: string
 }
 
-// ============================================================================
-// RTO SIMULATOR — lets clients see how down payment / months affect pricing
-// ============================================================================
+// ────────────────────────────────────────────────────────────────
+// RTO SIMULATOR
+// ────────────────────────────────────────────────────────────────
 function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId: string }) {
   const router = useRouter()
-
   const MIN_DOWN_PCT = 0
   const MAX_DOWN_PCT = 40
   const MIN_MONTHS = 12
@@ -89,23 +86,21 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       {/* Header */}
       <div className="flex items-center gap-2 mb-1">
         <SlidersHorizontal className="w-4 h-4" style={{ color: 'var(--mn-gold)' }} />
-        <h3
-          className="font-bold text-sm"
-          style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
-        >
+        <h3 className="font-bold text-sm" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>
           Simulador Rent-to-Own
         </h3>
       </div>
 
-      {/* Monthly display */}
+      {/* Monthly display — gradient accent */}
       <div
-        className="rounded-xl p-5 text-center"
-        style={{ background: 'var(--mn-blue-50)', border: '1px solid var(--mn-blue-100)' }}
+        className="rounded-xl p-5 text-center relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, var(--mn-blue-50) 0%, #e0ecf7 100%)', border: '1px solid var(--mn-blue-100)' }}
       >
+        <div className="absolute top-0 right-0 w-20 h-20 pointer-events-none" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(163,141,72,0.1), transparent 70%)' }} />
         <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}>
           Pago mensual estimado
         </p>
-        <p className="text-3xl font-black" style={{ color: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}>
+        <p className="text-3xl font-black relative z-10" style={{ color: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}>
           ${monthlyPayment.toLocaleString()}
           <span className="text-base font-normal" style={{ color: 'var(--mn-gray)' }}>/mes</span>
         </p>
@@ -133,8 +128,7 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           style={{ accentColor: 'var(--mn-blue)' }}
         />
         <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--mn-gray-light)' }}>
-          <span>0%</span>
-          <span>40%</span>
+          <span>0%</span><span>40%</span>
         </div>
       </div>
 
@@ -157,8 +151,7 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           style={{ accentColor: 'var(--mn-blue)' }}
         />
         <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--mn-gray-light)' }}>
-          <span>12 meses</span>
-          <span>60 meses</span>
+          <span>12 meses</span><span>60 meses</span>
         </div>
       </div>
 
@@ -191,10 +184,11 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
       {/* CTA */}
       <button
         onClick={handleProceedRTO}
-        className="w-full btn-brand btn-brand-primary flex items-center justify-center gap-2 !py-3.5 !rounded-xl !text-base"
+        className="group w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-bold text-base transition-all duration-300 hover:shadow-lg hover:translate-y-[-1px]"
+        style={{ background: 'linear-gradient(135deg, var(--mn-blue) 0%, var(--mn-blue-dark) 100%)', fontFamily: "'Montserrat', sans-serif" }}
       >
         Solicitar Rent-to-Own
-        <ArrowRight className="w-4 h-4" />
+        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
       </button>
 
       <p className="text-xs text-center leading-snug" style={{ color: 'var(--mn-gray)' }}>
@@ -204,14 +198,82 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
   )
 }
 
+// ────────────────────────────────────────────────────────────────
+// FULLSCREEN LIGHTBOX
+// ────────────────────────────────────────────────────────────────
+function Lightbox({ photos, startIndex, onClose }: { photos: string[]; startIndex: number; onClose: () => void }) {
+  const [index, setIndex] = useState(startIndex)
+
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+    if (e.key === 'ArrowRight') setIndex(i => i < photos.length - 1 ? i + 1 : 0)
+    if (e.key === 'ArrowLeft') setIndex(i => i > 0 ? i - 1 : photos.length - 1)
+  }, [photos.length, onClose])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      document.body.style.overflow = ''
+    }
+  }, [handleKey])
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center mn-animate-fade-up" style={{ background: 'rgba(0,15,30,0.95)' }}>
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      <button
+        onClick={() => setIndex(i => i > 0 ? i - 1 : photos.length - 1)}
+        className="absolute left-4 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+      >
+        <ChevronLeft className="w-6 h-6" />
+      </button>
+      
+      <button
+        onClick={() => setIndex(i => i < photos.length - 1 ? i + 1 : 0)}
+        className="absolute right-4 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+      >
+        <ChevronRight className="w-6 h-6" />
+      </button>
+
+      <img
+        src={photos[index]}
+        alt={`Photo ${index + 1}`}
+        className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+      />
+
+      <div
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-white text-sm font-semibold"
+        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      >
+        {index + 1} / {photos.length}
+      </div>
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ────────────────────────────────────────────────────────────────
 export default function PropertyDetailPage() {
   const params = useParams()
   const router = useRouter()
   const [property, setProperty] = useState<Property | null>(null)
   const [isAvailable, setIsAvailable] = useState(true)
-  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  const { ref: infoRef, isInView: infoVisible } = useInView({ rootMargin: '0px 0px -80px 0px' })
 
   useEffect(() => {
     fetchProperty()
@@ -221,11 +283,9 @@ export default function PropertyDetailPage() {
     try {
       const res = await fetch(`/api/public/properties/${params.id}`)
       const data = await res.json()
-      
       if (data.ok) {
         setProperty(data.property)
         setIsAvailable(data.is_available !== false)
-        setAvailabilityMessage(data.availability_message || null)
       } else {
         router.push('/clientes/casas')
       }
@@ -238,19 +298,10 @@ export default function PropertyDetailPage() {
   }
 
   const nextPhoto = () => {
-    if (property?.photos) {
-      setCurrentPhotoIndex((prev) => 
-        prev < property.photos.length - 1 ? prev + 1 : 0
-      )
-    }
+    if (property?.photos) setCurrentPhotoIndex(prev => prev < property.photos.length - 1 ? prev + 1 : 0)
   }
-
   const prevPhoto = () => {
-    if (property?.photos) {
-      setCurrentPhotoIndex((prev) => 
-        prev > 0 ? prev - 1 : property.photos.length - 1
-      )
-    }
+    if (property?.photos) setCurrentPhotoIndex(prev => prev > 0 ? prev - 1 : property.photos.length - 1)
   }
 
   if (loading) {
@@ -270,126 +321,188 @@ export default function PropertyDetailPage() {
     )
   }
 
+  const hasPhotos = property.photos && property.photos.length > 0
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--mn-light)' }}>
 
-      {/* ═══════════ BREADCRUMB ═══════════ */}
-      <div className="bg-white border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+      {/* Lightbox */}
+      {lightboxOpen && hasPhotos && (
+        <Lightbox
+          photos={property.photos}
+          startIndex={currentPhotoIndex}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
+
+      {/* ═══════════ IMMERSIVE GALLERY — Full-bleed ═══════════ */}
+      <section className="relative bg-black">
+        {/* Breadcrumb overlay */}
+        <div className="absolute top-0 left-0 right-0 z-20 p-4 sm:p-6">
           <Link
             href="/clientes/casas"
-            className="inline-flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80"
-            style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all hover:scale-[1.02]"
+            style={{ background: 'rgba(0,35,61,0.5)', backdropFilter: 'blur(8px)', fontFamily: "'Montserrat', sans-serif" }}
           >
             <ArrowLeft className="w-4 h-4" />
-            Volver al catálogo
+            Catálogo
           </Link>
+        </div>
+
+        {/* Main photo */}
+        <div
+          className="relative w-full aspect-[16/9] sm:aspect-[21/9] overflow-hidden cursor-pointer group"
+          onClick={() => { if (hasPhotos) setLightboxOpen(true) }}
+        >
+          {hasPhotos ? (
+            <>
+              <img
+                src={property.photos[currentPhotoIndex]}
+                alt={`${property.address} - Foto ${currentPhotoIndex + 1}`}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
+              />
+              {/* Hover fullscreen hint */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 flex items-center justify-center">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-white/90 rounded-full p-3 shadow-lg">
+                  <Maximize2 className="w-5 h-5" style={{ color: 'var(--mn-dark)' }} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--mn-light-200)' }}>
+              <Home className="w-20 h-20" style={{ color: 'var(--mn-gray-light)' }} />
+            </div>
+          )}
+
+          {/* Gallery nav arrows */}
+          {hasPhotos && property.photos.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); prevPhoto() }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition-all hover:scale-110 z-10"
+                style={{ background: 'rgba(0,35,61,0.5)', backdropFilter: 'blur(4px)' }}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); nextPhoto() }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition-all hover:scale-110 z-10"
+                style={{ background: 'rgba(0,35,61,0.5)', backdropFilter: 'blur(4px)' }}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </>
+          )}
+
+          {/* Photo counter */}
+          {hasPhotos && property.photos.length > 1 && (
+            <div
+              className="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg text-white text-xs font-semibold z-10"
+              style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+            >
+              📷 {currentPhotoIndex + 1} / {property.photos.length}
+            </div>
+          )}
+
+          {/* Not available overlay */}
+          {!isAvailable && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+              <span
+                className="text-white font-black text-2xl sm:text-3xl px-8 py-4 rounded-2xl shadow-2xl transform -rotate-3"
+                style={{ background: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}
+              >
+                {property.status === 'sold' ? 'VENDIDA' : 'RESERVADA'}
+              </span>
+            </div>
+          )}
+
+          {/* Renovated badge */}
+          {isAvailable && property.is_renovated && (
+            <span
+              className="absolute top-20 sm:top-6 left-4 sm:left-6 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-lg z-10"
+              style={{ background: '#16a34a', fontFamily: "'Montserrat', sans-serif" }}
+            >
+              ✓ Renovada
+            </span>
+          )}
+
+          {/* Bottom gradient */}
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+        </div>
+
+        {/* Thumbnail strip — horizontal scroll with surprising hover */}
+        {hasPhotos && property.photos.length > 1 && (
+          <div className="bg-black/50 px-4 py-3 flex gap-2 overflow-x-auto no-scrollbar">
+            {property.photos.map((photo, index) => (
+              <button
+                key={index}
+                onClick={() => setCurrentPhotoIndex(index)}
+                className={`flex-shrink-0 w-16 h-12 sm:w-20 sm:h-14 rounded-lg overflow-hidden transition-all duration-300 ${
+                  index === currentPhotoIndex
+                    ? 'ring-2 ring-offset-1 ring-offset-black ring-[#c4af6a] scale-95'
+                    : 'opacity-50 hover:opacity-100 hover:scale-105'
+                }`}
+              >
+                <img src={photo} alt={`Thumb ${index + 1}`} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ═══════════ OVERLAPPING PRICE STRIP ═══════════ */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
+        <div
+          className="inline-flex items-center gap-4 px-6 py-4 rounded-2xl shadow-xl mn-animate-fade-up"
+          style={{
+            background: 'white',
+            border: '1px solid var(--mn-light-200)',
+          }}
+        >
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--mn-gray)', fontFamily: "'Montserrat', sans-serif" }}>
+              Precio de venta
+            </p>
+            <p className="text-3xl sm:text-4xl font-black" style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}>
+              ${property.sale_price?.toLocaleString()}
+            </p>
+          </div>
+          {property.is_renovated && (
+            <div className="h-12 w-px" style={{ background: 'var(--mn-light-300)' }} />
+          )}
+          {property.is_renovated && (
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" style={{ color: 'var(--mn-gold)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--mn-gold-dark)', fontFamily: "'Montserrat'" }}>
+                Renovada
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+      {/* ═══════════ CONTENT GRID ═══════════ */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         <div className="grid lg:grid-cols-3 gap-8">
 
-          {/* ═══════════ LEFT — GALLERY + INFO ═══════════ */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Photo Gallery */}
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm" style={{ border: '1px solid var(--mn-light-200)' }}>
-              <div className="relative aspect-[16/10] sm:aspect-[16/9] bg-gray-100">
-                {property.photos?.length > 0 ? (
-                  <>
-                    <img
-                      src={property.photos[currentPhotoIndex]}
-                      alt={`${property.address} - Foto ${currentPhotoIndex + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    
-                    {property.photos.length > 1 && (
-                      <>
-                        <button
-                          onClick={prevPhoto}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
-                          style={{ background: 'rgba(0,35,61,0.6)', backdropFilter: 'blur(4px)' }}
-                        >
-                          <ChevronLeft className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={nextPhoto}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
-                          style={{ background: 'rgba(0,35,61,0.6)', backdropFilter: 'blur(4px)' }}
-                        >
-                          <ChevronRight className="w-5 h-5" />
-                        </button>
-                        
-                        <div
-                          className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-white text-xs font-semibold"
-                          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
-                        >
-                          {currentPhotoIndex + 1} / {property.photos.length}
-                        </div>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--mn-light-200)' }}>
-                    <Home className="w-16 h-16" style={{ color: 'var(--mn-gray-light)' }} />
-                  </div>
-                )}
-
-                {!isAvailable && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <span
-                      className="text-white font-black text-2xl px-6 py-3 rounded-xl shadow-lg transform -rotate-6"
-                      style={{ background: 'var(--mn-blue-dark)', fontFamily: "'Montserrat', sans-serif" }}
-                    >
-                      {property.status === 'sold' ? 'VENDIDA' : 'RESERVADA'}
-                    </span>
-                  </div>
-                )}
-
-                {isAvailable && property.is_renovated && (
-                  <span
-                    className="absolute top-4 left-4 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-sm"
-                    style={{ background: '#16a34a', fontFamily: "'Montserrat', sans-serif" }}
-                  >
-                    Renovada
-                  </span>
-                )}
-              </div>
-
-              {/* Thumbnails */}
-              {property.photos?.length > 1 && (
-                <div className="p-3 sm:p-4 flex gap-2 overflow-x-auto no-scrollbar">
-                  {property.photos.map((photo, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentPhotoIndex(index)}
-                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden transition-all ${
-                        index === currentPhotoIndex
-                          ? 'ring-2 ring-offset-1 scale-95 ring-[#004274]'
-                          : 'opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <img
-                        src={photo}
-                        alt={`Thumbnail ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Property Info */}
+          {/* ────── LEFT — Property info ────── */}
+          <div
+            ref={infoRef}
+            className="lg:col-span-2 space-y-6"
+            style={{
+              opacity: infoVisible ? 1 : 0,
+              transform: infoVisible ? 'translateY(0)' : 'translateY(30px)',
+              transition: 'all 0.7s cubic-bezier(0.16,1,0.3,1)',
+            }}
+          >
+            {/* Address + Location */}
             <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm" style={{ border: '1px solid var(--mn-light-200)' }}>
               <h1
-                className="text-2xl sm:text-3xl font-black mb-2"
+                className="text-2xl sm:text-3xl font-black mb-2 leading-tight"
                 style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
               >
                 {property.address}
               </h1>
-
               <div className="flex items-center gap-2 mb-8">
                 <MapPin className="w-4 h-4" style={{ color: 'var(--mn-gray)' }} />
                 <span style={{ color: 'var(--mn-gray)', fontFamily: "'Mulish', sans-serif" }}>
@@ -397,54 +510,33 @@ export default function PropertyDetailPage() {
                 </span>
               </div>
 
-              {/* Features Grid */}
+              {/* Feature boxes — icon boxes with blue accent */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 py-6 border-y" style={{ borderColor: 'var(--mn-light-200)' }}>
                 {property.bedrooms > 0 && (
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
-                      <Bed className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
-                    </div>
-                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.bedrooms}</p>
-                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Habitaciones</p>
-                  </div>
+                  <FeatureBox icon={<Bed className="w-6 h-6" />} value={property.bedrooms} label="Habitaciones" />
                 )}
                 {property.bathrooms > 0 && (
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
-                      <Bath className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
-                    </div>
-                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.bathrooms}</p>
-                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Baños</p>
-                  </div>
+                  <FeatureBox icon={<Bath className="w-6 h-6" />} value={property.bathrooms} label="Baños" />
                 )}
                 {property.square_feet > 0 && (
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
-                      <Square className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
-                    </div>
-                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.square_feet}</p>
-                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Pies²</p>
-                  </div>
+                  <FeatureBox icon={<Square className="w-6 h-6" />} value={property.square_feet} label="Pies²" />
                 )}
                 {property.year > 0 && (
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2" style={{ background: 'var(--mn-blue-50)' }}>
-                      <Calendar className="w-6 h-6" style={{ color: 'var(--mn-blue)' }} />
-                    </div>
-                    <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{property.year}</p>
-                    <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>Año</p>
-                  </div>
+                  <FeatureBox icon={<Calendar className="w-6 h-6" />} value={property.year} label="Año" />
                 )}
               </div>
 
               {/* Details Table */}
               <div className="mt-6">
-                <h3
-                  className="font-bold text-sm uppercase tracking-wider mb-4"
-                  style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
-                >
-                  Detalles
-                </h3>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-px w-6" style={{ background: 'var(--mn-gold)' }} />
+                  <h3
+                    className="font-bold text-sm uppercase tracking-wider"
+                    style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
+                  >
+                    Detalles
+                  </h3>
+                </div>
                 <div className="grid sm:grid-cols-2 gap-x-8 gap-y-0">
                   {[
                     { label: 'Tipo', value: 'Casa Móvil' },
@@ -454,10 +546,7 @@ export default function PropertyDetailPage() {
                   ].map((item) => (
                     <div key={item.label} className="flex justify-between py-3 border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
                       <span className="text-sm" style={{ color: 'var(--mn-gray)' }}>{item.label}</span>
-                      <span
-                        className="text-sm font-semibold"
-                        style={{ color: item.color || 'var(--mn-dark)', fontFamily: "'Mulish', sans-serif" }}
-                      >
+                      <span className="text-sm font-semibold" style={{ color: item.color || 'var(--mn-dark)', fontFamily: "'Mulish', sans-serif" }}>
                         {item.value}
                       </span>
                     </div>
@@ -467,19 +556,18 @@ export default function PropertyDetailPage() {
             </div>
           </div>
 
-          {/* ═══════════ RIGHT — SIDEBAR ═══════════ */}
+          {/* ────── RIGHT — SIDEBAR ────── */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 space-y-6" style={{ border: '1px solid var(--mn-light-200)' }}>
-
-              {/* Price */}
-              <div className="text-center pb-5 border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
+            <div
+              className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 space-y-6 mn-hover-gold-line overflow-hidden"
+              style={{ border: '1px solid var(--mn-light-200)' }}
+            >
+              {/* Price (mobile — hidden on desktop since overlapping strip shows it) */}
+              <div className="text-center pb-5 border-b lg:hidden" style={{ borderColor: 'var(--mn-light-200)' }}>
                 <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--mn-gray)', fontFamily: "'Montserrat', sans-serif" }}>
                   Precio de venta
                 </p>
-                <p
-                  className="text-4xl font-black"
-                  style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
-                >
+                <p className="text-4xl font-black" style={{ color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}>
                   ${property.sale_price?.toLocaleString()}
                 </p>
               </div>
@@ -489,7 +577,8 @@ export default function PropertyDetailPage() {
                   {/* Contado CTA */}
                   <Link
                     href={`/clientes/comprar/${property.id}`}
-                    className="block w-full btn-brand btn-brand-gold text-center !py-3.5 !rounded-xl !text-base"
+                    className="group block w-full text-center px-6 py-3.5 rounded-xl text-white font-bold text-base transition-all duration-300 hover:shadow-lg hover:translate-y-[-1px]"
+                    style={{ background: 'linear-gradient(135deg, var(--mn-gold) 0%, var(--mn-gold-dark) 100%)', fontFamily: "'Montserrat', sans-serif" }}
                   >
                     💵 Comprar al Contado
                   </Link>
@@ -524,10 +613,10 @@ export default function PropertyDetailPage() {
                         : 'Esta propiedad tiene una venta en proceso.'}
                     </p>
                   </div>
-
                   <Link
                     href="/clientes/casas"
-                    className="block w-full btn-brand btn-brand-primary text-center !py-3.5 !rounded-xl"
+                    className="block w-full text-center px-6 py-3.5 rounded-xl text-white font-bold transition-all duration-200 hover:shadow-lg"
+                    style={{ background: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
                   >
                     Ver Otras Casas Disponibles
                   </Link>
@@ -537,12 +626,12 @@ export default function PropertyDetailPage() {
               {/* Trust badges */}
               <div className="space-y-3 pt-5 border-t" style={{ borderColor: 'var(--mn-light-200)' }}>
                 {[
-                  { icon: CheckCircle, text: 'Casa inspeccionada y verificada', color: '#16a34a' },
-                  { icon: Shield, text: 'Dos opciones de pago seguras', color: '#16a34a' },
-                  { icon: FileText, text: 'Título transferido a tu nombre', color: '#16a34a' },
+                  { icon: CheckCircle, text: 'Casa inspeccionada y verificada' },
+                  { icon: Shield, text: 'Dos opciones de pago seguras' },
+                  { icon: FileText, text: 'Título transferido a tu nombre' },
                 ].map((item) => (
                   <div key={item.text} className="flex items-center gap-3">
-                    <item.icon className="w-4 h-4 flex-shrink-0" style={{ color: item.color }} />
+                    <item.icon className="w-4 h-4 flex-shrink-0" style={{ color: '#16a34a' }} />
                     <span className="text-sm" style={{ color: 'var(--mn-dark-600)', fontFamily: "'Mulish', sans-serif" }}>{item.text}</span>
                   </div>
                 ))}
@@ -556,7 +645,7 @@ export default function PropertyDetailPage() {
                 <div className="flex gap-2">
                   <a
                     href="tel:8327459600"
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:shadow-md"
                     style={{ background: 'var(--mn-blue-50)', color: 'var(--mn-blue)', fontFamily: "'Montserrat', sans-serif" }}
                   >
                     <Phone className="w-4 h-4" />
@@ -566,7 +655,7 @@ export default function PropertyDetailPage() {
                     href={`https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:shadow-md"
                     style={{ background: '#25d366', fontFamily: "'Montserrat', sans-serif" }}
                   >
                     <MessageCircle className="w-4 h-4" />
@@ -578,6 +667,22 @@ export default function PropertyDetailPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ─── Feature Box Component ─── */
+function FeatureBox({ icon, value, label }: { icon: React.ReactNode; value: string | number; label: string }) {
+  return (
+    <div className="text-center group">
+      <div
+        className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2 transition-all duration-300 group-hover:scale-110 group-hover:rotate-[-3deg]"
+        style={{ background: 'var(--mn-blue-50)', color: 'var(--mn-blue)' }}
+      >
+        {icon}
+      </div>
+      <p className="font-black text-lg" style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}>{value}</p>
+      <p className="text-xs" style={{ color: 'var(--mn-gray)' }}>{label}</p>
     </div>
   )
 }

@@ -213,15 +213,13 @@ export default function ClientDashboard() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--mn-light)' }}>
 
-      {/* ═══════════ HEADER ═══════════ */}
+      {/* ═══════════ HEADER — grain + gold accent ═══════════ */}
       <section
-        className="relative py-8 sm:py-12 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #00233d 0%, #004274 60%, #005a9e 100%)' }}
+        className="relative py-8 sm:py-12 overflow-hidden mn-grain"
+        style={{ background: 'linear-gradient(145deg, #00172b 0%, #00233d 30%, #004274 100%)' }}
       >
-        <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-          backgroundSize: '32px 32px'
-        }} />
+        <div className="absolute inset-0 pointer-events-none mn-dots text-white/[0.03]" />
+        <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(163,141,72,0.1) 0%, transparent 60%)' }} />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
@@ -299,15 +297,19 @@ export default function ClientDashboard() {
 
           {/* ═══════════ MAIN CONTENT ═══════════ */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ border: '1px solid var(--mn-light-200)' }}>
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden mn-hover-gold-line" style={{ border: '1px solid var(--mn-light-200)' }}>
               <div className="p-5 sm:p-6 border-b" style={{ borderColor: 'var(--mn-light-200)' }}>
-                <h2
-                  className="text-lg font-bold flex items-center gap-2"
-                  style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
-                >
-                  <Home className="w-5 h-5" style={{ color: 'var(--mn-blue)' }} />
-                  Mis Compras
-                </h2>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--mn-blue-50)' }}>
+                    <Home className="w-5 h-5" style={{ color: 'var(--mn-blue)' }} />
+                  </div>
+                  <h2
+                    className="text-lg font-bold"
+                    style={{ color: 'var(--mn-dark)', fontFamily: "'Montserrat', sans-serif" }}
+                  >
+                    Mis Compras
+                  </h2>
+                </div>
               </div>
 
               {sales.length === 0 ? (
@@ -488,8 +490,8 @@ export default function ClientDashboard() {
           {/* ═══════════ SIDEBAR ═══════════ */}
           <div className="lg:col-span-1 space-y-6">
 
-            {/* Profile Card */}
-            <div className="bg-white rounded-2xl shadow-sm p-6" style={{ border: '1px solid var(--mn-light-200)' }}>
+            {/* Profile Card — gold line accent */}
+            <div className="bg-white rounded-2xl shadow-sm p-6 mn-hover-gold-line overflow-hidden" style={{ border: '1px solid var(--mn-light-200)' }}>
               <h2
                 className="font-bold text-sm uppercase tracking-wider mb-5"
                 style={{ color: 'var(--mn-gold)', fontFamily: "'Montserrat', sans-serif" }}
@@ -521,10 +523,10 @@ export default function ClientDashboard() {
               </div>
             </div>
 
-            {/* Help Card */}
+            {/* Help Card — grain + gold corner */}
             <div
-              className="rounded-2xl p-6"
-              style={{ background: 'linear-gradient(135deg, var(--mn-blue) 0%, var(--mn-blue-dark) 100%)' }}
+              className="rounded-2xl p-6 mn-grain mn-corner-gold relative overflow-hidden"
+              style={{ background: 'linear-gradient(145deg, var(--mn-blue) 0%, var(--mn-blue-dark) 100%)' }}
             >
               <h2
                 className="font-bold text-white mb-2"
