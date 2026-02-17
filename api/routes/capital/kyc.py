@@ -121,11 +121,16 @@ async def request_verification(data: KYCRequestVerification):
                 "message": "Este cliente ya está verificado."
             }
 
-        # Set the request flag
+        # Set the request flag and RESET any stale KYC state from previous tests/sessions
         sb.table("clients").update({
             "kyc_requested": True,
             "kyc_requested_at": datetime.utcnow().isoformat(),
-            "kyc_status": "pending" if client.get("kyc_requested") else "pending",
+            "kyc_status": "unverified",
+            "kyc_verified": False,
+            "kyc_verified_at": None,
+            "kyc_session_id": None,
+            "kyc_failure_reason": None,
+            "kyc_report_id": None,
         }).eq("id", data.client_id).execute()
 
         logger.info(f"[KYC] Verification requested for client {data.client_id} ({client.get('name')})")
@@ -238,7 +243,7 @@ async def check_verification_session(client_id: str):
     """
     try:
         client_result = sb.table("clients") \
-            .select("id, kyc_session_id, kyc_status") \
+            .select("id, kyc_session_id, kyc_status, kyc_requested") \
             .eq("id", client_id) \
             .execute()
 
@@ -248,10 +253,20 @@ async def check_verification_session(client_id: str):
         client = client_result.data[0]
         session_id = client.get("kyc_session_id")
 
+        # Guard: if Capital never requested KYC, don't process stale sessions
+        if not client.get("kyc_requested"):
+            return {
+                "ok": True,
+                "status": "not_requested",
+                "verified": False,
+                "message": "No se ha solicitado verificación para este cliente. Use 'Solicitar Verificación' primero."
+            }
+
         if not session_id:
             return {
                 "ok": True,
                 "status": "no_session",
+                "verified": False,
                 "message": "No hay sesión de verificación activa. El cliente aún no ha iniciado la verificación."
             }
 
@@ -280,6 +295,7 @@ async def check_verification_session(client_id: str):
 
         if is_verified:
             update_data["kyc_verified_at"] = datetime.utcnow().isoformat()
+            update_data["kyc_requested"] = False  # Request fulfilled
             if session.last_verification_report:
                 update_data["kyc_report_id"] = session.last_verification_report
 
@@ -392,11 +408,28 @@ async def kyc_webhook(request: Request):
         if not client_id:
             return {"ok": True, "message": "No client_id in metadata, skipping"}
 
+        # Only process if Capital actually requested KYC for this client
+        client_check = sb.table("clients") \
+            .select("id, kyc_requested, kyc_verified") \
+            .eq("id", client_id) \
+            .execute()
+
+        if not client_check.data:
+            return {"ok": True, "message": f"Client {client_id} not found, skipping"}
+
+        client_row = client_check.data[0]
+
+        # Guard: ignore webhook if Capital never requested verification
+        if not client_row.get("kyc_requested") and not client_row.get("kyc_verified"):
+            logger.warning(f"[KYC Webhook] Ignoring event for client {client_id} — kyc_requested=false")
+            return {"ok": True, "message": "KYC not requested by Capital, ignoring", "client_id": client_id}
+
         if event_type == "identity.verification_session.verified":
             sb.table("clients").update({
                 "kyc_verified": True,
                 "kyc_verified_at": datetime.utcnow().isoformat(),
                 "kyc_status": "verified",
+                "kyc_requested": False,  # Request fulfilled
                 "kyc_report_id": session_data.get("last_verification_report"),
             }).eq("id", client_id).execute()
 
