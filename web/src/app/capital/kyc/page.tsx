@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   ShieldCheck,
   ShieldAlert,
-  ShieldClose,
   Loader2,
-  ExternalLink,
   CheckCircle2,
   XCircle,
   Clock,
@@ -35,8 +33,6 @@ export default function KYCPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [stripeUrl, setStripeUrl] = useState<string | null>(null)
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
 
   useEffect(() => {
     loadClients()
@@ -93,35 +89,30 @@ export default function KYCPage() {
     }
   }
 
-  const handleStripeVerify = async (client: Client) => {
+  const handleRequestVerification = async (client: Client) => {
     setActionLoading(client.id)
-    setStripeUrl(null)
     try {
-      const res = await fetch('/api/capital/kyc/create-session', {
+      const res = await fetch('/api/capital/kyc/request-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: client.id,
-          return_url: window.location.href,
-        }),
+        body: JSON.stringify({ client_id: client.id }),
       })
       const data = await res.json()
       
-      if (data.ok && data.url) {
-        setStripeUrl(data.url)
-        setSelectedClient(client)
-        // Update local status to pending
-        setClients(prev => prev.map(c => 
-          c.id === client.id ? { ...c, kyc_status: 'pending', kyc_session_id: data.session_id } : c
-        ))
-        toast.success(`Sesión creada para ${client.name}. Abre el enlace para verificar.`)
-      } else if (data.already_verified) {
-        setClients(prev => prev.map(c => 
-          c.id === client.id ? { ...c, kyc_verified: true, kyc_status: 'verified' } : c
-        ))
-        toast.info('Este cliente ya está verificado')
+      if (data.ok) {
+        if (data.already_verified) {
+          setClients(prev => prev.map(c => 
+            c.id === client.id ? { ...c, kyc_verified: true, kyc_status: 'verified' } : c
+          ))
+          toast.info('Este cliente ya está verificado')
+        } else {
+          setClients(prev => prev.map(c => 
+            c.id === client.id ? { ...c, kyc_status: 'pending' } : c
+          ))
+          toast.success(data.message || `Solicitud enviada a ${client.name}`)
+        }
       } else {
-        toast.error(data.detail || 'Error al crear sesión')
+        toast.error(data.detail || 'Error al solicitar verificación')
       }
     } catch (err) {
       toast.error('Error de conexión')
@@ -250,67 +241,21 @@ export default function KYCPage() {
         </div>
       </div>
 
-      {/* Stripe URL Banner */}
-      {stripeUrl && selectedClient && (
-        <div className="card-luxury p-5 border-2" style={{ borderColor: 'var(--gold-600)', backgroundColor: 'var(--gold-50, var(--cream))' }}>
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" 
-                 style={{ backgroundColor: 'var(--gold-600)' }}>
-              <ShieldCheck className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                Sesión de Verificación Lista
-              </h3>
-              <p className="text-sm mt-1" style={{ color: 'var(--charcoal)' }}>
-                Para: <strong>{selectedClient.name}</strong> ({selectedClient.email})
-              </p>
-              <p className="text-sm mt-2" style={{ color: 'var(--slate)' }}>
-                Haz clic en el botón para abrir la verificación de Stripe Identity. El cliente deberá:
-              </p>
-              <ol className="text-sm mt-2 ml-4 space-y-1 list-decimal" style={{ color: 'var(--slate)' }}>
-                <li>Seleccionar tipo de documento (licencia, pasaporte, etc.)</li>
-                <li>Subir foto del frente y reverso del documento</li>
-                <li>Tomar una selfie para comparar con el documento</li>
-              </ol>
-              <div className="flex items-center gap-3 mt-4">
-                <a
-                  href={stripeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: 'var(--navy-800)' }}
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Abrir Verificación Stripe
-                </a>
-                <button
-                  onClick={() => handleCheckStatus(selectedClient)}
-                  disabled={actionLoading === selectedClient.id}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium border transition-colors"
-                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
-                >
-                  {actionLoading === selectedClient.id 
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <RefreshCw className="w-4 h-4" />
-                  }
-                  Consultar Resultado
-                </button>
-                <button
-                  onClick={() => { setStripeUrl(null); setSelectedClient(null) }}
-                  className="text-sm px-3 py-2.5 rounded-md transition-colors"
-                  style={{ color: 'var(--ash)' }}
-                >
-                  Cerrar
-                </button>
-              </div>
-              <p className="text-xs mt-3" style={{ color: 'var(--ash)' }}>
-                💡 En modo test de Stripe puedes usar cualquier imagen de documento y selfie.
-              </p>
-            </div>
+      {/* Flow explanation */}
+      <div className="card-luxury p-5" style={{ borderLeft: '4px solid var(--gold-600)' }}>
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--gold-600)' }} />
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>Flujo de verificación KYC</p>
+            <ol className="text-xs mt-1.5 ml-4 space-y-1 list-decimal" style={{ color: 'var(--slate)' }}>
+              <li>Haz clic en &quot;Solicitar Verificación&quot; para pedirle al cliente</li>
+              <li>El cliente verá un aviso en su portal para verificar su identidad</li>
+              <li>El cliente completa la verificación de Stripe Identity desde su dispositivo</li>
+              <li>El resultado aparece aquí automáticamente (o usa &quot;Consultar Estado&quot;)</li>
+            </ol>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Search */}
       <div className="card-luxury p-4">
@@ -346,7 +291,7 @@ export default function KYCPage() {
                     ) : client.kyc_status === 'pending' ? (
                       <Clock className="w-6 h-6" style={{ color: 'var(--warning)' }} />
                     ) : ['failed', 'requires_input'].includes(client.kyc_status) ? (
-                      <ShieldClose className="w-6 h-6" style={{ color: 'var(--error)' }} />
+                      <XCircle className="w-6 h-6" style={{ color: 'var(--error)' }} />
                     ) : (
                       <ShieldAlert className="w-6 h-6" style={{ color: 'var(--ash)' }} />
                     )}
@@ -394,10 +339,10 @@ export default function KYCPage() {
                     </button>
                   )}
 
-                  {/* Stripe Identity */}
+                  {/* Request Verification from Client */}
                   {!client.kyc_verified && (
                     <button
-                      onClick={() => handleStripeVerify(client)}
+                      onClick={() => handleRequestVerification(client)}
                       disabled={actionLoading === client.id}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold text-white transition-opacity hover:opacity-90"
                       style={{ backgroundColor: 'var(--navy-800)' }}
@@ -406,7 +351,7 @@ export default function KYCPage() {
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <ShieldCheck className="w-3.5 h-3.5" />
                       }
-                      {['failed', 'requires_input'].includes(client.kyc_status) ? 'Reintentar Stripe' : 'Verificar con Stripe'}
+                      {client.kyc_status === 'pending' ? 'Re-enviar Solicitud' : 'Solicitar Verificación'}
                     </button>
                   )}
 
@@ -458,7 +403,7 @@ function KYCStatusBadge({ status, verified }: { status: string; verified: boolea
   const configs: Record<string, { bg: string; color: string; icon: typeof Clock; label: string }> = {
     pending: { bg: 'var(--warning-light)', color: 'var(--warning)', icon: Clock, label: 'En Proceso' },
     failed: { bg: 'var(--error-light)', color: 'var(--error)', icon: XCircle, label: 'Fallido' },
-    requires_input: { bg: 'var(--error-light)', color: 'var(--error)', icon: ShieldClose, label: 'Fallido' },
+    requires_input: { bg: 'var(--error-light)', color: 'var(--error)', icon: XCircle, label: 'Fallido' },
     unverified: { bg: 'var(--cream)', color: 'var(--ash)', icon: ShieldAlert, label: 'Sin Verificar' },
   }
 

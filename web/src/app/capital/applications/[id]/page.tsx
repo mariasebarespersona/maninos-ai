@@ -91,6 +91,7 @@ export default function ApplicationDetailPage() {
   const [kycVerified, setKycVerified] = useState(false)
   const [kycLoading, setKycLoading] = useState(false)
   const [kycFailReason, setKycFailReason] = useState<string | null>(null)
+  const [kycRequested, setKycRequested] = useState(false)
 
   // Review form
   const [reviewNotes, setReviewNotes] = useState('')
@@ -334,6 +335,7 @@ export default function ApplicationDetailPage() {
         setKycStatus(data.kyc_status || 'unverified')
         setKycVerified(data.kyc_verified || false)
         setKycFailReason(data.failure_reason || null)
+        setKycRequested(data.kyc_requested || false)
         if (data.kyc_session_id && !data.kyc_verified && 
             ['pending', 'requires_input'].includes(data.kyc_status || '')) {
           checkKycSession(clientId)
@@ -385,51 +387,58 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  const handleKycVerify = async (method: 'stripe' | 'manual') => {
+  const handleRequestKyc = async () => {
     if (!app) return
     setKycLoading(true)
     try {
-      if (method === 'stripe') {
-        const res = await fetch('/api/capital/kyc/create-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_id: app.clients.id,
-            return_url: window.location.href,
-          })
-        })
-        const data = await res.json()
-        if (data.ok && (data.url || data.verification_url)) {
-          window.open(data.url || data.verification_url, '_blank')
-          setKycStatus('pending')
-          toast.success('Sesión de verificación creada. Se abrió en nueva pestaña.')
-        } else if (data.already_verified) {
+      const res = await fetch('/api/capital/kyc/request-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: app.clients.id })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        if (data.already_verified) {
           toast.success('Cliente ya verificado')
           setKycVerified(true)
           setKycStatus('verified')
         } else {
-          toast.error(data.detail || 'Error al crear sesión')
+          toast.success(data.message || 'Solicitud enviada al cliente')
+          setKycRequested(true)
+          setKycStatus('pending')
         }
       } else {
-        const res = await fetch('/api/capital/kyc/manual-verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_id: app.clients.id,
-            verified_by: 'admin',
-            id_type: 'manual',
-            notes: 'Verificado manualmente desde portal Capital',
-          })
+        toast.error(data.detail || 'Error al solicitar verificación')
+      }
+    } catch (err) {
+      toast.error('Error de red')
+    } finally {
+      setKycLoading(false)
+    }
+  }
+
+  const handleManualVerify = async () => {
+    if (!app) return
+    setKycLoading(true)
+    try {
+      const res = await fetch('/api/capital/kyc/manual-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: app.clients.id,
+          verified_by: 'admin',
+          id_type: 'manual',
+          notes: 'Verificado manualmente desde portal Capital',
         })
-        const data = await res.json()
-        if (data.ok) {
-          toast.success('Cliente verificado manualmente')
-          setKycVerified(true)
-          setKycStatus('verified')
-          setKycFailReason(null)
-        } else {
-          toast.error(data.detail || 'Error')
-        }
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Cliente verificado manualmente')
+        setKycVerified(true)
+        setKycStatus('verified')
+        setKycFailReason(null)
+      } else {
+        toast.error(data.detail || 'Error')
       }
     } catch (err) {
       toast.error('Error de red')
@@ -765,8 +774,18 @@ export default function ApplicationDetailPage() {
                   <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
                 </div>
                 <div>
-                    <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Verificación en Proceso ⏳</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente está completando la verificación en Stripe</p>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Esperando al Cliente ⏳</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Se le solicitó al cliente que verifique su identidad desde su portal</p>
+                </div>
+              </>
+            ) : kycRequested ? (
+              <>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--info-light)' }}>
+                  <Mail className="w-5 h-5" style={{ color: 'var(--info)' }} />
+                </div>
+                <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--info)' }}>Solicitud Enviada 📩</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente debe verificar su identidad desde el portal de clientes</p>
                 </div>
               </>
             ) : (
@@ -776,7 +795,7 @@ export default function ApplicationDetailPage() {
                 </div>
                 <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--slate)' }}>No Verificado</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Se requiere verificación de identidad antes de aprobar</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Solicita al cliente que verifique su identidad</p>
                 </div>
               </>
             )}
@@ -790,20 +809,28 @@ export default function ApplicationDetailPage() {
                 Consultar Estado
               </button>
             )}
+            {!kycVerified && !kycRequested && kycStatus !== 'pending' && (
+              <button onClick={handleRequestKyc} disabled={kycLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
+                {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
+                Solicitar Verificación al Cliente
+              </button>
+            )}
+            {!kycVerified && kycRequested && kycStatus !== 'pending' && (
+              <button onClick={handleRequestKyc} disabled={kycLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                style={{ backgroundColor: 'var(--warning)', opacity: kycLoading ? 0.6 : 1 }}>
+                {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
+                Re-enviar Solicitud
+              </button>
+            )}
             {!kycVerified && (
-              <>
-                <button onClick={() => handleKycVerify('stripe')} disabled={kycLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                  style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
-                  {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                  {kycStatus === 'failed' || kycStatus === 'requires_input' ? 'Reintentar Stripe' : 'Stripe Identity'}
-                </button>
-                <button onClick={() => handleKycVerify('manual')} disabled={kycLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
-                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
-                  Verificar Manual
-                </button>
-              </>
+              <button onClick={handleManualVerify} disabled={kycLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
+                Verificar Manual
+              </button>
             )}
           </div>
         </div>

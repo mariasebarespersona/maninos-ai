@@ -15,7 +15,9 @@ import {
   MapPin,
   Loader2,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  ShieldCheck,
+  ArrowRight,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
@@ -49,12 +51,28 @@ export default function ClientDashboard() {
   const { client, loading: authLoading, error: authError, signOut } = useClientAuth()
   const [sales, setSales] = useState<Sale[]>([])
   const [salesLoading, setSalesLoading] = useState(true)
+  const [kycRequested, setKycRequested] = useState(false)
+  const [kycVerified, setKycVerified] = useState(false)
 
   useEffect(() => {
     if (client) {
       fetchClientSales(client.id)
+      fetchKycStatus(client.id)
     }
   }, [client])
+
+  const fetchKycStatus = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/public/clients/${clientId}/kyc-status`)
+      const data = await res.json()
+      if (data.ok) {
+        setKycRequested(data.kyc_requested || false)
+        setKycVerified(data.kyc_verified || false)
+      }
+    } catch (err) {
+      console.error('Error fetching KYC status:', err)
+    }
+  }
 
   const fetchClientSales = async (clientId: string) => {
     try {
@@ -230,6 +248,31 @@ export default function ClientDashboard() {
       </div>
       
       <div className="container mx-auto px-4 py-8">
+        {/* KYC Verification Banner */}
+        {kycRequested && !kycVerified && (
+          <div className="mb-6 bg-gradient-to-r from-gold-50 to-orange-50 border-2 border-gold-300 rounded-2xl p-6 flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gold-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <ShieldCheck className="w-7 h-7 text-gold-700" />
+              </div>
+              <div>
+                <h3 className="font-bold text-navy-900 text-lg">Verificación de Identidad Requerida</h3>
+                <p className="text-gray-600">
+                  Maninos Capital necesita que verifiques tu identidad para procesar tu solicitud RTO.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/clientes/mi-cuenta/verificacion"
+              className="inline-flex items-center gap-2 bg-gold-500 text-navy-900 px-6 py-3 rounded-lg font-bold hover:bg-gold-400 transition-all hover:scale-105 flex-shrink-0"
+            >
+              <ShieldCheck className="w-5 h-5" />
+              Verificar Mi Identidad
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">

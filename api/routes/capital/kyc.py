@@ -1,10 +1,16 @@
 """
 Capital KYC - Identity verification via Stripe Identity
-Phase: Client verification before RTO contract activation
+
+Correct flow:
+1. Capital clicks "Solicitar Verificación" → sets kyc_requested=True on client
+2. Client logs into portal, sees KYC banner → clicks to start Stripe Identity
+3. Client completes verification on Stripe
+4. Capital sees result (via polling or webhook)
 """
 
 import os
 import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -20,7 +26,13 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 # SCHEMAS
 # =============================================================================
 
+class KYCRequestVerification(BaseModel):
+    """Capital requests a client to verify their identity."""
+    client_id: str
+
+
 class KYCCreateSession(BaseModel):
+    """Client initiates their own KYC session from client portal."""
     client_id: str
     return_url: Optional[str] = None  # URL to redirect after verification
 
@@ -42,12 +54,11 @@ async def get_kyc_status(client_id: str):
     """Get current KYC verification status for a client."""
     try:
         result = sb.table("clients") \
-            .select("id, name, email, kyc_verified, kyc_verified_at, kyc_status, kyc_session_id, kyc_type, kyc_failure_reason") \
+            .select("id, name, email, kyc_verified, kyc_verified_at, kyc_status, kyc_session_id, kyc_type, kyc_failure_reason, kyc_requested, kyc_requested_at") \
             .eq("id", client_id) \
             .execute()
 
         if not result.data:
-            # Return unverified status for unknown clients instead of 404
             return {
                 "ok": True,
                 "client_id": client_id,
@@ -58,6 +69,8 @@ async def get_kyc_status(client_id: str):
                 "kyc_type": None,
                 "kyc_session_id": None,
                 "failure_reason": None,
+                "kyc_requested": False,
+                "kyc_requested_at": None,
                 "client_found": False,
             }
 
@@ -73,6 +86,8 @@ async def get_kyc_status(client_id: str):
             "kyc_type": client.get("kyc_type"),
             "kyc_session_id": client.get("kyc_session_id"),
             "failure_reason": client.get("kyc_failure_reason"),
+            "kyc_requested": client.get("kyc_requested", False),
+            "kyc_requested_at": client.get("kyc_requested_at"),
             "client_found": True,
         }
     except HTTPException:
@@ -82,11 +97,59 @@ async def get_kyc_status(client_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/request-verification")
+async def request_verification(data: KYCRequestVerification):
+    """
+    Capital requests a client to verify their identity.
+    Sets kyc_requested=True so the client portal shows the verification banner.
+    """
+    try:
+        client_result = sb.table("clients") \
+            .select("id, name, email, kyc_verified, kyc_requested") \
+            .eq("id", data.client_id) \
+            .execute()
+
+        if not client_result.data:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        client = client_result.data[0]
+
+        if client.get("kyc_verified"):
+            return {
+                "ok": True,
+                "already_verified": True,
+                "message": "Este cliente ya está verificado."
+            }
+
+        # Set the request flag
+        sb.table("clients").update({
+            "kyc_requested": True,
+            "kyc_requested_at": datetime.utcnow().isoformat(),
+            "kyc_status": "pending" if client.get("kyc_requested") else "pending",
+        }).eq("id", data.client_id).execute()
+
+        logger.info(f"[KYC] Verification requested for client {data.client_id} ({client.get('name')})")
+
+        return {
+            "ok": True,
+            "message": f"Solicitud de verificación enviada a {client.get('name')}. El cliente debe verificar su identidad desde su portal.",
+            "client_name": client.get("name"),
+            "client_email": client.get("email"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requesting KYC for {data.client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/create-session")
 async def create_verification_session(data: KYCCreateSession):
     """
     Create a Stripe Identity Verification Session.
-    Returns a URL the client can visit to complete identity verification.
+    Called from the CLIENT portal when the client clicks to verify.
+    Returns a URL the client visits to complete identity verification.
     """
     try:
         # Validate client exists
@@ -104,21 +167,21 @@ async def create_verification_session(data: KYCCreateSession):
             return {
                 "ok": True,
                 "already_verified": True,
-                "message": "Este cliente ya está verificado."
+                "message": "Tu identidad ya está verificada."
             }
 
         if not STRIPE_SECRET_KEY:
             raise HTTPException(
                 status_code=503,
-                detail="Stripe no configurado. Usa verificación manual."
+                detail="Stripe no configurado. Contacta a soporte."
             )
 
         import stripe
         stripe.api_key = STRIPE_SECRET_KEY
 
-        # Build return URL
+        # Build return URL — goes back to the CLIENT portal (not Capital)
         base_url = data.return_url or os.getenv("FRONTEND_URL", "http://localhost:3000")
-        return_url = f"{base_url}/capital/applications?kyc_complete={data.client_id}"
+        return_url = f"{base_url}/clientes/mi-cuenta/verificacion?status=complete"
 
         # Create verification session
         session = stripe.identity.VerificationSession.create(
@@ -126,6 +189,7 @@ async def create_verification_session(data: KYCCreateSession):
             metadata={
                 "client_id": data.client_id,
                 "client_name": client.get("name", ""),
+                "client_email": client.get("email", ""),
             },
             options={
                 "document": {
@@ -142,14 +206,16 @@ async def create_verification_session(data: KYCCreateSession):
             "kyc_session_id": session.id,
             "kyc_status": "pending",
             "kyc_type": "document",
+            "kyc_failure_reason": None,
         }).eq("id", data.client_id).execute()
 
         return {
             "ok": True,
             "session_id": session.id,
             "url": session.url,
+            "client_secret": session.client_secret,
             "status": session.status,
-            "message": "Sesión de verificación creada. Redirige al cliente a la URL."
+            "message": "Sesión de verificación creada. Completa la verificación."
         }
 
     except HTTPException:
@@ -157,7 +223,7 @@ async def create_verification_session(data: KYCCreateSession):
     except ImportError:
         raise HTTPException(
             status_code=503,
-            detail="Librería Stripe no instalada. Usa verificación manual."
+            detail="Librería Stripe no instalada."
         )
     except Exception as e:
         logger.error(f"Error creating KYC session for {data.client_id}: {e}")
@@ -167,8 +233,8 @@ async def create_verification_session(data: KYCCreateSession):
 @router.post("/check-session/{client_id}")
 async def check_verification_session(client_id: str):
     """
-    Check the status of a pending verification session.
-    Call this after the client returns from Stripe verification.
+    Check the status of a pending verification session with Stripe.
+    Called from Capital to poll the verification result.
     """
     try:
         client_result = sb.table("clients") \
@@ -186,7 +252,7 @@ async def check_verification_session(client_id: str):
             return {
                 "ok": True,
                 "status": "no_session",
-                "message": "No hay sesión de verificación activa para este cliente."
+                "message": "No hay sesión de verificación activa. El cliente aún no ha iniciado la verificación."
             }
 
         if not STRIPE_SECRET_KEY:
@@ -213,7 +279,6 @@ async def check_verification_session(client_id: str):
         }
 
         if is_verified:
-            from datetime import datetime
             update_data["kyc_verified_at"] = datetime.utcnow().isoformat()
             if session.last_verification_report:
                 update_data["kyc_report_id"] = session.last_verification_report
@@ -222,7 +287,6 @@ async def check_verification_session(client_id: str):
             update_data["kyc_failure_reason"] = str(session.last_error.get("reason", "unknown"))
         
         if session.status == "requires_input":
-            # requires_input means the verification failed or needs retry
             reason = "La verificación no se completó correctamente"
             if hasattr(session, 'last_error') and session.last_error:
                 reason = str(session.last_error.get("reason", reason))
@@ -230,11 +294,10 @@ async def check_verification_session(client_id: str):
 
         sb.table("clients").update(update_data).eq("id", client_id).execute()
 
-        # Build human-readable message
         messages = {
             "verified": "✅ Verificación de identidad completada exitosamente.",
             "failed": "❌ La verificación fue cancelada o rechazada.",
-            "requires_input": "❌ La verificación falló. El cliente puede reintentar.",
+            "requires_input": "⚠️ El cliente necesita completar o reintentar la verificación.",
             "pending": "⏳ La verificación aún está en proceso...",
         }
 
@@ -270,8 +333,6 @@ async def manual_verify(data: KYCManualVerify):
 
         if client_result.data[0].get("kyc_verified"):
             return {"ok": True, "message": "Cliente ya verificado", "already_verified": True}
-
-        from datetime import datetime
 
         sb.table("clients").update({
             "kyc_verified": True,
@@ -331,8 +392,6 @@ async def kyc_webhook(request: Request):
         if not client_id:
             return {"ok": True, "message": "No client_id in metadata, skipping"}
 
-        from datetime import datetime
-
         if event_type == "identity.verification_session.verified":
             sb.table("clients").update({
                 "kyc_verified": True,
@@ -362,4 +421,3 @@ async def kyc_webhook(request: Request):
     except Exception as e:
         logger.error(f"KYC webhook error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
