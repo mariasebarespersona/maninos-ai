@@ -1,23 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Mulish:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Mulish:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============================================================================
-   MANINOS HOMES - "Executive Elegance" Design System
-   Inspired by: Private Banking, Luxury Real Estate, Enterprise Software
-   
-   Philosophy: 
-   - Sophisticated, not flashy
-   - Clear hierarchy without loud colors
-   - Professional confidence
-   - Accessibility for 40+ users
+   MANINOS — Design System
    ============================================================================ */
 
 :root {
-  /* ─── NEUTRALS (Warm) ─── */
+  /* ─── NEUTRALS (Warm) — Like Airbnb ─── */
   --white: #ffffff;
   --ivory: #fafaf8;
   --cream: #f5f4f1;
@@ -27,8 +19,8 @@
   --slate: #6b6962;
   --charcoal: #3d3b36;
   --ink: #1a1917;
-  
-  /* ─── PRIMARY (Navy) ─── */
+
+  /* ─── NAVY ─── */
   --navy-50: #f4f6f9;
   --navy-100: #e8ebf0;
   --navy-200: #c9d0dc;
@@ -40,8 +32,8 @@
   --navy-800: #283242;
   --navy-900: #1e2532;
   --navy-950: #141821;
-  
-  /* ─── ACCENT (Champagne Gold - Very Subtle) ─── */
+
+  /* ─── GOLD (Subtle) ─── */
   --gold-50: #fdfcf9;
   --gold-100: #f9f6ef;
   --gold-200: #f0e9d8;
@@ -52,7 +44,7 @@
   --gold-700: #7d6a47;
   --gold-800: #66563c;
   --gold-900: #544834;
-  
+
   /* ─── SEMANTIC ─── */
   --success: #2d7a4f;
   --success-light: #ecf5f0;
@@ -62,526 +54,14 @@
   --error-light: #fef2f2;
   --info: #1d5a8c;
   --info-light: #f0f7fc;
-  
-  /* ─── SHADOWS (Very Subtle) ─── */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
-}
 
-/* ============================================================================
-   BASE STYLES
-   ============================================================================ */
-@layer base {
-  html {
-    scroll-behavior: smooth;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-  
-  body {
-    font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: var(--ivory);
-    color: var(--charcoal);
-    font-size: 16px;
-    line-height: 1.6;
-    letter-spacing: -0.01em;
-  }
-  
-  /* Elegant serif headings */
-  h1, h2, h3, h4 {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    color: var(--ink);
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-  
-  h1 { font-size: 2rem; line-height: 1.2; }
-  h2 { font-size: 1.625rem; line-height: 1.25; }
-  h3 { font-size: 1.375rem; line-height: 1.3; }
-  h4 { font-size: 1.125rem; line-height: 1.35; }
-  
-  /* Readable body text */
-  p, span, label {
-    font-size: 1rem;
-    line-height: 1.6;
-  }
-  
-  /* Clean focus states */
-  *:focus-visible {
-    outline: 2px solid var(--navy-500);
-    outline-offset: 2px;
-  }
-  
-  /* Selection */
-  ::selection {
-    background-color: var(--gold-200);
-    color: var(--ink);
-  }
-}
+  /* ─── SHADOWS ─── */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.02);
 
-/* ============================================================================
-   COMPONENT STYLES
-   ============================================================================ */
-@layer components {
-  
-  /* ─────────────────────────────────────────────────────────────────────────
-     CARDS - Clean, understated
-     ───────────────────────────────────────────────────────────────────────── */
-  .card {
-    @apply bg-white rounded-lg border border-stone/50;
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .card:hover {
-    box-shadow: var(--shadow-md);
-    @apply border-stone;
-  }
-  
-  .card-luxury {
-    @apply bg-white rounded-lg border border-stone/40;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
-  }
-  
-  .card-luxury:hover {
-    box-shadow: var(--shadow-md);
-    @apply border-stone;
-  }
-  
-  .card-flat {
-    @apply bg-cream rounded-lg p-5;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     BUTTONS - Professional, clear
-     ───────────────────────────────────────────────────────────────────────── */
-  .btn {
-    @apply inline-flex items-center justify-center gap-2
-           font-semibold text-base
-           rounded-md transition-all duration-150
-           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
-    min-height: 44px;
-    padding: 10px 20px;
-  }
-  
-  /* Primary - Solid Navy */
-  .btn-primary {
-    @apply btn text-white;
-    background-color: var(--navy-800);
-  }
-  
-  .btn-primary:hover {
-    background-color: var(--navy-900);
-  }
-  
-  .btn-primary:active {
-    background-color: var(--navy-950);
-  }
-  
-  /* Gold accent - Used sparingly */
-  .btn-gold {
-    @apply btn text-white;
-    background-color: var(--gold-600);
-  }
-  
-  .btn-gold:hover {
-    background-color: var(--gold-700);
-  }
-  
-  /* Secondary - Outlined */
-  .btn-secondary {
-    @apply btn bg-white border border-stone text-charcoal;
-  }
-  
-  .btn-secondary:hover {
-    @apply bg-cream border-slate;
-  }
-  
-  /* Ghost - Minimal */
-  .btn-ghost {
-    @apply btn bg-transparent text-slate;
-  }
-  
-  .btn-ghost:hover {
-    @apply bg-sand/50 text-charcoal;
-  }
-  
-  /* Danger */
-  .btn-danger {
-    @apply btn text-white;
-    background-color: var(--error);
-  }
-  
-  .btn-danger:hover {
-    background-color: #991b1b;
-  }
-  
-  /* Sizes */
-  .btn-sm {
-    @apply text-sm;
-    min-height: 36px;
-    padding: 6px 14px;
-  }
-  
-  .btn-lg {
-    @apply text-lg;
-    min-height: 52px;
-    padding: 14px 28px;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     INPUTS - Clean, spacious
-     ───────────────────────────────────────────────────────────────────────── */
-  .input {
-    @apply w-full px-4 py-3 
-           bg-white border border-stone rounded-md
-           text-charcoal placeholder:text-ash
-           transition-colors duration-150;
-    font-size: 1rem;
-    min-height: 48px;
-  }
-  
-  .input:hover {
-    @apply border-slate;
-  }
-  
-  .input:focus {
-    @apply border-navy-500 ring-1 ring-navy-500/20 outline-none;
-  }
-  
-  .input-luxury {
-    @apply input;
-  }
-  
-  .input-error {
-    @apply border-error ring-1 ring-error/20;
-  }
-  
-  /* Labels */
-  .label {
-    @apply block text-sm font-semibold text-slate mb-1.5;
-    letter-spacing: 0.01em;
-  }
-  
-  .help-text {
-    @apply text-sm text-ash mt-1;
-  }
-  
-  .error-text {
-    @apply text-sm mt-1 font-medium;
-    color: var(--error);
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     BADGES - Subtle, informative
-     ───────────────────────────────────────────────────────────────────────── */
-  .badge {
-    @apply inline-flex items-center gap-1 px-2.5 py-1 
-           rounded text-xs font-semibold uppercase tracking-wide;
-  }
-  
-  .badge-default {
-    @apply bg-sand text-slate;
-  }
-  
-  .badge-gold {
-    background-color: var(--gold-100);
-    color: var(--gold-700);
-  }
-  
-  .badge-navy {
-    @apply bg-navy-100 text-navy-700;
-  }
-  
-  .badge-success {
-    background-color: var(--success-light);
-    color: var(--success);
-  }
-  
-  .badge-warning {
-    background-color: var(--warning-light);
-    color: var(--warning);
-  }
-  
-  .badge-error {
-    background-color: var(--error-light);
-    color: var(--error);
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     TABLES
-     ───────────────────────────────────────────────────────────────────────── */
-  .table {
-    @apply w-full text-left;
-  }
-  
-  .table th {
-    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate
-           bg-cream border-b border-stone;
-  }
-  
-  .table td {
-    @apply px-4 py-4 text-charcoal border-b border-sand;
-  }
-  
-  .table tr:hover td {
-    @apply bg-cream/50;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     SIDEBAR
-     ───────────────────────────────────────────────────────────────────────── */
-  .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-md
-           text-slate font-medium
-           transition-colors duration-150;
-  }
-  
-  .sidebar-link:hover {
-    @apply bg-sand/50 text-charcoal;
-  }
-  
-  .sidebar-link-active {
-    @apply bg-navy-50 text-navy-800;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     DIVIDERS
-     ───────────────────────────────────────────────────────────────────────── */
-  .divider {
-    @apply border-t border-sand my-6;
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     ALERTS
-     ───────────────────────────────────────────────────────────────────────── */
-  .alert {
-    @apply flex items-start gap-3 p-4 rounded-md border;
-  }
-  
-  .alert-success {
-    background-color: var(--success-light);
-    border-color: #a7d5b8;
-    color: var(--success);
-  }
-  
-  .alert-warning {
-    background-color: var(--warning-light);
-    border-color: #e8d89a;
-    color: var(--warning);
-  }
-  
-  .alert-error {
-    background-color: var(--error-light);
-    border-color: #f5c6c6;
-    color: var(--error);
-  }
-  
-  .alert-info {
-    background-color: var(--info-light);
-    border-color: #a8cce4;
-    color: var(--info);
-  }
-
-  /* ─────────────────────────────────────────────────────────────────────────
-     STAT CARDS - For dashboard metrics
-     ───────────────────────────────────────────────────────────────────────── */
-  .stat-card {
-    @apply bg-white rounded-lg border border-sand p-5;
-    box-shadow: var(--shadow-xs);
-  }
-  
-  .stat-value {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    @apply text-3xl font-semibold text-ink;
-  }
-  
-  .stat-label {
-    @apply text-sm text-slate mt-1;
-  }
-}
-
-/* ============================================================================
-   ANIMATIONS - Subtle, professional
-   ============================================================================ */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes progress {
-  from { width: 100%; }
-  to { width: 0%; }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out forwards;
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.4s ease-out forwards;
-}
-
-.animate-scale-in {
-  animation: scale-in 0.2s ease-out forwards;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out forwards;
-}
-
-.animate-progress {
-  animation: progress linear forwards;
-}
-
-/* ============================================================================
-   SCROLLBAR - Minimal
-   ============================================================================ */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--cream);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--stone);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--ash);
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--stone) var(--cream);
-}
-
-/* ============================================================================
-   MOBILE-FIRST RESPONSIVE ENHANCEMENTS
-   Ensures the desktop layouts feel comfortable on small screens
-   ============================================================================ */
-
-/* On mobile: tighter spacing, smaller fonts for dense data */
-@media (max-width: 640px) {
-  h1 { font-size: 1.5rem; }
-  h2 { font-size: 1.25rem; }
-  h3 { font-size: 1.125rem; }
-  
-  .stat-value {
-    font-size: 1.75rem;
-  }
-  
-  .stat-card {
-    padding: 0.875rem;
-  }
-  
-  /* Tables: horizontal scroll */
-  .table-responsive {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  .table th, .table td {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8125rem;
-  }
-  
-  /* Cards: slightly tighter on mobile */
-  .card-luxury {
-    border-radius: 0.625rem;
-  }
-  
-  /* Badges smaller on mobile */
-  .badge {
-    padding: 0.125rem 0.5rem;
-    font-size: 0.625rem;
-  }
-}
-
-/* Touch-friendly: minimum tap target for interactive elements */
-@media (pointer: coarse) {
-  button, a, [role="button"] {
-    min-height: 44px;
-  }
-  
-  /* Smaller inline buttons/icons exempt */
-  .badge, .inline-action {
-    min-height: auto;
-  }
-}
-
-/* Safe area insets for phones with notch/home bar */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-}
-
-/* ============================================================================
-   PRINT STYLES
-   ============================================================================ */
-@media print {
-  .no-print {
-    display: none !important;
-  }
-  
-  body {
-    background: white !important;
-  }
-  
-  .card, .card-luxury {
-    box-shadow: none !important;
-    border: 1px solid #ddd !important;
-  }
-}
-
-/* ============================================================================
-   MANINOS CLIENT PORTAL - Brand Design System
-   Real colors & fonts from maninoshomes.com
-   ============================================================================ */
-
-:root {
-  /* ─── MANINOS BRAND PALETTE ─── */
+  /* ═══ MANINOS BRAND ═══ */
   --mn-blue: #004274;
   --mn-blue-dark: #00233d;
   --mn-blue-light: #0068b7;
@@ -590,21 +70,231 @@
   --mn-gold: #a38d48;
   --mn-gold-light: #c4af6a;
   --mn-gold-dark: #7d6a35;
-  --mn-dark: #2a3342;
+  --mn-dark: #222222;
   --mn-dark-800: #333f51;
   --mn-dark-600: #4d5f7a;
-  --mn-gray: #8896ab;
-  --mn-gray-light: #bbc3cf;
-  --mn-light: #f7f8f9;
-  --mn-light-200: #eef0f3;
-  --mn-light-300: #d5dae1;
+  --mn-gray: #717171;
+  --mn-gray-light: #b0b0b0;
+  --mn-light: #f7f7f7;
+  --mn-light-200: #ebebeb;
+  --mn-light-300: #dddddd;
   --mn-white: #ffffff;
 }
 
-/* ─── CLIENT PORTAL SCOPED TYPOGRAPHY ─── */
+/* ============================================================================
+   BASE
+   ============================================================================ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: 'Mulish', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--ivory);
+    color: var(--charcoal);
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: 'Montserrat', -apple-system, sans-serif;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  h1 { font-size: 2rem; line-height: 1.2; }
+  h2 { font-size: 1.625rem; line-height: 1.25; }
+  h3 { font-size: 1.375rem; line-height: 1.3; }
+  h4 { font-size: 1.125rem; line-height: 1.35; }
+
+  p, span, label { font-size: 1rem; line-height: 1.6; }
+
+  *:focus-visible {
+    outline: 2px solid var(--navy-500);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--gold-200);
+    color: var(--ink);
+  }
+}
+
+/* ============================================================================
+   COMPONENTS — Capital & Homes portals
+   ============================================================================ */
+@layer components {
+  .card {
+    @apply bg-white rounded-lg border border-stone/50;
+    box-shadow: var(--shadow-sm);
+  }
+  .card:hover { box-shadow: var(--shadow-md); @apply border-stone; }
+
+  .card-luxury {
+    @apply bg-white rounded-lg border border-stone/40;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card-luxury:hover { box-shadow: var(--shadow-md); @apply border-stone; }
+
+  .card-flat { @apply bg-cream rounded-lg p-5; }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2
+           font-semibold text-base rounded-md transition-all duration-150
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    min-height: 44px;
+    padding: 10px 20px;
+  }
+  .btn-primary { @apply btn text-white; background-color: var(--navy-800); }
+  .btn-primary:hover { background-color: var(--navy-900); }
+  .btn-gold { @apply btn text-white; background-color: var(--gold-600); }
+  .btn-gold:hover { background-color: var(--gold-700); }
+  .btn-secondary { @apply btn bg-white border border-stone text-charcoal; }
+  .btn-secondary:hover { @apply bg-cream border-slate; }
+  .btn-ghost { @apply btn bg-transparent text-slate; }
+  .btn-ghost:hover { @apply bg-sand/50 text-charcoal; }
+  .btn-danger { @apply btn text-white; background-color: var(--error); }
+  .btn-danger:hover { background-color: #991b1b; }
+  .btn-sm { @apply text-sm; min-height: 36px; padding: 6px 14px; }
+  .btn-lg { @apply text-lg; min-height: 52px; padding: 14px 28px; }
+
+  .input {
+    @apply w-full px-4 py-3 bg-white border border-stone rounded-md
+           text-charcoal placeholder:text-ash transition-colors duration-150;
+    font-size: 1rem; min-height: 48px;
+  }
+  .input:hover { @apply border-slate; }
+  .input:focus { @apply border-navy-500 ring-1 ring-navy-500/20 outline-none; }
+  .input-luxury { @apply input; }
+  .input-error { @apply border-error ring-1 ring-error/20; }
+  .label { @apply block text-sm font-semibold text-slate mb-1.5; letter-spacing: 0.01em; }
+  .help-text { @apply text-sm text-ash mt-1; }
+  .error-text { @apply text-sm mt-1 font-medium; color: var(--error); }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-wide;
+  }
+  .badge-default { @apply bg-sand text-slate; }
+  .badge-gold { background-color: var(--gold-100); color: var(--gold-700); }
+  .badge-navy { @apply bg-navy-100 text-navy-700; }
+  .badge-success { background-color: var(--success-light); color: var(--success); }
+  .badge-warning { background-color: var(--warning-light); color: var(--warning); }
+  .badge-error { background-color: var(--error-light); color: var(--error); }
+
+  .table { @apply w-full text-left; }
+  .table th { @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate bg-cream border-b border-stone; }
+  .table td { @apply px-4 py-4 text-charcoal border-b border-sand; }
+  .table tr:hover td { @apply bg-cream/50; }
+
+  .sidebar-link { @apply flex items-center gap-3 px-4 py-3 rounded-md text-slate font-medium transition-colors duration-150; }
+  .sidebar-link:hover { @apply bg-sand/50 text-charcoal; }
+  .sidebar-link-active { @apply bg-navy-50 text-navy-800; }
+
+  .divider { @apply border-t border-sand my-6; }
+
+  .alert { @apply flex items-start gap-3 p-4 rounded-md border; }
+  .alert-success { background-color: var(--success-light); border-color: #a7d5b8; color: var(--success); }
+  .alert-warning { background-color: var(--warning-light); border-color: #e8d89a; color: var(--warning); }
+  .alert-error { background-color: var(--error-light); border-color: #f5c6c6; color: var(--error); }
+  .alert-info { background-color: var(--info-light); border-color: #a8cce4; color: var(--info); }
+
+  .stat-card { @apply bg-white rounded-lg border border-sand p-5; box-shadow: var(--shadow-xs); }
+  .stat-value { @apply text-3xl font-semibold text-ink; }
+  .stat-label { @apply text-sm text-slate mt-1; }
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ============================================================================ */
+@keyframes fade-in {
+  from { opacity: 0; } to { opacity: 1; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes progress {
+  from { width: 100%; } to { width: 0%; }
+}
+@keyframes mn-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+.animate-fade-in-up { animation: fade-in-up 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-scale-in { animation: scale-in 0.2s ease-out forwards; }
+.animate-slide-in-right { animation: slide-in-right 0.3s ease-out forwards; }
+.animate-progress { animation: progress linear forwards; }
+
+/* ============================================================================
+   SCROLLBAR
+   ============================================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--cream); }
+::-webkit-scrollbar-thumb { background: var(--stone); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ash); }
+* { scrollbar-width: thin; scrollbar-color: var(--stone) var(--cream); }
+
+/* ============================================================================
+   MOBILE
+   ============================================================================ */
+@media (max-width: 640px) {
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1.125rem; }
+  .stat-value { font-size: 1.75rem; }
+  .stat-card { padding: 0.875rem; }
+  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table th, .table td { padding: 0.5rem 0.75rem; font-size: 0.8125rem; }
+  .badge { padding: 0.125rem 0.5rem; font-size: 0.625rem; }
+}
+
+@media (pointer: coarse) {
+  button, a, [role="button"] { min-height: 44px; }
+  .badge, .inline-action { min-height: auto; }
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+  .card, .card-luxury { box-shadow: none !important; border: 1px solid #ddd !important; }
+}
+
+/* ============================================================================
+   CLIENT PORTAL — Airbnb-inspired
+   
+   Philosophy:
+   - 95% white/neutral, brand color only on CTAs
+   - Photos are the design
+   - Generous whitespace
+   - Clean sans-serif typography
+   - Subtle shadows, no borders on cards
+   - Rounded everything (12px)
+   ============================================================================ */
+
 .portal-clientes {
-  font-family: 'Mulish', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: var(--mn-dark);
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #222222;
+  background: #ffffff;
 }
 
 .portal-clientes h1,
@@ -612,359 +302,22 @@
 .portal-clientes h3,
 .portal-clientes h4,
 .portal-clientes h5 {
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: var(--mn-dark);
+  font-family: 'Montserrat', -apple-system, sans-serif;
+  color: #222222;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-/* ─── CLIENT PORTAL BUTTONS ─── */
-.portal-clientes .btn-brand {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  padding: 0.75rem 1.75rem;
-  border-radius: 0.5rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-  border: none;
-  min-height: 48px;
+/* Logo invert for dark backgrounds */
+.mn-logo-white {
+  filter: brightness(0) invert(1);
 }
 
-.portal-clientes .btn-brand-primary {
-  background-color: var(--mn-blue);
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 66, 116, 0.25);
-}
-.portal-clientes .btn-brand-primary:hover {
-  background-color: var(--mn-blue-dark);
-  box-shadow: 0 4px 16px rgba(0, 66, 116, 0.35);
-  transform: translateY(-1px);
-}
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-.portal-clientes .btn-brand-gold {
-  background-color: var(--mn-gold);
-  color: white;
-  box-shadow: 0 2px 8px rgba(163, 141, 72, 0.25);
-}
-.portal-clientes .btn-brand-gold:hover {
-  background-color: var(--mn-gold-dark);
-  box-shadow: 0 4px 16px rgba(163, 141, 72, 0.35);
-  transform: translateY(-1px);
-}
-
-.portal-clientes .btn-brand-outline {
-  background-color: transparent;
-  color: var(--mn-blue);
-  border: 2px solid var(--mn-blue);
-}
-.portal-clientes .btn-brand-outline:hover {
-  background-color: var(--mn-blue);
-  color: white;
-}
-
-.portal-clientes .btn-brand-whatsapp {
-  background-color: #25d366;
-  color: white;
-  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3);
-}
-.portal-clientes .btn-brand-whatsapp:hover {
-  background-color: #20bd5a;
-  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.4);
-  transform: translateY(-1px);
-}
-
-/* ─── CLIENT PORTAL CARDS ─── */
-.portal-clientes .card-property {
-  background: white;
-  border-radius: 1rem;
-  overflow: hidden;
-  border: 1px solid var(--mn-light-200);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-.portal-clientes .card-property:hover {
-  box-shadow: 0 12px 40px rgba(0, 35, 61, 0.12);
-  transform: translateY(-4px);
-  border-color: var(--mn-blue-50);
-}
-
-/* ─── CLIENT PORTAL INPUTS ─── */
-.portal-clientes .input-brand {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  font-family: 'Mulish', sans-serif;
-  font-size: 1rem;
-  color: var(--mn-dark);
-  background: white;
-  border: 1.5px solid var(--mn-light-300);
-  border-radius: 0.75rem;
-  transition: all 0.2s ease;
-  min-height: 52px;
-}
-.portal-clientes .input-brand::placeholder {
-  color: var(--mn-gray);
-}
-.portal-clientes .input-brand:focus {
-  outline: none;
-  border-color: var(--mn-blue);
-  box-shadow: 0 0 0 3px rgba(0, 66, 116, 0.1);
-}
-
-/* ─── CLIENT PORTAL SECTION STYLING ─── */
-.portal-clientes .section-divider {
-  height: 4px;
-  background: linear-gradient(90deg, var(--mn-blue), var(--mn-gold), var(--mn-blue));
-  border: none;
-  border-radius: 2px;
-  opacity: 0.6;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   ANIMATIONS FOR CLIENT PORTAL — Scroll-triggered + Load-triggered
-   Following the Skill principle: "one well-orchestrated page load 
-   with staggered reveals creates more delight than scattered 
-   micro-interactions"
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* ─── CORE KEYFRAMES ─── */
-@keyframes mn-fade-up {
-  from { opacity: 0; transform: translateY(40px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes mn-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes mn-scale-in {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes mn-slide-right {
-  from { opacity: 0; transform: translateX(-30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes mn-slide-left {
-  from { opacity: 0; transform: translateX(30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes mn-float {
-  0%, 100% { transform: translateY(0px) rotate(0deg); }
-  33% { transform: translateY(-6px) rotate(0.5deg); }
-  66% { transform: translateY(-3px) rotate(-0.5deg); }
-}
-
-@keyframes mn-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes mn-pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(163, 141, 72, 0.4); }
-  50% { box-shadow: 0 0 20px 4px rgba(163, 141, 72, 0.15); }
-}
-
-@keyframes mn-counter-up {
-  from { opacity: 0; transform: translateY(16px) scale(0.8); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes mn-diagonal-reveal {
-  from { clip-path: inset(0 100% 0 0); }
-  to { clip-path: inset(0 0 0 0); }
-}
-
-@keyframes mn-grain-drift {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(-2%, 2%); }
-  50% { transform: translate(2%, -1%); }
-  75% { transform: translate(-1%, -2%); }
-}
-
-/* ─── PAGE-LOAD ANIMATIONS ─── */
-.mn-animate-fade-up {
-  animation: mn-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mn-animate-fade-in {
-  animation: mn-fade-in 0.5s ease both;
-}
-
-.mn-animate-scale-in {
-  animation: mn-scale-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mn-animate-slide-right {
-  animation: mn-slide-right 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mn-animate-slide-left {
-  animation: mn-slide-left 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mn-animate-diagonal {
-  animation: mn-diagonal-reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* ─── STAGGER DELAYS ─── */
-.mn-stagger-1 { animation-delay: 0.08s; }
-.mn-stagger-2 { animation-delay: 0.16s; }
-.mn-stagger-3 { animation-delay: 0.24s; }
-.mn-stagger-4 { animation-delay: 0.32s; }
-.mn-stagger-5 { animation-delay: 0.40s; }
-.mn-stagger-6 { animation-delay: 0.48s; }
-.mn-stagger-7 { animation-delay: 0.56s; }
-.mn-stagger-8 { animation-delay: 0.64s; }
-
-/* ─── SCROLL-TRIGGERED REVEAL (JS sets .mn-revealed) ─── */
-.mn-reveal {
-  opacity: 0;
-  transform: translateY(40px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mn-reveal.mn-revealed,
-.mn-reveal-active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.mn-reveal-scale {
-  opacity: 0;
-  transform: scale(0.92);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mn-reveal-scale.mn-revealed {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.mn-reveal-left {
-  opacity: 0;
-  transform: translateX(-50px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mn-reveal-left.mn-revealed {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.mn-reveal-right {
-  opacity: 0;
-  transform: translateX(50px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mn-reveal-right.mn-revealed {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   BACKGROUNDS & TEXTURES — "Create atmosphere and depth"
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* Gradient mesh — complex, organic */
-.mn-gradient-mesh {
-  background:
-    radial-gradient(ellipse at 15% 40%, rgba(0, 66, 116, 0.07) 0%, transparent 50%),
-    radial-gradient(ellipse at 85% 25%, rgba(163, 141, 72, 0.05) 0%, transparent 40%),
-    radial-gradient(ellipse at 55% 80%, rgba(0, 66, 116, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 35% 10%, rgba(163, 141, 72, 0.03) 0%, transparent 40%),
-    var(--mn-white);
-}
-
-.mn-gradient-hero {
-  background: linear-gradient(135deg, #00172b 0%, #00233d 25%, #004274 55%, #005a9e 85%, #0068b7 100%);
-}
-
-.mn-gradient-gold {
-  background: linear-gradient(135deg, var(--mn-gold-dark) 0%, var(--mn-gold) 40%, var(--mn-gold-light) 100%);
-}
-
-/* Noise / grain texture overlay — subtle film-grain effect */
-.mn-grain::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 200px 200px;
-  animation: mn-grain-drift 8s ease-in-out infinite;
-  z-index: 1;
-}
-
-.mn-grain-light::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.02;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 180px 180px;
-  z-index: 1;
-}
-
-/* Dot pattern */
-.mn-dots {
-  background-image: radial-gradient(circle at 1px 1px, currentColor 0.5px, transparent 0);
-  background-size: 28px 28px;
-}
-
-/* Gold line accent — decorative */
-.mn-line-gold {
-  position: relative;
-}
-.mn-line-gold::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(180deg, var(--mn-gold) 0%, var(--mn-gold-light) 100%);
-  border-radius: 2px;
-}
-
-/* Diagonal clip sections */
-.mn-clip-diagonal {
-  clip-path: polygon(0 0, 100% 4%, 100% 96%, 0 100%);
-}
-
-.mn-clip-top-wave {
-  clip-path: polygon(0 8%, 25% 2%, 50% 6%, 75% 0%, 100% 4%, 100% 100%, 0 100%);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   GLASS EFFECTS — Layered depth
-   ═══════════════════════════════════════════════════════════════════ */
-.mn-glass {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-}
-
+/* Glass effect for scrolled header */
 .mn-glass-dark {
   background: rgba(0, 35, 61, 0.88);
   backdrop-filter: blur(16px) saturate(1.3);
@@ -972,176 +325,10 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.mn-glass-gold {
-  background: rgba(163, 141, 72, 0.08);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(163, 141, 72, 0.15);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   HOVER EFFECTS — "Hover states that surprise"
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* Card lift with shadow bloom */
-.mn-hover-lift {
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.mn-hover-lift:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 20px 50px -12px rgba(0, 35, 61, 0.18),
-              0 8px 20px -8px rgba(0, 35, 61, 0.08);
-}
-
-/* Magnetic hover — image zoom with border shift */
-.mn-hover-magnetic {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.mn-hover-magnetic:hover {
-  transform: translateY(-8px) scale(1.01);
-}
-.mn-hover-magnetic:hover img {
-  transform: scale(1.08);
-}
-
-/* Glow on hover */
-.mn-hover-glow:hover {
-  box-shadow: 0 0 30px -5px rgba(0, 66, 116, 0.2),
-              0 8px 30px -8px rgba(0, 66, 116, 0.15);
-}
-
-/* Gold shimmer line on hover */
-.mn-hover-gold-line {
-  position: relative;
-  overflow: hidden;
-}
-.mn-hover-gold-line::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg, var(--mn-gold), var(--mn-gold-light), var(--mn-gold));
-  transform: scaleX(0);
-  transform-origin: right;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.mn-hover-gold-line:hover::after {
-  transform: scaleX(1);
-  transform-origin: left;
-}
-
-/* ─── LOGO INVERT FOR DARK BG ─── */
-.mn-logo-white {
-  filter: brightness(0) invert(1);
-}
-
-/* ─── SKELETON LOADING ─── */
+/* Skeleton loading */
 .mn-skeleton {
-  background: linear-gradient(90deg, var(--mn-light-200) 0%, var(--mn-light) 40%, var(--mn-light-200) 80%);
+  background: linear-gradient(90deg, #f0f0f0 0%, #fafafa 40%, #f0f0f0 80%);
   background-size: 200% 100%;
   animation: mn-shimmer 1.5s ease-in-out infinite;
-  border-radius: 0.75rem;
-}
-
-/* ─── COUNTER NUMBER ANIMATION ─── */
-.mn-counter {
-  display: inline-block;
-  animation: mn-counter-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* ─── FLOATING ELEMENT ─── */
-.mn-floating {
-  animation: mn-float 6s ease-in-out infinite;
-}
-
-.mn-floating-slow {
-  animation: mn-float 8s ease-in-out infinite;
-}
-
-/* ─── PULSE GLOW (for CTA attention) ─── */
-.mn-pulse-glow {
-  animation: mn-pulse-glow 2.5s ease-in-out infinite;
-}
-
-/* ─── SCROLLBAR FOR CLIENT PORTAL ─── */
-.portal-clientes ::selection {
-  background-color: rgba(0, 66, 116, 0.15);
-  color: var(--mn-blue-dark);
-}
-
-.portal-clientes ::-webkit-scrollbar-thumb {
-  background: var(--mn-gray-light);
-  border-radius: 4px;
-}
-.portal-clientes ::-webkit-scrollbar-thumb:hover {
-  background: var(--mn-gray);
-}
-
-/* Hide scrollbar utility */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-/* ═══════════════════════════════════════════════════════════════════
-   SPATIAL COMPOSITION UTILITIES — "Unexpected layouts. Asymmetry."
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* Overlap utility — pull element up into the previous section */
-.mn-overlap-top {
-  margin-top: -4rem;
-  position: relative;
-  z-index: 10;
-}
-
-.mn-overlap-top-lg {
-  margin-top: -6rem;
-  position: relative;
-  z-index: 10;
-}
-
-/* Asymmetric grid — featured item larger */
-.mn-grid-editorial {
-  display: grid;
-  gap: 1.5rem;
-}
-
-@media (min-width: 768px) {
-  .mn-grid-editorial {
-    grid-template-columns: 1.2fr 0.8fr;
-    grid-template-rows: auto auto;
-  }
-  .mn-grid-editorial > :first-child {
-    grid-row: 1 / 3;
-  }
-}
-
-/* Decorative gold corner */
-.mn-corner-gold {
-  position: relative;
-}
-.mn-corner-gold::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 40px;
-  height: 40px;
-  border-top: 3px solid var(--mn-gold);
-  border-left: 3px solid var(--mn-gold);
-  border-radius: 0;
-  pointer-events: none;
-}
-.mn-corner-gold::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 40px;
-  height: 40px;
-  border-bottom: 3px solid var(--mn-gold);
-  border-right: 3px solid var(--mn-gold);
-  border-radius: 0;
-  pointer-events: none;
+  border-radius: 12px;
 }
