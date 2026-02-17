@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   BarChart3,
   ArrowRightLeft,
-  Calculator,
   FileText,
   Users,
   BookOpen,
@@ -59,7 +58,6 @@ const navigationSections: NavSection[] = [
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
       { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
       { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
-      { name: 'Análisis', href: '/capital/analysis', icon: Calculator },
     ],
   },
 ]
@@ -295,7 +293,6 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     investors: 'Seguimiento',
     'promissory-notes': 'Promissory Notes',
     flows: 'Flujo Capital',
-    analysis: 'Análisis',
     reports: 'Reportes',
     accounting: 'Contabilidad',
     new: 'Nuevo',

@@ -6,7 +6,7 @@ import {
   FileCheck, FileSignature, CreditCard, Landmark,
   TrendingUp, AlertTriangle, Clock, CheckCircle2,
   ArrowRight, DollarSign, Users, Building2,
-  BarChart3, ArrowRightLeft, Calculator, Shield,
+  BarChart3, ArrowRightLeft, Shield,
   AlertCircle, ChevronRight, Phone
 } from 'lucide-react'
 
@@ -338,13 +338,13 @@ export default function CapitalDashboardPage() {
           </div>
           <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--slate)' }} />
         </Link>
-        <Link href="/capital/analysis" className="card-luxury p-4 flex items-center gap-3 hover:border-gold-400 transition-colors group">
+        <Link href="/capital/accounting" className="card-luxury p-4 flex items-center gap-3 hover:border-gold-400 transition-colors group">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--gold-100)' }}>
-            <Calculator className="w-5 h-5" style={{ color: 'var(--gold-700)' }} />
+            <DollarSign className="w-5 h-5" style={{ color: 'var(--gold-700)' }} />
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>Análisis Financiero</p>
-            <p className="text-xs" style={{ color: 'var(--ash)' }}>Evaluación de adquisiciones</p>
+            <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>Contabilidad</p>
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Transacciones y cuentas bancarias</p>
           </div>
           <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--slate)' }} />
         </Link>
