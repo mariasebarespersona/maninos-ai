@@ -551,6 +551,35 @@ export default function ApplicationDetailPage() {
 
   // ========== Review ==========
 
+  const handleDeny = async (reason: 'identity' | 'capacity' | 'other', notes?: string) => {
+    if (!confirm('¿Estás seguro de que quieres DENEGAR esta solicitud? La propiedad volverá a estar disponible.')) return
+    setReviewing(true)
+    try {
+      const body: Record<string, any> = {
+        status: 'rejected',
+        rejection_reason: reason,
+        review_notes: notes || reviewNotes || undefined,
+        reviewed_by: 'admin',
+      }
+      const res = await fetch(`/api/capital/applications/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('❌ Solicitud denegada. La propiedad vuelve a estar disponible.')
+        loadApplication()
+      } else {
+        toast.error(data.detail || 'Error al denegar')
+      }
+    } catch (err) {
+      toast.error('Error al procesar')
+    } finally {
+      setReviewing(false)
+    }
+  }
+
   const handleReview = async (status: 'approved' | 'rejected' | 'needs_info' | 'under_review') => {
     setReviewing(true)
     try {
@@ -867,6 +896,71 @@ export default function ApplicationDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Decision section for Identity */}
+          {canReview && (
+            <div className="mt-6 pt-5" style={{ borderTop: '2px solid var(--sand)' }}>
+              <h3 className="font-semibold text-sm mb-3" style={{ color: 'var(--charcoal)' }}>Decisión sobre Identidad</h3>
+              {kycVerified ? (
+                <div className="flex items-center gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--success-light)' }}>
+                  <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />
+                  <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
+                    Identidad verificada — puede pasar a Capacidad de Pago
+                  </p>
+                </div>
+              ) : (kycStatus === 'failed' || kycStatus === 'requires_input') ? (
+                <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className="text-sm" style={{ color: '#991b1b' }}>
+                    La verificación de identidad falló. Puedes reintentar o denegar la solicitud.
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={handleRequestKyc} disabled={kycLoading || reviewing}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold text-white"
+                      style={{ backgroundColor: 'var(--navy-800)' }}>
+                      <Mail className="w-4 h-4" /> Reintentar Verificación
+                    </button>
+                    <button onClick={() => handleDeny('identity', 'Verificación de identidad fallida')} disabled={reviewing}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold text-white"
+                      style={{ backgroundColor: 'var(--error)' }}>
+                      {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                      Denegar Solicitud
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
+                  <p className="text-sm mb-3" style={{ color: 'var(--slate)' }}>
+                    {kycRequested || kycStatus === 'pending'
+                      ? 'Esperando verificación del cliente. Puedes denegar si no responde o reintentar.'
+                      : 'Solicita al cliente que verifique su identidad o deniega la solicitud.'
+                    }
+                  </p>
+                  <button onClick={() => handleDeny('identity', 'No se verificó la identidad del cliente')} disabled={reviewing}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold text-white"
+                    style={{ backgroundColor: 'var(--error)' }}>
+                    {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                    Denegar Solicitud por Identidad
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Already rejected */}
+          {app.status === 'rejected' && (
+            <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
+                <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Solicitud Denegada</p>
+              </div>
+              <p className="text-sm" style={{ color: '#991b1b' }}>{app.review_notes || 'Sin notas'}</p>
+              {app.reviewed_at && (
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                  {new Date(app.reviewed_at).toLocaleDateString('es-MX')} por {app.reviewed_by || 'Admin'}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1155,6 +1249,52 @@ export default function ApplicationDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Decision section for Capacity */}
+          {canReview && capacityResult && (
+            <div className="card-luxury p-5" style={{ borderTop: '3px solid var(--sand)' }}>
+              <h3 className="font-semibold text-sm mb-3" style={{ color: 'var(--charcoal)' }}>Decisión sobre Capacidad de Pago</h3>
+              {capacityResult.qualifies ? (
+                <div className="flex items-center gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--success-light)' }}>
+                  <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />
+                  <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
+                    El cliente califica — puede pasar a Términos del Contrato
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className="text-sm" style={{ color: '#991b1b' }}>
+                    El cliente <strong>no califica</strong> según la evaluación de capacidad de pago 
+                    (DTI: {capacityResult.dti_ratio.toFixed(1)}%, Riesgo: {capacityResult.risk_level}).
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={() => handleDeny('capacity', `No califica: DTI ${capacityResult.dti_ratio.toFixed(1)}%, Riesgo ${capacityResult.risk_level}`)} disabled={reviewing}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold text-white"
+                      style={{ backgroundColor: 'var(--error)' }}>
+                      {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                      Denegar Solicitud por Capacidad de Pago
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Already rejected */}
+          {app.status === 'rejected' && (
+            <div className="card-luxury p-4" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
+                <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Solicitud Denegada</p>
+              </div>
+              <p className="text-sm" style={{ color: '#991b1b' }}>{app.review_notes || 'Sin notas'}</p>
+              {app.reviewed_at && (
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                  {new Date(app.reviewed_at).toLocaleDateString('es-MX')} por {app.reviewed_by || 'Admin'}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1904,7 +2044,7 @@ function StatusBadge({ status }: { status: string }) {
     under_review: { bg: 'var(--info-light)', color: 'var(--info)', label: 'En Revisión' },
     needs_info: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Info Requerida' },
     approved: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Aprobada' },
-    rejected: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Rechazada' },
+    rejected: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Denegada' },
     cancelled: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Cancelada' },
   }
   const s = styles[status] || styles.submitted

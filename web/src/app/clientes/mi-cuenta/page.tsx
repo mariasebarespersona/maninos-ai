@@ -9,6 +9,7 @@ import {
   Clock, 
   CheckCircle, 
   AlertCircle,
+  XCircle,
   LogOut,
   Phone,
   Mail,
@@ -32,6 +33,7 @@ interface Sale {
   rto_contract_id?: string
   rto_monthly_payment?: number
   rto_term_months?: number
+  rto_notes?: string
   created_at: string
   completed_at: string
   properties: {
@@ -132,6 +134,13 @@ export default function ClientDashboard() {
           <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
             <Clock className="w-3 h-3" />
             Pendiente
+          </span>
+        )
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+            <XCircle className="w-3 h-3" />
+            Solicitud denegada
           </span>
         )
       default:
@@ -358,8 +367,32 @@ export default function ClientDashboard() {
                             </div>
                           </div>
                           
+                          {/* Denial message */}
+                          {sale.status === 'cancelled' && (
+                            <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+                              <div className="flex items-start gap-3">
+                                <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-semibold text-red-800 text-sm">Solicitud denegada</p>
+                                  <p className="text-sm text-red-700 mt-1">
+                                    {sale.rto_notes || 'Tu solicitud no fue aprobada en esta ocasión.'}
+                                  </p>
+                                  <p className="text-xs text-red-600 mt-2">
+                                    Puedes explorar otras casas disponibles o contactarnos para más información.
+                                  </p>
+                                  <Link
+                                    href="/clientes/casas"
+                                    className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-gold-600 hover:text-gold-700"
+                                  >
+                                    Ver casas disponibles <ArrowRight className="w-3 h-3" />
+                                  </Link>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           {/* RTO contract info */}
-                          {sale.sale_type === 'rto' && sale.rto_monthly_payment && (
+                          {sale.sale_type === 'rto' && sale.rto_monthly_payment && sale.status !== 'cancelled' && (
                             <div className="mt-3 p-3 bg-orange-50 rounded-lg">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm">
@@ -374,35 +407,37 @@ export default function ClientDashboard() {
                             </div>
                           )}
 
-                          {/* Title status + Documents / RTO link */}
-                          <div className="mt-3 pt-3 border-t flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-600">Título:</span>
-                              {getTitleStatus(sale)}
+                          {/* Title status + Documents / RTO link (hidden if cancelled) */}
+                          {sale.status !== 'cancelled' && (
+                            <div className="mt-3 pt-3 border-t flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm text-gray-600">Título:</span>
+                                {getTitleStatus(sale)}
+                              </div>
+                              
+                              <div className="flex items-center gap-3">
+                                {sale.sale_type === 'rto' && (
+                                  <Link
+                                    href={`/clientes/mi-cuenta/rto/${sale.id}`}
+                                    className="text-sm text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1"
+                                  >
+                                    <TrendingUp className="w-4 h-4" />
+                                    Ver contrato RTO
+                                  </Link>
+                                )}
+                                {sale.status === 'paid' && (
+                                  <Link
+                                    href={`/clientes/mi-cuenta/documentos?sale=${sale.id}`}
+                                    className="text-sm text-gold-600 hover:text-gold-700 font-medium flex items-center gap-1"
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                    Ver documentos
+                                  </Link>
+                                )}
+                              </div>
                             </div>
-                            
-                            <div className="flex items-center gap-3">
-                              {sale.sale_type === 'rto' && (
-                                <Link
-                                  href={`/clientes/mi-cuenta/rto/${sale.id}`}
-                                  className="text-sm text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1"
-                                >
-                                  <TrendingUp className="w-4 h-4" />
-                                  Ver contrato RTO
-                                </Link>
-                              )}
-                              {sale.status === 'paid' && (
-                                <Link
-                                  href={`/clientes/mi-cuenta/documentos?sale=${sale.id}`}
-                                  className="text-sm text-gold-600 hover:text-gold-700 font-medium flex items-center gap-1"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                  Ver documentos
-                                </Link>
-                              )}
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>

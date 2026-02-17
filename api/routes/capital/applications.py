@@ -24,6 +24,7 @@ class ApplicationReview(BaseModel):
     status: str  # 'approved', 'rejected', 'needs_info', 'under_review'
     review_notes: Optional[str] = None
     reviewed_by: Optional[str] = None
+    rejection_reason: Optional[str] = None  # 'identity', 'capacity', 'other'
     # If approving, optionally set financial terms
     monthly_rent: Optional[float] = None
     term_months: Optional[int] = None
@@ -225,21 +226,40 @@ async def review_application(application_id: str, review: ApplicationReview):
                 logger.info(f"[capital] Title transfer Homes→Capital created for property {application['property_id']}")
         
         elif review.status == "rejected":
+            # Build rejection message for client
+            reason_labels = {
+                "identity": "No se pudo verificar la identidad del solicitante",
+                "capacity": "La capacidad de pago no cumple los requisitos",
+                "other": review.review_notes or "Sin notas",
+            }
+            rejection_reason = review.rejection_reason or "other"
+            reason_text = reason_labels.get(rejection_reason, review.review_notes or "Sin notas")
+            full_notes = f"Solicitud denegada — {reason_text}"
+            if review.review_notes and rejection_reason != "other":
+                full_notes += f". Notas: {review.review_notes}"
+
             # Update sale status back and re-publish property
             sb.table("sales").update({
                 "status": "cancelled",
-                "rto_notes": f"Solicitud rechazada: {review.review_notes or 'Sin notas'}"
+                "rto_notes": full_notes,
             }).eq("id", application["sale_id"]).execute()
             
-            # Re-publish property
+            # Re-publish property so others can buy it
             sb.table("properties").update({
                 "status": "published"
             }).eq("id", application["property_id"]).execute()
             
-            # Reset client status
+            # Reset client status and KYC
             sb.table("clients").update({
-                "status": "lead"
+                "status": "lead",
+                "kyc_requested": False,
+                "kyc_verified": False,
+                "kyc_status": "unverified",
+                "kyc_session_id": None,
+                "kyc_failure_reason": None,
             }).eq("id", application["client_id"]).execute()
+            
+            logger.info(f"[capital] Application {application_id} rejected ({rejection_reason}): property {application['property_id']} re-published")
         
         return {
             "ok": True,

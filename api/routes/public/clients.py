@@ -59,6 +59,7 @@ async def get_client_purchases(client_id: str):
                 rto_contract_id,
                 rto_monthly_payment,
                 rto_term_months,
+                rto_notes,
                 created_at,
                 completed_at,
                 properties(address, city, state, photos),
