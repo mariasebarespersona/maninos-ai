@@ -71,8 +71,8 @@ function Hero() {
       <div className="relative z-10 w-full max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
         <div className="max-w-2xl">
           <h1
-            className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.08] tracking-tight opacity-0 animate-fade-in-up"
-            style={{ animationDelay: '0.1s', animationFillMode: 'forwards', textShadow: '0 3px 30px rgba(0,0,0,0.7), 0 1px 4px rgba(0,0,0,0.5)' }}
+            className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-[1.08] tracking-tight opacity-0 animate-fade-in-up"
+            style={{ animationDelay: '0.1s', animationFillMode: 'forwards', color: '#ffffff', textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 0 60px rgba(0,0,0,0.5)' }}
           >
             Tu nuevo hogar en Texas
           </h1>
