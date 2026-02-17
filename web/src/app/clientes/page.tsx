@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { useInView } from '@/hooks/useInView'
 import {
   ArrowRight, CheckCircle, MessageCircle, Phone,
-  Shield, Home, Wrench, FileText, Heart, Search
+  Shield, Home, Wrench, FileText, Heart, Search,
+  UserPlus, CreditCard, Key, TrendingDown, MapPin, Users
 } from 'lucide-react'
 
 interface Stats {
@@ -43,6 +44,7 @@ export default function ClientPortalHome() {
   return (
     <div>
       <Hero />
+      <TrustNumbers stats={stats} />
       {featured.length > 0 && <FeaturedSection properties={featured} />}
       <ValueProps />
       <HowItWorks />
@@ -94,6 +96,71 @@ function Hero() {
               Explorar casas disponibles
             </Link>
           </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   TRUST NUMBERS — Real metrics that build confidence
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+function TrustNumbers({ stats }: { stats: Stats | null }) {
+  const { ref, isInView } = useInView()
+
+  const metrics = [
+    {
+      icon: <TrendingDown className="w-5 h-5" />,
+      value: 'Hasta 20%',
+      label: 'por debajo del mercado',
+      detail: 'Compramos al 60% del valor y vendemos al 80%',
+    },
+    {
+      icon: <Home className="w-5 h-5" />,
+      value: stats?.total_available ? `${stats.total_available}+` : '—',
+      label: 'casas disponibles',
+      detail: stats?.price_range?.min && stats?.price_range?.max
+        ? `Desde $${Math.round(stats.price_range.min / 1000)}K hasta $${Math.round(stats.price_range.max / 1000)}K`
+        : 'Inventario actualizado cada semana',
+    },
+    {
+      icon: <MapPin className="w-5 h-5" />,
+      value: stats?.cities_count ? `${stats.cities_count}+` : '20+',
+      label: 'ciudades en Texas',
+      detail: 'Houston, Dallas y zonas cercanas',
+    },
+    {
+      icon: <Users className="w-5 h-5" />,
+      value: '100%',
+      label: 'en español',
+      detail: 'Equipo bilingüe que te acompaña en todo',
+    },
+  ]
+
+  return (
+    <section className="py-10 sm:py-14 bg-white border-b border-gray-100">
+      <div ref={ref} className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+          {metrics.map((m, i) => (
+            <div
+              key={m.label}
+              className="text-center"
+              style={{
+                opacity: isInView ? 1 : 0,
+                transform: isInView ? 'none' : 'translateY(12px)',
+                transition: `all 0.4s ease ${i * 0.08}s`,
+              }}
+            >
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[#e6f0f8] text-[#004274] mb-3">
+                {m.icon}
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-[#222] tracking-tight">
+                {m.value}
+              </div>
+              <div className="text-sm font-semibold text-[#222] mt-1">{m.label}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{m.detail}</div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -234,18 +301,43 @@ function HowItWorks() {
   const { ref, isInView } = useInView()
 
   const steps = [
-    { num: '1', title: 'Elige tu casa', desc: 'Explora nuestro catálogo con fotos y precios.' },
-    { num: '2', title: 'Contáctanos', desc: 'Escríbenos por WhatsApp o llámanos.' },
-    { num: '3', title: 'Realiza el pago', desc: 'Al contado o con plan de financiamiento RTO.' },
-    { num: '4', title: 'Recibe tu título', desc: 'El título queda transferido a tu nombre.' },
+    {
+      num: '1',
+      icon: <Search className="w-5 h-5" />,
+      title: 'Explora el catálogo',
+      desc: 'Navega casas disponibles con fotos, precios y detalles. Usa el simulador para calcular tu plan de pago.',
+    },
+    {
+      num: '2',
+      icon: <UserPlus className="w-5 h-5" />,
+      title: 'Crea tu cuenta',
+      desc: 'Regístrate gratis y solicita la casa que te gusta. Todo el proceso se gestiona desde tu cuenta.',
+    },
+    {
+      num: '3',
+      icon: <CreditCard className="w-5 h-5" />,
+      title: 'Elige cómo pagar',
+      desc: 'Paga al contado o aplica a financiamiento Rent-to-Own. Te guiamos paso a paso desde tu cuenta.',
+    },
+    {
+      num: '4',
+      icon: <Key className="w-5 h-5" />,
+      title: '¡Recibe tu casa!',
+      desc: 'Completamos el papeleo y te entregamos las llaves. El título queda a tu nombre.',
+    },
   ]
 
   return (
     <section className="py-16 sm:py-20 bg-white">
       <div ref={ref} className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
-        <h2 className="text-2xl sm:text-3xl font-bold text-[#222] mb-10">
-          ¿Cómo funciona?
-        </h2>
+        <div className="max-w-2xl mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#222]">
+            ¿Cómo funciona?
+          </h2>
+          <p className="text-gray-500 mt-2">
+            Comprar tu casa es simple. Todo lo haces desde tu cuenta — sin complicaciones.
+          </p>
+        </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {steps.map((step, i) => (
@@ -257,16 +349,45 @@ function HowItWorks() {
                 transition: `all 0.4s ease ${i * 0.08}s`,
               }}
             >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm mb-4"
-                style={{ background: '#004274' }}
-              >
-                {step.num}
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ background: '#004274' }}
+                >
+                  {step.num}
+                </div>
+                <div className="text-[#004274]">{step.icon}</div>
               </div>
               <h3 className="font-bold text-base text-[#222] mb-1">{step.title}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
             </div>
           ))}
+        </div>
+
+        {/* WhatsApp/Phone note — supplementary */}
+        <div
+          className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 pt-8 border-t border-gray-100"
+          style={{
+            opacity: isInView ? 1 : 0,
+            transition: 'opacity 0.5s ease 0.4s',
+          }}
+        >
+          <p className="text-sm text-gray-400">¿Prefieres hablar con alguien?</p>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa"
+              target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-[#25d366] border border-[#25d366]/30 hover:bg-[#25d366]/5 transition-colors"
+            >
+              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+            </a>
+            <a
+              href="tel:8327459600"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> (832) 745-9600
+            </a>
+          </div>
         </div>
       </div>
     </section>
