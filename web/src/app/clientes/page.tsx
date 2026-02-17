@@ -40,12 +40,9 @@ export default function ClientPortalHome() {
       .catch(() => {})
   }, [])
 
-  // Use first property photo as hero background (authentic!)
-  const heroPhoto = featured.find(p => p.photos?.[0])?.photos?.[0]
-
   return (
     <div>
-      <Hero photoUrl={heroPhoto} />
+      <Hero />
       {featured.length > 0 && <FeaturedSection properties={featured} />}
       <ValueProps />
       <HowItWorks />
@@ -57,9 +54,8 @@ export default function ClientPortalHome() {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HERO — Dark, cinematic, ONE clear CTA
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function Hero({ photoUrl }: { photoUrl?: string }) {
-  // Use actual Maninos property photo, fallback to local hero image
-  const bgImage = photoUrl || '/images/hero-mobile-homes.png'
+function Hero() {
+  const bgImage = '/images/hero-mobile-homes.png'
 
   return (
     <section className="relative min-h-[85vh] flex items-center -mt-[76px] pt-[76px]" style={{ background: '#1a1a2e' }}>
