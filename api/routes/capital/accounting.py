@@ -1090,6 +1090,100 @@ async def sync_transactions():
             sb.table("capital_transactions").insert(record).execute()
             imported += 1
 
+            # Also import late fees as separate transactions
+            late_fee = float(pmt.get("late_fee_amount", 0) or 0)
+            if late_fee > 0:
+                fee_record = {
+                    "transaction_date": pmt.get("paid_date") or date.today().isoformat(),
+                    "transaction_type": "late_fee",
+                    "amount": late_fee,
+                    "is_income": True,
+                    "description": f"Recargo por mora — Pago #{pmt['id'][:8]}",
+                    "rto_payment_id": pmt["id"],
+                    "client_id": contract.get("client_id"),
+                    "status": "confirmed",
+                    "created_by": "auto-sync",
+                }
+                fee_record = {k: v for k, v in fee_record.items() if v is not None}
+                sb.table("capital_transactions").insert(fee_record).execute()
+                imported += 1
+
+        # 3. Sync from rto_commissions (paid ones)
+        try:
+            paid_comms = sb.table("rto_commissions") \
+                .select("id, total_commission, paid_at, property_id, client_id, contract_id, notes") \
+                .eq("status", "paid") \
+                .execute().data or []
+
+            # Check which commissions already have a transaction
+            existing_desc = sb.table("capital_transactions") \
+                .select("notes") \
+                .eq("transaction_type", "commission") \
+                .execute().data or []
+            synced_comm_notes = {e.get("notes") for e in existing_desc if e.get("notes")}
+
+            for comm in paid_comms:
+                tag = f"comm:{comm['id']}"
+                if tag in synced_comm_notes:
+                    continue
+                record = {
+                    "transaction_date": comm.get("paid_at", date.today().isoformat())[:10],
+                    "transaction_type": "commission",
+                    "amount": float(comm.get("total_commission", 0)),
+                    "is_income": False,
+                    "description": f"Comisión RTO #{comm['id'][:8]}",
+                    "property_id": comm.get("property_id"),
+                    "client_id": comm.get("client_id"),
+                    "rto_contract_id": comm.get("contract_id"),
+                    "notes": tag,
+                    "status": "confirmed",
+                    "created_by": "auto-sync",
+                }
+                record = {k: v for k, v in record.items() if v is not None}
+                sb.table("capital_transactions").insert(record).execute()
+                imported += 1
+        except Exception as comm_err:
+            logger.warning(f"Could not sync commissions: {comm_err}")
+
+        # 4. Sync from promissory_note_payments
+        try:
+            pn_payments = sb.table("promissory_note_payments") \
+                .select("id, amount, paid_at, promissory_note_id, payment_method, reference, notes, "
+                        "promissory_notes(investor_id, investors(name))") \
+                .execute().data or []
+
+            existing_pn = sb.table("capital_transactions") \
+                .select("notes") \
+                .eq("transaction_type", "investor_return") \
+                .eq("created_by", "auto-sync") \
+                .execute().data or []
+            synced_pn_notes = {e.get("notes") for e in existing_pn if e.get("notes")}
+
+            for pnp in pn_payments:
+                tag = f"pnp:{pnp['id']}"
+                if tag in synced_pn_notes:
+                    continue
+                note_data = pnp.get("promissory_notes") or {}
+                investor_name = (note_data.get("investors") or {}).get("name", "")
+                record = {
+                    "transaction_date": (pnp.get("paid_at") or date.today().isoformat())[:10],
+                    "transaction_type": "investor_return",
+                    "amount": float(pnp.get("amount", 0)),
+                    "is_income": False,
+                    "description": f"Pago nota promisoria a {investor_name}",
+                    "investor_id": note_data.get("investor_id"),
+                    "payment_method": pnp.get("payment_method"),
+                    "payment_reference": pnp.get("reference"),
+                    "notes": tag,
+                    "status": "confirmed",
+                    "created_by": "auto-sync",
+                }
+                record = {k: v for k, v in record.items() if v is not None}
+                sb.table("capital_transactions").insert(record).execute()
+                imported += 1
+        except Exception as pn_err:
+            logger.warning(f"Could not sync promissory note payments: {pn_err}")
+
     except Exception as e:
         logger.error(f"Error syncing capital transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

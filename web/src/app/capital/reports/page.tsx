@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BarChart3, Download, Plus, Calendar, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Users, FileText } from 'lucide-react'
+import { BarChart3, Download, Plus, Calendar, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Users, FileText, ArrowRightLeft, RefreshCw, Landmark, PieChart } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
 interface Report {
@@ -55,15 +55,20 @@ export default function ReportsPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   
   // Investor statement
-  const [activeTab, setActiveTab] = useState<'portfolio' | 'investors'>('portfolio')
+  const [activeTab, setActiveTab] = useState<'unified' | 'portfolio' | 'investors'>('unified')
   const [investors, setInvestors] = useState<Investor[]>([])
   const [selectedInvestor, setSelectedInvestor] = useState<string>('')
   const [investorStatement, setInvestorStatement] = useState<InvestorStatement | null>(null)
   const [generatingStatement, setGeneratingStatement] = useState(false)
 
+  // Unified summary
+  const [unifiedData, setUnifiedData] = useState<any>(null)
+  const [loadingUnified, setLoadingUnified] = useState(false)
+
   useEffect(() => { 
     loadReports()
     loadInvestors()
+    loadUnifiedSummary()
   }, [])
 
   const loadReports = async () => {
@@ -85,6 +90,23 @@ export default function ReportsPage() {
       if (data.ok) setInvestors(data.investors || [])
     } catch (err) {
       console.error(err)
+    }
+  }
+
+  const loadUnifiedSummary = async (m?: number, y?: number) => {
+    setLoadingUnified(true)
+    try {
+      const params = new URLSearchParams()
+      if (m) params.set('month', String(m))
+      if (y) params.set('year', String(y))
+      const qs = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/capital/reports/unified-summary${qs}`)
+      const data = await res.json()
+      if (data.ok) setUnifiedData(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingUnified(false)
     }
   }
 
@@ -176,6 +198,13 @@ export default function ReportsPage() {
       {/* Tabs */}
       <div className="flex rounded-md border overflow-hidden" style={{ borderColor: 'var(--stone)', width: 'fit-content' }}>
         <button 
+          onClick={() => setActiveTab('unified')}
+          className="px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"
+          style={{ backgroundColor: activeTab === 'unified' ? 'var(--navy-800)' : 'var(--white)', color: activeTab === 'unified' ? 'white' : 'var(--slate)' }}
+        >
+          <PieChart className="w-4 h-4" /> Resumen Integrado
+        </button>
+        <button 
           onClick={() => setActiveTab('portfolio')}
           className="px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"
           style={{ backgroundColor: activeTab === 'portfolio' ? 'var(--navy-800)' : 'var(--white)', color: activeTab === 'portfolio' ? 'white' : 'var(--slate)' }}
@@ -190,6 +219,237 @@ export default function ReportsPage() {
           <Users className="w-4 h-4" /> Estado de Cuenta Inversionistas
         </button>
       </div>
+
+      {/* ═══════ Unified Summary Tab ═══════ */}
+      {activeTab === 'unified' && (
+        <>
+          {/* Period selector + refresh */}
+          <div className="card-luxury p-5">
+            <div className="flex items-end gap-4 flex-wrap">
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Mes</label>
+                <select value={selectedMonth} onChange={e => setSelectedMonth(parseInt(e.target.value))}
+                  className="px-3 py-2 rounded-md border text-sm" style={{ borderColor: 'var(--stone)' }}>
+                  {MONTH_NAMES.slice(1).map((name, i) => (
+                    <option key={i + 1} value={i + 1}>{name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Año</label>
+                <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))}
+                  className="px-3 py-2 rounded-md border text-sm" style={{ borderColor: 'var(--stone)' }}>
+                  {[2025, 2026, 2027].map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <button onClick={() => loadUnifiedSummary(selectedMonth, selectedYear)} disabled={loadingUnified}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold text-white transition-all"
+                style={{ backgroundColor: 'var(--navy-800)', opacity: loadingUnified ? 0.6 : 1 }}>
+                <RefreshCw className={`w-4 h-4 ${loadingUnified ? 'animate-spin' : ''}`} />
+                {loadingUnified ? 'Cargando...' : 'Actualizar'}
+              </button>
+            </div>
+          </div>
+
+          {unifiedData ? (
+            <div className="space-y-6">
+              {/* ── Sección 1: Contabilidad (fuente de verdad) ── */}
+              <div className="card-luxury p-5">
+                <h2 className="font-serif text-lg flex items-center gap-2 mb-4" style={{ color: 'var(--ink)' }}>
+                  <Landmark className="w-5 h-5" style={{ color: 'var(--navy-700)' }} /> Contabilidad
+                  <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--navy-100)', color: 'var(--navy-700)' }}>
+                    {unifiedData.accounting?.transaction_count || 0} transacciones
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#d1fae5' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Ingresos</p>
+                    <p className="text-xl font-bold" style={{ color: '#047857' }}>{fmt(unifiedData.accounting?.total_income || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#fee2e2' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Gastos</p>
+                    <p className="text-xl font-bold" style={{ color: '#dc2626' }}>{fmt(unifiedData.accounting?.total_expense || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Beneficio Neto</p>
+                    <p className="text-xl font-bold" style={{ color: (unifiedData.accounting?.net_profit || 0) >= 0 ? '#047857' : '#dc2626' }}>
+                      {fmt(unifiedData.accounting?.net_profit || 0)}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Saldo Bancario</p>
+                    <p className="text-xl font-bold" style={{ color: '#1d4ed8' }}>{fmt(unifiedData.accounting?.bank_balance || 0)}</p>
+                  </div>
+                </div>
+
+                {/* Transaction breakdown by type */}
+                {unifiedData.accounting?.by_type && Object.keys(unifiedData.accounting.by_type).length > 0 && (
+                  <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--sand)' }}>
+                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--ash)' }}>Desglose por tipo</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {Object.entries(unifiedData.accounting.by_type).map(([type, data]: [string, any]) => (
+                        <div key={type} className="flex items-center justify-between p-2 rounded text-xs" style={{ backgroundColor: 'var(--snow)' }}>
+                          <span style={{ color: 'var(--slate)' }}>{type.replace(/_/g, ' ')}</span>
+                          <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(data.total)} ({data.count})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Sección 2: Clientes (RTO) ── */}
+              <div className="card-luxury p-5">
+                <h2 className="font-serif text-lg flex items-center gap-2 mb-4" style={{ color: 'var(--ink)' }}>
+                  <Users className="w-5 h-5" style={{ color: 'var(--gold-600)' }} /> Clientes RTO
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Contratos Activos</p>
+                    <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{unifiedData.clientes?.active_contracts || 0}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#d1fae5' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Cobrado este mes</p>
+                    <p className="text-xl font-bold" style={{ color: '#047857' }}>{fmt(unifiedData.clientes?.month_collected || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Esperado este mes</p>
+                    <p className="text-xl font-bold" style={{ color: '#92400e' }}>{fmt(unifiedData.clientes?.month_expected || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: unifiedData.clientes?.month_overdue > 0 ? '#fee2e2' : '#d1fae5' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>En mora</p>
+                    <p className="text-xl font-bold" style={{ color: unifiedData.clientes?.month_overdue > 0 ? '#dc2626' : '#047857' }}>
+                      {fmt(unifiedData.clientes?.month_overdue || 0)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mt-3">
+                  <div className="text-center p-2 rounded" style={{ backgroundColor: 'var(--snow)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Tasa de Cobro</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{unifiedData.clientes?.collection_rate || 0}%</p>
+                  </div>
+                  <div className="text-center p-2 rounded" style={{ backgroundColor: 'var(--snow)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Valor Portafolio</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(unifiedData.clientes?.portfolio_value || 0)}</p>
+                  </div>
+                  <div className="text-center p-2 rounded" style={{ backgroundColor: 'var(--snow)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Recargos por mora</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(unifiedData.clientes?.late_fees || 0)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Sección 3: Inversionistas ── */}
+              <div className="card-luxury p-5">
+                <h2 className="font-serif text-lg flex items-center gap-2 mb-4" style={{ color: 'var(--ink)' }}>
+                  <DollarSign className="w-5 h-5" style={{ color: 'var(--success)' }} /> Inversionistas
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#d1fae5' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Total Invertido</p>
+                    <p className="text-xl font-bold" style={{ color: '#047857' }}>{fmt(unifiedData.inversionistas?.total_invested || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#dbeafe' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Depósitos este mes</p>
+                    <p className="text-xl font-bold" style={{ color: '#1d4ed8' }}>{fmt(unifiedData.inversionistas?.month_deposits || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#fee2e2' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Retornos este mes</p>
+                    <p className="text-xl font-bold" style={{ color: '#dc2626' }}>{fmt(unifiedData.inversionistas?.month_returns || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#fef3c7' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Notas Pendientes</p>
+                    <p className="text-xl font-bold" style={{ color: '#92400e' }}>{fmt(unifiedData.inversionistas?.notes_outstanding || 0)}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <div className="text-center p-2 rounded" style={{ backgroundColor: 'var(--snow)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Inversionistas Activos</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{unifiedData.inversionistas?.active_investors || 0}</p>
+                  </div>
+                  <div className="text-center p-2 rounded" style={{ backgroundColor: 'var(--snow)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Notas Activas</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{unifiedData.inversionistas?.active_notes || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Sección 4: Cruce de datos ── */}
+              <div className="card-luxury p-5">
+                <h2 className="font-serif text-lg flex items-center gap-2 mb-4" style={{ color: 'var(--ink)' }}>
+                  <ArrowRightLeft className="w-5 h-5" style={{ color: 'var(--navy-700)' }} /> Cruce Clientes ↔ Inversionistas ↔ Contabilidad
+                </h2>
+                <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+                  Cada movimiento financiero genera automáticamente una entrada contable. Esta tabla muestra cómo se enlazan las 3 secciones.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="table text-sm">
+                    <thead>
+                      <tr>
+                        <th>Concepto</th>
+                        <th>Origen</th>
+                        <th className="text-right">Monto</th>
+                        <th>Flujo en Contabilidad</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingUp className="w-3 h-3" style={{ color: 'var(--success)' }} /> Pagos RTO</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>Clientes</span></td>
+                        <td className="text-right font-medium" style={{ color: '#047857' }}>{fmt(unifiedData.cross_link?.rto_income_to_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (rto_payment)</td>
+                      </tr>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingUp className="w-3 h-3" style={{ color: 'var(--success)' }} /> Down Payments</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>Clientes</span></td>
+                        <td className="text-right font-medium" style={{ color: '#047857' }}>{fmt(unifiedData.cross_link?.down_payments_to_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (down_payment)</td>
+                      </tr>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingUp className="w-3 h-3" style={{ color: '#1d4ed8' }} /> Depósitos Inversores</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>Inversionistas</span></td>
+                        <td className="text-right font-medium" style={{ color: '#047857' }}>{fmt(unifiedData.cross_link?.investor_deposits_to_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (investor_deposit)</td>
+                      </tr>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingDown className="w-3 h-3" style={{ color: '#dc2626' }} /> Retornos a Inversores</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>Inversionistas</span></td>
+                        <td className="text-right font-medium" style={{ color: '#dc2626' }}>{fmt(unifiedData.cross_link?.investor_returns_from_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (investor_return)</td>
+                      </tr>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingDown className="w-3 h-3" style={{ color: '#dc2626' }} /> Comisiones</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>Operaciones</span></td>
+                        <td className="text-right font-medium" style={{ color: '#dc2626' }}>{fmt(unifiedData.cross_link?.commissions_from_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (commission)</td>
+                      </tr>
+                      <tr>
+                        <td className="flex items-center gap-2"><TrendingDown className="w-3 h-3" style={{ color: '#dc2626' }} /> Adquisiciones</td>
+                        <td><span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>Operaciones</span></td>
+                        <td className="text-right font-medium" style={{ color: '#dc2626' }}>{fmt(unifiedData.cross_link?.acquisitions_from_accounting || 0)}</td>
+                        <td className="text-xs" style={{ color: 'var(--slate)' }}>→ capital_transactions (acquisition)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 p-3 rounded-lg flex items-center gap-2 text-xs" style={{ backgroundColor: 'var(--cream)', color: 'var(--charcoal)' }}>
+                  <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: 'var(--gold-600)' }} />
+                  <span>Los pagos de clientes e inversionistas generan <strong>automáticamente</strong> entradas en capital_transactions. 
+                  Use &quot;Sincronizar&quot; en Contabilidad para importar registros históricos.</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card-luxury p-12 text-center">
+              <PieChart className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ash)' }} />
+              <p style={{ color: 'var(--slate)' }}>Haz clic en &quot;Actualizar&quot; para cargar el resumen integrado</p>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Portfolio Reports Tab */}
       {activeTab === 'portfolio' && (

@@ -603,3 +603,159 @@ async def download_report_pdf(report_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# UNIFIED FINANCIAL SUMMARY — single source of truth from capital_transactions
+# Links Clientes ↔ Inversionistas ↔ Contabilidad
+# =============================================================================
+
+@router.get("/unified-summary")
+async def get_unified_financial_summary(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+):
+    """
+    Single source of truth that aggregates *all* financial movements from
+    ``capital_transactions`` and cross-links them to Clientes (RTO) and
+    Inversionistas modules.
+
+    This endpoint powers the top-level dashboard and the Reportes section.
+    """
+    try:
+        today = date.today()
+        m = month or today.month
+        y = year or today.year
+        start = f"{y}-{m:02d}-01"
+        _, last_day = monthrange(y, m)
+        end = f"{y}-{m:02d}-{last_day}"
+
+        # ── All transactions in the period ──
+        txns = sb.table("capital_transactions") \
+            .select("*") \
+            .neq("status", "voided") \
+            .gte("transaction_date", start) \
+            .lte("transaction_date", end) \
+            .order("transaction_date", desc=True) \
+            .execute().data or []
+
+        # Aggregate by type
+        by_type: dict = {}
+        total_income = 0.0
+        total_expense = 0.0
+        for t in txns:
+            tt = t.get("transaction_type", "other")
+            amt = abs(float(t.get("amount", 0)))
+            by_type.setdefault(tt, {"count": 0, "total": 0.0})
+            by_type[tt]["count"] += 1
+            by_type[tt]["total"] += amt
+            if t.get("is_income"):
+                total_income += amt
+            else:
+                total_expense += amt
+
+        # ── Clientes (RTO) Snapshot ──
+        contracts = sb.table("rto_contracts") \
+            .select("id, status, monthly_rent, purchase_price") \
+            .execute().data or []
+        active_contracts = [c for c in contracts if c.get("status") == "active"]
+
+        # Payments due this month
+        payments = sb.table("rto_payments") \
+            .select("id, amount, paid_amount, status, due_date, late_fee_amount") \
+            .gte("due_date", start) \
+            .lte("due_date", end) \
+            .execute().data or []
+
+        payments_paid = [p for p in payments if p.get("status") == "paid"]
+        payments_overdue = [p for p in payments if p.get("status") in ("late", "pending") and (p.get("due_date") or "") < today.isoformat()]
+
+        rto_expected = sum(float(p.get("amount", 0)) for p in payments)
+        rto_collected = sum(float(p.get("paid_amount", 0) or 0) for p in payments_paid)
+        rto_overdue = sum(float(p.get("amount", 0)) for p in payments_overdue)
+        rto_late_fees = sum(float(p.get("late_fee_amount", 0) or 0) for p in payments)
+        collection_rate = (rto_collected / rto_expected * 100) if rto_expected > 0 else 0
+
+        # ── Inversionistas Snapshot ──
+        investors = sb.table("investors") \
+            .select("id, name, total_invested, available_capital, status") \
+            .execute().data or []
+        active_investors = [i for i in investors if i.get("status") == "active"]
+        total_invested = sum(float(i.get("total_invested", 0) or 0) for i in investors)
+
+        # Investor-related transactions this month
+        investor_deposits = by_type.get("investor_deposit", {}).get("total", 0)
+        investor_returns = by_type.get("investor_return", {}).get("total", 0)
+
+        # Active promissory notes
+        notes = sb.table("promissory_notes") \
+            .select("id, loan_amount, total_due, paid_amount, status, maturity_date") \
+            .execute().data or []
+        active_notes = [n for n in notes if n.get("status") == "active"]
+        notes_outstanding = sum(float(n.get("total_due", 0)) - float(n.get("paid_amount", 0) or 0) for n in active_notes)
+
+        # ── Bank balances ──
+        bank_balance = 0
+        try:
+            banks = sb.table("capital_bank_accounts") \
+                .select("current_balance") \
+                .eq("is_active", True) \
+                .execute().data or []
+            bank_balance = sum(float(b.get("current_balance", 0)) for b in banks)
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "period": {"month": m, "year": y, "start": start, "end": end},
+
+            # ── Accounting (single source of truth) ──
+            "accounting": {
+                "total_income": round(total_income, 2),
+                "total_expense": round(total_expense, 2),
+                "net_profit": round(total_income - total_expense, 2),
+                "by_type": by_type,
+                "transaction_count": len(txns),
+                "bank_balance": round(bank_balance, 2),
+            },
+
+            # ── Clientes (RTO) ──
+            "clientes": {
+                "active_contracts": len(active_contracts),
+                "portfolio_value": round(sum(float(c.get("purchase_price", 0)) for c in active_contracts), 2),
+                "expected_monthly_income": round(sum(float(c.get("monthly_rent", 0)) for c in active_contracts), 2),
+                "month_expected": round(rto_expected, 2),
+                "month_collected": round(rto_collected, 2),
+                "month_overdue": round(rto_overdue, 2),
+                "collection_rate": round(collection_rate, 1),
+                "late_fees": round(rto_late_fees, 2),
+                "payments_paid": len(payments_paid),
+                "payments_overdue": len(payments_overdue),
+                "payments_total": len(payments),
+            },
+
+            # ── Inversionistas ──
+            "inversionistas": {
+                "total_investors": len(investors),
+                "active_investors": len(active_investors),
+                "total_invested": round(total_invested, 2),
+                "month_deposits": round(investor_deposits, 2),
+                "month_returns": round(investor_returns, 2),
+                "active_notes": len(active_notes),
+                "notes_outstanding": round(notes_outstanding, 2),
+            },
+
+            # ── Cross-link summary ──
+            "cross_link": {
+                "rto_income_to_accounting": round(by_type.get("rto_payment", {}).get("total", 0), 2),
+                "down_payments_to_accounting": round(by_type.get("down_payment", {}).get("total", 0), 2),
+                "investor_deposits_to_accounting": round(investor_deposits, 2),
+                "investor_returns_from_accounting": round(investor_returns, 2),
+                "commissions_from_accounting": round(by_type.get("commission", {}).get("total", 0), 2),
+                "acquisitions_from_accounting": round(by_type.get("acquisition", {}).get("total", 0), 2),
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error in unified financial summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

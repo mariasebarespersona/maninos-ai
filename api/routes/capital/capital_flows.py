@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.routes.capital._accounting_hooks import record_txn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/flows", tags=["Capital - Flows"])
@@ -63,12 +64,50 @@ def _get_current_balance() -> float:
         return 0.0
 
 
-def _record_flow(flow_data: dict) -> dict:
-    """Record a capital flow and update running balance."""
+_FLOW_TO_TXN_MAP = {
+    "investment_in":        ("investor_deposit", True),
+    "acquisition_out":      ("acquisition", False),
+    "rent_income":          ("rto_payment", True),
+    "return_out":           ("investor_return", False),
+    "late_fee_income":      ("late_fee", True),
+    "operating_expense":    ("operating_expense", False),
+    "down_payment_received":("down_payment", True),
+}
+
+
+def _record_flow(flow_data: dict, *, skip_accounting: bool = False) -> dict:
+    """
+    Record a capital flow, update running balance, and auto-create
+    a matching capital_transaction for accounting.
+
+    Set ``skip_accounting=True`` if the caller already records its own
+    accounting entry (e.g. ``record_payment`` in payments.py).
+    """
     balance = _get_current_balance() + float(flow_data.get("amount", 0))
     flow_data["balance_after"] = balance
     result = sb.table("capital_flows").insert(flow_data).execute()
-    return result.data[0] if result.data else flow_data
+    flow = result.data[0] if result.data else flow_data
+
+    # ── Auto-create capital_transaction ──
+    if not skip_accounting:
+        ft = flow_data.get("flow_type", "")
+        if ft in _FLOW_TO_TXN_MAP:
+            txn_type, is_income = _FLOW_TO_TXN_MAP[ft]
+            record_txn(
+                txn_type=txn_type,
+                amount=abs(float(flow_data.get("amount", 0))),
+                is_income=is_income,
+                description=flow_data.get("description") or f"Capital flow: {ft}",
+                txn_date=flow_data.get("flow_date") or date.today().isoformat(),
+                capital_flow_id=flow.get("id"),
+                investor_id=flow_data.get("investor_id"),
+                property_id=flow_data.get("property_id"),
+                rto_contract_id=flow_data.get("rto_contract_id"),
+                rto_payment_id=flow_data.get("rto_payment_id"),
+                created_by="auto-flow",
+            )
+
+    return flow
 
 
 # =============================================================================

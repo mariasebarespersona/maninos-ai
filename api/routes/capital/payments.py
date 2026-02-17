@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.routes.capital._accounting_hooks import record_txn
 import logging
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,55 @@ async def record_payment(payment_id: str, data: RecordPayment):
         }
         
         sb.table("rto_payments").update(update_data).eq("id", payment_id).execute()
+        
+        # ── Accounting hooks ──────────────────────────────────────
+        # 1) Record capital_flow  (rent_income)  — skip auto-accounting
+        #    because we create our own transaction below with more detail.
+        try:
+            from api.routes.capital.capital_flows import _record_flow
+            _record_flow({
+                "flow_type": "rent_income",
+                "amount": data.paid_amount,
+                "investor_id": None,
+                "property_id": None,
+                "rto_contract_id": p["rto_contract_id"],
+                "rto_payment_id": payment_id,
+                "description": f"Pago RTO #{p.get('payment_number', '?')} — {data.payment_method}",
+                "flow_date": paid_date.isoformat(),
+            }, skip_accounting=True)
+        except Exception as fe:
+            logger.warning(f"Could not record capital_flow for payment: {fe}")
+
+        # 2) Record capital_transaction  (rto_payment)
+        record_txn(
+            txn_type="rto_payment",
+            amount=data.paid_amount,
+            is_income=True,
+            description=f"Pago RTO mensualidad #{p.get('payment_number', '?')}",
+            txn_date=paid_date.isoformat(),
+            rto_contract_id=p["rto_contract_id"],
+            rto_payment_id=payment_id,
+            client_id=contract.get("client_id"),
+            payment_method=data.payment_method,
+            payment_reference=data.payment_reference,
+            notes=data.notes,
+            created_by=data.recorded_by or "admin",
+        )
+
+        # 3) If late fee, record separate transaction
+        if late_fee > 0:
+            record_txn(
+                txn_type="late_fee",
+                amount=late_fee,
+                is_income=True,
+                description=f"Recargo por mora — {days_late} días",
+                txn_date=paid_date.isoformat(),
+                rto_contract_id=p["rto_contract_id"],
+                rto_payment_id=payment_id,
+                client_id=contract.get("client_id"),
+                created_by="auto",
+            )
+        # ──────────────────────────────────────────────────────────
         
         # Check if this was the last payment → complete contract
         contract_id = p["rto_contract_id"]
@@ -420,10 +470,34 @@ async def create_commission(data: CommissionCreate):
 async def pay_commission(commission_id: str):
     """Mark a commission as paid."""
     try:
+        # Fetch commission details first
+        comm = sb.table("rto_commissions") \
+            .select("*, properties(address), clients(name)") \
+            .eq("id", commission_id) \
+            .single() \
+            .execute().data
+
         sb.table("rto_commissions").update({
             "status": "paid",
             "paid_at": datetime.utcnow().isoformat(),
         }).eq("id", commission_id).execute()
+
+        # ── Accounting hook ──
+        if comm:
+            prop_addr = (comm.get("properties") or {}).get("address", "")
+            client_name = (comm.get("clients") or {}).get("name", "")
+            record_txn(
+                txn_type="commission",
+                amount=float(comm.get("total_commission", 0)),
+                is_income=False,
+                description=f"Comisión RTO — {client_name} / {prop_addr}",
+                txn_date=date.today().isoformat(),
+                rto_contract_id=comm.get("contract_id"),
+                property_id=comm.get("property_id"),
+                client_id=comm.get("client_id"),
+                created_by="admin",
+            )
+
         return {"ok": True, "message": "Comisión pagada"}
     except Exception as e:
         logger.error(f"Error paying commission: {e}")
