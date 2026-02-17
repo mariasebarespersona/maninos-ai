@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { getAppBaseUrl } from '@/lib/supabase/client-auth'
 import { useToast } from '@/components/ui/Toast'
 import { Loader2 } from 'lucide-react'
 
@@ -53,7 +54,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${getAppBaseUrl()}/auth/callback` },
     })
 
     if (error) {
@@ -74,7 +75,7 @@ function LoginForm() {
     setError(null)
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+      redirectTo: `${getAppBaseUrl()}/auth/callback?type=recovery`,
     })
 
     if (error) {

@@ -25,7 +25,7 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/purchases", tags=["Public - Purchases"])
 
-APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+APP_URL = (os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
 
 
 # =============================================================================

@@ -21,7 +21,12 @@ from tools.supabase_client import sb
 
 logger = logging.getLogger(__name__)
 
-APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+# Resolve the public-facing URL for links in emails.
+# Priority: APP_URL (explicit) > FRONTEND_URL > fallback to localhost for dev
+_raw_app_url = os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+APP_URL = _raw_app_url.rstrip("/")
+if APP_URL == "http://localhost:3000":
+    logger.warning("[email_service] APP_URL not set — email links will point to localhost. Set APP_URL env var on Railway.")
 COMPANY_NAME = "Maninos Homes"
 COMPANY_PHONE = "832-745-9600"
 

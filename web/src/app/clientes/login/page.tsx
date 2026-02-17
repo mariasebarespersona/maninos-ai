@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Home, Mail, Loader2, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
-import { signInWithMagicLink, getClientUser } from '@/lib/supabase/client-auth'
+import { signInWithMagicLink, getClientUser, getAppBaseUrl } from '@/lib/supabase/client-auth'
 
 export default function ClientLoginPage() {
   const router = useRouter()
@@ -68,7 +68,7 @@ export default function ClientLoginPage() {
       
       // Send magic link via Supabase Auth
       // Include the next URL so after verification the user lands on the right page
-      const callbackUrl = `${window.location.origin}/clientes/auth/callback?next=${encodeURIComponent(nextUrl)}`
+      const callbackUrl = `${getAppBaseUrl()}/clientes/auth/callback?next=${encodeURIComponent(nextUrl)}`
       const { error: authError } = await signInWithMagicLink(email, callbackUrl)
       
       if (authError) {

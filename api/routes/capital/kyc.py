@@ -185,7 +185,7 @@ async def create_verification_session(data: KYCCreateSession):
         stripe.api_key = STRIPE_SECRET_KEY
 
         # Build return URL — goes back to the CLIENT portal (not Capital)
-        base_url = data.return_url or os.getenv("FRONTEND_URL", "http://localhost:3000")
+        base_url = data.return_url or os.getenv("FRONTEND_URL") or os.getenv("APP_URL") or "http://localhost:3000"
         return_url = f"{base_url}/clientes/mi-cuenta/verificacion?status=complete"
 
         # Create verification session

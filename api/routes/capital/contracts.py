@@ -563,7 +563,7 @@ async def deliver_title(contract_id: str):
                     <p style="color: #4a5568; font-size: 16px;">
                         Ingresa a tu cuenta para ver y descargar tus documentos (Bill of Sale y Título).
                     </p>
-                    <a href="{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/clientes/mi-cuenta"
+                    <a href="{os.environ.get('FRONTEND_URL') or os.environ.get('APP_URL', 'http://localhost:3000')}/clientes/mi-cuenta"
                        style="display: inline-block; background: #b8960c; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 16px;">
                         Ver Mi Cuenta
                     </a>

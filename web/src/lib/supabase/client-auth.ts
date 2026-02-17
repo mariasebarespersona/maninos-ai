@@ -7,21 +7,45 @@
 import { getSupabaseClient } from './client'
 
 /**
+ * Get the app's base URL, resolving correctly on both local dev and Vercel.
+ * Priority: NEXT_PUBLIC_APP_URL > NEXT_PUBLIC_VERCEL_URL > window.location.origin
+ */
+function getAppBaseUrl(): string {
+  // 1. Explicit app URL (set in Vercel env vars)
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
+  }
+  // 2. Vercel auto-provided URL (always available on Vercel deployments)
+  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  }
+  // 3. Fall back to window origin (works on any deployment)
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+  return 'http://localhost:3000'
+}
+
+/**
  * Send a magic link to the client's email.
  * When they click it, they'll be redirected to the callback URL.
  */
 export async function signInWithMagicLink(email: string, redirectTo?: string) {
   const supabase = getSupabaseClient()
   
+  const baseUrl = getAppBaseUrl()
+  
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: redirectTo || `${window.location.origin}/clientes/auth/callback`,
+      emailRedirectTo: redirectTo || `${baseUrl}/clientes/auth/callback`,
     },
   })
   
   return { data, error }
 }
+
+export { getAppBaseUrl }
 
 /**
  * Get the current authenticated user.
