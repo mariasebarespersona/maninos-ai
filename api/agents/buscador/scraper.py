@@ -66,6 +66,9 @@ class ScrapedListing:
     photos: List[str]
     thumbnail_url: Optional[str]
     scraped_at: str
+    # Price type: "full" = full asking price, "down_payment" = down payment only
+    price_type: str = "full"
+    estimated_full_price: Optional[float] = None
 
 
 # ============================================

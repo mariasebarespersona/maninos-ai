@@ -166,6 +166,10 @@ class MarketListingCreate(BaseModel):
     
     photos: List[str] = Field(default_factory=list)
     thumbnail_url: Optional[str] = None
+    
+    # Price type: "full" = full asking price, "down_payment" = only the down payment
+    price_type: str = Field(default="full", description="'full' or 'down_payment'")
+    estimated_full_price: Optional[float] = Field(default=None, description="Estimated total price when price_type=down_payment")
 
 
 class MarketListingResponse(BaseModel):
@@ -194,6 +198,8 @@ class MarketListingResponse(BaseModel):
     thumbnail_url: Optional[str]
     status: str
     scraped_at: Optional[str]
+    price_type: Optional[str] = "full"
+    estimated_full_price: Optional[float] = None
 
 
 # ============================================
@@ -555,8 +561,17 @@ async def create_listing(listing: MarketListingCreate):
         listing_city = data.get("city", "")
         listing_state = (data.get("state") or "TX").upper()
         
+        # If price is a down payment, use estimated_full_price for qualification
+        qualification_price = price
+        price_type = data.get("price_type", "full")
+        if price_type == "down_payment" and data.get("estimated_full_price"):
+            qualification_price = data["estimated_full_price"]
+            logger.info(f"[Create] Down payment listing: using estimated_full_price ${qualification_price:,.0f} for qualification (listed: ${price:,.0f})")
+        elif price_type == "down_payment":
+            logger.warning(f"[Create] Down payment listing without estimated_full_price — qualification may be inaccurate")
+        
         q = qualify_listing(
-            listing_price=price,
+            listing_price=qualification_price,
             market_value=market_value or 0,
             city=listing_city,
             state=listing_state,
@@ -568,7 +583,8 @@ async def create_listing(listing: MarketListingCreate):
         data["max_offer_70_rule"] = q.get("max_offer_60_rule")  # Column name compat
         
         logger.info(f"[Create] Qualification: qualified={data['is_qualified']} score={data['qualification_score']} "
-                     f"(60%={q['passes_60_rule']}, range={q['passes_price_range']}, zone={q['passes_zone_rule']})")
+                     f"(60%={q['passes_60_rule']}, range={q['passes_price_range']}, zone={q['passes_zone_rule']}"
+                     f"{', price_type='+price_type if price_type != 'full' else ''})")
         
         response = supabase.table("market_listings")\
             .insert(data)\

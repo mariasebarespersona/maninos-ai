@@ -62,6 +62,126 @@ class FBListing:
     bathrooms: Optional[float] = None
     sqft: Optional[int] = None
     property_type: str = ""  # single_wide, double_wide
+    
+    # Price type detection — many FB listings show down payment, not full price
+    price_type: str = "full"  # "full" or "down_payment"
+    estimated_full_price: Optional[float] = None  # Estimated total if price_type == "down_payment"
+
+
+# ============================================
+# DOWN PAYMENT DETECTION
+# ============================================
+
+# Keywords that indicate the listed price is a DOWN PAYMENT, not the full price
+DOWN_PAYMENT_KEYWORDS = [
+    # English
+    'down payment', 'down-payment', 'downpayment',
+    'move in', 'move-in', 'movein',
+    'enganche', 'deposit', 'down only',
+    'to move in', 'to move-in',
+    'down to own', 'down to buy',
+    'as low as', 'starting at',
+    'monthly payment', 'monthly payments',
+    '/mo', 'per month', 'a month',
+    'oac', 'on approved credit',
+    'owner finance', 'owner financing',
+    'seller finance', 'seller financing',
+    'rent to own', 'rent-to-own', 'lease to own',
+    'lease purchase', 'lease option',
+    'no credit check', 'no credit needed',
+    'easy financing', 'in-house financing',
+    'we finance', 'financing available',
+    '$0 down', 'zero down', 'low down',
+]
+
+# Patterns that signal down payment context (regex)
+DOWN_PAYMENT_PATTERNS = [
+    r'(?:down\s*(?:payment)?|enganche|deposit)\s*(?:of\s*)?\$?\s*[\d,]+',
+    r'\$?\s*[\d,]+\s*(?:down|enganche|deposit)',
+    r'move\s*-?\s*in\s*(?:for|with|only)?\s*\$?\s*[\d,]+',
+    r'(?:only|just|as\s+low\s+as)\s*\$?\s*[\d,]+\s*(?:down|to\s+move)',
+    r'\$?\s*[\d,]+\s*/\s*(?:mo|month|mes)',
+    r'(?:payments?\s+(?:of|starting)\s+)\$?\s*[\d,]+',
+]
+
+# Patterns to extract the ACTUAL full/total price from description
+FULL_PRICE_PATTERNS = [
+    r'(?:total|full|sale|asking|list)\s*(?:price|precio)?\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+    r'(?:price|precio|priced?\s+at)\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+    r'(?:selling|sold)\s+(?:for|at)\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+    r'(?:value|worth|valued?\s+at)\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+    r'retail\s*(?:price|value)?\s*:?\s*\$?\s*([\d,]+(?:\.\d{2})?)',
+]
+
+
+def detect_price_type(title: str, description: str, price: float) -> tuple:
+    """
+    Analyze listing text to determine if the price shown is a down payment or full price.
+    
+    Returns:
+        (price_type, estimated_full_price)
+        price_type: "down_payment" or "full"
+        estimated_full_price: float or None
+    """
+    combined = f"{title} {description}".lower()
+    
+    # 1. Check for down payment keywords
+    is_down_payment = False
+    for kw in DOWN_PAYMENT_KEYWORDS:
+        if kw in combined:
+            is_down_payment = True
+            break
+    
+    # 2. Check regex patterns for more complex signals
+    if not is_down_payment:
+        for pattern in DOWN_PAYMENT_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                is_down_payment = True
+                break
+    
+    # 3. Heuristic: if price is very low ($100-$4999) for a house, likely down payment
+    if not is_down_payment and price > 0 and price < 5000:
+        # Very low price = almost certainly a down payment or monthly payment
+        is_down_payment = True
+        logger.info(f"[FB Price] Heuristic: ${price:,.0f} is very low — likely down payment")
+    
+    if not is_down_payment:
+        return ("full", None)
+    
+    # 4. Try to extract the actual full price from description
+    estimated_full = None
+    for pattern in FULL_PRICE_PATTERNS:
+        match = re.search(pattern, combined, re.IGNORECASE)
+        if match:
+            try:
+                price_str = match.group(1).replace(",", "")
+                candidate = float(price_str)
+                # Full price should be significantly higher than the down payment
+                if candidate > price * 2 and 5000 <= candidate <= 200000:
+                    estimated_full = candidate
+                    logger.info(f"[FB Price] Found full price ${candidate:,.0f} in description (down payment: ${price:,.0f})")
+                    break
+            except (ValueError, IndexError):
+                continue
+    
+    # 5. If no full price found, estimate based on typical down payment percentages
+    if estimated_full is None and price > 0:
+        # Typical owner-finance down payments: 5-20% of total price
+        # Use 10% as middle estimate → full price ≈ down_payment / 0.10
+        # But cap at reasonable mobile home range
+        estimated_low = price / 0.20   # If 20% down
+        estimated_high = price / 0.05  # If 5% down
+        estimated_mid = price / 0.10   # If 10% down (most common)
+        
+        # Cap at reasonable mobile home price range
+        estimated_full = min(max(estimated_mid, 15000), 120000)
+        logger.info(
+            f"[FB Price] Estimated full price: ${estimated_full:,.0f} "
+            f"(range ${estimated_low:,.0f}-${estimated_high:,.0f}, "
+            f"down payment: ${price:,.0f})"
+        )
+    
+    return ("down_payment", estimated_full)
 
 
 # Search configurations for Houston and Dallas areas
@@ -865,6 +985,21 @@ class FacebookMarketplaceScraper:
             )
             if addr_match:
                 listing.address = addr_match.group(1)
+        
+        # ── DOWN PAYMENT vs FULL PRICE DETECTION ──
+        if listing.price > 0:
+            price_type, estimated_full = detect_price_type(
+                listing.title, listing.description, listing.price
+            )
+            listing.price_type = price_type
+            listing.estimated_full_price = estimated_full
+            
+            if price_type == "down_payment":
+                logger.info(
+                    f"[FB Price] '{listing.title[:50]}' — ${listing.price:,.0f} is DOWN PAYMENT "
+                    f"(est. full: ${estimated_full:,.0f})" if estimated_full
+                    else f"[FB Price] '{listing.title[:50]}' — ${listing.price:,.0f} is DOWN PAYMENT"
+                )
 
 
 def convert_to_scraped_listings(fb_listings: List[FBListing]) -> list:
@@ -938,6 +1073,8 @@ def convert_to_scraped_listings(fb_listings: List[FBListing]) -> list:
             thumbnail_url=fb.image_url,
             scraped_at=datetime.now().isoformat(),
             photos=[fb.image_url] if fb.image_url else [],
+            price_type=fb.price_type,
+            estimated_full_price=fb.estimated_full_price,
         )
         converted.append(sl)
     

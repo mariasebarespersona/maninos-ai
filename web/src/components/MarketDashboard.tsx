@@ -82,6 +82,8 @@ interface MarketListing {
   longitude: number | null;
   status: string;
   scraped_at: string | null;
+  price_type: string | null;  // "full" or "down_payment"
+  estimated_full_price: number | null;
 }
 
 interface MarketAnalysis {
@@ -730,7 +732,9 @@ export default function MarketDashboard() {
           city: selectedListing.city,
           state: selectedListing.state,
           zip_code: selectedListing.zip_code || '',
-          purchase_price: selectedListing.listing_price,
+          purchase_price: selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
+            ? selectedListing.estimated_full_price
+            : selectedListing.listing_price,
           year_built: tdhcaResult?.year ? parseInt(tdhcaResult.year) : selectedListing.year_built,
           sqft: tdhcaResult?.square_feet ? parseInt(tdhcaResult.square_feet) : selectedListing.sqft,
           bedrooms: selectedListing.bedrooms,
@@ -1191,9 +1195,31 @@ export default function MarketDashboard() {
                 {/* Price and qualification */}
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-xl font-bold text-navy-900">
-                      ${listing.listing_price.toLocaleString()}
-                    </p>
+                    {listing.price_type === 'down_payment' ? (
+                      <>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xl font-bold text-amber-700">
+                            ${listing.listing_price.toLocaleString()}
+                          </p>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wide">
+                            Enganche
+                          </span>
+                        </div>
+                        {listing.estimated_full_price ? (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Precio estimado: <span className="font-semibold text-navy-700">${listing.estimated_full_price.toLocaleString()}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-600 mt-0.5">
+                            ⚠️ Precio total no disponible
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xl font-bold text-navy-900">
+                        ${listing.listing_price.toLocaleString()}
+                      </p>
+                    )}
                     {listing.estimated_roi && (
                       <p className="text-sm text-green-600 flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
@@ -1675,6 +1701,11 @@ export default function MarketDashboard() {
                 <p className="font-medium">{selectedListing.address}</p>
                 <div className="flex items-center gap-4 mt-2 text-sm">
                   <span className="text-2xl font-bold">${selectedListing.listing_price.toLocaleString()}</span>
+                  {selectedListing.price_type === 'down_payment' && (
+                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase">
+                      Enganche
+                    </span>
+                  )}
                   <span className="text-gold-300">
                     {selectedListing.estimated_arv 
                       ? `${((selectedListing.listing_price / selectedListing.estimated_arv) * 100).toFixed(0)}% del mercado`
@@ -1682,6 +1713,11 @@ export default function MarketDashboard() {
                     }
                   </span>
                 </div>
+                {selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price && (
+                  <p className="text-sm text-amber-200 mt-1">
+                    Precio total estimado: <span className="font-bold">${selectedListing.estimated_full_price.toLocaleString()}</span>
+                  </p>
+                )}
                 {/* Prediction summary in modal header */}
                 {predictions[selectedListing.id] && (() => {
                   const modalPred = predictions[selectedListing.id];
@@ -2364,7 +2400,19 @@ export default function MarketDashboard() {
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-green-200">
                       <span className="text-green-700">Precio de Compra</span>
-                      <span className="font-bold text-green-900 text-xl">${selectedListing.listing_price.toLocaleString()}</span>
+                      <div className="text-right">
+                        <span className="font-bold text-green-900 text-xl">
+                          ${(selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
+                            ? selectedListing.estimated_full_price
+                            : selectedListing.listing_price
+                          ).toLocaleString()}
+                        </span>
+                        {selectedListing.price_type === 'down_payment' && (
+                          <p className="text-xs text-amber-600">
+                            Anuncio mostraba enganche: ${selectedListing.listing_price.toLocaleString()}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-green-200">
                       <span className="text-green-700">Evaluación</span>

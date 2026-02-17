@@ -237,6 +237,8 @@ async def scrape_facebook_marketplace(max_listings: int = 30) -> List[Dict[str, 
             "bathrooms": l.bathrooms,
             "sqft": l.sqft,
             "property_type": l.property_type,
+            "price_type": l.price_type,  # "full" or "down_payment"
+            "estimated_full_price": l.estimated_full_price,
         } for l in listings]
         
         logger.info(f"[TOOL] scrape_facebook_marketplace: Found {len(result)} listings")
@@ -523,12 +525,27 @@ $5,000 — $80,000 (purchase price range)
 Buy at max 60% of market value (NOT 70%)
 Renovation budget: $5K-$15K separately (NOT included in 60% calc)
 
+# ⚠️ DOWN PAYMENT vs FULL PRICE (IMPORTANT for Facebook Marketplace)
+Many Facebook Marketplace listings show the DOWN PAYMENT, not the full price.
+Sellers often advertise "move in for $3,000" or "$500 down!" to attract buyers.
+The scraper automatically detects this and marks listings with:
+  - price_type: "full" = the price IS the asking price for the house
+  - price_type: "down_payment" = the price is only the down payment / deposit
+  - estimated_full_price: estimated total price if it's a down payment listing
+
+RULES for down payment listings:
+1. Do NOT use the down payment as listing_price for the 60% rule
+2. If estimated_full_price is available, use THAT for qualification
+3. If no estimated_full_price, skip the 60% qualification (mark as "needs price verification")
+4. Always report whether a listing's price is full or down payment
+
 # OUTPUT FORMAT
 Always provide:
 1. Number of listings found
 2. Number of qualified listings
 3. Summary of why properties passed/failed
 4. List of qualified properties with scores
+5. Flag any listings where price = down payment (not full price)
 """
     
     async def process(self, request: AgentRequest) -> AgentResponse:
