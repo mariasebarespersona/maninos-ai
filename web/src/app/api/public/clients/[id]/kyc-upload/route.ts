@@ -50,7 +50,7 @@ export async function POST(
     const timestamp = Date.now()
 
     // Upload helper
-    async function uploadFile(file: File, label: string): Promise<string> {
+    const uploadFile = async (file: File, label: string): Promise<string> => {
       const ext = file.name.split('.').pop() || 'jpg'
       const path = `${clientId}/${label}_${timestamp}.${ext}`
       const buffer = Buffer.from(await file.arrayBuffer())
