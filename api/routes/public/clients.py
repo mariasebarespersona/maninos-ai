@@ -348,7 +348,7 @@ async def get_client_payments(client_id: str):
 
         for cid in contract_ids:
             pmt_result = sb.table("rto_payments") \
-                .select("id, payment_number, amount, due_date, paid_date, paid_amount, payment_method, payment_reference, status, late_fee_amount, rto_contract_id") \
+                .select("id, payment_number, amount, due_date, paid_date, paid_amount, payment_method, payment_reference, status, late_fee_amount, rto_contract_id, client_payment_method, client_reported_at") \
                 .eq("rto_contract_id", cid) \
                 .order("payment_number") \
                 .execute()
@@ -387,6 +387,9 @@ async def get_client_payments(client_id: str):
 
             if p["status"] == "paid":
                 paid_payments.append(enriched)
+            elif p["status"] == "client_reported":
+                # Client said they paid — treat as upcoming (awaiting confirmation)
+                upcoming_payments.append(enriched)
             elif p["status"] in ("scheduled", "pending"):
                 due = datetime.strptime(p["due_date"], "%Y-%m-%d").date() if p.get("due_date") else None
                 if due and due < today:
@@ -607,6 +610,82 @@ async def get_client_account_statement(client_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting account statement for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# CLIENT PAYMENT REPORTING — called from the client portal
+# =============================================================================
+
+class ClientReportPayment(BaseModel):
+    """Client reports they've made a payment (cash at office or bank transfer)."""
+    payment_method: str  # 'cash_office' or 'bank_transfer'
+    notes: Optional[str] = None
+
+
+@router.post("/{client_id}/payments/{payment_id}/report")
+async def client_report_payment(client_id: str, payment_id: str, data: ClientReportPayment):
+    """
+    Client reports that they've paid a specific scheduled/pending/late payment.
+    Sets status to 'client_reported' — Capital must confirm before it becomes 'paid'.
+    
+    Payment methods:
+    - cash_office: Client paid cash at a Maninos office
+    - bank_transfer: Client made a bank transfer using Maninos bank details
+    """
+    try:
+        # 1. Verify the payment exists and belongs to this client
+        payment_result = sb.table("rto_payments") \
+            .select("id, status, amount, payment_number, rto_contract_id, client_id") \
+            .eq("id", payment_id) \
+            .eq("client_id", client_id) \
+            .single() \
+            .execute()
+
+        if not payment_result.data:
+            raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+        p = payment_result.data
+
+        # 2. Validate status — only allow reporting on payable statuses
+        payable_statuses = ("scheduled", "pending", "late", "partial")
+        if p["status"] not in payable_statuses:
+            if p["status"] == "paid":
+                return {"ok": False, "error": "Este pago ya fue registrado como pagado."}
+            if p["status"] == "client_reported":
+                return {"ok": False, "error": "Ya reportaste este pago. Espera la confirmación de Maninos."}
+            return {"ok": False, "error": f"Este pago no se puede reportar (estado: {p['status']})."}
+
+        # 3. Validate payment method
+        if data.payment_method not in ("cash_office", "bank_transfer"):
+            raise HTTPException(status_code=400, detail="Método de pago inválido. Usa 'cash_office' o 'bank_transfer'.")
+
+        # 4. Update the payment to 'client_reported'
+        now = datetime.utcnow().isoformat()
+        update_data = {
+            "status": "client_reported",
+            "client_payment_method": data.payment_method,
+            "client_payment_notes": data.notes,
+            "client_reported_at": now,
+            "updated_at": now,
+        }
+
+        sb.table("rto_payments").update(update_data).eq("id", payment_id).execute()
+
+        method_label = "Efectivo en oficina" if data.payment_method == "cash_office" else "Transferencia bancaria"
+        logger.info(f"[Client Payment Report] Client {client_id} reported payment {payment_id} via {data.payment_method}")
+
+        return {
+            "ok": True,
+            "message": f"¡Pago #{p['payment_number']} reportado! Método: {method_label}. Maninos confirmará tu pago pronto.",
+            "payment_id": payment_id,
+            "new_status": "client_reported",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reporting payment {payment_id} for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

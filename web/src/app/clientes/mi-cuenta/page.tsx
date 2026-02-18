@@ -7,6 +7,7 @@ import {
   XCircle, LogOut, Phone, Mail, MapPin, Loader2,
   DollarSign, TrendingUp, ShieldCheck, ArrowRight, MessageCircle,
   Bell, CreditCard, CalendarClock, AlertTriangle,
+  Banknote, Building2, Copy, X, CheckCheck,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
@@ -51,6 +52,8 @@ interface Payment {
   rto_contract_id: string
   property_address: string
   property_city: string
+  client_payment_method?: string
+  client_reported_at?: string
 }
 
 interface PaymentAlert {
@@ -88,6 +91,12 @@ export default function ClientDashboard() {
 
   // Active tab for main section
   const [activeTab, setActiveTab] = useState<'purchases' | 'payments'>('purchases')
+
+  // Payment modal state
+  const [payModalPayment, setPayModalPayment] = useState<Payment | null>(null)
+  const [payModalStep, setPayModalStep] = useState<'choose' | 'cash' | 'transfer' | 'success'>('choose')
+  const [payModalLoading, setPayModalLoading] = useState(false)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   useEffect(() => {
     if (client) {
@@ -136,6 +145,56 @@ export default function ClientDashboard() {
     toast.info('Sesión cerrada')
   }
 
+  const openPayModal = (pmt: Payment) => {
+    setPayModalPayment(pmt)
+    setPayModalStep('choose')
+    setPayModalLoading(false)
+    setCopiedField(null)
+  }
+
+  const closePayModal = () => {
+    setPayModalPayment(null)
+    setPayModalStep('choose')
+    setPayModalLoading(false)
+  }
+
+  const handleReportPayment = async (method: 'cash_office' | 'bank_transfer') => {
+    if (!payModalPayment || !client) return
+    setPayModalLoading(true)
+    try {
+      const res = await fetch(
+        `/api/public/clients/${client.id}/payments/${payModalPayment.id}/report`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_method: method }),
+        }
+      )
+      const data = await res.json()
+      if (data.ok) {
+        setPayModalStep('success')
+        toast.success(data.message || '¡Pago reportado!')
+        // Refresh payments list
+        setTimeout(() => {
+          fetchPayments(client.id)
+        }, 1500)
+      } else {
+        toast.error(data.error || 'Error al reportar el pago')
+        setPayModalLoading(false)
+      }
+    } catch (err) {
+      console.error('Error reporting payment:', err)
+      toast.error('Error de conexión')
+      setPayModalLoading(false)
+    }
+  }
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedField(field)
+    setTimeout(() => setCopiedField(null), 2000)
+  }
+
   const getStatusBadge = (sale: Sale) => {
     const badges: Record<string, { bg: string; text: string; icon: typeof CheckCircle; label: string }> = {
       paid: { bg: 'bg-green-50', text: 'text-green-700', icon: CheckCircle, label: 'Pagado' },
@@ -163,6 +222,7 @@ export default function ClientDashboard() {
       pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pendiente' },
       late: { bg: 'bg-red-50', text: 'text-red-700', label: 'Vencido' },
       partial: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Parcial' },
+      client_reported: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Reportado' },
     }
     const badge = map[status] || { bg: 'bg-gray-50', text: 'text-gray-600', label: status }
     return (
@@ -494,17 +554,22 @@ export default function ClientDashboard() {
                     <div className="divide-y divide-gray-100">
                       {payments.slice(0, 20).map(pmt => {
                         const isOverdue = pmt.status === 'late' || (pmt.status === 'scheduled' && pmt.due_date && new Date(pmt.due_date) < new Date())
+                        const isPayable = ['scheduled', 'pending', 'late', 'partial'].includes(pmt.status)
+                        const isReported = pmt.status === 'client_reported'
                         return (
-                          <div key={pmt.id} className={`px-5 py-4 ${isOverdue ? 'bg-red-50/50' : ''}`}>
+                          <div key={pmt.id} className={`px-5 py-4 ${isOverdue ? 'bg-red-50/50' : isReported ? 'bg-blue-50/30' : ''}`}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                                   pmt.status === 'paid' ? 'bg-green-100' :
+                                  isReported ? 'bg-blue-100' :
                                   isOverdue ? 'bg-red-100' :
                                   'bg-gray-100'
                                 }`}>
                                   {pmt.status === 'paid' ? (
                                     <CheckCircle className="w-4 h-4 text-green-600" />
+                                  ) : isReported ? (
+                                    <CheckCheck className="w-4 h-4 text-blue-600" />
                                   ) : isOverdue ? (
                                     <AlertTriangle className="w-4 h-4 text-red-500" />
                                   ) : (
@@ -516,27 +581,44 @@ export default function ClientDashboard() {
                                     <p className="font-semibold text-[14px] text-[#222]" style={{ letterSpacing: '-0.01em' }}>
                                       Pago #{pmt.payment_number}
                                     </p>
-                                    {getPaymentStatusBadge(isOverdue && pmt.status !== 'paid' ? 'late' : pmt.status)}
+                                    {getPaymentStatusBadge(isOverdue && pmt.status !== 'paid' && !isReported ? 'late' : pmt.status)}
                                   </div>
                                   <p className="text-[12px] text-[#717171] truncate">
                                     {pmt.property_address && `${pmt.property_address}, `}{pmt.property_city || ''}
                                     {pmt.due_date && ` · Vence: ${new Date(pmt.due_date).toLocaleDateString('es-MX')}`}
                                   </p>
+                                  {isReported && (
+                                    <p className="text-[11px] text-blue-600 mt-0.5 flex items-center gap-1">
+                                      <CheckCheck className="w-3 h-3" />
+                                      Reportado {pmt.client_reported_at ? new Date(pmt.client_reported_at).toLocaleDateString('es-MX') : ''} · Esperando confirmación
+                                    </p>
+                                  )}
                                 </div>
                               </div>
-                              <div className="text-right flex-shrink-0">
-                                <p className="font-bold text-[15px] text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                  ${pmt.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                                {pmt.status === 'paid' && pmt.paid_date && (
-                                  <p className="text-[11px] text-green-600">
-                                    Pagado {new Date(pmt.paid_date).toLocaleDateString('es-MX')}
+                              <div className="text-right flex-shrink-0 flex items-center gap-3">
+                                <div>
+                                  <p className="font-bold text-[15px] text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                    ${pmt.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </p>
-                                )}
-                                {pmt.late_fee_amount && pmt.late_fee_amount > 0 && (
-                                  <p className="text-[11px] text-red-500">
-                                    + ${pmt.late_fee_amount.toLocaleString()} mora
-                                  </p>
+                                  {pmt.status === 'paid' && pmt.paid_date && (
+                                    <p className="text-[11px] text-green-600">
+                                      Pagado {new Date(pmt.paid_date).toLocaleDateString('es-MX')}
+                                    </p>
+                                  )}
+                                  {pmt.late_fee_amount && pmt.late_fee_amount > 0 && (
+                                    <p className="text-[11px] text-red-500">
+                                      + ${pmt.late_fee_amount.toLocaleString()} mora
+                                    </p>
+                                  )}
+                                </div>
+                                {isPayable && (
+                                  <button
+                                    onClick={() => openPayModal(pmt)}
+                                    className="px-3 py-1.5 rounded-lg bg-[#004274] hover:bg-[#00233d] text-white text-[12px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                                  >
+                                    <Banknote className="w-3.5 h-3.5" />
+                                    Pagar
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -622,6 +704,230 @@ export default function ClientDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════ PAYMENT MODAL ═══════════ */}
+      {payModalPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closePayModal} />
+
+          {/* Modal */}
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white rounded-t-2xl px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between z-10">
+              <div>
+                <h2 className="font-bold text-[18px] text-[#222]" style={{ letterSpacing: '-0.02em' }}>
+                  {payModalStep === 'success' ? '¡Pago reportado!' : 'Realizar Pago'}
+                </h2>
+                <p className="text-[13px] text-[#717171] mt-0.5">
+                  Pago #{payModalPayment.payment_number} · ${payModalPayment.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <button onClick={closePayModal} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-[#717171]" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+
+              {/* ── STEP: CHOOSE METHOD ── */}
+              {payModalStep === 'choose' && (
+                <div className="space-y-3">
+                  <p className="text-[14px] text-[#484848] mb-4">¿Cómo deseas pagar?</p>
+
+                  {/* Cash at office */}
+                  <button
+                    onClick={() => setPayModalStep('cash')}
+                    className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-[#004274] hover:bg-blue-50/30 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0 group-hover:bg-green-100 transition-colors">
+                        <Banknote className="w-6 h-6 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[15px] text-[#222]">Efectivo en oficina</p>
+                        <p className="text-[13px] text-[#717171] mt-0.5">Paga directamente en cualquiera de nuestras oficinas</p>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-[#004274] ml-auto flex-shrink-0 transition-colors" />
+                    </div>
+                  </button>
+
+                  {/* Bank transfer */}
+                  <button
+                    onClick={() => setPayModalStep('transfer')}
+                    className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-[#004274] hover:bg-blue-50/30 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
+                        <Building2 className="w-6 h-6 text-[#004274]" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[15px] text-[#222]">Transferencia bancaria</p>
+                        <p className="text-[13px] text-[#717171] mt-0.5">Transfiere a la cuenta de Maninos Capital</p>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-[#004274] ml-auto flex-shrink-0 transition-colors" />
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {/* ── STEP: CASH AT OFFICE ── */}
+              {payModalStep === 'cash' && (
+                <div className="space-y-5">
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Banknote className="w-5 h-5 text-green-600" />
+                      <h3 className="font-semibold text-[15px] text-green-800">Pago en efectivo</h3>
+                    </div>
+                    <p className="text-[13px] text-green-700 leading-relaxed">
+                      Visita cualquiera de nuestras oficinas y realiza tu pago en efectivo. Un miembro del equipo te atenderá.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-[13px] text-[#222] mb-3 uppercase tracking-wide">Nuestras oficinas</h4>
+                    <div className="space-y-2">
+                      {[
+                        { city: 'Conroe', address: 'Conroe, TX', phone: '(936) 200-5200' },
+                        { city: 'Houston', address: 'Houston, TX', phone: '(713) 555-0100' },
+                        { city: 'Dallas', address: 'Dallas, TX', phone: '(469) 555-0100' },
+                      ].map(office => (
+                        <div key={office.city} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100">
+                          <div>
+                            <p className="font-semibold text-[13px] text-[#222]">{office.city}</p>
+                            <p className="text-[12px] text-[#717171]">{office.address}</p>
+                          </div>
+                          <a href={`tel:${office.phone.replace(/\D/g, '')}`} className="text-[12px] text-[#004274] font-semibold hover:underline">
+                            {office.phone}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-[12px] text-amber-700">
+                      <strong>Importante:</strong> Después de pagar, presiona &quot;Ya he pagado&quot; para notificar a Maninos. Tu pago será confirmado por nuestro equipo.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setPayModalStep('choose')}
+                      className="flex-1 py-3 rounded-xl border border-gray-200 text-[14px] font-semibold text-[#484848] hover:bg-gray-50 transition-colors"
+                    >
+                      ← Atrás
+                    </button>
+                    <button
+                      onClick={() => handleReportPayment('cash_office')}
+                      disabled={payModalLoading}
+                      className="flex-1 py-3 rounded-xl bg-[#004274] hover:bg-[#00233d] text-white text-[14px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {payModalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Ya he pagado
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP: BANK TRANSFER ── */}
+              {payModalStep === 'transfer' && (
+                <div className="space-y-5">
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Building2 className="w-5 h-5 text-[#004274]" />
+                      <h3 className="font-semibold text-[15px] text-[#004274]">Transferencia bancaria</h3>
+                    </div>
+                    <p className="text-[13px] text-blue-700 leading-relaxed">
+                      Transfiere el monto exacto a la siguiente cuenta bancaria.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-[13px] text-[#222] mb-3 uppercase tracking-wide">Datos bancarios</h4>
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      {[
+                        { label: 'Banco', value: 'Chase Bank' },
+                        { label: 'Nombre de la cuenta', value: 'Maninos Capital LLC' },
+                        { label: 'Número de cuenta', value: '000123456789' },
+                        { label: 'Routing Number', value: '021000021' },
+                        { label: 'Tipo de cuenta', value: 'Business Checking' },
+                        { label: 'Monto a transferir', value: `$${payModalPayment.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+                        { label: 'Referencia', value: `Pago #${payModalPayment.payment_number}` },
+                      ].map((item, i) => (
+                        <div key={item.label} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-gray-100' : ''}`}>
+                          <span className="text-[12px] text-[#717171]">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-semibold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>{item.value}</span>
+                            <button
+                              onClick={() => copyToClipboard(item.value, item.label)}
+                              className="p-1 rounded hover:bg-gray-100 transition-colors"
+                              title="Copiar"
+                            >
+                              {copiedField === item.label ? (
+                                <CheckCheck className="w-3.5 h-3.5 text-green-500" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5 text-gray-400" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-[12px] text-amber-700">
+                      <strong>Importante:</strong> Después de realizar la transferencia, presiona &quot;Ya he pagado&quot; para notificar a Maninos. La confirmación puede tardar 1-2 días hábiles.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setPayModalStep('choose')}
+                      className="flex-1 py-3 rounded-xl border border-gray-200 text-[14px] font-semibold text-[#484848] hover:bg-gray-50 transition-colors"
+                    >
+                      ← Atrás
+                    </button>
+                    <button
+                      onClick={() => handleReportPayment('bank_transfer')}
+                      disabled={payModalLoading}
+                      className="flex-1 py-3 rounded-xl bg-[#004274] hover:bg-[#00233d] text-white text-[14px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {payModalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Ya he pagado
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── STEP: SUCCESS ── */}
+              {payModalStep === 'success' && (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="font-bold text-[18px] text-[#222] mb-2" style={{ letterSpacing: '-0.02em' }}>
+                    ¡Pago reportado con éxito!
+                  </h3>
+                  <p className="text-[14px] text-[#717171] mb-1">
+                    Pago #{payModalPayment.payment_number} — ${payModalPayment.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-[13px] text-[#717171] mb-6">
+                    Nuestro equipo confirmará tu pago pronto.
+                  </p>
+                  <button
+                    onClick={closePayModal}
+                    className="px-8 py-3 rounded-xl bg-[#004274] hover:bg-[#00233d] text-white text-[14px] font-semibold transition-colors"
+                  >
+                    Entendido
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
