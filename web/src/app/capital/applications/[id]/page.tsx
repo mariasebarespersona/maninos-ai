@@ -147,6 +147,17 @@ export default function ApplicationDetailPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null)
 
+  // Account statement (for RTO approval decisions)
+  const [accountHealth, setAccountHealth] = useState<{
+    on_time_rate: number
+    health_score: string
+    total_overdue: number
+    total_paid: number
+    remaining_balance: number
+    late_payments: number
+    on_time_payments: number
+  } | null>(null)
+
   useEffect(() => {
     loadApplication()
   }, [id])
@@ -166,10 +177,11 @@ export default function ApplicationDetailPage() {
         if (data.application.desired_down_payment) {
           setDownPayment(String(data.application.desired_down_payment))
         }
-        // Load KYC status + full client data
+        // Load KYC status + full client data + account history
         if (data.application.clients?.id) {
           loadKycStatus(data.application.clients.id)
           loadClientFull(data.application.clients.id)
+          loadAccountHealth(data.application.clients.id)
         }
         // Load contract → payments
         const saleData = data.application.sales
@@ -326,6 +338,26 @@ export default function ApplicationDetailPage() {
     } finally {
       setUploadingDoc(null)
     }
+  }
+
+  // ========== Account Health (for RTO decisions) ==========
+
+  const loadAccountHealth = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/public/clients/${clientId}/account-statement`)
+      const data = await res.json()
+      if (data.ok) {
+        setAccountHealth({
+          on_time_rate: data.payment_health?.on_time_rate ?? 100,
+          health_score: data.payment_health?.health_score ?? 'excellent',
+          total_overdue: data.summary?.total_overdue ?? 0,
+          total_paid: data.summary?.total_paid ?? 0,
+          remaining_balance: data.summary?.remaining_balance ?? 0,
+          late_payments: data.payment_health?.late_payments ?? 0,
+          on_time_payments: data.payment_health?.on_time_payments ?? 0,
+        })
+      }
+    } catch (err) { console.error('Error loading account health:', err) }
   }
 
   // ========== KYC ==========
@@ -737,6 +769,30 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Account Health Banner (for RTO approval decisions) */}
+      {accountHealth && (accountHealth.on_time_payments > 0 || accountHealth.late_payments > 0) && (
+        <div className="p-4 flex flex-wrap items-center gap-4 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: accountHealth.total_overdue > 0 ? 'var(--error-light, #fef2f2)' : 'var(--sand-light, #fafaf5)' }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" style={{ color: accountHealth.total_overdue > 0 ? 'var(--error)' : 'var(--gold-600)' }} />
+            <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Historial del Cliente:</span>
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span style={{ color: 'var(--slate)' }}>Puntualidad: <strong style={{ color: accountHealth.on_time_rate >= 80 ? 'var(--success)' : 'var(--error)' }}>{accountHealth.on_time_rate}%</strong></span>
+            <span style={{ color: 'var(--slate)' }}>A tiempo: <strong>{accountHealth.on_time_payments}</strong></span>
+            <span style={{ color: 'var(--slate)' }}>Con retraso: <strong style={{ color: accountHealth.late_payments > 0 ? 'var(--error)' : 'inherit' }}>{accountHealth.late_payments}</strong></span>
+            {accountHealth.total_overdue > 0 && (
+              <span style={{ color: 'var(--error)' }}>Vencido: <strong>${accountHealth.total_overdue.toLocaleString()}</strong></span>
+            )}
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{
+              backgroundColor: accountHealth.health_score === 'excellent' ? '#dcfce7' : accountHealth.health_score === 'good' ? '#dbeafe' : accountHealth.health_score === 'fair' ? '#fef3c7' : '#fecaca',
+              color: accountHealth.health_score === 'excellent' ? '#166534' : accountHealth.health_score === 'good' ? '#1d4ed8' : accountHealth.health_score === 'fair' ? '#92400e' : '#dc2626',
+            }}>
+              {accountHealth.health_score === 'excellent' ? 'Excelente' : accountHealth.health_score === 'good' ? 'Bueno' : accountHealth.health_score === 'fair' ? 'Regular' : 'En riesgo'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--sand)' }}>

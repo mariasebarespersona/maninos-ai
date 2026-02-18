@@ -20,6 +20,9 @@ interface Property {
   year: number
   photos: string[]
   is_renovated: boolean
+  is_partner?: boolean
+  partner_name?: string
+  source_url?: string
 }
 
 export default function HouseCatalog() {
@@ -51,9 +54,22 @@ export default function HouseCatalog() {
       if (filters.city) params.set('city', filters.city)
       if (filters.minPrice) params.set('min_price', filters.minPrice)
       if (filters.maxPrice) params.set('max_price', filters.maxPrice)
-      const res = await fetch(`/api/public/properties?${params}`)
-      const data = await res.json()
-      if (data.ok) setProperties(data.properties)
+
+      // Fetch Maninos inventory + partner listings (Vanderbilt, 21st) in parallel
+      const [ownRes, partnerRes] = await Promise.all([
+        fetch(`/api/public/properties?${params}`),
+        fetch(`/api/public/properties/partners?${params}`),
+      ])
+      const ownData = await ownRes.json()
+      const partnerData = await partnerRes.json()
+      
+      const all: Property[] = []
+      if (ownData.ok) all.push(...(ownData.properties || []))
+      if (partnerData.ok) all.push(...(partnerData.properties || []))
+      
+      // Sort by price ascending
+      all.sort((a, b) => (a.sale_price || 0) - (b.sale_price || 0))
+      setProperties(all)
     } catch (error) { console.error('Error fetching properties:', error) }
     finally { setLoading(false) }
   }
@@ -242,8 +258,16 @@ function PropertyCard({ property }: { property: Property }) {
   const mainPhoto = property.photos?.[0]
   const [imgLoaded, setImgLoaded] = useState(false)
 
+  // Partner properties link to their external source, Maninos properties go to detail page
+  const href = property.is_partner && property.source_url
+    ? property.source_url
+    : `/clientes/casas/${property.id}`
+  const linkProps = property.is_partner && property.source_url
+    ? { target: '_blank' as const, rel: 'noopener noreferrer' }
+    : {}
+
   return (
-    <Link href={`/clientes/casas/${property.id}`} className="group block">
+    <Link href={href} {...linkProps} className="group block">
       {/* Image — Airbnb rounded corners, no border */}
       <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-3">
         {mainPhoto ? (
@@ -266,6 +290,13 @@ function PropertyCard({ property }: { property: Property }) {
         {property.is_renovated && (
           <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-[#222] text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm">
             Renovada
+          </span>
+        )}
+
+        {/* Partner badge */}
+        {property.is_partner && property.partner_name && (
+          <span className="absolute top-3 left-3 bg-[#004274]/90 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm">
+            {property.partner_name}
           </span>
         )}
 

@@ -295,7 +295,7 @@ export default function RTOConfirmationPage() {
               </p>
               <div className="flex items-center justify-center gap-4">
                 <a
-                  href="tel:+18327459600"
+                  href="tel:+19362005200"
                   className="flex items-center gap-2 text-navy-900 font-medium hover:text-orange-600"
                 >
                   <Phone className="w-4 h-4" />

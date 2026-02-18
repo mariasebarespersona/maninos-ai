@@ -5,7 +5,7 @@ Client lookup, data access, and KYC endpoints.
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -313,6 +313,304 @@ async def get_client_documents(client_id: str):
 
 
 # =============================================================================
+# CLIENT PAYMENTS + ALERTS — called from the client portal
+# =============================================================================
+
+@router.get("/{client_id}/payments")
+async def get_client_payments(client_id: str):
+    """
+    Get all payment history, upcoming payments, and alerts for a client.
+    Aggregates data across all active RTO contracts.
+    """
+    try:
+        # 1. Get all active/completed RTO contracts for this client
+        contracts_result = sb.table("rto_contracts") \
+            .select("id, status, purchase_price, down_payment, monthly_rent, term_months, start_date, end_date, payment_due_day, properties(address, city, state)") \
+            .eq("client_id", client_id) \
+            .in_("status", ["active", "completed"]) \
+            .order("start_date", desc=True) \
+            .execute()
+
+        contracts = contracts_result.data or []
+
+        if not contracts:
+            return {
+                "ok": True,
+                "has_rto": False,
+                "payments": [],
+                "alerts": [],
+                "summary": None,
+            }
+
+        # 2. Fetch all payments across all contracts
+        contract_ids = [c["id"] for c in contracts]
+        all_payments = []
+
+        for cid in contract_ids:
+            pmt_result = sb.table("rto_payments") \
+                .select("id, payment_number, amount, due_date, paid_date, paid_amount, payment_method, payment_reference, status, late_fee_amount, rto_contract_id") \
+                .eq("rto_contract_id", cid) \
+                .order("payment_number") \
+                .execute()
+            all_payments.extend(pmt_result.data or [])
+
+        # 3. Build contract lookup for property info
+        contract_map = {}
+        for c in contracts:
+            prop = c.get("properties") or {}
+            contract_map[c["id"]] = {
+                "contract_id": c["id"],
+                "property_address": prop.get("address", ""),
+                "property_city": prop.get("city", ""),
+                "monthly_rent": c.get("monthly_rent", 0),
+                "purchase_price": c.get("purchase_price", 0),
+                "down_payment": c.get("down_payment", 0),
+                "term_months": c.get("term_months", 0),
+                "payment_due_day": c.get("payment_due_day", 15),
+            }
+
+        # 4. Enrich payments with property info and categorize
+        today = date.today()
+        paid_payments = []
+        upcoming_payments = []
+        overdue_payments = []
+        alerts = []
+
+        for p in all_payments:
+            cid = p.get("rto_contract_id")
+            cinfo = contract_map.get(cid, {})
+            enriched = {
+                **p,
+                "property_address": cinfo.get("property_address", ""),
+                "property_city": cinfo.get("property_city", ""),
+            }
+
+            if p["status"] == "paid":
+                paid_payments.append(enriched)
+            elif p["status"] in ("scheduled", "pending"):
+                due = datetime.strptime(p["due_date"], "%Y-%m-%d").date() if p.get("due_date") else None
+                if due and due < today:
+                    overdue_payments.append(enriched)
+                else:
+                    upcoming_payments.append(enriched)
+            elif p["status"] == "late":
+                overdue_payments.append(enriched)
+            elif p["status"] == "partial":
+                # Partial counts as upcoming (needs more money)
+                upcoming_payments.append(enriched)
+
+        # 5. Generate alerts
+        if overdue_payments:
+            total_overdue = sum(float(p.get("amount", 0)) - float(p.get("paid_amount", 0) or 0) for p in overdue_payments)
+            alerts.append({
+                "type": "overdue",
+                "severity": "error",
+                "title": f"Tienes {len(overdue_payments)} pago(s) vencido(s)",
+                "message": f"Monto pendiente: ${total_overdue:,.2f}. Contacta a Maninos para evitar cargos por mora.",
+            })
+
+        # Next payment due alert
+        upcoming_sorted = sorted(upcoming_payments, key=lambda x: x.get("due_date", "9999"))
+        if upcoming_sorted:
+            next_pmt = upcoming_sorted[0]
+            due_str = next_pmt.get("due_date", "")
+            if due_str:
+                due_date = datetime.strptime(due_str, "%Y-%m-%d").date()
+                days_until = (due_date - today).days
+                if 0 <= days_until <= 7:
+                    alerts.append({
+                        "type": "upcoming",
+                        "severity": "warning",
+                        "title": "Tu próximo pago es pronto",
+                        "message": f"Pago #{next_pmt.get('payment_number', '?')} de ${float(next_pmt.get('amount', 0)):,.2f} vence el {due_str}."
+                            + (f" ({days_until} día(s))" if days_until > 0 else " (¡Hoy!)"),
+                    })
+
+        # 6. Summary
+        total_paid_amount = sum(float(p.get("paid_amount", 0) or 0) for p in paid_payments)
+        total_expected = sum(float(p.get("amount", 0)) for p in all_payments)
+        total_late_fees = sum(float(p.get("late_fee_amount", 0) or 0) for p in all_payments)
+
+        summary = {
+            "total_payments": len(all_payments),
+            "payments_made": len(paid_payments),
+            "payments_upcoming": len(upcoming_payments),
+            "payments_overdue": len(overdue_payments),
+            "total_paid": total_paid_amount,
+            "total_expected": total_expected,
+            "remaining_balance": total_expected - total_paid_amount,
+            "total_late_fees": total_late_fees,
+            "percentage_complete": round((len(paid_payments) / len(all_payments) * 100), 1) if all_payments else 0,
+        }
+
+        # Sort all payments: overdue first, then upcoming, then paid (most recent first)
+        sorted_payments = (
+            sorted(overdue_payments, key=lambda x: x.get("due_date", "")) +
+            sorted(upcoming_payments, key=lambda x: x.get("due_date", "")) +
+            sorted(paid_payments, key=lambda x: x.get("paid_date", ""), reverse=True)
+        )
+
+        return {
+            "ok": True,
+            "has_rto": True,
+            "payments": sorted_payments,
+            "alerts": alerts,
+            "summary": summary,
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting payments for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# CLIENT ACCOUNT STATEMENT (Estado de Cuenta)
+# =============================================================================
+
+@router.get("/{client_id}/account-statement")
+async def get_client_account_statement(client_id: str):
+    """
+    Full account statement for a client.
+    Shows all contracts, balances, payment history, and payment health.
+    Visible to both the client portal and Capital (for RTO approval decisions).
+    """
+    try:
+        # 1. Get client info
+        client_res = sb.table("clients") \
+            .select("id, name, email, phone, status, kyc_verified") \
+            .eq("id", client_id) \
+            .single() \
+            .execute()
+
+        if not client_res.data:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        client_info = client_res.data
+
+        # 2. Get all sales for this client
+        sales_res = sb.table("sales") \
+            .select("id, property_id, sale_price, sale_type, status, rto_contract_id, created_at, completed_at, properties(address, city, state)") \
+            .eq("client_id", client_id) \
+            .order("created_at", desc=True) \
+            .execute()
+
+        sales = sales_res.data or []
+
+        # 3. Get all RTO contracts
+        contracts_res = sb.table("rto_contracts") \
+            .select("id, status, purchase_price, down_payment, monthly_rent, term_months, start_date, end_date, interest_rate, late_fee_per_day, grace_period_days, properties(address, city, state)") \
+            .eq("client_id", client_id) \
+            .order("start_date", desc=True) \
+            .execute()
+
+        contracts = contracts_res.data or []
+
+        # 4. For each contract, get all payments and compute summary
+        contract_statements = []
+        total_owed_all = 0
+        total_paid_all = 0
+        total_late_fees_all = 0
+        total_overdue_all = 0
+        on_time_payments = 0
+        late_payments = 0
+
+        for c in contracts:
+            pmt_res = sb.table("rto_payments") \
+                .select("id, payment_number, amount, due_date, paid_date, paid_amount, status, late_fee_amount, payment_method") \
+                .eq("rto_contract_id", c["id"]) \
+                .order("payment_number") \
+                .execute()
+
+            payments = pmt_res.data or []
+            paid_pmts = [p for p in payments if p["status"] == "paid"]
+            overdue_pmts = [p for p in payments if p["status"] in ("late", "scheduled") and p.get("due_date") and p["due_date"] < date.today().isoformat()]
+
+            total_expected = sum(float(p.get("amount", 0)) for p in payments)
+            total_paid = sum(float(p.get("paid_amount", 0) or 0) for p in paid_pmts)
+            total_late_fees = sum(float(p.get("late_fee_amount", 0) or 0) for p in payments)
+            total_overdue = sum(float(p.get("amount", 0)) - float(p.get("paid_amount", 0) or 0) for p in overdue_pmts)
+
+            # Count on-time vs late
+            for p in paid_pmts:
+                if p.get("paid_date") and p.get("due_date"):
+                    grace = c.get("grace_period_days", 5)
+                    paid_d = datetime.strptime(p["paid_date"], "%Y-%m-%d").date()
+                    due_d = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+                    if paid_d <= due_d + timedelta(days=grace):
+                        on_time_payments += 1
+                    else:
+                        late_payments += 1
+
+            prop = c.get("properties") or {}
+            contract_statements.append({
+                "contract_id": c["id"],
+                "status": c["status"],
+                "property_address": prop.get("address", ""),
+                "property_city": prop.get("city", ""),
+                "purchase_price": c.get("purchase_price", 0),
+                "down_payment": c.get("down_payment", 0),
+                "monthly_rent": c.get("monthly_rent", 0),
+                "term_months": c.get("term_months", 0),
+                "interest_rate": c.get("interest_rate"),
+                "start_date": c.get("start_date"),
+                "end_date": c.get("end_date"),
+                "total_expected": total_expected,
+                "total_paid": total_paid,
+                "remaining_balance": total_expected - total_paid,
+                "total_late_fees": total_late_fees,
+                "total_overdue": total_overdue,
+                "payments_made": len(paid_pmts),
+                "payments_total": len(payments),
+                "payments_overdue": len(overdue_pmts),
+                "completion_pct": round((len(paid_pmts) / len(payments) * 100), 1) if payments else 0,
+            })
+
+            total_owed_all += total_expected
+            total_paid_all += total_paid
+            total_late_fees_all += total_late_fees
+            total_overdue_all += total_overdue
+
+        # 5. Payment health score (for Capital's RTO approval)
+        total_all_payments = on_time_payments + late_payments
+        on_time_rate = round(on_time_payments / total_all_payments * 100, 1) if total_all_payments > 0 else 100
+        health = "excellent" if on_time_rate >= 95 else "good" if on_time_rate >= 80 else "fair" if on_time_rate >= 60 else "poor"
+
+        return {
+            "ok": True,
+            "client": {
+                "id": client_info["id"],
+                "name": client_info["name"],
+                "email": client_info["email"],
+                "phone": client_info.get("phone"),
+                "kyc_verified": client_info.get("kyc_verified", False),
+            },
+            "summary": {
+                "total_contracts": len(contracts),
+                "active_contracts": len([c for c in contracts if c["status"] == "active"]),
+                "total_purchases": len(sales),
+                "total_owed": total_owed_all,
+                "total_paid": total_paid_all,
+                "remaining_balance": total_owed_all - total_paid_all,
+                "total_late_fees": total_late_fees_all,
+                "total_overdue": total_overdue_all,
+            },
+            "payment_health": {
+                "on_time_payments": on_time_payments,
+                "late_payments": late_payments,
+                "on_time_rate": on_time_rate,
+                "health_score": health,
+            },
+            "contracts": contract_statements,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting account statement for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # CLIENT KYC — called from the client portal
 # =============================================================================
 
@@ -385,6 +683,10 @@ async def client_start_kyc(client_id: str, data: ClientKYCStart):
                 detail="Servicio de verificación no disponible. Contacta soporte."
             )
 
+        # Production mode check
+        if STRIPE_SECRET_KEY.startswith("sk_test_"):
+            logger.warning("[KYC] Using Stripe TEST key — verifications will not be real. Use sk_live_ for production.")
+
         import stripe
         stripe.api_key = STRIPE_SECRET_KEY
 
@@ -392,7 +694,7 @@ async def client_start_kyc(client_id: str, data: ClientKYCStart):
         base_url = data.return_url or os.getenv("FRONTEND_URL") or os.getenv("APP_URL") or "http://localhost:3000"
         return_url = f"{base_url}/clientes/mi-cuenta/verificacion?status=complete"
 
-        # Create verification session
+        # Create verification session (production-ready — uses live or test key based on env)
         session = stripe.identity.VerificationSession.create(
             type="document",
             metadata={

@@ -316,7 +316,7 @@ export default function ClientDocumentsPage() {
               ¿Tienes preguntas sobre tus documentos?
             </p>
             <a
-              href="tel:+18327459600"
+              href="tel:+19362005200"
               className="inline-flex items-center gap-2 text-navy-900 font-medium hover:text-gold-600 transition-colors"
             >
               📞 Llámanos al (832) 745-9600

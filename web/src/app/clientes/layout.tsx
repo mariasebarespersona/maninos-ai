@@ -83,16 +83,28 @@ export default function ClientPortalLayout({
 
               <div className={`w-px h-5 mx-2 ${useTransparent ? 'bg-white/20' : 'bg-gray-200'}`} />
 
-              <a
-                href="tel:8327459600"
-                className={`px-4 py-2 rounded-full text-[13px] font-medium transition-all ${
-                  useTransparent
-                    ? 'text-white/70 hover:text-white hover:bg-white/10'
-                    : 'text-[#717171] hover:text-[#222] hover:bg-gray-50'
-                }`}
-              >
-                (832) 745-9600
-              </a>
+              <div className="relative group">
+                <button
+                  className={`px-4 py-2 rounded-full text-[13px] font-medium transition-all flex items-center gap-1 ${
+                    useTransparent
+                      ? 'text-white/70 hover:text-white hover:bg-white/10'
+                      : 'text-[#717171] hover:text-[#222] hover:bg-gray-50'
+                  }`}
+                >
+                  <Phone className="w-3.5 h-3.5" /> Oficinas
+                </button>
+                <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-200 py-2 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <a href="tel:9362005200" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
+                    <span className="font-semibold text-[#222]">Conroe</span> · (936) 200-5200
+                  </a>
+                  <a href="tel:8327459600" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
+                    <span className="font-semibold text-[#222]">Houston</span> · (832) 745-9600
+                  </a>
+                  <a href="tel:4696005200" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
+                    <span className="font-semibold text-[#222]">Dallas</span> · (469) 600-5200
+                  </a>
+                </div>
+              </div>
 
               <Link
                 href="/clientes/mi-cuenta"
@@ -145,12 +157,12 @@ export default function ClientPortalLayout({
                   <MessageCircle className="w-4 h-4" /> WhatsApp
                 </a>
                 <a
-                  href="tel:8327459600"
+                  href="tel:9362005200"
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
                     useTransparent ? 'text-white/70' : 'text-gray-500'
                   }`}
                 >
-                  <Phone className="w-4 h-4" /> (832) 745-9600
+                  <Phone className="w-4 h-4" /> Conroe: (936) 200-5200
                 </a>
               </div>
             </nav>
@@ -210,11 +222,21 @@ export default function ClientPortalLayout({
 
             {/* Contact */}
             <div>
-              <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Contacto</h4>
+              <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Oficinas</h4>
               <ul className="space-y-2.5">
                 <li>
+                  <a href="tel:9362005200" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5" /> Conroe: (936) 200-5200
+                  </a>
+                </li>
+                <li>
                   <a href="tel:8327459600" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5" /> (832) 745-9600
+                    <Phone className="w-3.5 h-3.5" /> Houston: (832) 745-9600
+                  </a>
+                </li>
+                <li>
+                  <a href="tel:4696005200" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5" /> Dallas: (469) 600-5200
                   </a>
                 </li>
                 <li>

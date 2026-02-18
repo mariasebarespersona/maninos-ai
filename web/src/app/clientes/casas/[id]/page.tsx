@@ -7,7 +7,8 @@ import {
   ArrowLeft, MapPin, Bed, Bath, Square, Calendar,
   CheckCircle, Shield, FileText, ChevronLeft, ChevronRight,
   Loader2, DollarSign, Clock, SlidersHorizontal, ArrowRight,
-  Phone, MessageCircle, Home, X, Maximize2, LayoutGrid
+  Phone, MessageCircle, Home, X, Maximize2, LayoutGrid,
+  Paintbrush, Wrench, Zap, Hammer, Sparkles, HardHat, ShieldCheck, ChevronDown
 } from 'lucide-react'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
 
@@ -182,6 +183,333 @@ function Lightbox({ photos, startIndex, onClose }: { photos: string[]; startInde
       <img src={photos[index]} alt={`Photo ${index + 1}`} className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg" />
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-black/50 text-white text-sm font-medium backdrop-blur-sm">
         {index + 1} / {photos.length}
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────
+   JUGAR CON CASA — Renovation Cost Simulator
+   ──────────────────────────────────────────────────────────────── */
+
+interface RenovationItem {
+  id: string
+  partida: number
+  concepto: string
+  precio: number
+  notas: string
+  category: string
+  icon: string
+}
+
+const RENOVATION_CATEGORIES = [
+  {
+    id: 'exterior',
+    label: 'Exterior y Estructura',
+    icon: HardHat,
+    color: '#e67e22',
+    bgColor: '#fef3e2',
+    items: ['demolicion', 'limpieza', 'techos_ext', 'siding', 'pintura_ext'],
+  },
+  {
+    id: 'interior',
+    label: 'Paredes e Interior',
+    icon: Paintbrush,
+    color: '#3498db',
+    bgColor: '#ebf5fb',
+    items: ['muros', 'cielos_int', 'textura_muros', 'pintura_int'],
+  },
+  {
+    id: 'pisos',
+    label: 'Pisos',
+    icon: Square,
+    color: '#8e44ad',
+    bgColor: '#f4ecf7',
+    items: ['pisos'],
+  },
+  {
+    id: 'cocina_banos',
+    label: 'Cocina y Baños',
+    icon: Wrench,
+    color: '#27ae60',
+    bgColor: '#eafaf1',
+    items: ['gabinetes', 'pintura_gab', 'banos', 'cocina'],
+  },
+  {
+    id: 'instalaciones',
+    label: 'Electricidad y Plomería',
+    icon: Zap,
+    color: '#f39c12',
+    bgColor: '#fef9e7',
+    items: ['electricidad', 'plomeria', 'finishing'],
+  },
+  {
+    id: 'acabados',
+    label: 'Acabados y Seguridad',
+    icon: Sparkles,
+    color: '#e74c3c',
+    bgColor: '#fdedec',
+    items: ['acabados', 'cerraduras'],
+  },
+]
+
+const ALL_RENOVATION_ITEMS: RenovationItem[] = [
+  { id: 'demolicion', partida: 1, concepto: 'Demolición y desmantelamiento', precio: 250, notas: 'Retirar materiales dañados', category: 'exterior', icon: '🔨' },
+  { id: 'limpieza', partida: 2, concepto: 'Limpieza general de obra', precio: 200, notas: 'Limpieza profunda completa', category: 'exterior', icon: '🧹' },
+  { id: 'muros', partida: 3, concepto: 'Reparación de muros', precio: 390, notas: 'Sheetrock, trim, coqueo, floteo', category: 'interior', icon: '🧱' },
+  { id: 'electricidad', partida: 4, concepto: 'Electricidad y cableado', precio: 200, notas: 'Revisión y reparación eléctrica', category: 'instalaciones', icon: '⚡' },
+  { id: 'techos_ext', partida: 5, concepto: 'Reparación de techos exteriores', precio: 390, notas: 'Conglomerado, shingles', category: 'exterior', icon: '🏠' },
+  { id: 'cielos_int', partida: 6, concepto: 'Reparación de cielos interiores', precio: 390, notas: 'Tablaroca, resanes, popcorn', category: 'interior', icon: '🔝' },
+  { id: 'textura_muros', partida: 7, concepto: 'Textura muros', precio: 390, notas: 'Texturizado de paredes', category: 'interior', icon: '🎨' },
+  { id: 'siding', partida: 8, concepto: 'Siding exterior', precio: 0, notas: 'Lámina, vynil o madera', category: 'exterior', icon: '🪵' },
+  { id: 'pisos', partida: 9, concepto: 'Pisos (plywood y acabados)', precio: 1500, notas: 'Plywood base + acabados de piso', category: 'pisos', icon: '🪵' },
+  { id: 'gabinetes', partida: 10, concepto: 'Gabinetes (cocina y baños)', precio: 1000, notas: 'Reparación de carpintería', category: 'cocina_banos', icon: '🚪' },
+  { id: 'pintura_ext', partida: 11, concepto: 'Pintura exterior', precio: 1300, notas: 'Lámina y plástico', category: 'exterior', icon: '🖌️' },
+  { id: 'pintura_int', partida: 12, concepto: 'Pintura interior y cielos', precio: 390, notas: 'Pintura completa interior', category: 'interior', icon: '🎨' },
+  { id: 'pintura_gab', partida: 13, concepto: 'Pintura de gabinetes', precio: 800, notas: 'Pintura especial gabinetes', category: 'cocina_banos', icon: '🎨' },
+  { id: 'banos', partida: 14, concepto: 'Baños completos', precio: 200, notas: 'Sanitarios, lavamanos, plomería', category: 'cocina_banos', icon: '🚿' },
+  { id: 'cocina', partida: 15, concepto: 'Cocina', precio: 200, notas: 'Formica, tarja, plomería', category: 'cocina_banos', icon: '🍳' },
+  { id: 'finishing', partida: 16, concepto: 'Lámparas, apagadores, contactos', precio: 200, notas: 'Instalación de finishing', category: 'instalaciones', icon: '💡' },
+  { id: 'plomeria', partida: 17, concepto: 'Plomería', precio: 200, notas: 'Líneas de agua, desagüe, cespol', category: 'instalaciones', icon: '🔧' },
+  { id: 'acabados', partida: 18, concepto: 'Acabados finales', precio: 200, notas: 'Retoques, limpieza fina, staging', category: 'acabados', icon: '✨' },
+  { id: 'cerraduras', partida: 19, concepto: 'Cerraduras y herrajes', precio: 200, notas: 'Chapas y herrajes nuevos', category: 'acabados', icon: '🔐' },
+]
+
+function RenovationSimulator({ salePrice }: { salePrice: number }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
+  const [showSimulator, setShowSimulator] = useState(false)
+
+  const totalReno = useMemo(() => {
+    let total = 0
+    selected.forEach(id => {
+      const item = ALL_RENOVATION_ITEMS.find(i => i.id === id)
+      if (item) total += item.precio
+    })
+    return total
+  }, [selected])
+
+  const totalInvestment = salePrice + totalReno
+
+  const toggleItem = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleCategory = (catId: string) => {
+    const cat = RENOVATION_CATEGORIES.find(c => c.id === catId)
+    if (!cat) return
+    const allSelected = cat.items.every(id => selected.has(id))
+    setSelected(prev => {
+      const next = new Set(prev)
+      cat.items.forEach(id => {
+        if (allSelected) next.delete(id)
+        else next.add(id)
+      })
+      return next
+    })
+  }
+
+  const selectAll = () => {
+    setSelected(new Set(ALL_RENOVATION_ITEMS.filter(i => i.precio > 0).map(i => i.id)))
+  }
+
+  const clearAll = () => setSelected(new Set())
+
+  const fullRenovationCost = ALL_RENOVATION_ITEMS.reduce((s, i) => s + i.precio, 0)
+  const renoPercentage = fullRenovationCost > 0 ? Math.round((totalReno / fullRenovationCost) * 100) : 0
+
+  if (!showSimulator) {
+    return (
+      <div className="py-6 border-b border-gray-200">
+        <button
+          onClick={() => setShowSimulator(true)}
+          className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#0068b7] hover:bg-[#e6f0f8]/30 transition-all duration-300"
+        >
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#0068b7] to-[#004274] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+            <Hammer className="w-7 h-7 text-white" />
+          </div>
+          <div className="text-left flex-1">
+            <h3 className="text-[17px] font-bold text-[#222] group-hover:text-[#004274] transition-colors" style={{ letterSpacing: '-0.02em' }}>
+              🎮 Jugar con tu casa
+            </h3>
+            <p className="text-[13px] text-[#717171] mt-0.5">
+              Simula renovaciones y visualiza cuánto costaría personalizar esta casa a tu gusto.
+            </p>
+          </div>
+          <ArrowRight className="w-5 h-5 text-[#b0b0b0] group-hover:text-[#004274] group-hover:translate-x-1 transition-all" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-6 border-b border-gray-200">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0068b7] to-[#004274] flex items-center justify-center">
+            <Hammer className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-[20px] font-bold text-[#222]" style={{ letterSpacing: '-0.02em' }}>🎮 Jugar con tu casa</h2>
+            <p className="text-[12px] text-[#717171]">Selecciona las renovaciones que te gustaría hacer</p>
+          </div>
+        </div>
+        <button onClick={() => setShowSimulator(false)} className="text-[#717171] hover:text-[#222] p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Sticky investment summary */}
+      <div className="bg-gradient-to-r from-[#004274] to-[#0068b7] rounded-2xl p-5 mb-5 text-white">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-[11px] text-white/70 font-medium uppercase tracking-wide">Precio casa</p>
+            <p className="text-[18px] font-bold mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              ${salePrice.toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-white/70 font-medium uppercase tracking-wide">Renovación</p>
+            <p className="text-[18px] font-bold mt-0.5" style={{ fontVariantNumeric: 'tabular-nums', color: totalReno > 0 ? '#fcd34d' : 'white' }}>
+              {totalReno > 0 ? `+$${totalReno.toLocaleString()}` : '$0'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-white/70 font-medium uppercase tracking-wide">Total inversión</p>
+            <p className="text-[22px] font-extrabold mt-0.5" style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+              ${totalInvestment.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-3">
+          <div className="flex justify-between text-[10px] text-white/60 mb-1">
+            <span>{selected.size} de {ALL_RENOVATION_ITEMS.length} partidas</span>
+            <span>{renoPercentage}% de renovación completa</span>
+          </div>
+          <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#fcd34d] rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${renoPercentage}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={selectAll}
+          className="flex-1 text-[12px] font-semibold text-[#004274] bg-[#e6f0f8] hover:bg-[#cce0f0] rounded-lg py-2 transition-colors"
+        >
+          Seleccionar todo
+        </button>
+        <button
+          onClick={clearAll}
+          className="flex-1 text-[12px] font-semibold text-[#717171] bg-gray-100 hover:bg-gray-200 rounded-lg py-2 transition-colors"
+        >
+          Limpiar
+        </button>
+      </div>
+
+      {/* Categories */}
+      <div className="space-y-2">
+        {RENOVATION_CATEGORIES.map(cat => {
+          const CatIcon = cat.icon
+          const catItems = ALL_RENOVATION_ITEMS.filter(i => cat.items.includes(i.id))
+          const selectedCount = catItems.filter(i => selected.has(i.id)).length
+          const catTotal = catItems.filter(i => selected.has(i.id)).reduce((s, i) => s + i.precio, 0)
+          const allSelected = catItems.length > 0 && catItems.every(i => selected.has(i.id))
+          const isExpanded = expandedCat === cat.id
+
+          return (
+            <div key={cat.id} className="rounded-xl border border-gray-200 overflow-hidden transition-all duration-200">
+              {/* Category header */}
+              <button
+                onClick={() => setExpandedCat(isExpanded ? null : cat.id)}
+                className="w-full flex items-center gap-3 p-3.5 hover:bg-gray-50 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cat.bgColor }}>
+                  <CatIcon className="w-4.5 h-4.5" style={{ color: cat.color }} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-[14px] font-semibold text-[#222]">{cat.label}</p>
+                  <p className="text-[11px] text-[#717171]">
+                    {selectedCount > 0 ? `${selectedCount}/${catItems.length} seleccionados` : `${catItems.length} partidas`}
+                    {catTotal > 0 && <span className="ml-1 font-semibold text-[#004274]">· +${catTotal.toLocaleString()}</span>}
+                  </p>
+                </div>
+
+                {/* Category toggle */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleCategory(cat.id) }}
+                  className={`w-10 h-6 rounded-full transition-colors duration-200 flex items-center px-0.5 flex-shrink-0 ${
+                    allSelected ? 'bg-[#0068b7]' : selectedCount > 0 ? 'bg-[#0068b7]/40' : 'bg-gray-200'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    allSelected ? 'translate-x-4' : 'translate-x-0'
+                  }`} />
+                </button>
+
+                <ChevronDown className={`w-4 h-4 text-[#b0b0b0] transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Expanded items */}
+              {isExpanded && (
+                <div className="border-t border-gray-100 bg-gray-50/50">
+                  {catItems.map(item => {
+                    const isOn = selected.has(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => toggleItem(item.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white/80 transition-colors text-left border-b border-gray-100 last:border-b-0 ${
+                          isOn ? 'bg-white' : ''
+                        }`}
+                      >
+                        <span className="text-[16px] flex-shrink-0">{item.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[13px] font-medium ${isOn ? 'text-[#222]' : 'text-[#484848]'}`}>{item.concepto}</p>
+                          <p className="text-[11px] text-[#b0b0b0]">{item.notas}</p>
+                        </div>
+                        <span className={`text-[13px] font-semibold flex-shrink-0 ${
+                          item.precio === 0 ? 'text-[#b0b0b0]' : isOn ? 'text-[#004274]' : 'text-[#717171]'
+                        }`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {item.precio > 0 ? `$${item.precio.toLocaleString()}` : 'N/A'}
+                        </span>
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150 ${
+                          isOn
+                            ? 'bg-[#0068b7] border-[#0068b7]'
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {isOn && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Bottom note */}
+      <div className="mt-5 p-4 bg-[#e6f0f8]/50 rounded-xl flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[12px] font-semibold text-[#222]">Costos de referencia</p>
+          <p className="text-[11px] text-[#717171] mt-0.5">
+            Los precios son estimados basados en nuestros proveedores. El costo final puede variar según el estado de la casa. Consulta con nuestro equipo para un presupuesto personalizado.
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -387,7 +715,7 @@ export default function PropertyDetailPage() {
                   { icon: <Shield className="w-5 h-5" />, label: 'Título limpio verificado' },
                   { icon: <FileText className="w-5 h-5" />, label: 'Documentos listos para transferencia' },
                   ...(property.is_renovated ? [{ icon: <CheckCircle className="w-5 h-5" />, label: 'Renovada: plomería, electricidad, pisos, pintura' }] : []),
-                  { icon: <DollarSign className="w-5 h-5" />, label: 'Compra al contado o financiamiento RTO' },
+                  { icon: <DollarSign className="w-5 h-5" />, label: 'Compra al contado o plan dueño a dueño RTO' },
                   { icon: <Clock className="w-5 h-5" />, label: 'Proceso rápido y transparente' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3 py-2">
@@ -399,7 +727,7 @@ export default function PropertyDetailPage() {
             </div>
 
             {/* Details */}
-            <div className="py-6">
+            <div className="py-6 border-b border-gray-200">
               <h2 className="text-[20px] font-bold text-[#222] mb-4" style={{ letterSpacing: '-0.02em' }}>Detalles de la propiedad</h2>
               <div className="grid sm:grid-cols-2 gap-x-8">
                 {[
@@ -415,6 +743,9 @@ export default function PropertyDetailPage() {
                 ))}
               </div>
             </div>
+
+            {/* Jugar con casa — Renovation Simulator */}
+            <RenovationSimulator salePrice={property.sale_price} />
           </div>
 
           {/* ────── RIGHT — SIDEBAR ────── */}
@@ -435,7 +766,7 @@ export default function PropertyDetailPage() {
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
                     <div className="relative flex justify-center text-xs">
-                      <span className="bg-white px-3 text-[#b0b0b0] text-[13px]">o simula tu financiamiento</span>
+                      <span className="bg-white px-3 text-[#b0b0b0] text-[13px]">o simula tu plan dueño a dueño RTO</span>
                     </div>
                   </div>
 
@@ -463,14 +794,14 @@ export default function PropertyDetailPage() {
                 <p className="text-[12px] text-[#b0b0b0] font-medium text-center">¿Tienes preguntas?</p>
                 <div className="flex gap-2">
                   <a
-                    href="tel:8327459600"
+                    href="tel:9362005200"
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#222] border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                   >
                     <Phone className="w-4 h-4" />
                     Llamar
                   </a>
                   <a
-                    href={`https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
+                    href={`https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-sm"
                     style={{ background: '#25d366' }}

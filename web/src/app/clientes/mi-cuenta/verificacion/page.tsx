@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   Camera,
   FileText,
-  AlertCircle,
   RefreshCw,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
@@ -49,18 +48,13 @@ export default function ClientVerificationPage() {
     }
   }, [])
 
-  // Load KYC status when client loads
   useEffect(() => {
-    if (client) {
-      loadKycStatus(client.id)
-    }
+    if (client) loadKycStatus(client.id)
   }, [client, loadKycStatus])
 
   // If returning from Stripe, automatically poll result
   useEffect(() => {
-    if (client && statusParam === 'complete') {
-      handleCheckResult()
-    }
+    if (client && statusParam === 'complete') handleCheckResult()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, statusParam])
 
@@ -71,13 +65,10 @@ export default function ClientVerificationPage() {
       const res = await fetch(`/api/public/clients/${client.id}/kyc-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          return_url: window.location.origin,
-        }),
+        body: JSON.stringify({ return_url: window.location.origin }),
       })
       const data = await res.json()
       if (data.ok && data.url) {
-        // Redirect client to Stripe Identity verification
         window.location.href = data.url
       } else if (data.already_verified) {
         toast.success('¡Tu identidad ya está verificada!')
@@ -86,7 +77,7 @@ export default function ClientVerificationPage() {
       } else {
         toast.error(data.detail || 'Error al iniciar verificación')
       }
-    } catch (err) {
+    } catch {
       toast.error('Error de conexión')
     } finally {
       setStarting(false)
@@ -97,9 +88,7 @@ export default function ClientVerificationPage() {
     if (!client) return
     setChecking(true)
     try {
-      const res = await fetch(`/api/public/clients/${client.id}/kyc-check`, {
-        method: 'POST',
-      })
+      const res = await fetch(`/api/public/clients/${client.id}/kyc-check`, { method: 'POST' })
       const data = await res.json()
       if (data.ok) {
         setKycVerified(data.verified || false)
@@ -113,7 +102,7 @@ export default function ClientVerificationPage() {
           setKycFailReason(data.message || null)
         }
       }
-    } catch (err) {
+    } catch {
       toast.error('Error al consultar estado')
     } finally {
       setChecking(false)
@@ -122,8 +111,8 @@ export default function ClientVerificationPage() {
 
   if (authLoading || kycStatus === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     )
   }
@@ -131,44 +120,46 @@ export default function ClientVerificationPage() {
   if (!client) return null
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-navy-900 text-white">
-        <div className="container mx-auto px-4 py-6">
-          <Link href="/clientes/mi-cuenta" className="inline-flex items-center gap-2 text-gray-300 hover:text-white transition-colors mb-4">
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-3xl mx-auto px-6 py-6">
+          <Link href="/clientes/mi-cuenta" className="inline-flex items-center gap-2 text-[13px] text-[#717171] hover:text-[#222] transition-colors mb-4">
             <ArrowLeft className="w-4 h-4" />
             Volver a Mi Cuenta
           </Link>
-          <h1 className="text-2xl font-bold flex items-center gap-3">
-            <ShieldCheck className="w-7 h-7 text-gold-400" />
+          <h1 className="text-[22px] font-bold text-[#222] flex items-center gap-3" style={{ letterSpacing: '-0.02em' }}>
+            <ShieldCheck className="w-6 h-6 text-[#004274]" />
             Verificación de Identidad
           </h1>
-          <p className="text-gray-300 mt-1">
-            Para completar tu solicitud de Rent-to-Own, necesitamos verificar tu identidad.
+          <p className="text-[14px] text-[#717171] mt-1">
+            Para completar tu solicitud dueño a dueño RTO, necesitamos verificar tu identidad.
           </p>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="max-w-xl mx-auto">
+
           {/* VERIFIED */}
           {kycVerified && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-green-50 p-8 text-center">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-12 h-12 text-green-600" />
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-9 h-9 text-green-600" />
                 </div>
-                <h2 className="text-2xl font-bold text-green-800 mb-2">
+                <h2 className="text-[20px] font-bold text-green-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
                   ¡Identidad Verificada!
                 </h2>
-                <p className="text-green-600">
+                <p className="text-[14px] text-green-600">
                   Tu identidad ha sido verificada exitosamente. No necesitas hacer nada más.
                 </p>
               </div>
               <div className="p-6 text-center">
                 <Link
                   href="/clientes/mi-cuenta"
-                  className="inline-flex items-center gap-2 bg-navy-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-navy-800 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
+                  style={{ background: '#004274' }}
                 >
                   Volver a Mi Cuenta
                 </Link>
@@ -176,36 +167,36 @@ export default function ClientVerificationPage() {
             </div>
           )}
 
-          {/* PENDING — waiting for Stripe to process */}
+          {/* PENDING */}
           {!kycVerified && kycStatus === 'pending' && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-amber-50 p-8 text-center">
-                <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Loader2 className="w-12 h-12 text-amber-600 animate-spin" />
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Loader2 className="w-9 h-9 text-amber-600 animate-spin" />
                 </div>
-                <h2 className="text-2xl font-bold text-amber-800 mb-2">
+                <h2 className="text-[20px] font-bold text-amber-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
                   Verificación en Proceso
                 </h2>
-                <p className="text-amber-600 mb-4">
+                <p className="text-[14px] text-amber-600 mb-4">
                   Tu verificación está siendo procesada. Esto puede tomar unos minutos.
                 </p>
                 <button
                   onClick={handleCheckResult}
                   disabled={checking}
-                  className="inline-flex items-center gap-2 bg-amber-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-amber-600 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
+                  style={{ background: '#0068b7' }}
                 >
                   {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                   Verificar Estado
                 </button>
               </div>
-
               {hasSession && (
-                <div className="p-6 border-t text-center">
-                  <p className="text-gray-500 text-sm mb-3">¿No completaste la verificación?</p>
+                <div className="p-6 border-t border-gray-100 text-center">
+                  <p className="text-[13px] text-[#717171] mb-2">¿No completaste la verificación?</p>
                   <button
                     onClick={handleStartVerification}
                     disabled={starting}
-                    className="text-navy-900 font-medium hover:underline"
+                    className="text-[13px] font-semibold text-[#004274] hover:underline"
                   >
                     Reiniciar verificación
                   </button>
@@ -216,24 +207,25 @@ export default function ClientVerificationPage() {
 
           {/* FAILED / REQUIRES INPUT */}
           {!kycVerified && (kycStatus === 'failed' || kycStatus === 'requires_input') && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-red-50 p-8 text-center">
-                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <XCircle className="w-12 h-12 text-red-600" />
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <XCircle className="w-9 h-9 text-red-600" />
                 </div>
-                <h2 className="text-2xl font-bold text-red-800 mb-2">
+                <h2 className="text-[20px] font-bold text-red-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
                   Verificación No Completada
                 </h2>
-                <p className="text-red-600 mb-2">
+                <p className="text-[14px] text-red-600 mb-2">
                   {kycFailReason || 'La verificación no se completó exitosamente.'}
                 </p>
-                <p className="text-gray-500 text-sm mb-6">
+                <p className="text-[13px] text-[#717171] mb-6">
                   Puedes intentar de nuevo. Asegúrate de tener buena iluminación y un documento válido.
                 </p>
                 <button
                   onClick={handleStartVerification}
                   disabled={starting}
-                  className="inline-flex items-center gap-2 bg-navy-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-navy-800 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
+                  style={{ background: '#004274' }}
                 >
                   {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                   Reintentar Verificación
@@ -244,67 +236,48 @@ export default function ClientVerificationPage() {
 
           {/* UNVERIFIED — ready to start */}
           {!kycVerified && kycStatus === 'unverified' && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-blue-50 p-8 text-center">
-                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="w-12 h-12 text-blue-600" />
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck className="w-9 h-9 text-[#004274]" />
                 </div>
-                <h2 className="text-2xl font-bold text-navy-900 mb-2">
+                <h2 className="text-[20px] font-bold text-[#222] mb-2" style={{ letterSpacing: '-0.02em' }}>
                   Verifica tu Identidad
                 </h2>
-                <p className="text-gray-600 mb-6">
+                <p className="text-[14px] text-[#717171] mb-6">
                   {kycRequested 
-                    ? 'Maninos Capital te ha solicitado verificar tu identidad para continuar con tu solicitud RTO.'
-                    : 'Para avanzar con tu solicitud Rent-to-Own, necesitamos verificar tu identidad.'
+                    ? 'Maninos Capital te ha solicitado verificar tu identidad para continuar con tu solicitud dueño a dueño RTO.'
+                    : 'Para avanzar con tu solicitud dueño a dueño RTO, necesitamos verificar tu identidad.'
                   }
                 </p>
                 <button
                   onClick={handleStartVerification}
                   disabled={starting}
-                  className="inline-flex items-center gap-2 bg-gold-500 text-navy-900 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gold-400 transition-colors"
+                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-[16px] transition-all hover:brightness-110"
+                  style={{ background: '#0068b7', boxShadow: '0 4px 14px rgba(0,104,183,0.3)' }}
                 >
-                  {starting ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="w-5 h-5" />
-                  )}
+                  {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
                   Verificar Mi Identidad
                 </button>
               </div>
 
               {/* How it works */}
-              <div className="p-8">
-                <h3 className="font-semibold text-navy-900 mb-4">¿Cómo funciona?</h3>
-                <div className="space-y-4">
+              <div className="p-8 border-t border-gray-100">
+                <h3 className="font-bold text-[15px] text-[#222] mb-4" style={{ letterSpacing: '-0.015em' }}>¿Cómo funciona?</h3>
+                <div className="space-y-3">
                   {[
-                    {
-                      icon: FileText,
-                      title: 'Prepara tu documento',
-                      desc: 'Licencia de conducir, pasaporte o ID estatal',
-                    },
-                    {
-                      icon: Camera,
-                      title: 'Toma una foto de tu documento',
-                      desc: 'Sigue las instrucciones en pantalla para fotografiar ambos lados',
-                    },
-                    {
-                      icon: Camera,
-                      title: 'Tómate una selfie',
-                      desc: 'Verificamos que la persona del documento eres tú',
-                    },
-                    {
-                      icon: CheckCircle,
-                      title: '¡Listo!',
-                      desc: 'La verificación se procesa automáticamente en minutos',
-                    },
+                    { icon: FileText, title: 'Prepara tu documento', desc: 'Licencia de conducir, pasaporte o ID estatal' },
+                    { icon: Camera, title: 'Toma una foto de tu documento', desc: 'Sigue las instrucciones en pantalla para fotografiar ambos lados' },
+                    { icon: Camera, title: 'Tómate una selfie', desc: 'Verificamos que la persona del documento eres tú' },
+                    { icon: CheckCircle, title: '¡Listo!', desc: 'La verificación se procesa automáticamente en minutos' },
                   ].map((step, i) => (
-                    <div key={i} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
-                      <div className="w-10 h-10 bg-gold-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <step.icon className="w-5 h-5 text-gold-700" />
+                    <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                      <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <step.icon className="w-4 h-4 text-[#004274]" />
                       </div>
                       <div>
-                        <h4 className="font-medium text-navy-900">{step.title}</h4>
-                        <p className="text-sm text-gray-500">{step.desc}</p>
+                        <h4 className="font-semibold text-[14px] text-[#222]">{step.title}</h4>
+                        <p className="text-[13px] text-[#717171]">{step.desc}</p>
                       </div>
                     </div>
                   ))}
@@ -316,8 +289,8 @@ export default function ClientVerificationPage() {
                 <div className="bg-green-50 rounded-xl p-4 flex items-start gap-3">
                   <ShieldCheck className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-medium text-green-800">Seguro y confidencial</p>
-                    <p className="text-sm text-green-700">
+                    <p className="font-semibold text-[13px] text-green-800">Seguro y confidencial</p>
+                    <p className="text-[12px] text-green-700">
                       La verificación se realiza a través de Stripe, líder mundial en pagos seguros.
                       Tu información personal está protegida y encriptada.
                     </p>
@@ -331,4 +304,3 @@ export default function ClientVerificationPage() {
     </div>
   )
 }
-

@@ -6,7 +6,8 @@ import { useInView } from '@/hooks/useInView'
 import {
   ArrowRight, CheckCircle, MessageCircle, Phone,
   Shield, Home, Wrench, FileText, Heart, Search,
-  UserPlus, CreditCard, Key, TrendingDown, MapPin, Users
+  UserPlus, CreditCard, Key, TrendingDown, MapPin, Users,
+  Play
 } from 'lucide-react'
 
 interface Stats {
@@ -46,6 +47,7 @@ export default function ClientPortalHome() {
       <Hero />
       <TrustNumbers stats={stats} />
       {featured.length > 0 && <FeaturedSection properties={featured} />}
+      <VideoSection />
       <ValueProps />
       <HowItWorks />
       <CTASection />
@@ -86,7 +88,7 @@ function Hero() {
             className="text-[15px] sm:text-[17px] mt-4 leading-relaxed opacity-0 animate-fade-in-up"
             style={{ animationDelay: '0.3s', animationFillMode: 'forwards', color: 'rgba(255,255,255,0.8)', fontFamily: "'Inter', sans-serif", letterSpacing: '-0.01em', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}
           >
-            Casas móviles listas para mudarte. Compra al contado o con financiamiento flexible.
+            Casas móviles listas para mudarte. Compra al contado o con plan dueño a dueño RTO.
           </p>
 
           <div
@@ -99,7 +101,7 @@ function Hero() {
               style={{ background: '#0068b7', boxShadow: '0 4px 14px rgba(0,104,183,0.4)', fontFamily: "'Inter', sans-serif", letterSpacing: '-0.01em' }}
             >
               <Search className="w-5 h-5" />
-              Explorar casas disponibles
+              Buscar mi casa
             </Link>
           </div>
         </div>
@@ -260,6 +262,71 @@ function FeaturedSection({ properties }: { properties: FeaturedProperty[] }) {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   VIDEOS — Informational videos (placeholders for now)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+function VideoSection() {
+  const { ref, isInView } = useInView()
+
+  const videos = [
+    {
+      title: '¿Qué es Rent-to-Own?',
+      description: 'Te explicamos cómo funciona el plan dueño a dueño paso a paso.',
+      duration: '3:45',
+    },
+    {
+      title: '¿Cómo elegir tu casa móvil?',
+      description: 'Consejos para encontrar la casa perfecta para tu familia.',
+      duration: '4:20',
+    },
+    {
+      title: 'Proceso de compra con Maninos',
+      description: 'Todo lo que necesitas saber antes de comprar.',
+      duration: '5:10',
+    },
+  ]
+
+  return (
+    <section className="py-16 sm:py-20 bg-white">
+      <div ref={ref} className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10">
+        <div className="mb-8">
+          <h2 className="text-[24px] sm:text-[28px] font-bold text-[#222]" style={{ letterSpacing: '-0.025em' }}>
+            Videos informativos
+          </h2>
+          <p className="text-[#717171] mt-1 text-[15px]">Aprende más sobre el proceso de compra</p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {videos.map((video, i) => (
+            <div
+              key={video.title}
+              className="group cursor-pointer"
+              style={{
+                opacity: isInView ? 1 : 0,
+                transform: isInView ? 'none' : 'translateY(16px)',
+                transition: `all 0.4s ease ${i * 0.08}s`,
+              }}
+            >
+              {/* Video Placeholder */}
+              <div className="aspect-video rounded-xl bg-gray-100 border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-3 group-hover:border-[#004274]/30 group-hover:bg-[#e6f0f8]/30 transition-colors mb-3">
+                <div className="w-14 h-14 rounded-full bg-[#004274]/10 flex items-center justify-center group-hover:bg-[#004274]/20 transition-colors">
+                  <Play className="w-6 h-6 text-[#004274] ml-0.5" />
+                </div>
+                <span className="text-[12px] text-[#b0b0b0] font-medium">Próximamente · {video.duration}</span>
+              </div>
+              {/* Info */}
+              <h3 className="font-semibold text-[15px] text-[#222] leading-snug" style={{ letterSpacing: '-0.01em' }}>
+                {video.title}
+              </h3>
+              <p className="text-[13px] text-[#717171] mt-0.5">{video.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    VALUE PROPS — Clean icons + text
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function ValueProps() {
@@ -269,7 +336,7 @@ function ValueProps() {
     { icon: <Home className="w-6 h-6" />, title: 'Calidad Garantizada', desc: 'Casas inspeccionadas y verificadas. Algunas completamente renovadas.' },
     { icon: <Shield className="w-6 h-6" />, title: 'Compra Segura', desc: 'Proceso transparente con documentos verificados y títulos limpios.' },
     { icon: <Heart className="w-6 h-6" />, title: 'Para Ti', desc: 'Hablamos español. Entendemos tus necesidades. Te acompañamos en cada paso.' },
-    { icon: <FileText className="w-6 h-6" />, title: 'Financiamiento', desc: 'Planes Rent-to-Own flexibles si no puedes pagar al contado.' },
+    { icon: <FileText className="w-6 h-6" />, title: 'Dueño a Dueño RTO', desc: 'Planes Rent-to-Own flexibles si no puedes pagar al contado.' },
   ]
 
   return (
@@ -323,7 +390,7 @@ function HowItWorks() {
       num: '3',
       icon: <CreditCard className="w-5 h-5" />,
       title: 'Elige cómo pagar',
-      desc: 'Paga al contado o aplica a financiamiento Rent-to-Own. Te guiamos paso a paso desde tu cuenta.',
+      desc: 'Paga al contado o aplica a nuestro plan dueño a dueño RTO. Te guiamos paso a paso desde tu cuenta.',
     },
     {
       num: '4',
@@ -381,17 +448,17 @@ function HowItWorks() {
           <p className="text-[13px] text-[#b0b0b0]">¿Prefieres hablar con alguien?</p>
           <div className="flex items-center gap-3">
             <a
-              href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa"
+              href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20una%20casa"
               target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-medium text-[#25d366] border border-[#25d366]/30 hover:bg-[#25d366]/5 transition-colors"
             >
               <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
             </a>
             <a
-              href="tel:8327459600"
+              href="tel:9362005200"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-medium text-[#717171] border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              <Phone className="w-3.5 h-3.5" /> (832) 745-9600
+              <Phone className="w-3.5 h-3.5" /> (936) 200-5200
             </a>
           </div>
         </div>
@@ -422,7 +489,7 @@ function CTASection() {
             Ver casas <ArrowRight className="w-4 h-4" />
           </Link>
           <a
-            href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa"
+            href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20una%20casa"
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-[15px] text-[#222] border border-gray-300 hover:border-gray-400 hover:shadow-sm transition-all"
           >

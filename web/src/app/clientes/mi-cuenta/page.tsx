@@ -6,6 +6,7 @@ import {
   User, Home, FileText, Clock, CheckCircle, AlertCircle,
   XCircle, LogOut, Phone, Mail, MapPin, Loader2,
   DollarSign, TrendingUp, ShieldCheck, ArrowRight, MessageCircle,
+  Bell, CreditCard, CalendarClock, AlertTriangle,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
@@ -36,6 +37,41 @@ interface Sale {
   }[]
 }
 
+interface Payment {
+  id: string
+  payment_number: number
+  amount: number
+  due_date: string
+  paid_date?: string
+  paid_amount?: number
+  payment_method?: string
+  payment_reference?: string
+  status: string
+  late_fee_amount?: number
+  rto_contract_id: string
+  property_address: string
+  property_city: string
+}
+
+interface PaymentAlert {
+  type: 'overdue' | 'upcoming'
+  severity: 'error' | 'warning'
+  title: string
+  message: string
+}
+
+interface PaymentSummary {
+  total_payments: number
+  payments_made: number
+  payments_upcoming: number
+  payments_overdue: number
+  total_paid: number
+  total_expected: number
+  remaining_balance: number
+  total_late_fees: number
+  percentage_complete: number
+}
+
 export default function ClientDashboard() {
   const { client, loading: authLoading, error: authError, signOut } = useClientAuth()
   const [sales, setSales] = useState<Sale[]>([])
@@ -43,10 +79,21 @@ export default function ClientDashboard() {
   const [kycRequested, setKycRequested] = useState(false)
   const [kycVerified, setKycVerified] = useState(false)
 
+  // Payments state
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [paymentAlerts, setPaymentAlerts] = useState<PaymentAlert[]>([])
+  const [paymentSummary, setPaymentSummary] = useState<PaymentSummary | null>(null)
+  const [hasRto, setHasRto] = useState(false)
+  const [paymentsLoading, setPaymentsLoading] = useState(true)
+
+  // Active tab for main section
+  const [activeTab, setActiveTab] = useState<'purchases' | 'payments'>('purchases')
+
   useEffect(() => {
     if (client) {
       fetchClientSales(client.id)
       fetchKycStatus(client.id)
+      fetchPayments(client.id)
     }
   }, [client])
 
@@ -70,6 +117,20 @@ export default function ClientDashboard() {
     finally { setSalesLoading(false) }
   }
 
+  const fetchPayments = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/public/clients/${clientId}/payments`)
+      const data = await res.json()
+      if (data.ok) {
+        setHasRto(data.has_rto || false)
+        setPayments(data.payments || [])
+        setPaymentAlerts(data.alerts || [])
+        setPaymentSummary(data.summary || null)
+      }
+    } catch (error) { console.error('Error fetching payments:', error) }
+    finally { setPaymentsLoading(false) }
+  }
+
   const handleLogout = async () => {
     await signOut()
     toast.info('Sesión cerrada')
@@ -91,6 +152,22 @@ export default function ClientDashboard() {
     return (
       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
         <Icon className="w-3 h-3" /> {badge.label}
+      </span>
+    )
+  }
+
+  const getPaymentStatusBadge = (status: string) => {
+    const map: Record<string, { bg: string; text: string; label: string }> = {
+      paid: { bg: 'bg-green-50', text: 'text-green-700', label: 'Pagado' },
+      scheduled: { bg: 'bg-gray-50', text: 'text-gray-600', label: 'Programado' },
+      pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pendiente' },
+      late: { bg: 'bg-red-50', text: 'text-red-700', label: 'Vencido' },
+      partial: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Parcial' },
+    }
+    const badge = map[status] || { bg: 'bg-gray-50', text: 'text-gray-600', label: status }
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${badge.bg} ${badge.text}`}>
+        {badge.label}
       </span>
     )
   }
@@ -131,10 +208,12 @@ export default function ClientDashboard() {
     )
   }
 
+  const hasActiveRtoSales = sales.some(s => s.sale_type === 'rto' && s.status !== 'cancelled')
+
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── HEADER ── Clean, light */}
+      {/* ── HEADER ── */}
       <section className="bg-white border-b border-gray-200 py-6 sm:py-8">
         <div className="max-w-6xl mx-auto px-6 sm:px-8">
           <div className="flex items-center justify-between">
@@ -162,6 +241,36 @@ export default function ClientDashboard() {
 
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-6 sm:py-8">
 
+        {/* ═══════════ ALERTS ═══════════ */}
+        {paymentAlerts.length > 0 && (
+          <div className="mb-6 space-y-3">
+            {paymentAlerts.map((alert, i) => (
+              <div
+                key={i}
+                className={`rounded-xl p-4 flex items-start gap-3 border ${
+                  alert.severity === 'error'
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-amber-50 border-amber-200'
+                }`}
+              >
+                {alert.severity === 'error' ? (
+                  <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <Bell className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <h3 className={`font-bold text-[14px] ${alert.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`} style={{ letterSpacing: '-0.015em' }}>
+                    {alert.title}
+                  </h3>
+                  <p className={`text-[13px] mt-0.5 ${alert.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                    {alert.message}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ═══════════ KYC BANNER ═══════════ */}
         {kycRequested && !kycVerified && (
           <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -184,106 +293,266 @@ export default function ClientDashboard() {
 
         <div className="grid lg:grid-cols-3 gap-6">
 
-          {/* ═══════════ MAIN — Purchases ═══════════ */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                <Home className="w-5 h-5 text-[#717171]" />
-                <h2 className="font-bold text-[16px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>Mis Compras</h2>
+          {/* ═══════════ MAIN CONTENT ═══════════ */}
+          <div className="lg:col-span-2 space-y-6">
+
+            {/* Tabs */}
+            {hasActiveRtoSales && (
+              <div className="flex gap-1 bg-white rounded-xl border border-gray-200 p-1">
+                <button
+                  onClick={() => setActiveTab('purchases')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[14px] font-semibold transition-colors ${
+                    activeTab === 'purchases'
+                      ? 'bg-[#004274] text-white'
+                      : 'text-[#717171] hover:text-[#222] hover:bg-gray-50'
+                  }`}
+                >
+                  <Home className="w-4 h-4" /> Mis Compras
+                </button>
+                <button
+                  onClick={() => setActiveTab('payments')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[14px] font-semibold transition-colors relative ${
+                    activeTab === 'payments'
+                      ? 'bg-[#004274] text-white'
+                      : 'text-[#717171] hover:text-[#222] hover:bg-gray-50'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4" /> Mis Pagos
+                  {paymentAlerts.some(a => a.severity === 'error') && (
+                    <span className="absolute top-1.5 right-3 w-2 h-2 rounded-full bg-red-500" />
+                  )}
+                </button>
               </div>
+            )}
 
-              {sales.length === 0 ? (
-                <div className="p-10 text-center">
-                  <Home className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                  <h3 className="font-bold text-[16px] text-[#222] mb-1" style={{ letterSpacing: '-0.015em' }}>No tienes compras aún</h3>
-                  <p className="text-[14px] text-[#717171] mb-4">Explora nuestro catálogo y encuentra tu casa ideal</p>
-                  <Link href="/clientes/casas" className="text-[13px] font-semibold text-[#004274] hover:underline inline-flex items-center gap-1">
-                    Ver casas disponibles <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+            {/* Purchases Tab */}
+            {activeTab === 'purchases' && (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <Home className="w-5 h-5 text-[#717171]" />
+                  <h2 className="font-bold text-[16px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>Mis Compras</h2>
                 </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {sales.map(sale => (
-                    <div key={sale.id} className="p-5">
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        {/* Photo */}
-                        <div className="w-full sm:w-24 h-36 sm:h-24 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                          {sale.properties?.photos?.[0] ? (
-                            <img src={sale.properties.photos[0]} alt={sale.properties.address} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center"><Home className="w-8 h-8 text-gray-300" /></div>
-                          )}
-                        </div>
 
-                        {/* Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <div className="min-w-0">
-                              <h3 className="font-semibold text-[14px] text-[#222] truncate" style={{ letterSpacing: '-0.01em' }}>{sale.properties?.address}</h3>
-                              <p className="text-[12px] text-[#717171] flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                {sale.properties?.city || 'Texas'}, {sale.properties?.state || 'TX'}
-                              </p>
+                {sales.length === 0 ? (
+                  <div className="p-10 text-center">
+                    <Home className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                    <h3 className="font-bold text-[16px] text-[#222] mb-1" style={{ letterSpacing: '-0.015em' }}>No tienes compras aún</h3>
+                    <p className="text-[14px] text-[#717171] mb-4">Explora nuestro catálogo y encuentra tu casa ideal</p>
+                    <Link href="/clientes/casas" className="text-[13px] font-semibold text-[#004274] hover:underline inline-flex items-center gap-1">
+                      Ver casas disponibles <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {sales.map(sale => (
+                      <div key={sale.id} className="p-5">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          {/* Photo */}
+                          <div className="w-full sm:w-24 h-36 sm:h-24 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                            {sale.properties?.photos?.[0] ? (
+                              <img src={sale.properties.photos[0]} alt={sale.properties.address} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center"><Home className="w-8 h-8 text-gray-300" /></div>
+                            )}
+                          </div>
+
+                          {/* Details */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <div className="min-w-0">
+                                <h3 className="font-semibold text-[14px] text-[#222] truncate" style={{ letterSpacing: '-0.01em' }}>{sale.properties?.address}</h3>
+                                <p className="text-[12px] text-[#717171] flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {sale.properties?.city || 'Texas'}, {sale.properties?.state || 'TX'}
+                                </p>
+                              </div>
+                              {getStatusBadge(sale)}
                             </div>
-                            {getStatusBadge(sale)}
-                          </div>
 
-                          <div className="flex items-center gap-4 text-[13px] mt-2 flex-wrap">
-                            <span className="text-[#717171]">Precio: <strong className="text-[#222] font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.sale_price?.toLocaleString()}</strong></span>
-                            <span className="text-[#717171]">Tipo: <strong className={`font-semibold ${sale.sale_type === 'rto' ? 'text-[#004274]' : 'text-green-600'}`}>{sale.sale_type === 'rto' ? 'RTO' : 'Contado'}</strong></span>
-                            <span className="text-[#b0b0b0] text-[12px]">{new Date(sale.completed_at || sale.created_at).toLocaleDateString()}</span>
-                          </div>
+                            <div className="flex items-center gap-4 text-[13px] mt-2 flex-wrap">
+                              <span className="text-[#717171]">Precio: <strong className="text-[#222] font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.sale_price?.toLocaleString()}</strong></span>
+                              <span className="text-[#717171]">Tipo: <strong className={`font-semibold ${sale.sale_type === 'rto' ? 'text-[#004274]' : 'text-green-600'}`}>{sale.sale_type === 'rto' ? 'Dueño a dueño RTO' : 'Contado'}</strong></span>
+                              <span className="text-[#b0b0b0] text-[12px]">{new Date(sale.completed_at || sale.created_at).toLocaleDateString()}</span>
+                            </div>
 
-                          {/* Denial message */}
-                          {sale.status === 'cancelled' && (
-                            <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-100">
-                              <div className="flex items-start gap-2">
-                                <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                                <div>
-                                  <p className="font-semibold text-[13px] text-red-700">Solicitud denegada</p>
-                                  <p className="text-[12px] text-red-600 mt-0.5">{sale.rto_notes || 'Tu solicitud no fue aprobada.'}</p>
-                                  <Link href="/clientes/casas" className="text-[12px] font-medium text-red-700 underline mt-1 inline-block">
-                                    Ver casas disponibles
-                                  </Link>
+                            {/* Denial message */}
+                            {sale.status === 'cancelled' && (
+                              <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-100">
+                                <div className="flex items-start gap-2">
+                                  <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                  <div>
+                                    <p className="font-semibold text-[13px] text-red-700">Solicitud denegada</p>
+                                    <p className="text-[12px] text-red-600 mt-0.5">{sale.rto_notes || 'Tu solicitud no fue aprobada.'}</p>
+                                    <Link href="/clientes/casas" className="text-[12px] font-medium text-red-700 underline mt-1 inline-block">
+                                      Ver casas disponibles
+                                    </Link>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                            )}
 
-                          {/* RTO info */}
-                          {sale.sale_type === 'rto' && sale.rto_monthly_payment && sale.status !== 'cancelled' && (
-                            <div className="mt-3 p-3 rounded-lg bg-blue-50 flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-[14px]">
-                                <DollarSign className="w-4 h-4 text-[#004274]" />
-                                <span className="text-[#484848]">Mensual:</span>
-                                <span className="font-semibold text-[#004274]" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.rto_monthly_payment?.toLocaleString()}/mes</span>
+                            {/* RTO info */}
+                            {sale.sale_type === 'rto' && sale.rto_monthly_payment && sale.status !== 'cancelled' && (
+                              <div className="mt-3 p-3 rounded-lg bg-blue-50 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-[14px]">
+                                  <DollarSign className="w-4 h-4 text-[#004274]" />
+                                  <span className="text-[#484848]">Mensual:</span>
+                                  <span className="font-semibold text-[#004274]" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.rto_monthly_payment?.toLocaleString()}/mes</span>
+                                </div>
+                                {sale.rto_term_months && <span className="text-[12px] text-[#717171]">{sale.rto_term_months} meses</span>}
                               </div>
-                              {sale.rto_term_months && <span className="text-[12px] text-[#717171]">{sale.rto_term_months} meses</span>}
-                            </div>
-                          )}
+                            )}
 
-                          {/* Links */}
-                          {sale.status !== 'cancelled' && (
-                            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 flex-wrap">
-                              {sale.sale_type === 'rto' && (
-                                <Link href={`/clientes/mi-cuenta/rto/${sale.id}`} className="text-[12px] font-semibold text-[#004274] hover:underline flex items-center gap-1">
-                                  <TrendingUp className="w-3.5 h-3.5" /> Ver contrato RTO
-                                </Link>
-                              )}
-                              {sale.status === 'paid' && (
-                                <Link href={`/clientes/mi-cuenta/documentos?sale=${sale.id}`} className="text-[12px] font-semibold text-[#717171] hover:underline flex items-center gap-1">
-                                  <FileText className="w-3.5 h-3.5" /> Ver documentos
-                                </Link>
-                              )}
-                            </div>
-                          )}
+                            {/* Links */}
+                            {sale.status !== 'cancelled' && (
+                              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 flex-wrap">
+                                {sale.sale_type === 'rto' && (
+                                  <Link href={`/clientes/mi-cuenta/rto/${sale.id}`} className="text-[12px] font-semibold text-[#004274] hover:underline flex items-center gap-1">
+                                    <TrendingUp className="w-3.5 h-3.5" /> Ver contrato RTO
+                                  </Link>
+                                )}
+                                {sale.status === 'paid' && (
+                                  <Link href={`/clientes/mi-cuenta/documentos?sale=${sale.id}`} className="text-[12px] font-semibold text-[#717171] hover:underline flex items-center gap-1">
+                                    <FileText className="w-3.5 h-3.5" /> Ver documentos
+                                  </Link>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Payments Tab */}
+            {activeTab === 'payments' && (
+              <div className="space-y-6">
+
+                {/* Payment Summary */}
+                {paymentSummary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white rounded-xl border border-gray-200 p-4">
+                      <p className="text-[12px] text-[#717171] mb-1">Total pagado</p>
+                      <p className="text-[18px] font-bold text-green-600" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        ${paymentSummary.total_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
                     </div>
-                  ))}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4">
+                      <p className="text-[12px] text-[#717171] mb-1">Saldo pendiente</p>
+                      <p className="text-[18px] font-bold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        ${paymentSummary.remaining_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 p-4">
+                      <p className="text-[12px] text-[#717171] mb-1">Pagos realizados</p>
+                      <p className="text-[18px] font-bold text-[#004274]">
+                        {paymentSummary.payments_made}/{paymentSummary.total_payments}
+                      </p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 p-4">
+                      <p className="text-[12px] text-[#717171] mb-1">Progreso</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[18px] font-bold text-[#004274]">{paymentSummary.percentage_complete}%</p>
+                      </div>
+                      <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#004274] rounded-full transition-all duration-500"
+                          style={{ width: `${paymentSummary.percentage_complete}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment List */}
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-[#717171]" />
+                    <h2 className="font-bold text-[16px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>Historial de Pagos</h2>
+                  </div>
+
+                  {paymentsLoading ? (
+                    <div className="p-10 text-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-300 mx-auto" />
+                    </div>
+                  ) : !hasRto ? (
+                    <div className="p-10 text-center">
+                      <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                      <h3 className="font-bold text-[16px] text-[#222] mb-1">Sin pagos programados</h3>
+                      <p className="text-[14px] text-[#717171]">Cuando tengas un contrato dueño a dueño RTO activo, tus pagos aparecerán aquí.</p>
+                    </div>
+                  ) : payments.length === 0 ? (
+                    <div className="p-10 text-center">
+                      <CheckCircle className="w-10 h-10 text-green-300 mx-auto mb-3" />
+                      <h3 className="font-bold text-[16px] text-[#222] mb-1">¡Todo al día!</h3>
+                      <p className="text-[14px] text-[#717171]">No tienes pagos pendientes.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {payments.slice(0, 20).map(pmt => {
+                        const isOverdue = pmt.status === 'late' || (pmt.status === 'scheduled' && pmt.due_date && new Date(pmt.due_date) < new Date())
+                        return (
+                          <div key={pmt.id} className={`px-5 py-4 ${isOverdue ? 'bg-red-50/50' : ''}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                  pmt.status === 'paid' ? 'bg-green-100' :
+                                  isOverdue ? 'bg-red-100' :
+                                  'bg-gray-100'
+                                }`}>
+                                  {pmt.status === 'paid' ? (
+                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                  ) : isOverdue ? (
+                                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                                  ) : (
+                                    <CalendarClock className="w-4 h-4 text-gray-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-semibold text-[14px] text-[#222]" style={{ letterSpacing: '-0.01em' }}>
+                                      Pago #{pmt.payment_number}
+                                    </p>
+                                    {getPaymentStatusBadge(isOverdue && pmt.status !== 'paid' ? 'late' : pmt.status)}
+                                  </div>
+                                  <p className="text-[12px] text-[#717171] truncate">
+                                    {pmt.property_address && `${pmt.property_address}, `}{pmt.property_city || ''}
+                                    {pmt.due_date && ` · Vence: ${new Date(pmt.due_date).toLocaleDateString('es-MX')}`}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="font-bold text-[15px] text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  ${pmt.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                {pmt.status === 'paid' && pmt.paid_date && (
+                                  <p className="text-[11px] text-green-600">
+                                    Pagado {new Date(pmt.paid_date).toLocaleDateString('es-MX')}
+                                  </p>
+                                )}
+                                {pmt.late_fee_amount && pmt.late_fee_amount > 0 && (
+                                  <p className="text-[11px] text-red-500">
+                                    + ${pmt.late_fee_amount.toLocaleString()} mora
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {payments.length > 20 && (
+                        <div className="px-5 py-3 text-center">
+                          <p className="text-[12px] text-[#717171]">Mostrando los primeros 20 pagos de {payments.length} totales.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* ═══════════ SIDEBAR ═══════════ */}
@@ -313,13 +582,13 @@ export default function ClientDashboard() {
               <p className="text-[12px] text-[#717171] mb-4">Estamos aquí para ayudarte.</p>
               <div className="space-y-2">
                 <a
-                  href="tel:+18327459600"
+                  href="tel:+19362005200"
                   className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-[13px] font-semibold text-[#222] border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
-                  <Phone className="w-4 h-4" /> (832) 745-9600
+                  <Phone className="w-4 h-4" /> Conroe: (936) 200-5200
                 </a>
                 <a
-                  href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Tengo%20una%20pregunta"
+                  href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Tengo%20una%20pregunta"
                   target="_blank" rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-[13px] font-semibold text-white transition-colors"
                   style={{ background: '#25d366' }}
@@ -335,6 +604,7 @@ export default function ClientDashboard() {
               <div className="space-y-1">
                 {[
                   { href: '/clientes/casas', icon: Home, label: 'Ver más casas' },
+                  { href: '/clientes/mi-cuenta/estado-de-cuenta', icon: DollarSign, label: 'Estado de cuenta' },
                   { href: '/clientes/mi-cuenta/documentos', icon: FileText, label: 'Mis documentos' },
                 ].map(link => (
                   <Link
