@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, Loader2, DollarSign, TrendingUp, AlertTriangle,
   CheckCircle, Clock, FileText, Home, CreditCard, BarChart3,
+  AlertCircle, ShoppingBag,
 } from 'lucide-react'
 import { useClientAuth } from '@/hooks/useClientAuth'
 
@@ -68,37 +69,149 @@ const healthConfig = {
 }
 
 export default function AccountStatementPage() {
-  const { client, loading: authLoading } = useClientAuth()
+  const { client, loading: authLoading, error: authError } = useClientAuth()
   const [statement, setStatement] = useState<AccountStatement | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (authLoading) return
     if (client) {
       fetchStatement(client.id)
+    } else {
+      // No client found — stop loading
+      setLoading(false)
     }
-  }, [client])
+  }, [client, authLoading])
 
   const fetchStatement = async (clientId: string) => {
     try {
       const res = await fetch(`/api/public/clients/${clientId}/account-statement`)
       const data = await res.json()
-      if (data.ok) setStatement(data)
+      if (data.ok) {
+        setStatement(data)
+      } else {
+        setFetchError(data.error || 'No se pudo cargar el estado de cuenta')
+      }
     } catch (err) {
       console.error('Error fetching account statement:', err)
+      setFetchError('Error de conexión al cargar el estado de cuenta')
     } finally {
       setLoading(false)
     }
   }
 
+  // Loading states
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        <p className="text-[13px] text-[#717171]">Cargando estado de cuenta…</p>
       </div>
     )
   }
 
-  if (!client || !statement) return null
+  // Auth error — no client record
+  if (!client) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-6 py-6">
+            <Link href="/clientes/mi-cuenta" className="inline-flex items-center gap-2 text-[13px] text-[#717171] hover:text-[#222] transition-colors mb-4">
+              <ArrowLeft className="w-4 h-4" />
+              Volver a Mi Cuenta
+            </Link>
+            <h1 className="text-[22px] font-bold text-[#222] flex items-center gap-3" style={{ letterSpacing: '-0.02em' }}>
+              <FileText className="w-6 h-6 text-[#004274]" />
+              Estado de Cuenta
+            </h1>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+            <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+            <h3 className="font-bold text-[18px] text-[#222] mb-2">No encontramos tu cuenta</h3>
+            <p className="text-[14px] text-[#717171] mb-6">
+              {authError || 'Necesitas tener una cuenta de cliente para ver tu estado de cuenta.'}
+            </p>
+            <Link href="/clientes/casas" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#004274] text-white font-semibold text-[14px] hover:bg-[#00233d] transition-colors">
+              <Home className="w-4 h-4" />
+              Ver casas disponibles
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Fetch error
+  if (fetchError && !statement) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-6 py-6">
+            <Link href="/clientes/mi-cuenta" className="inline-flex items-center gap-2 text-[13px] text-[#717171] hover:text-[#222] transition-colors mb-4">
+              <ArrowLeft className="w-4 h-4" />
+              Volver a Mi Cuenta
+            </Link>
+            <h1 className="text-[22px] font-bold text-[#222] flex items-center gap-3" style={{ letterSpacing: '-0.02em' }}>
+              <FileText className="w-6 h-6 text-[#004274]" />
+              Estado de Cuenta
+            </h1>
+            <p className="text-[14px] text-[#717171] mt-1">{client.name} · {client.email}</p>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+            <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h3 className="font-bold text-[18px] text-[#222] mb-2">Error al cargar</h3>
+            <p className="text-[14px] text-[#717171] mb-6">{fetchError}</p>
+            <button
+              onClick={() => { setFetchError(null); setLoading(true); fetchStatement(client.id) }}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#222] text-white font-semibold text-[14px] hover:bg-black transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Empty state — client exists but no contracts/statement data
+  if (!statement) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-6 py-6">
+            <Link href="/clientes/mi-cuenta" className="inline-flex items-center gap-2 text-[13px] text-[#717171] hover:text-[#222] transition-colors mb-4">
+              <ArrowLeft className="w-4 h-4" />
+              Volver a Mi Cuenta
+            </Link>
+            <h1 className="text-[22px] font-bold text-[#222] flex items-center gap-3" style={{ letterSpacing: '-0.02em' }}>
+              <FileText className="w-6 h-6 text-[#004274]" />
+              Estado de Cuenta
+            </h1>
+            <p className="text-[14px] text-[#717171] mt-1">{client.name} · {client.email}</p>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+            <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="font-bold text-[18px] text-[#222] mb-2">Sin movimientos aún</h3>
+            <p className="text-[14px] text-[#717171] mb-6">
+              Cuando compres una casa o tengas un contrato dueño a dueño RTO,<br className="hidden sm:inline" />
+              tu estado de cuenta aparecerá aquí con todos los detalles.
+            </p>
+            <Link href="/clientes/casas" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#004274] text-white font-semibold text-[14px] hover:bg-[#00233d] transition-colors">
+              <Home className="w-4 h-4" />
+              Explorar casas
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const s = statement.summary
   const h = statement.payment_health

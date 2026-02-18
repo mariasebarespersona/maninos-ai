@@ -275,10 +275,11 @@ const ALL_RENOVATION_ITEMS: RenovationItem[] = [
   { id: 'cerraduras', partida: 19, concepto: 'Cerraduras y herrajes', precio: 200, notas: 'Chapas y herrajes nuevos', category: 'acabados', icon: '🔐' },
 ]
 
-function RenovationSimulator({ salePrice }: { salePrice: number }) {
+function RenovationSimulator({ salePrice, isRenovated }: { salePrice: number; isRenovated: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
-  const [showSimulator, setShowSimulator] = useState(false)
+  // Start expanded by default so users can see it immediately
+  const [showSimulator, setShowSimulator] = useState(true)
 
   const totalReno = useMemo(() => {
     let total = 0
@@ -328,9 +329,9 @@ function RenovationSimulator({ salePrice }: { salePrice: number }) {
       <div className="py-6 border-b border-gray-200">
         <button
           onClick={() => setShowSimulator(true)}
-          className="w-full group flex items-center gap-4 p-5 rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#0068b7] hover:bg-[#e6f0f8]/30 transition-all duration-300"
+          className="w-full group flex items-center gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#e6f0f8] to-[#f0f7ff] border border-[#0068b7]/20 hover:border-[#0068b7]/50 hover:shadow-lg transition-all duration-300"
         >
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#0068b7] to-[#004274] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#0068b7] to-[#004274] flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform shadow-md">
             <Hammer className="w-7 h-7 text-white" />
           </div>
           <div className="text-left flex-1">
@@ -338,10 +339,16 @@ function RenovationSimulator({ salePrice }: { salePrice: number }) {
               🎮 Jugar con tu casa
             </h3>
             <p className="text-[13px] text-[#717171] mt-0.5">
-              Simula renovaciones y visualiza cuánto costaría personalizar esta casa a tu gusto.
+              {isRenovated
+                ? 'Esta casa ya está renovada. ¿Quieres ver cuánto costaron las mejoras?'
+                : 'Simula renovaciones y visualiza cuánto costaría personalizar esta casa a tu gusto.'
+              }
             </p>
           </div>
-          <ArrowRight className="w-5 h-5 text-[#b0b0b0] group-hover:text-[#004274] group-hover:translate-x-1 transition-all" />
+          <div className="flex items-center gap-1 text-[#0068b7] font-semibold text-[13px] whitespace-nowrap">
+            <span className="hidden sm:inline">Abrir</span>
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-all" />
+          </div>
         </button>
       </div>
     )
@@ -745,7 +752,7 @@ export default function PropertyDetailPage() {
             </div>
 
             {/* Jugar con casa — Renovation Simulator */}
-            <RenovationSimulator salePrice={property.sale_price} />
+            <RenovationSimulator salePrice={property.sale_price} isRenovated={property.is_renovated} />
           </div>
 
           {/* ────── RIGHT — SIDEBAR ────── */}
