@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { useInView } from '@/hooks/useInView'
 import {
   Search, MapPin, Bed, Bath, Square, X,
   SlidersHorizontal, ChevronDown, Home, Heart, RefreshCw
@@ -325,20 +324,10 @@ function EmptyState({ hasActiveFilters, onClear }: { hasActiveFilters: boolean; 
 }
 
 function PropertyGrid({ properties }: { properties: Property[] }) {
-  const { ref, isInView } = useInView({ rootMargin: '0px 0px -40px 0px' })
   return (
-    <div ref={ref} className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
-      {properties.map((property, i) => (
-        <div
-          key={property.id}
-          style={{
-            opacity: isInView ? 1 : 0,
-            transform: isInView ? 'none' : 'translateY(16px)',
-            transition: `all 0.4s ease ${(i % 8) * 0.04}s`,
-          }}
-        >
-          <PropertyCard property={property} />
-        </div>
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10">
+      {properties.map((property) => (
+        <PropertyCard key={property.id} property={property} />
       ))}
     </div>
   )
