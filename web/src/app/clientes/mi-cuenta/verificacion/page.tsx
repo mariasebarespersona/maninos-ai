@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   ShieldCheck,
   Loader2,
@@ -12,17 +13,14 @@ import {
   ArrowLeft,
   Camera,
   FileText,
-  RefreshCw,
+  Upload,
+  X,
+  User,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
 
-/* ───── Sumsub Web SDK type (loaded dynamically via <script>) ───── */
-declare global {
-  interface Window {
-    snsWebSdk: any
-  }
-}
+type IdType = 'drivers_license' | 'passport' | 'state_id'
 
 export default function ClientVerificationPage() {
   const { client, loading: authLoading } = useClientAuth()
@@ -31,14 +29,23 @@ export default function ClientVerificationPage() {
   const [kycVerified, setKycVerified] = useState(false)
   const [kycRequested, setKycRequested] = useState(false)
   const [kycFailReason, setKycFailReason] = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const [showSdk, setShowSdk] = useState(false)
-  const [sdkReady, setSdkReady] = useState(false)
-  const sdkContainerRef = useRef<HTMLDivElement>(null)
-  const sdkInstanceRef = useRef<any>(null)
+  const [hasDocuments, setHasDocuments] = useState(false)
 
-  /* ─── Load KYC status from backend ─── */
+  // Upload state
+  const [idType, setIdType] = useState<IdType>('drivers_license')
+  const [idFront, setIdFront] = useState<File | null>(null)
+  const [idBack, setIdBack] = useState<File | null>(null)
+  const [selfie, setSelfie] = useState<File | null>(null)
+  const [idFrontPreview, setIdFrontPreview] = useState<string | null>(null)
+  const [idBackPreview, setIdBackPreview] = useState<string | null>(null)
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const idFrontRef = useRef<HTMLInputElement>(null)
+  const idBackRef = useRef<HTMLInputElement>(null)
+  const selfieRef = useRef<HTMLInputElement>(null)
+
+  /* ─── Load KYC status ─── */
   const loadKycStatus = useCallback(async (clientId: string) => {
     try {
       const res = await fetch(`/api/public/clients/${clientId}/kyc-status`)
@@ -48,6 +55,7 @@ export default function ClientVerificationPage() {
         setKycStatus(data.kyc_status || 'unverified')
         setKycRequested(data.kyc_requested || false)
         setKycFailReason(data.kyc_failure_reason || null)
+        setHasDocuments(data.has_documents || false)
       }
     } catch (err) {
       console.error('Error loading KYC status:', err)
@@ -59,130 +67,85 @@ export default function ClientVerificationPage() {
     if (client) loadKycStatus(client.id)
   }, [client, loadKycStatus])
 
-  /* ─── Load Sumsub Web SDK script dynamically ─── */
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (window.snsWebSdk) {
-      setSdkReady(true)
+  /* ─── File selection ─── */
+  const handleFileSelect = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (f: File | null) => void,
+    previewSetter: (url: string | null) => void
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Solo se permiten imágenes JPG, PNG o WebP')
       return
     }
-    const script = document.createElement('script')
-    script.src = 'https://static.sumsub.com/idensic/static/sns-websdk-builder.js'
-    script.async = true
-    script.onload = () => setSdkReady(true)
-    script.onerror = () => {
-      console.error('Failed to load Sumsub Web SDK')
-      toast.error('Error cargando el servicio de verificación')
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('La imagen es demasiado grande (máx 10MB)')
+      return
     }
-    document.head.appendChild(script)
-  }, [])
 
-  /* ─── Start verification → get token → launch SDK ─── */
-  const handleStartVerification = async () => {
+    setter(file)
+    const url = URL.createObjectURL(file)
+    previewSetter(url)
+  }
+
+  const clearFile = (
+    setter: (f: File | null) => void,
+    previewSetter: (url: string | null) => void,
+    preview: string | null
+  ) => {
+    setter(null)
+    if (preview) URL.revokeObjectURL(preview)
+    previewSetter(null)
+  }
+
+  /* ─── Submit documents ─── */
+  const handleSubmit = async () => {
     if (!client) return
-    setStarting(true)
+
+    if (!idFront) {
+      toast.error('Sube una foto del frente de tu identificación')
+      return
+    }
+    if (!selfie) {
+      toast.error('Sube una selfie')
+      return
+    }
+
+    setUploading(true)
     try {
-      const res = await fetch(`/api/public/clients/${client.id}/kyc-start`, {
+      const formData = new FormData()
+      formData.append('id_front', idFront)
+      if (idBack) formData.append('id_back', idBack)
+      formData.append('selfie', selfie)
+      formData.append('id_type', idType)
+
+      const res = await fetch(`/api/public/clients/${client.id}/kyc-upload`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ return_url: window.location.origin }),
+        body: formData,
       })
       const data = await res.json()
 
-      if (data.ok && data.access_token) {
-        setShowSdk(true)
-        // Wait a tick for the container div to render
-        setTimeout(() => launchSumsubSdk(data.access_token), 150)
-      } else if (data.already_verified) {
-        toast.success('¡Tu identidad ya está verificada!')
-        setKycVerified(true)
-        setKycStatus('verified')
-      } else {
-        toast.error(data.detail || 'Error al iniciar verificación')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  /* ─── Initialize the Sumsub Web SDK ─── */
-  const launchSumsubSdk = (accessToken: string) => {
-    if (!window.snsWebSdk || !sdkContainerRef.current || !client) return
-
-    // Destroy previous instance if any
-    if (sdkInstanceRef.current) {
-      try { sdkInstanceRef.current.destroy() } catch { /* ignore */ }
-    }
-
-    const clientId = client.id
-
-    const snsWebSdkInstance = window.snsWebSdk
-      .init(accessToken, () => {
-        // Token expiration handler — refresh from our backend
-        return fetch(`/api/public/clients/${clientId}/kyc-refresh-token`, {
-          method: 'POST',
-        })
-          .then((res: Response) => res.json())
-          .then((data: { access_token: string }) => data.access_token)
-      })
-      .withConf({
-        lang: 'es',
-        theme: 'light',
-      })
-      .withOptions({
-        addViewportTag: false,
-        adaptIframeHeight: true,
-      })
-      .on('idCheck.onStepCompleted', (payload: any) => {
-        console.log('[Sumsub] Step completed:', payload)
-      })
-      .on('idCheck.onError', (error: any) => {
-        console.error('[Sumsub] Error:', error)
-        toast.error('Error durante la verificación')
-      })
-      .on('idCheck.onApplicantStatusChanged', (payload: any) => {
-        console.log('[Sumsub] Status changed:', payload)
-        // When Sumsub reports final status, poll our backend
-        if (payload?.reviewStatus === 'completed') {
-          handleCheckResult()
-        }
-      })
-      .build()
-
-    snsWebSdkInstance.launch('#sumsub-websdk-container')
-    sdkInstanceRef.current = snsWebSdkInstance
-  }
-
-  /* ─── Poll backend for verification result ─── */
-  const handleCheckResult = async () => {
-    if (!client) return
-    setChecking(true)
-    try {
-      const res = await fetch(`/api/public/clients/${client.id}/kyc-check`, { method: 'POST' })
-      const data = await res.json()
       if (data.ok) {
-        setKycVerified(data.verified || false)
-        setKycStatus(data.status || 'pending')
-        if (data.verified) {
-          toast.success('✅ ¡Tu identidad ha sido verificada!')
-          setShowSdk(false)
-        } else if (data.status === 'pending') {
-          toast.info('⏳ Tu verificación está siendo procesada...')
-        } else if (data.status === 'requires_input') {
-          toast.error('La verificación necesita reintento')
-          setKycFailReason(data.message || null)
-        } else if (data.status === 'failed') {
-          toast.error(data.message || 'Verificación rechazada')
-          setKycFailReason(data.message || null)
-          setShowSdk(false)
-        }
+        toast.success('¡Documentos enviados! Te avisaremos cuando sean revisados.')
+        setKycStatus('pending_review')
+        setHasDocuments(true)
+        // Clear files
+        setIdFront(null)
+        setIdBack(null)
+        setSelfie(null)
+        setIdFrontPreview(null)
+        setIdBackPreview(null)
+        setSelfiePreview(null)
+      } else {
+        toast.error(data.error || data.detail || 'Error al enviar documentos')
       }
     } catch {
-      toast.error('Error al consultar estado')
+      toast.error('Error de conexión al enviar documentos')
     } finally {
-      setChecking(false)
+      setUploading(false)
     }
   }
 
@@ -196,6 +159,8 @@ export default function ClientVerificationPage() {
   }
 
   if (!client) return null
+
+  const canUpload = !kycVerified && (kycStatus === 'unverified' || kycStatus === 'failed' || kycStatus === 'requires_input')
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -219,32 +184,8 @@ export default function ClientVerificationPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="max-w-xl mx-auto">
 
-          {/* ═══════════ SUMSUB WEB SDK CONTAINER ═══════════ */}
-          {showSdk && (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="font-bold text-[16px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>
-                  Verificación en Curso
-                </h2>
-                <button
-                  onClick={handleCheckResult}
-                  disabled={checking}
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#004274] hover:underline"
-                >
-                  {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  Verificar estado
-                </button>
-              </div>
-              <div
-                id="sumsub-websdk-container"
-                ref={sdkContainerRef}
-                style={{ minHeight: 600 }}
-              />
-            </div>
-          )}
-
           {/* ═══════════ VERIFIED ═══════════ */}
-          {kycVerified && !showSdk && (
+          {kycVerified && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-green-50 p-8 text-center">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -269,115 +210,195 @@ export default function ClientVerificationPage() {
             </div>
           )}
 
-          {/* ═══════════ PENDING ═══════════ */}
-          {!kycVerified && !showSdk && kycStatus === 'pending' && (
+          {/* ═══════════ PENDING REVIEW ═══════════ */}
+          {!kycVerified && kycStatus === 'pending_review' && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-amber-50 p-8 text-center">
                 <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Loader2 className="w-9 h-9 text-amber-600 animate-spin" />
                 </div>
                 <h2 className="text-[20px] font-bold text-amber-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
-                  Verificación en Proceso
+                  Documentos en Revisión
                 </h2>
                 <p className="text-[14px] text-amber-600 mb-4">
-                  Tu verificación está siendo procesada. Esto puede tomar unos minutos.
+                  Tus documentos fueron enviados y están siendo revisados por nuestro equipo. Te notificaremos cuando el proceso esté completo.
                 </p>
                 <button
-                  onClick={handleCheckResult}
-                  disabled={checking}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
-                  style={{ background: '#0068b7' }}
+                  onClick={() => client && loadKycStatus(client.id)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-semibold text-[#004274] border border-[#004274]/20 hover:bg-[#004274]/5 transition-colors"
                 >
-                  {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Verificar Estado
+                  Actualizar Estado
                 </button>
               </div>
-              <div className="p-6 border-t border-gray-100 text-center">
-                <p className="text-[13px] text-[#717171] mb-2">¿No completaste la verificación?</p>
-                <button
-                  onClick={handleStartVerification}
-                  disabled={starting || !sdkReady}
-                  className="text-[13px] font-semibold text-[#004274] hover:underline"
+              <div className="p-6 text-center">
+                <Link
+                  href="/clientes/mi-cuenta"
+                  className="text-[13px] font-semibold text-[#717171] hover:underline"
                 >
-                  Reiniciar verificación
-                </button>
+                  Volver a Mi Cuenta
+                </Link>
               </div>
             </div>
           )}
 
-          {/* ═══════════ FAILED / REQUIRES INPUT ═══════════ */}
-          {!kycVerified && !showSdk && (kycStatus === 'failed' || kycStatus === 'requires_input') && (
+          {/* ═══════════ PENDING (legacy, same as pending_review) ═══════════ */}
+          {!kycVerified && kycStatus === 'pending' && hasDocuments && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="bg-red-50 p-8 text-center">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <XCircle className="w-9 h-9 text-red-600" />
+              <div className="bg-amber-50 p-8 text-center">
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Loader2 className="w-9 h-9 text-amber-600 animate-spin" />
                 </div>
-                <h2 className="text-[20px] font-bold text-red-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
-                  Verificación No Completada
+                <h2 className="text-[20px] font-bold text-amber-800 mb-2" style={{ letterSpacing: '-0.02em' }}>
+                  Documentos en Revisión
                 </h2>
-                <p className="text-[14px] text-red-600 mb-2">
-                  {kycFailReason || 'La verificación no se completó exitosamente.'}
+                <p className="text-[14px] text-amber-600 mb-4">
+                  Tus documentos están siendo revisados.
                 </p>
-                <p className="text-[13px] text-[#717171] mb-6">
-                  Puedes intentar de nuevo. Asegúrate de tener buena iluminación y un documento válido.
-                </p>
-                <button
-                  onClick={handleStartVerification}
-                  disabled={starting || !sdkReady}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
-                  style={{ background: '#004274' }}
-                >
-                  {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Reintentar Verificación
-                </button>
               </div>
             </div>
           )}
 
-          {/* ═══════════ UNVERIFIED — ready to start ═══════════ */}
-          {!kycVerified && !showSdk && kycStatus === 'unverified' && (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="bg-blue-50 p-8 text-center">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="w-9 h-9 text-[#004274]" />
+          {/* ═══════════ FAILED — can retry ═══════════ */}
+          {!kycVerified && (kycStatus === 'failed' || kycStatus === 'requires_input') && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+              <div className="bg-red-50 p-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <XCircle className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-[16px] font-bold text-red-800 mb-1" style={{ letterSpacing: '-0.015em' }}>
+                      Verificación No Aprobada
+                    </h2>
+                    <p className="text-[13px] text-red-600">
+                      {kycFailReason || 'Los documentos enviados no cumplieron los requisitos.'}
+                    </p>
+                    <p className="text-[13px] text-[#717171] mt-2">
+                      Puedes volver a subir tus documentos abajo.
+                    </p>
+                  </div>
                 </div>
-                <h2 className="text-[20px] font-bold text-[#222] mb-2" style={{ letterSpacing: '-0.02em' }}>
-                  Verifica tu Identidad
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════ UPLOAD FORM ═══════════ */}
+          {canUpload && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-100">
+                <h2 className="text-[18px] font-bold text-[#222] mb-1" style={{ letterSpacing: '-0.015em' }}>
+                  {kycStatus === 'failed' ? 'Vuelve a subir tus documentos' : 'Sube tus documentos'}
                 </h2>
-                <p className="text-[14px] text-[#717171] mb-6">
-                  {kycRequested
-                    ? 'Maninos Capital te ha solicitado verificar tu identidad para continuar con tu solicitud dueño a dueño RTO.'
-                    : 'Para avanzar con tu solicitud dueño a dueño RTO, necesitamos verificar tu identidad.'
-                  }
+                <p className="text-[13px] text-[#717171]">
+                  Necesitamos una foto de tu identificación y una selfie para verificar tu identidad.
                 </p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* ID Type selector */}
+                <div>
+                  <label className="block text-[13px] font-semibold text-[#222] mb-2">
+                    Tipo de identificación
+                  </label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'drivers_license', label: 'Licencia de conducir' },
+                      { value: 'passport', label: 'Pasaporte' },
+                      { value: 'state_id', label: 'ID estatal' },
+                    ] as { value: IdType; label: string }[]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setIdType(opt.value)}
+                        className={`px-3 py-2 rounded-lg text-[12px] font-medium border transition-colors ${
+                          idType === opt.value
+                            ? 'border-[#004274] bg-[#004274]/5 text-[#004274]'
+                            : 'border-gray-200 text-[#717171] hover:border-gray-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ID Front */}
+                <UploadBox
+                  label="Foto del frente de tu ID *"
+                  description="Asegúrate de que se vea completa y legible"
+                  icon={<FileText className="w-6 h-6 text-[#004274]" />}
+                  file={idFront}
+                  preview={idFrontPreview}
+                  inputRef={idFrontRef}
+                  onSelect={(e) => handleFileSelect(e, setIdFront, setIdFrontPreview)}
+                  onClear={() => clearFile(setIdFront, setIdFrontPreview, idFrontPreview)}
+                  required
+                />
+
+                {/* ID Back (optional for passport) */}
+                {idType !== 'passport' && (
+                  <UploadBox
+                    label="Foto del reverso de tu ID"
+                    description="Opcional pero recomendado"
+                    icon={<FileText className="w-6 h-6 text-[#717171]" />}
+                    file={idBack}
+                    preview={idBackPreview}
+                    inputRef={idBackRef}
+                    onSelect={(e) => handleFileSelect(e, setIdBack, setIdBackPreview)}
+                    onClear={() => clearFile(setIdBack, setIdBackPreview, idBackPreview)}
+                  />
+                )}
+
+                {/* Selfie */}
+                <UploadBox
+                  label="Selfie sosteniendo tu ID *"
+                  description="Tómate una foto sosteniendo tu identificación junto a tu rostro"
+                  icon={<Camera className="w-6 h-6 text-[#004274]" />}
+                  file={selfie}
+                  preview={selfiePreview}
+                  inputRef={selfieRef}
+                  onSelect={(e) => handleFileSelect(e, setSelfie, setSelfiePreview)}
+                  onClear={() => clearFile(setSelfie, setSelfiePreview, selfiePreview)}
+                  required
+                />
+
+                {/* Submit */}
                 <button
-                  onClick={handleStartVerification}
-                  disabled={starting || !sdkReady}
-                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-[16px] transition-all hover:brightness-110 disabled:opacity-50"
-                  style={{ background: '#0068b7', boxShadow: '0 4px 14px rgba(0,104,183,0.3)' }}
+                  onClick={handleSubmit}
+                  disabled={uploading || !idFront || !selfie}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-bold text-[15px] transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: '#004274', boxShadow: '0 4px 14px rgba(0,66,116,0.2)' }}
                 >
-                  {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                  {sdkReady ? 'Verificar Mi Identidad' : 'Cargando...'}
+                  {uploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Subiendo documentos...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      Enviar para Verificación
+                    </>
+                  )}
                 </button>
               </div>
 
               {/* How it works */}
-              <div className="p-8 border-t border-gray-100">
-                <h3 className="font-bold text-[15px] text-[#222] mb-4" style={{ letterSpacing: '-0.015em' }}>¿Cómo funciona?</h3>
-                <div className="space-y-3">
+              <div className="p-6 border-t border-gray-100">
+                <h3 className="font-bold text-[14px] text-[#222] mb-3" style={{ letterSpacing: '-0.015em' }}>¿Cómo funciona?</h3>
+                <div className="space-y-2.5">
                   {[
-                    { icon: FileText, title: 'Prepara tu documento', desc: 'Licencia de conducir, pasaporte o ID estatal' },
-                    { icon: Camera, title: 'Toma una foto de tu documento', desc: 'Sigue las instrucciones en pantalla para fotografiar ambos lados' },
-                    { icon: Camera, title: 'Tómate una selfie', desc: 'Verificamos que la persona del documento eres tú' },
-                    { icon: CheckCircle, title: '¡Listo!', desc: 'La verificación se procesa automáticamente en minutos' },
+                    { icon: FileText, title: 'Sube tu identificación', desc: 'Foto clara del frente (y reverso si no es pasaporte)' },
+                    { icon: Camera, title: 'Tómate una selfie con tu ID', desc: 'Sostén tu identificación junto a tu rostro' },
+                    { icon: User, title: 'Nuestro equipo la revisa', desc: 'Verificamos que el documento sea legítimo y coincida contigo' },
+                    { icon: CheckCircle, title: '¡Listo!', desc: 'Te notificamos cuando tu identidad esté verificada' },
                   ].map((step, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                      <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <step.icon className="w-4 h-4 text-[#004274]" />
+                    <div key={i} className="flex items-start gap-3 p-2.5 bg-gray-50 rounded-lg">
+                      <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <step.icon className="w-3.5 h-3.5 text-[#004274]" />
                       </div>
                       <div>
-                        <h4 className="font-semibold text-[14px] text-[#222]">{step.title}</h4>
-                        <p className="text-[13px] text-[#717171]">{step.desc}</p>
+                        <h4 className="font-semibold text-[13px] text-[#222]">{step.title}</h4>
+                        <p className="text-[12px] text-[#717171]">{step.desc}</p>
                       </div>
                     </div>
                   ))}
@@ -385,14 +406,13 @@ export default function ClientVerificationPage() {
               </div>
 
               {/* Security note */}
-              <div className="px-8 pb-8">
+              <div className="px-6 pb-6">
                 <div className="bg-green-50 rounded-xl p-4 flex items-start gap-3">
                   <ShieldCheck className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-[13px] text-green-800">Seguro y confidencial</p>
-                    <p className="text-[12px] text-green-700">
-                      La verificación se realiza a través de Sumsub, líder mundial en verificación de identidad.
-                      Tu información personal está protegida y encriptada.
+                    <p className="font-semibold text-[12px] text-green-800">Seguro y confidencial</p>
+                    <p className="text-[11px] text-green-700">
+                      Tus documentos están almacenados de forma segura y encriptada. Solo el equipo de Maninos Capital puede verlos para verificar tu identidad.
                     </p>
                   </div>
                 </div>
@@ -401,7 +421,7 @@ export default function ClientVerificationPage() {
           )}
 
           {/* ═══════════ ERROR ═══════════ */}
-          {kycStatus === 'error' && !showSdk && (
+          {kycStatus === 'error' && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden p-8 text-center">
               <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
               <h2 className="text-[18px] font-bold text-[#222] mb-2">Error de conexión</h2>
@@ -416,6 +436,93 @@ export default function ClientVerificationPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+/* ─── Reusable Upload Box Component ─── */
+function UploadBox({
+  label,
+  description,
+  icon,
+  file,
+  preview,
+  inputRef,
+  onSelect,
+  onClear,
+  required,
+}: {
+  label: string
+  description: string
+  icon: React.ReactNode
+  file: File | null
+  preview: string | null
+  inputRef: React.RefObject<HTMLInputElement>
+  onSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onClear: () => void
+  required?: boolean
+}) {
+  return (
+    <div>
+      <label className="block text-[13px] font-semibold text-[#222] mb-2">
+        {label}
+      </label>
+      <p className="text-[12px] text-[#717171] mb-2">{description}</p>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        onChange={onSelect}
+        className="hidden"
+      />
+
+      {preview ? (
+        <div className="relative group">
+          <div className="relative w-full h-48 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+            <Image
+              src={preview}
+              alt={label}
+              fill
+              className="object-contain"
+            />
+          </div>
+          <div className="absolute top-2 right-2 flex gap-1.5">
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="p-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[#717171] hover:text-[#222] transition-colors"
+              title="Cambiar"
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onClear}
+              className="p-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-red-500 hover:text-red-700 transition-colors"
+              title="Eliminar"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p className="text-[11px] text-green-600 mt-1.5 flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" />
+            {file?.name}
+          </p>
+        </div>
+      ) : (
+        <button
+          onClick={() => inputRef.current?.click()}
+          className={`w-full flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed transition-colors hover:border-[#004274]/40 hover:bg-[#004274]/5 ${
+            required ? 'border-gray-300' : 'border-gray-200'
+          }`}
+        >
+          {icon}
+          <span className="text-[13px] font-medium text-[#717171]">
+            Haz clic para seleccionar una foto
+          </span>
+          <span className="text-[11px] text-[#aaa]">JPG, PNG o WebP · Máx 10MB</span>
+        </button>
+      )}
     </div>
   )
 }

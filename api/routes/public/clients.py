@@ -14,7 +14,7 @@ from tools.supabase_client import sb
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/clients", tags=["Public - Clients"])
 
-# Sumsub is used for KYC — see api/services/sumsub_service.py
+# KYC: Manual verification — client uploads ID photos + selfie, Capital reviews
 
 
 @router.get("/lookup")
@@ -693,11 +693,15 @@ async def client_report_payment(client_id: str, payment_id: str, data: ClientRep
 
 
 # =============================================================================
-# CLIENT KYC — called from the client portal
+# CLIENT KYC — Manual verification (client uploads ID photos + selfie)
 # =============================================================================
 
-class ClientKYCStart(BaseModel):
-    return_url: Optional[str] = None
+class ClientKYCSubmit(BaseModel):
+    """Client submits document URLs after uploading to storage."""
+    id_front_url: str
+    id_back_url: Optional[str] = None
+    selfie_url: str
+    id_type: str = "drivers_license"  # drivers_license, passport, state_id
 
 
 @router.get("/{client_id}/kyc-status")
@@ -708,7 +712,7 @@ async def get_client_kyc_status(client_id: str):
     """
     try:
         result = sb.table("clients") \
-            .select("id, name, kyc_verified, kyc_verified_at, kyc_status, kyc_requested, kyc_requested_at, kyc_failure_reason, kyc_session_id") \
+            .select("id, name, kyc_verified, kyc_verified_at, kyc_status, kyc_requested, kyc_requested_at, kyc_failure_reason, kyc_documents") \
             .eq("id", client_id) \
             .execute()
 
@@ -716,6 +720,7 @@ async def get_client_kyc_status(client_id: str):
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
         c = result.data[0]
+        docs = c.get("kyc_documents") or {}
 
         return {
             "ok": True,
@@ -725,7 +730,8 @@ async def get_client_kyc_status(client_id: str):
             "kyc_requested": c.get("kyc_requested", False),
             "kyc_requested_at": c.get("kyc_requested_at"),
             "kyc_failure_reason": c.get("kyc_failure_reason"),
-            "has_session": bool(c.get("kyc_session_id")),
+            "has_documents": bool(docs.get("id_front_url")),
+            "kyc_documents": docs,
         }
 
     except HTTPException:
@@ -735,18 +741,15 @@ async def get_client_kyc_status(client_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{client_id}/kyc-start")
-async def client_start_kyc(client_id: str, data: ClientKYCStart):
+@router.post("/{client_id}/kyc-submit")
+async def client_submit_kyc_documents(client_id: str, data: ClientKYCSubmit):
     """
-    Client initiates their Sumsub identity verification.
-    Returns an access token for the Sumsub Web SDK.
-    Called from the client portal when they click "Verificar mi identidad".
+    Client submits KYC document URLs after uploading files to storage.
+    Sets status to 'pending_review' — Capital must review and approve/reject.
     """
     try:
-        from api.services import sumsub_service
-
         client_result = sb.table("clients") \
-            .select("id, name, email, phone, kyc_verified, kyc_status") \
+            .select("id, name, kyc_verified, kyc_status") \
             .eq("id", client_id) \
             .execute()
 
@@ -762,160 +765,38 @@ async def client_start_kyc(client_id: str, data: ClientKYCStart):
                 "message": "Tu identidad ya está verificada."
             }
 
-        if not sumsub_service.is_configured():
-            raise HTTPException(
-                status_code=503,
-                detail="Servicio de verificación no disponible. Contacta soporte."
-            )
+        # Validate required fields
+        if not data.id_front_url or not data.selfie_url:
+            raise HTTPException(status_code=400, detail="Se requiere foto del ID y selfie.")
 
-        # Create or get existing Sumsub applicant
-        external_user_id = client_id
-        applicant = await sumsub_service.get_applicant_by_external_id(external_user_id)
+        now = datetime.utcnow().isoformat()
 
-        if not applicant:
-            applicant = await sumsub_service.create_applicant(
-                external_user_id=external_user_id,
-                email=client.get("email", ""),
-                phone=client.get("phone", ""),
-                name=client.get("name", ""),
-            )
+        # Store document URLs in the kyc_documents JSONB column
+        kyc_docs = {
+            "id_front_url": data.id_front_url,
+            "id_back_url": data.id_back_url,
+            "selfie_url": data.selfie_url,
+            "id_type": data.id_type,
+            "submitted_at": now,
+        }
 
-        applicant_id = applicant.get("id")
-
-        # Generate access token for Sumsub Web SDK
-        token_data = await sumsub_service.get_access_token(external_user_id)
-        access_token = token_data.get("token")
-
-        # Update client record with Sumsub applicant ID
         sb.table("clients").update({
-            "kyc_session_id": applicant_id,
-            "kyc_status": "pending",
-            "kyc_type": "sumsub",
+            "kyc_documents": kyc_docs,
+            "kyc_status": "pending_review",
             "kyc_failure_reason": None,
         }).eq("id", client_id).execute()
 
-        logger.info(f"[KYC] Client {client_id} started Sumsub verification, applicant {applicant_id}")
+        logger.info(f"[KYC] Client {client_id} ({client.get('name')}) submitted KYC documents for review")
 
         return {
             "ok": True,
-            "access_token": access_token,
-            "applicant_id": applicant_id,
-            "message": "Sesión de verificación creada. Completa la verificación."
+            "message": "¡Documentos enviados! Maninos Capital revisará tu identidad pronto.",
+            "status": "pending_review",
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error starting KYC for client {client_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{client_id}/kyc-check")
-async def client_check_kyc(client_id: str):
-    """
-    Client polls their KYC status.
-    Updates the DB with the latest Sumsub status.
-    """
-    try:
-        from api.services import sumsub_service
-
-        client_result = sb.table("clients") \
-            .select("id, kyc_session_id, kyc_status, kyc_verified") \
-            .eq("id", client_id) \
-            .execute()
-
-        if not client_result.data:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
-
-        client = client_result.data[0]
-
-        if client.get("kyc_verified"):
-            return {"ok": True, "verified": True, "status": "verified", "message": "✅ Tu identidad está verificada."}
-
-        applicant_id = client.get("kyc_session_id")
-        if not applicant_id:
-            return {"ok": True, "verified": False, "status": "no_session", "message": "No hay verificación en proceso."}
-
-        if not sumsub_service.is_configured():
-            raise HTTPException(status_code=503, detail="Servicio de verificación no disponible")
-
-        # Check Sumsub applicant status
-        status_data = await sumsub_service.get_applicant_status(applicant_id)
-
-        review_status = status_data.get("reviewStatus", "init")
-        review_result = status_data.get("reviewResult", {})
-        review_answer = review_result.get("reviewAnswer", "")
-        reject_labels = review_result.get("rejectLabels", [])
-
-        # Map Sumsub status to our internal status
-        if review_answer == "GREEN":
-            our_status = "verified"
-            is_verified = True
-        elif review_answer == "RED":
-            our_status = "failed"
-            is_verified = False
-        elif review_status in ("pending", "queued", "prechecked"):
-            our_status = "pending"
-            is_verified = False
-        elif review_status == "init":
-            our_status = "requires_input"
-            is_verified = False
-        else:
-            our_status = "pending"
-            is_verified = False
-
-        update_data = {"kyc_status": our_status, "kyc_verified": is_verified}
-        if is_verified:
-            update_data["kyc_verified_at"] = datetime.utcnow().isoformat()
-        if our_status == "failed":
-            reason = ", ".join(reject_labels) if reject_labels else "Verificación rechazada"
-            update_data["kyc_failure_reason"] = reason
-        if our_status == "requires_input":
-            update_data["kyc_failure_reason"] = "Verificación incompleta — sube tu documento e identidad"
-
-        sb.table("clients").update(update_data).eq("id", client_id).execute()
-
-        messages = {
-            "verified": "✅ ¡Tu identidad ha sido verificada exitosamente!",
-            "failed": "❌ La verificación fue rechazada.",
-            "requires_input": "⚠️ La verificación no se completó. Puedes reintentar.",
-            "pending": "⏳ Tu verificación está siendo procesada...",
-        }
-
-        return {
-            "ok": True,
-            "verified": is_verified,
-            "status": our_status,
-            "message": messages.get(our_status, f"Estado: {review_status}")
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error checking KYC for client {client_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{client_id}/kyc-refresh-token")
-async def client_refresh_kyc_token(client_id: str):
-    """
-    Refresh the Sumsub Web SDK access token.
-    Called by the frontend when the current token expires during verification.
-    """
-    try:
-        from api.services import sumsub_service
-
-        if not sumsub_service.is_configured():
-            raise HTTPException(status_code=503, detail="Servicio de verificación no disponible")
-
-        token_data = await sumsub_service.get_access_token(client_id)
-        access_token = token_data.get("token")
-
-        return {"ok": True, "access_token": access_token}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error refreshing KYC token for client {client_id}: {e}")
+        logger.error(f"Error submitting KYC for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

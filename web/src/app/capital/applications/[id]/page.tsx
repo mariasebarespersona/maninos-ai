@@ -369,46 +369,11 @@ export default function ApplicationDetailPage() {
       if (data.ok) {
         setKycStatus(data.kyc_status || 'unverified')
         setKycVerified(data.kyc_verified || false)
-        setKycFailReason(data.failure_reason || null)
+        setKycFailReason(data.failure_reason || data.kyc_failure_reason || null)
         setKycRequested(data.kyc_requested || false)
-        if (data.kyc_session_id && !data.kyc_verified && 
-            ['pending', 'requires_input'].includes(data.kyc_status || '')) {
-          checkKycSession(clientId)
-        }
       }
     } catch (err) {
       console.error('Error loading KYC status:', err)
-    }
-  }
-
-  const checkKycSession = async (clientId: string) => {
-    try {
-      const res = await fetch(`/api/capital/kyc/check-session/${clientId}`, { method: 'POST' })
-      const data = await res.json()
-      if (data.ok) {
-        if (data.verified) {
-          setKycVerified(true)
-          setKycStatus('verified')
-          setKycFailReason(null)
-          toast.success('✅ Verificación de identidad completada')
-        } else if (data.status === 'failed' || data.stripe_status === 'canceled') {
-          setKycVerified(false)
-          setKycStatus('failed')
-          setKycFailReason(data.message || 'La verificación fue rechazada')
-          toast.error('❌ Verificación fallida')
-        } else if (data.status === 'requires_input') {
-          setKycVerified(false)
-          setKycStatus('requires_input')
-          setKycFailReason('El cliente necesita reintentar la verificación')
-        } else if (data.status === 'pending') {
-          setKycStatus('pending')
-          toast.info('⏳ Verificación aún en proceso...')
-        } else if (data.status === 'no_session') {
-          setKycStatus('unverified')
-        }
-      }
-    } catch (err) {
-      console.error('Error checking KYC session:', err)
     }
   }
 
@@ -416,7 +381,8 @@ export default function ApplicationDetailPage() {
     if (!app?.clients?.id) return
     setKycLoading(true)
     try {
-      await checkKycSession(app.clients.id)
+      await loadKycStatus(app.clients.id)
+      toast.info('Estado de KYC actualizado')
     } finally {
       setKycLoading(false)
     }
@@ -856,24 +822,24 @@ export default function ApplicationDetailPage() {
                   </p>
                 </div>
               </>
-            ) : kycStatus === 'pending' ? (
+            ) : kycStatus === 'pending_review' ? (
               <>
                 <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--warning-light)' }}>
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--warning)' }} />
+                  <Clock className="w-5 h-5" style={{ color: 'var(--warning)' }} />
                 </div>
                 <div>
-                    <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Esperando al Cliente ⏳</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Se le solicitó al cliente que verifique su identidad desde su portal</p>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Documentos por Revisar 📄</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente subió sus documentos. Revísalos desde la página de KYC.</p>
                 </div>
               </>
-            ) : kycRequested ? (
+            ) : kycStatus === 'pending' || kycRequested ? (
               <>
                 <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--info-light)' }}>
                   <Mail className="w-5 h-5" style={{ color: 'var(--info)' }} />
                 </div>
                 <div>
-                    <p className="font-semibold text-sm" style={{ color: 'var(--info)' }}>Solicitud Enviada 📩</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente debe verificar su identidad desde el portal de clientes</p>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--info)' }}>Esperando Documentos 📩</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Se le solicitó al cliente que suba fotos de su ID + selfie</p>
                 </div>
               </>
             ) : (
@@ -889,28 +855,20 @@ export default function ApplicationDetailPage() {
             )}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {!kycVerified && ['pending', 'requires_input'].includes(kycStatus) && (
+            {!kycVerified && (
               <button onClick={handleCheckKycStatus} disabled={kycLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
                 style={{ backgroundColor: 'var(--info)', opacity: kycLoading ? 0.6 : 1 }}>
                 {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
-                Consultar Estado
+                Actualizar Estado
               </button>
             )}
-            {!kycVerified && !kycRequested && kycStatus !== 'pending' && (
+            {!kycVerified && kycStatus !== 'pending_review' && (
               <button onClick={handleRequestKyc} disabled={kycLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
                 style={{ backgroundColor: 'var(--navy-800)', opacity: kycLoading ? 0.6 : 1 }}>
                 {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
-                Solicitar Verificación al Cliente
-              </button>
-            )}
-            {!kycVerified && kycRequested && kycStatus !== 'pending' && (
-              <button onClick={handleRequestKyc} disabled={kycLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-                style={{ backgroundColor: 'var(--warning)', opacity: kycLoading ? 0.6 : 1 }}>
-                {kycLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
-                Re-enviar Solicitud
+                {kycRequested ? 'Re-solicitar Documentos' : 'Solicitar Verificación'}
               </button>
             )}
             {!kycVerified && (
