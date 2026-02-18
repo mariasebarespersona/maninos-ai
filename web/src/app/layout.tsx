@@ -17,8 +17,12 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'MANINOS AI - Tu hogar, nuestro compromiso',
-  description: 'Plataforma inteligente de gestión para casas móviles rent-to-own. Maninos Capital LLC.',
+  title: {
+    default: 'Maninos Homes — Casas móviles en Texas',
+    template: '%s | Maninos Homes',
+  },
+  description:
+    'Casas móviles listas para mudarte en Texas. Compra al contado o con plan dueño a dueño (RTO). Un lugar seguro para tu familia. Maninos Homes LLC.',
   icons: {
     icon: '/favicon.ico',
     apple: '/icons/icon-192.svg',
@@ -27,7 +31,15 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Maninos AI',
+    title: 'Maninos Homes',
+  },
+  openGraph: {
+    siteName: 'Maninos Homes',
+    locale: 'es_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
   },
 }
 
