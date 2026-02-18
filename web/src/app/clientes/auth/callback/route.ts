@@ -3,11 +3,11 @@ import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * Auth Callback Route Handler (server-side)
+ * Client Portal Auth Callback Route Handler (server-side)
  * 
- * Supabase magic links redirect here with a `code` param (PKCE flow).
+ * Supabase email links for the CLIENT portal redirect here.
  * We exchange the code for a session server-side, set the auth cookies,
- * and redirect the user to their dashboard.
+ * and redirect the user to their client dashboard.
  * 
  * This MUST be a Route Handler (not a page) because the PKCE code exchange
  * requires server-side execution to properly set httpOnly cookies.
@@ -15,6 +15,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
+  const type = searchParams.get('type')
   const next = searchParams.get('next') || '/clientes/mi-cuenta'
   
   if (code) {
@@ -45,26 +46,37 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
+      // Password recovery → redirect to client password reset page
+      if (type === 'recovery') {
+        const forwardedHost = request.headers.get('x-forwarded-host')
+        const dest = '/clientes/crear-contrasena'
+        if (forwardedHost) {
+          return NextResponse.redirect(`https://${forwardedHost}${dest}`)
+        }
+        return NextResponse.redirect(`${origin}${dest}`)
+      }
+
       // Success — redirect to the client dashboard (or wherever 'next' points)
+      // Ensure we always stay in the client portal
+      const destination = next.startsWith('/clientes') ? next : '/clientes/mi-cuenta'
+      
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
       
       if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
+        return NextResponse.redirect(`${origin}${destination}`)
       } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
+        return NextResponse.redirect(`https://${forwardedHost}${destination}`)
       } else {
-        return NextResponse.redirect(`${origin}${next}`)
+        return NextResponse.redirect(`${origin}${destination}`)
       }
     }
     
-    console.error('Auth callback - code exchange error:', error)
+    console.error('Client auth callback - code exchange error:', error)
   }
   
-  // If no code or exchange failed, redirect to login with error
+  // If no code or exchange failed, redirect to CLIENT login with error
   return NextResponse.redirect(
     `${origin}/clientes/login?error=auth_callback_failed`
   )
 }
-
-
