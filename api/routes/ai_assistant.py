@@ -482,7 +482,7 @@ def _execute_tool(name: str, args: dict) -> dict:
 
 def _exec_query_properties(args: dict) -> dict:
     query = sb.table("properties").select(
-            "id, status, sale_price, purchase_price, city, state, address, "
+        "id, status, sale_price, purchase_price, city, state, address, "
         "year, square_feet, bedrooms, bathrooms, photos"
     )
     if args.get("status"):
@@ -493,17 +493,17 @@ def _exec_query_properties(args: dict) -> dict:
     data = result.data or []
 
     # Always include summary stats
-            status_counts = {}
-            cities = {}
-            total_purchase = 0
-            total_sale = 0
+    status_counts = {}
+    cities = {}
+    total_purchase = 0
+    total_sale = 0
     for p in data:
-                s = p.get("status", "unknown")
-                status_counts[s] = status_counts.get(s, 0) + 1
+        s = p.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
         c = p.get("city") or "unknown"
-                cities[c] = cities.get(c, 0) + 1
-                total_purchase += float(p.get("purchase_price") or 0)
-                total_sale += float(p.get("sale_price") or 0)
+        cities[c] = cities.get(c, 0) + 1
+        total_purchase += float(p.get("purchase_price") or 0)
+        total_sale += float(p.get("sale_price") or 0)
 
     result_dict = {
         "total": len(data),
