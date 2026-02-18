@@ -213,6 +213,7 @@ export default function PaymentsPage() {
     paid: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Pagado' },
     late: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Atrasado' },
     partial: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Parcial' },
+    client_reported: { bg: '#dbeafe', color: '#1d4ed8', label: 'Reportado por cliente' },
     waived: { bg: 'var(--info-light)', color: 'var(--info)', label: 'Exonerado' },
     failed: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Fallido' },
   }
@@ -276,6 +277,7 @@ export default function PaymentsPage() {
               <option value="">Todos</option>
               <option value="pending">Pendientes</option>
               <option value="late">Atrasados</option>
+              <option value="client_reported">Reportados por cliente</option>
               <option value="paid">Pagados</option>
               <option value="scheduled">Programados</option>
             </select>
@@ -449,7 +451,7 @@ export default function PaymentsPage() {
                             </>
                           )}
                           <td>
-                            {['pending', 'late', 'scheduled'].includes(p.status) && (
+                            {['pending', 'late', 'scheduled', 'client_reported'].includes(p.status) && (
                               <button 
                                 onClick={() => {
                                   setRecordingId(p.id)
@@ -459,7 +461,7 @@ export default function PaymentsPage() {
                                 className="btn-primary btn-sm text-xs"
                               >
                                 <DollarSign className="w-3 h-3" />
-                                Registrar
+                                {p.status === 'client_reported' ? 'Confirmar' : 'Registrar'}
                               </button>
                             )}
                             {p.status === 'paid' && (

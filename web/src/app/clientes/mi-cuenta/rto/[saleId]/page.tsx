@@ -124,6 +124,10 @@ export default function ClientRTOPage() {
     pending: { color: 'text-amber-600', bg: 'bg-amber-100', label: 'Pendiente' },
     paid: { color: 'text-green-600', bg: 'bg-green-100', label: 'Pagado' },
     late: { color: 'text-red-600', bg: 'bg-red-100', label: 'Atrasado' },
+    partial: { color: 'text-orange-600', bg: 'bg-orange-100', label: 'Parcial' },
+    client_reported: { color: 'text-blue-600', bg: 'bg-blue-100', label: 'Reportado' },
+    waived: { color: 'text-cyan-600', bg: 'bg-cyan-100', label: 'Exonerado' },
+    failed: { color: 'text-red-600', bg: 'bg-red-100', label: 'Fallido' },
   }
 
   const cs = statusLabels[contract.status] || statusLabels.active

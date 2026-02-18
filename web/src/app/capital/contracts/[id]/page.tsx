@@ -199,6 +199,7 @@ export default function ContractDetailPage() {
     paid: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Pagado' },
     late: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Atrasado' },
     partial: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Parcial' },
+    client_reported: { bg: '#dbeafe', color: '#1d4ed8', label: 'Reportado por cliente' },
     waived: { bg: 'var(--info-light)', color: 'var(--info)', label: 'Exonerado' },
     failed: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Fallido' },
   }
@@ -508,12 +509,12 @@ export default function ContractDetailPage() {
                         )}
                       </td>
                       <td>
-                        {['pending', 'late', 'scheduled'].includes(p.status) && (
+                        {['pending', 'late', 'scheduled', 'client_reported'].includes(p.status) && (
                           <button 
                             onClick={() => router.push(`/capital/payments?record=${p.id}`)}
                             className="btn-ghost btn-sm text-xs"
                           >
-                            Registrar Pago
+                            {p.status === 'client_reported' ? 'Confirmar Pago' : 'Registrar Pago'}
                           </button>
                         )}
                       </td>
