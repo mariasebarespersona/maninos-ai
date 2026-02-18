@@ -12,9 +12,13 @@ import {
   Shield,
   CheckCircle,
   Loader2,
-  Home
+  Home,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
+import { signUpWithPassword } from '@/lib/supabase/client-auth'
 
 interface Property {
   id: string
@@ -37,9 +41,12 @@ export default function PurchaseFormPage() {
     name: '',
     email: '',
     phone: '',
-    terreno: ''
+    terreno: '',
+    password: '',
+    confirmPassword: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     fetchProperty()
@@ -90,6 +97,16 @@ export default function PurchaseFormPage() {
     if (!formData.terreno.trim()) {
       newErrors.terreno = 'La ubicación del terreno es requerida'
     }
+
+    if (!formData.password.trim()) {
+      newErrors.password = 'La contraseña es requerida'
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Mínimo 6 caracteres'
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Las contraseñas no coinciden'
+    }
     
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -106,7 +123,28 @@ export default function PurchaseFormPage() {
     setSubmitting(true)
     
     try {
-      // Store client data for the next step (method selection)
+      // 1. Create Supabase auth account (email + password)
+      const { error: signUpError } = await signUpWithPassword(
+        formData.email.toLowerCase().trim(),
+        formData.password,
+      )
+
+      if (signUpError) {
+        // "User already registered" is fine — they may have created an account before
+        const alreadyExists =
+          signUpError.message?.toLowerCase().includes('already registered') ||
+          signUpError.message?.toLowerCase().includes('already been registered')
+
+        if (!alreadyExists) {
+          console.error('Signup error:', signUpError.message)
+          toast.error(signUpError.message || 'Error al crear la cuenta')
+          setSubmitting(false)
+          return
+        }
+        // If already exists, just continue — they can log in later with their existing password
+      }
+
+      // 2. Store client data for the next step (method selection)
       sessionStorage.setItem('maninos_client_data', JSON.stringify({
         property_id: propertyId,
         client_name: formData.name,
@@ -116,7 +154,7 @@ export default function PurchaseFormPage() {
         property: property
       }))
       
-      toast.success('¡Datos guardados!')
+      toast.success('¡Cuenta creada y datos guardados!')
       router.push(`/clientes/comprar/${propertyId}/metodo`)
     } catch (error) {
       console.error('Error:', error)
@@ -280,6 +318,64 @@ export default function PurchaseFormPage() {
                   <p className="text-xs text-gray-500 mt-1">
                     Incluye ciudad, estado y código postal si es posible
                   </p>
+                </div>
+
+                {/* Divider — Account creation */}
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-3 text-xs font-semibold text-[#004274] uppercase tracking-wider">Crea tu cuenta</span>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 -mt-2">
+                  Con tu correo y contraseña podrás acceder a tu cuenta para dar seguimiento a tu compra.
+                </p>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña *
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={e => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="Mínimo 6 caracteres"
+                      className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500 ${
+                        errors.password ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirmar contraseña *
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      placeholder="Repite tu contraseña"
+                      className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500 ${
+                        errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                  </div>
+                  {errors.confirmPassword && <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>}
                 </div>
                 
                 {/* Submit */}
