@@ -551,13 +551,13 @@ def _exec_query_sales(args: dict) -> dict:
 
     type_counts = {}
     status_counts = {}
-            total_revenue = 0
+    total_revenue = 0
     for s in data:
-                st = s.get("sale_type", "unknown")
+        st = s.get("sale_type", "unknown")
         type_counts[st] = type_counts.get(st, 0) + 1
-                ss = s.get("status", "unknown")
+        ss = s.get("status", "unknown")
         status_counts[ss] = status_counts.get(ss, 0) + 1
-                total_revenue += float(s.get("sale_price") or 0)
+        total_revenue += float(s.get("sale_price") or 0)
 
     result_dict = {
         "total": len(data),
@@ -754,7 +754,7 @@ def _exec_query_rto_applications(args: dict) -> dict:
 
     status_counts = {}
     for a in data:
-                s = a.get("status", "unknown")
+        s = a.get("status", "unknown")
         status_counts[s] = status_counts.get(s, 0) + 1
 
     result_dict = {
@@ -1057,7 +1057,7 @@ def _exec_query_accounting(args: dict) -> dict:
             for a in data:
                 at = a.get("account_type", "unknown")
                 type_totals[at] = type_totals.get(at, 0) + float(a.get("balance") or 0)
-                    return {
+            return {
                 "total_accounts": len(data),
                 "totals_by_type": type_totals,
                 "accounts": [
