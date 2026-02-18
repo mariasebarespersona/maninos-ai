@@ -233,7 +233,7 @@ export default function PurchaseFormPage() {
                 Tus Datos
               </h1>
               <p className="text-gray-600 mb-6">
-                Completa tu información para continuar con la compra.
+                Completa tu información y crea tu cuenta para continuar.
               </p>
               
               <form onSubmit={handleSubmit} className="space-y-5">
