@@ -996,24 +996,33 @@ class VMFHomesScraper:
     
     URL: https://www.vmfhomes.com/homesearch
     
-    VMF is a major mobile home lender/seller in Texas.
-    They have a map-based React SPA. We use Playwright to load the page
-    and extract listing data from the rendered DOM.
+    VMF Homes is a Next.js app that exposes a JSON API:
+        POST /api/searchByState?state=TX  → all Texas listings
+        POST /api/searchByDistance         → listings near a GPS coordinate
+    
+    NO browser/Playwright needed — pure HTTP + JSON. Fast and reliable.
+    
+    Photo URLs can be fetched per-listing via RSC endpoint at /home/{listingId}
+    from media.vmfhomes.com, but we skip photos in bulk scrape for speed.
     
     IMPORTANT: Only scrapes mobile homes FOR SALE (not rent).
     """
     
     BASE_URL = "https://www.vmfhomes.com"
+    SEARCH_API = "https://www.vmfhomes.com/api/searchByState"
+    DISTANCE_API = "https://www.vmfhomes.com/api/searchByDistance"
+    PHOTO_CDN = "https://media.vmfhomes.com"
     
-    # Houston and Dallas coordinates for 200mi radius searches
-    SEARCH_LOCATIONS = [
-        {"lat": 29.7604, "lng": -95.3698, "name": "Houston"},  # Houston
-        {"lat": 32.7767, "lng": -96.7970, "name": "Dallas"},    # Dallas
-    ]
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Referer": "https://www.vmfhomes.com/homesearch",
+    }
     
     @staticmethod
     def build_search_url(lat: float, lng: float, radius: int = 100, min_price: int = 5000, max_price: int = 80000) -> str:
-        """Build VMF Homes search URL with location and price filters."""
+        """Build VMF Homes search URL (kept for compatibility, but we use the API directly now)."""
         import json
         location = json.dumps({"lat": lat, "lng": lng})
         return (
@@ -1030,364 +1039,140 @@ class VMFHomesScraper:
     async def scrape(
         min_price: float = 5000,
         max_price: float = 80000,
-        max_listings: int = 20,
+        max_listings: int = 50,
     ) -> List[ScrapedListing]:
         """
-        Scrape mobile homes for SALE from VMF Homes.
+        Fetch mobile homes for sale in Texas from VMF Homes via their JSON API.
         
-        Strategy: Use Playwright to load the React SPA and intercept the XHR/fetch
-        API responses that contain listing data (much more reliable than parsing DOM).
-        Falls back to DOM parsing if no API responses are intercepted.
+        NO Playwright needed — direct HTTP POST to their internal Next.js API route.
+        
+        Args:
+            min_price: Minimum price filter ($5K default)
+            max_price: Maximum price filter ($80K default)
+            max_listings: Maximum number of listings to return
+            
+        Returns:
+            List of ScrapedListing objects (Texas only, in price range, for sale)
         """
-        logger.info(f"[VMF] Scraping VMF Homes, ${min_price}-${max_price}")
+        import requests as sync_requests
         
-        all_listings = []
-        seen_urls = set()
+        logger.info(f"[VMF] Fetching VMF Homes inventory via API, ${min_price}-${max_price}")
         
-        for loc in VMFHomesScraper.SEARCH_LOCATIONS:
-            if len(all_listings) >= max_listings:
-                break
-            
-            page = None
-            api_responses: list = []
-            
-            try:
-                page = await BrowserManager.new_page()
-                
-                # Intercept API responses from the React SPA
-                async def handle_response(response):
-                    try:
-                        url = response.url
-                        ct = response.headers.get('content-type', '')
-                        # Capture JSON API responses that might contain listing data
-                        if ('json' in ct or 'api' in url.lower() or 'search' in url.lower() or 
-                            'homes' in url.lower() or 'listing' in url.lower() or 'property' in url.lower()):
-                            if response.status == 200:
-                                try:
-                                    body = await response.json()
-                                    api_responses.append({'url': url, 'data': body})
-                                    logger.info(f"[VMF] Captured API response from: {url[:100]}")
-                                except:
-                                    pass
-                    except:
-                        pass
-                
-                page.on('response', handle_response)
-                
-                url = VMFHomesScraper.build_search_url(
-                    lat=loc["lat"], lng=loc["lng"],
-                    min_price=int(min_price), max_price=int(max_price)
-                )
-                
-                logger.info(f"[VMF] Searching near {loc['name']}: {url}")
-                await page.goto(url, wait_until='networkidle', timeout=40000)
-                await asyncio.sleep(3)  # Extra wait for late API calls
-                
-                logger.info(f"[VMF] Intercepted {len(api_responses)} API responses near {loc['name']}")
-                
-                # Try to extract listings from intercepted API responses
-                api_listings = VMFHomesScraper._parse_api_responses(api_responses, loc["name"], min_price, max_price)
-                
-                if api_listings:
-                    logger.info(f"[VMF] Parsed {len(api_listings)} listings from API responses near {loc['name']}")
-                    for listing in api_listings:
-                        if len(all_listings) >= max_listings:
-                            break
-                        if listing.source_url not in seen_urls:
-                            seen_urls.add(listing.source_url)
-                            all_listings.append(listing)
-                else:
-                    # Fallback: parse DOM (original approach)
-                    logger.info(f"[VMF] No API data found, falling back to DOM parsing near {loc['name']}")
-                    content = await page.content()
-                    soup = BeautifulSoup(content, 'lxml')
-                    
-                    listing_cards = soup.select(
-                        '[class*="PropertyCard"], [class*="property-card"], '
-                        '[class*="listing-card"], [class*="HomeCard"], '
-                        'a[href*="/home/"], a[href*="/property/"]'
-                    )
-                    
-                    if not listing_cards:
-                        listing_cards = soup.find_all(
-                            lambda tag: tag.name in ('div', 'a', 'article') 
-                            and tag.get_text() 
-                            and re.search(r'\$[\d,]+', tag.get_text())
-                            and len(tag.get_text()) < 500
-                        )
-                    
-                    logger.info(f"[VMF] Found {len(listing_cards)} DOM cards near {loc['name']}")
-                    
-                    for card in listing_cards:
-                        if len(all_listings) >= max_listings:
-                            break
-                        try:
-                            listing = VMFHomesScraper._parse_listing_card(card, loc["name"])
-                            if listing and min_price <= listing.listing_price <= max_price:
-                                if listing.source_url not in seen_urls:
-                                    seen_urls.add(listing.source_url)
-                                    all_listings.append(listing)
-                        except Exception as e:
-                            logger.warning(f"[VMF] Error parsing card: {e}")
-                            continue
-                
-            except Exception as e:
-                logger.error(f"[VMF] Error scraping near {loc['name']}: {e}")
-            finally:
-                if page:
-                    await page.close()
-        
-        logger.info(f"[VMF] Successfully scraped {len(all_listings)} listings total")
-        return all_listings
-    
-    @staticmethod
-    def _parse_api_responses(responses: list, area_name: str, min_price: float, max_price: float) -> List[ScrapedListing]:
-        """Parse listing data from intercepted API responses."""
         listings = []
         
-        for resp in responses:
-            data = resp.get('data')
-            if not data:
-                continue
+        try:
+            # Use sync requests in a thread (same pattern as 21st Mortgage)
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(
+                None,
+                lambda: sync_requests.post(
+                    f"{VMFHomesScraper.SEARCH_API}?state=TX",
+                    headers=VMFHomesScraper.HEADERS,
+                    timeout=30,
+                )
+            )
+            resp.raise_for_status()
+            data = resp.json()
             
-            # Handle different possible API response shapes
-            items = []
-            if isinstance(data, list):
-                items = data
-            elif isinstance(data, dict):
-                # Look for common keys that contain listing arrays
-                for key in ['results', 'listings', 'homes', 'properties', 'data', 'items', 'records']:
-                    if key in data and isinstance(data[key], list):
-                        items = data[key]
-                        break
-                # Might be a single listing
-                if not items and any(k in data for k in ['price', 'listing_price', 'address', 'city']):
-                    items = [data]
+            if not isinstance(data, list):
+                logger.warning(f"[VMF] Unexpected response type: {type(data)}")
+                return []
             
-            for item in items:
-                if not isinstance(item, dict):
+            logger.info(f"[VMF] Total TX inventory: {len(data)} homes")
+            
+            # Filter: price range, for sale (not pending), valid data
+            qualified = []
+            for item in data:
+                price = item.get("price")
+                if not price or not isinstance(price, (int, float)):
                     continue
+                if not (min_price <= price <= max_price):
+                    continue
+                
+                # Skip pending sales
+                if item.get("isSalePending"):
+                    continue
+                
+                # Must be accepting offers
+                if item.get("isAcceptingOffers") is False:
+                    continue
+                
+                qualified.append((item, float(price)))
+            
+            logger.info(f"[VMF] In range & for sale: {len(qualified)} homes")
+            
+            # Sort by price (cheapest first)
+            qualified.sort(key=lambda x: x[1])
+            
+            for item, price in qualified[:max_listings]:
                 try:
-                    # Extract price (try multiple field names)
-                    price = None
-                    for price_key in ['price', 'listing_price', 'listPrice', 'salePrice', 'askingPrice', 'currentPrice']:
-                        if price_key in item and item[price_key]:
-                            try:
-                                price = float(str(item[price_key]).replace('$', '').replace(',', ''))
-                            except:
-                                pass
-                            if price:
-                                break
-                    
-                    if not price or price < min_price or price > max_price:
-                        continue
-                    
-                    # Extract address
-                    address = item.get('address') or item.get('streetAddress') or item.get('full_address') or ''
-                    city = item.get('city') or item.get('cityName') or ''
-                    state = item.get('state') or item.get('stateCode') or 'TX'
-                    zip_code = item.get('zip') or item.get('zipCode') or item.get('zip_code') or ''
-                    
-                    if not address and not city:
-                        continue
-                    
-                    # Only Texas
-                    if state and state.upper() not in ('TX', 'TEXAS'):
-                        continue
-                    
-                    if not city:
-                        city = area_name
-                    
-                    full_address = address if address else f"VMF Home in {city}, TX"
-                    
-                    # Source URL
-                    source_url = None
-                    for url_key in ['url', 'detailUrl', 'link', 'href', 'listingUrl', 'id', 'propertyId']:
-                        if url_key in item and item[url_key]:
-                            val = str(item[url_key])
-                            if val.startswith('http'):
-                                source_url = val
-                            elif val.startswith('/'):
-                                source_url = f"{VMFHomesScraper.BASE_URL}{val}"
-                            else:
-                                source_url = f"{VMFHomesScraper.BASE_URL}/home/{val}"
-                            break
-                    
-                    if not source_url:
-                        source_url = f"vmf-api-{hash(f'{address}{city}{price}')}"
-                    
-                    # Beds/baths/sqft
-                    bedrooms = None
-                    for bed_key in ['bedrooms', 'beds', 'bed', 'numBeds', 'br']:
-                        if bed_key in item and item[bed_key]:
-                            try:
-                                bedrooms = int(item[bed_key])
-                            except:
-                                pass
-                            break
-                    
-                    bathrooms = None
-                    for bath_key in ['bathrooms', 'baths', 'bath', 'numBaths', 'ba']:
-                        if bath_key in item and item[bath_key]:
-                            try:
-                                bathrooms = float(item[bath_key])
-                            except:
-                                pass
-                            break
-                    
-                    sqft = None
-                    for sqft_key in ['sqft', 'squareFeet', 'livingArea', 'size', 'area', 'squareFootage']:
-                        if sqft_key in item and item[sqft_key]:
-                            try:
-                                sqft = int(float(str(item[sqft_key]).replace(',', '')))
-                            except:
-                                pass
-                            break
-                    
-                    # Try to compute sqft from dimensions (length × width)
-                    if not sqft:
-                        length = item.get('length') or item.get('homeLength')
-                        width = item.get('width') or item.get('homeWidth')
-                        if length and width:
-                            try:
-                                sqft = int(float(length) * float(width))
-                            except:
-                                pass
-                    
-                    year_built = None
-                    for year_key in ['year', 'yearBuilt', 'year_built', 'modelYear']:
-                        if year_key in item and item[year_key]:
-                            try:
-                                year_built = int(item[year_key])
-                            except:
-                                pass
-                            break
-                    
-                    # Photos
-                    photos = []
-                    thumbnail = None
-                    for photo_key in ['photos', 'images', 'imageUrls', 'photoUrls', 'gallery']:
-                        if photo_key in item and isinstance(item[photo_key], list):
-                            for p in item[photo_key]:
-                                if isinstance(p, str):
-                                    photos.append(p if p.startswith('http') else f"{VMFHomesScraper.BASE_URL}{p}")
-                                elif isinstance(p, dict):
-                                    for pk in ['url', 'src', 'href', 'path']:
-                                        if pk in p:
-                                            photo_url = p[pk]
-                                            photos.append(photo_url if photo_url.startswith('http') else f"{VMFHomesScraper.BASE_URL}{photo_url}")
-                                            break
-                            break
-                    
-                    for thumb_key in ['thumbnail', 'thumbnailUrl', 'mainImage', 'primaryImage', 'image', 'photo']:
-                        if thumb_key in item and item[thumb_key]:
-                            val = str(item[thumb_key])
-                            thumbnail = val if val.startswith('http') else f"{VMFHomesScraper.BASE_URL}{val}"
-                            break
-                    
-                    if thumbnail and thumbnail not in photos:
-                        photos.insert(0, thumbnail)
-                    if photos and not thumbnail:
-                        thumbnail = photos[0]
-                    
-                    listings.append(ScrapedListing(
-                        source='vmf_homes',
-                        source_url=source_url,
-                        source_id=item.get('id') or item.get('propertyId'),
-                        address=full_address,
-                        city=city,
-                        state='TX',
-                        zip_code=str(zip_code) if zip_code else None,
-                        listing_price=price,
-                        year_built=year_built,
-                        sqft=sqft,
-                        bedrooms=bedrooms,
-                        bathrooms=bathrooms,
-                        photos=photos,
-                        thumbnail_url=thumbnail,
-                        scraped_at=datetime.now().isoformat()
-                    ))
-                    
+                    listing = VMFHomesScraper._parse_item(item, price)
+                    if listing:
+                        listings.append(listing)
                 except Exception as e:
-                    logger.warning(f"[VMF] Error parsing API item: {e}")
+                    logger.warning(f"[VMF] Error parsing item listingId={item.get('listingId')}: {e}")
                     continue
+            
+            logger.info(f"[VMF] Successfully scraped {len(listings)} listings")
+            
+        except Exception as e:
+            logger.error(f"[VMF] Error fetching inventory: {e}")
         
         return listings
     
     @staticmethod
-    def _parse_listing_card(card, area_name: str) -> Optional[ScrapedListing]:
-        """Parse a VMF Homes listing card."""
-        card_text = card.get_text(' ', strip=True)
+    def _parse_item(item: Dict, price: float) -> Optional[ScrapedListing]:
+        """Parse a single JSON item from the VMF API into a ScrapedListing."""
         
-        # Skip rental listings
-        if any(kw in card_text.lower() for kw in ['rent', '/mo', 'per month', 'lease']):
+        listing_id = str(item.get("listingId", ""))
+        city = (item.get("city") or "").strip()
+        state = (item.get("state") or "TX").strip()
+        address = (item.get("address") or "").strip()
+        zip_code = str(item.get("zip") or "")
+        
+        if not address and not city:
             return None
         
-        # Extract price
-        price_match = re.search(r'\$([\d,]+)', card_text)
-        if not price_match:
-            return None
+        full_address = address if address else f"VMF Home in {city}, TX"
         
-        price = MHVillageScraper._parse_price(price_match.group(1))
-        if not price or price < 5000:
-            return None
+        # Source URL — VMF detail page
+        source_url = f"{VMFHomesScraper.BASE_URL}/home/{listing_id}" if listing_id else f"vmf-{hash(f'{address}{city}{price}')}"
         
-        # Extract link
-        link = None
-        if card.name == 'a' and card.get('href'):
-            link = card['href']
-        else:
-            link_elem = card.select_one('a[href]')
-            if link_elem:
-                link = link_elem.get('href', '')
+        # Beds, baths, sqft, year
+        bedrooms = item.get("bedrooms")
+        bathrooms = item.get("bathrooms")
+        year_built = item.get("year")
         
-        source_url = urljoin(VMFHomesScraper.BASE_URL, link) if link else f"vmf-{hash(card_text)}"
+        # sqFootage from API, or compute from length × width
+        sqft = item.get("sqFootage")
+        if not sqft:
+            length = item.get("length")
+            width = item.get("width")
+            if length and width:
+                try:
+                    sqft = int(float(length) * float(width))
+                except:
+                    pass
         
-        # Extract address
-        # Look for city, state pattern
-        addr_match = re.search(r'(\d+[^,]+,\s*[^,]+,\s*TX\s*\d{5})', card_text)
-        if addr_match:
-            address = addr_match.group(1).strip()
-        else:
-            city_match = re.search(r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*),?\s*TX', card_text)
-            address = city_match.group(0) if city_match else f"VMF Home near {area_name}, TX"
-        
-        # Extract city from address
-        city_from_addr = re.search(r',\s*([^,]+),\s*TX', address)
-        city = city_from_addr.group(1).strip() if city_from_addr else area_name
-        
-        # Year
-        year_match = re.search(r'\b(19[89]\d|20[0-2]\d)\b', card_text)
-        year_built = int(year_match.group()) if year_match else None
-        
-        # Beds/Baths
-        bed_match = re.search(r'(\d+)\s*(?:bed|bd|br)', card_text, re.I)
-        bath_match = re.search(r'(\d+\.?\d*)\s*(?:bath|ba)', card_text, re.I)
-        bedrooms = int(bed_match.group(1)) if bed_match else None
-        bathrooms = float(bath_match.group(1)) if bath_match else None
-        
-        # Sqft
-        sqft_match = re.search(r'([\d,]+)\s*(?:sq\.?\s*ft|sqft)', card_text, re.I)
-        sqft = int(sqft_match.group(1).replace(',', '')) if sqft_match else None
-        
-        # Photo
-        img = card.select_one('img[src]')
-        thumbnail = img['src'] if img else None
+        # VMF search API does NOT include photos — they are loaded on the detail page.
+        # We leave photos empty and can optionally enrich later.
+        photos = []
+        thumbnail = None
         
         return ScrapedListing(
             source='vmf_homes',
             source_url=source_url,
-            source_id=None,
-            address=address,
-            city=city,
-            state='TX',
-            zip_code=None,
+            source_id=listing_id,
+            address=full_address,
+            city=city.title() if city else "",
+            state=state,
+            zip_code=zip_code if zip_code else None,
             listing_price=price,
             year_built=year_built,
             sqft=sqft,
             bedrooms=bedrooms,
             bathrooms=bathrooms,
-            photos=[thumbnail] if thumbnail else [],
+            photos=photos,
             thumbnail_url=thumbnail,
             scraped_at=datetime.now().isoformat()
         )
