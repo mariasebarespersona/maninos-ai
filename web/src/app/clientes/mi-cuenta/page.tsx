@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import {
+import { 
   User, Home, FileText, Clock, CheckCircle, AlertCircle,
   XCircle, LogOut, Phone, Mail, MapPin, Loader2,
   DollarSign, TrendingUp, ShieldCheck, ArrowRight, MessageCircle,
@@ -125,7 +125,7 @@ export default function ClientDashboard() {
     } catch (error) { console.error('Error:', error) }
     finally { setSalesLoading(false) }
   }
-
+      
   const fetchPayments = async (clientId: string) => {
     try {
       const res = await fetch(`/api/public/clients/${clientId}/payments`)
@@ -208,13 +208,13 @@ export default function ClientDashboard() {
     const badge = badges[sale.status]
     if (!badge) return <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{sale.status}</span>
     const Icon = badge.icon
-    return (
+      return (
       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
         <Icon className="w-3 h-3" /> {badge.label}
-      </span>
-    )
-  }
-
+        </span>
+      )
+    }
+    
   const getPaymentStatusBadge = (status: string) => {
     const map: Record<string, { bg: string; text: string; label: string }> = {
       paid: { bg: 'bg-green-50', text: 'text-green-700', label: 'Pagado' },
@@ -341,7 +341,7 @@ export default function ClientDashboard() {
                 <p className="text-[12px] text-[#484848]">Maninos Capital necesita que verifiques tu identidad.</p>
               </div>
             </div>
-            <Link
+                  <Link
               href="/clientes/mi-cuenta/verificacion"
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-semibold bg-[#004274] hover:bg-[#00233d] transition-colors"
             >
@@ -400,35 +400,35 @@ export default function ClientDashboard() {
                     <p className="text-[14px] text-[#717171] mb-4">Explora nuestro catálogo y encuentra tu casa ideal</p>
                     <Link href="/clientes/casas" className="text-[13px] font-semibold text-[#004274] hover:underline inline-flex items-center gap-1">
                       Ver casas disponibles <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                ) : (
+                  </Link>
+                </div>
+              ) : (
                   <div className="divide-y divide-gray-100">
-                    {sales.map(sale => (
+                  {sales.map(sale => (
                       <div key={sale.id} className="p-5">
                         <div className="flex flex-col sm:flex-row gap-4">
                           {/* Photo */}
                           <div className="w-full sm:w-24 h-36 sm:h-24 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                            {sale.properties?.photos?.[0] ? (
+                          {sale.properties?.photos?.[0] ? (
                               <img src={sale.properties.photos[0]} alt={sale.properties.address} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center"><Home className="w-8 h-8 text-gray-300" /></div>
-                            )}
-                          </div>
-
-                          {/* Details */}
+                          )}
+                        </div>
+                        
+                        {/* Details */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <div className="min-w-0">
                                 <h3 className="font-semibold text-[14px] text-[#222] truncate" style={{ letterSpacing: '-0.01em' }}>{sale.properties?.address}</h3>
                                 <p className="text-[12px] text-[#717171] flex items-center gap-1">
                                   <MapPin className="w-3 h-3" />
-                                  {sale.properties?.city || 'Texas'}, {sale.properties?.state || 'TX'}
-                                </p>
-                              </div>
-                              {getStatusBadge(sale)}
+                                {sale.properties?.city || 'Texas'}, {sale.properties?.state || 'TX'}
+                              </p>
                             </div>
-
+                            {getStatusBadge(sale)}
+                          </div>
+                          
                             <div className="flex items-center gap-4 text-[13px] mt-2 flex-wrap">
                               <span className="text-[#717171]">Precio: <strong className="text-[#222] font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.sale_price?.toLocaleString()}</strong></span>
                               <span className="text-[#717171]">Tipo: <strong className={`font-semibold ${sale.sale_type === 'rto' ? 'text-[#004274]' : 'text-green-600'}`}>{sale.sale_type === 'rto' ? 'Dueño a dueño RTO' : 'Contado'}</strong></span>
@@ -440,15 +440,15 @@ export default function ClientDashboard() {
                               <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-100">
                                 <div className="flex items-start gap-2">
                                   <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                                  <div>
+                            <div>
                                     <p className="font-semibold text-[13px] text-red-700">Solicitud denegada</p>
                                     <p className="text-[12px] text-red-600 mt-0.5">{sale.rto_notes || 'Tu solicitud no fue aprobada.'}</p>
                                     <Link href="/clientes/casas" className="text-[12px] font-medium text-red-700 underline mt-1 inline-block">
                                       Ver casas disponibles
                                     </Link>
-                                  </div>
-                                </div>
-                              </div>
+                            </div>
+                            </div>
+                          </div>
                             )}
 
                             {/* RTO info */}
@@ -460,31 +460,33 @@ export default function ClientDashboard() {
                                   <span className="font-semibold text-[#004274]" style={{ fontVariantNumeric: 'tabular-nums' }}>${sale.rto_monthly_payment?.toLocaleString()}/mes</span>
                                 </div>
                                 {sale.rto_term_months && <span className="text-[12px] text-[#717171]">{sale.rto_term_months} meses</span>}
-                              </div>
-                            )}
+                            </div>
+                          )}
 
                             {/* Links */}
                             {sale.status !== 'cancelled' && (
                               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 flex-wrap">
-                                {sale.sale_type === 'rto' && (
+                              {sale.sale_type === 'rto' && (
                                   <Link href={`/clientes/mi-cuenta/rto/${sale.id}`} className="text-[12px] font-semibold text-[#004274] hover:underline flex items-center gap-1">
                                     <TrendingUp className="w-3.5 h-3.5" /> Ver contrato RTO
-                                  </Link>
-                                )}
-                                {sale.status === 'paid' && (
+                                </Link>
+                              )}
+                                {/* Cash: show docs when paid/completed. RTO: show only when fully completed */}
+                                {((sale.sale_type === 'contado' && ['paid', 'completed'].includes(sale.status)) ||
+                                  (sale.sale_type === 'rto' && sale.status === 'completed')) && (
                                   <Link href={`/clientes/mi-cuenta/documentos?sale=${sale.id}`} className="text-[12px] font-semibold text-[#717171] hover:underline flex items-center gap-1">
                                     <FileText className="w-3.5 h-3.5" /> Ver documentos
-                                  </Link>
-                                )}
-                              </div>
+                                </Link>
+                              )}
+                            </div>
                             )}
-                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             )}
 
             {/* Payments Tab */}
@@ -505,28 +507,28 @@ export default function ClientDashboard() {
                       <p className="text-[18px] font-bold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         ${paymentSummary.remaining_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
-                    </div>
+                  </div>
                     <div className="bg-white rounded-xl border border-gray-200 p-4">
                       <p className="text-[12px] text-[#717171] mb-1">Pagos realizados</p>
                       <p className="text-[18px] font-bold text-[#004274]">
                         {paymentSummary.payments_made}/{paymentSummary.total_payments}
                       </p>
-                    </div>
+                </div>
                     <div className="bg-white rounded-xl border border-gray-200 p-4">
                       <p className="text-[12px] text-[#717171] mb-1">Progreso</p>
                       <div className="flex items-center gap-2">
                         <p className="text-[18px] font-bold text-[#004274]">{paymentSummary.percentage_complete}%</p>
-                      </div>
+                  </div>
                       <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#004274] rounded-full transition-all duration-500"
                           style={{ width: `${paymentSummary.percentage_complete}%` }}
                         />
-                      </div>
+                </div>
                     </div>
                   </div>
                 )}
-
+                
                 {/* Payment List */}
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
@@ -596,7 +598,7 @@ export default function ClientDashboard() {
                                 </div>
                               </div>
                               <div className="text-right flex-shrink-0 flex items-center gap-3">
-                                <div>
+                    <div>
                                   <p className="font-bold text-[15px] text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>
                                     ${pmt.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </p>
@@ -657,7 +659,7 @@ export default function ClientDashboard() {
                 ))}
               </div>
             </div>
-
+            
             {/* Help */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-bold text-[14px] text-[#222] mb-3" style={{ letterSpacing: '-0.015em' }}>¿Necesitas ayuda?</h2>
@@ -679,7 +681,7 @@ export default function ClientDashboard() {
                 </a>
               </div>
             </div>
-
+            
             {/* Quick Links */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-bold text-[14px] text-[#222] mb-3" style={{ letterSpacing: '-0.015em' }}>Enlaces rápidos</h2>
@@ -689,15 +691,15 @@ export default function ClientDashboard() {
                   { href: '/clientes/mi-cuenta/estado-de-cuenta', icon: DollarSign, label: 'Estado de cuenta' },
                   { href: '/clientes/mi-cuenta/documentos', icon: FileText, label: 'Mis documentos' },
                 ].map(link => (
-                  <Link
+                <Link
                     key={link.href}
                     href={link.href}
                     className="flex items-center gap-3 p-2.5 rounded-lg text-[14px] text-[#484848] hover:bg-gray-50 hover:text-[#222] transition-colors group"
-                  >
+                >
                     <link.icon className="w-4 h-4 text-gray-400 group-hover:text-[#004274]" />
                     {link.label}
                     <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-gray-400" />
-                  </Link>
+                </Link>
                 ))}
               </div>
             </div>

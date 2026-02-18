@@ -208,11 +208,13 @@ async def get_client_documents(client_id: str):
       - Purchase title_transfer docs (type=purchase, same property) — e.g. Bill of Sale from when Maninos bought
     """
     try:
-        # Get all paid sales for this client with property info
+        # Get all paid/completed sales for this client with property info
+        # Cash flow: pending → paid → completed
+        # RTO flow: rto_pending → rto_approved → rto_active → completed
         sales_result = sb.table("sales") \
-            .select("id, property_id, sale_price, completed_at") \
+            .select("id, property_id, sale_price, sale_type, status, completed_at") \
             .eq("client_id", client_id) \
-            .eq("status", "paid") \
+            .in_("status", ["paid", "completed"]) \
             .execute()
         
         sales_with_docs = []
@@ -525,8 +527,9 @@ async def get_client_account_statement(client_id: str):
                 .execute()
 
             payments = pmt_res.data or []
+            today_str = date.today().isoformat()
             paid_pmts = [p for p in payments if p["status"] == "paid"]
-            overdue_pmts = [p for p in payments if p["status"] in ("late", "scheduled") and p.get("due_date") and p["due_date"] < date.today().isoformat()]
+            overdue_pmts = [p for p in payments if p["status"] in ("late", "scheduled", "pending") and p.get("due_date") and str(p["due_date"])[:10] < today_str]
 
             total_expected = sum(float(p.get("amount", 0)) for p in payments)
             total_paid = sum(float(p.get("paid_amount", 0) or 0) for p in paid_pmts)

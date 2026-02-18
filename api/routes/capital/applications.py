@@ -166,8 +166,22 @@ async def review_application(application_id: str, review: ApplicationReview):
                     "status": "draft",
                     "notes": f"Contrato generado automáticamente al aprobar solicitud {application_id}",
                 }
-                sb.table("rto_contracts").insert(contract_data).execute()
-                logger.info(f"[capital] RTO contract created for application {application_id}")
+                contract_insert = sb.table("rto_contracts").insert(contract_data).execute()
+                new_contract_id = contract_insert.data[0]["id"] if contract_insert.data else None
+                logger.info(f"[capital] RTO contract created for application {application_id}, contract_id={new_contract_id}")
+                
+                # Link the contract to the sale so the client portal can find it
+                if new_contract_id:
+                    sb.table("sales").update({
+                        "rto_contract_id": new_contract_id,
+                    }).eq("id", application["sale_id"]).execute()
+                    logger.info(f"[capital] Sale {application['sale_id']} linked to rto_contract {new_contract_id}")
+            else:
+                # Contract already exists — make sure it's linked to the sale
+                existing_cid = existing_contract.data[0]["id"]
+                sb.table("sales").update({
+                    "rto_contract_id": existing_cid,
+                }).eq("id", application["sale_id"]).execute()
             
             # Create title transfer: Maninos Homes → Maninos Capital
             # (Capital acquires the property — docs come in Capital's name)
