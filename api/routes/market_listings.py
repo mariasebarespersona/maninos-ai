@@ -913,14 +913,14 @@ async def scrape_and_save(
         all_prices.extend([l.listing_price for l in mhbay_listings])
         logger.info(f"[Scrape] ✅ MHBay: {len(mhbay_listings)} mobile homes")
         
-        # SOURCE 4: VMF Homes / Vanderbilt (mobile homes for SALE only)
+        # SOURCE 4: VMF Homes / Vanderbilt (mobile homes for SALE only — JSON API, no browser)
         vmf_count = 0
-        logger.info(f"[Scrape] 4/{source_count} - Scraping VMF Homes (Vanderbilt)...")
+        logger.info(f"[Scrape] 4/{source_count} - Scraping VMF Homes (Vanderbilt) via JSON API...")
         try:
             vmf_listings = await VMFHomesScraper.scrape(
                 min_price=min_price,
                 max_price=max_price,
-                max_listings=20,
+                max_listings=100,
             )
             all_listings.extend(vmf_listings)
             all_prices.extend([l.listing_price for l in vmf_listings])
@@ -936,7 +936,7 @@ async def scrape_and_save(
             mortgage21_listings = await TwentyFirstMortgageScraper.scrape(
                 min_price=min_price,
                 max_price=max_price,
-                max_listings=50,
+                max_listings=100,
             )
             all_listings.extend(mortgage21_listings)
             all_prices.extend([l.listing_price for l in mortgage21_listings])

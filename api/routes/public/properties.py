@@ -3,9 +3,13 @@ Public Properties API - Portal Clientes
 Read-only access to published properties + partner listings (Vanderbilt, 21st Mortgage).
 """
 
+import logging
 from typing import Optional, List
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from tools.supabase_client import sb
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public/properties", tags=["Public - Properties"])
 
@@ -19,7 +23,7 @@ async def list_published_properties(
     min_price: Optional[float] = Query(None, description="Minimum sale price"),
     max_price: Optional[float] = Query(None, description="Maximum sale price"),
     bedrooms: Optional[int] = Query(None, description="Number of bedrooms"),
-    limit: int = Query(50, le=100),
+    limit: int = Query(200, le=500),
     offset: int = Query(0, ge=0),
 ):
     """
@@ -63,7 +67,7 @@ async def list_partner_properties(
     max_price: Optional[float] = Query(None, description="Maximum price"),
     bedrooms: Optional[int] = Query(None, description="Number of bedrooms"),
     source: Optional[str] = Query(None, description="Filter by source: vmf_homes, 21st_mortgage"),
-    limit: int = Query(50, le=100),
+    limit: int = Query(200, le=500),
     offset: int = Query(0, ge=0),
 ):
     """
@@ -196,6 +200,95 @@ async def list_available_cities():
         }
         
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/partners/refresh")
+async def refresh_partner_listings():
+    """
+    Quick scrape of ONLY partner sources (VMF Homes + 21st Mortgage).
+    Both use direct JSON APIs — fast, no browser needed.
+    Saves results to market_listings table.
+    """
+    import asyncio
+    
+    try:
+        from api.agents.buscador.scraper import VMFHomesScraper, TwentyFirstMortgageScraper
+        
+        logger.info("[Partners] Refreshing partner listings (VMF + 21st)...")
+        
+        # Scrape both in parallel — both are pure HTTP, no browser
+        vmf_task = VMFHomesScraper.scrape(min_price=5000, max_price=80000, max_listings=150)
+        m21_task = TwentyFirstMortgageScraper.scrape(min_price=5000, max_price=80000, max_listings=150)
+        
+        vmf_listings, m21_listings = await asyncio.gather(vmf_task, m21_task, return_exceptions=True)
+        
+        # Handle errors
+        if isinstance(vmf_listings, Exception):
+            logger.error(f"[Partners] VMF scrape error: {vmf_listings}")
+            vmf_listings = []
+        if isinstance(m21_listings, Exception):
+            logger.error(f"[Partners] 21st scrape error: {m21_listings}")
+            m21_listings = []
+        
+        all_listings = list(vmf_listings) + list(m21_listings)
+        logger.info(f"[Partners] Scraped {len(vmf_listings)} VMF + {len(m21_listings)} 21st = {len(all_listings)} total")
+        
+        if not all_listings:
+            return {"ok": True, "message": "No listings found", "saved": 0, "vmf": 0, "mortgage21": 0}
+        
+        # Save to database via upsert
+        saved_count = 0
+        for listing in all_listings:
+            try:
+                data = {
+                    "source": listing.source,
+                    "source_url": listing.source_url,
+                    "source_id": listing.source_id,
+                    "address": listing.address,
+                    "city": listing.city,
+                    "state": listing.state,
+                    "zip_code": listing.zip_code,
+                    "listing_price": listing.listing_price,
+                    "year_built": listing.year_built or 2000,
+                    "sqft": listing.sqft,
+                    "bedrooms": listing.bedrooms,
+                    "bathrooms": listing.bathrooms,
+                    "photos": listing.photos,
+                    "thumbnail_url": listing.thumbnail_url,
+                    "scraped_at": listing.scraped_at or datetime.now().isoformat(),
+                    "status": "available",
+                }
+                
+                # Don't overwrite purchased/rejected listings
+                existing = sb.table("market_listings") \
+                    .select("id, status") \
+                    .eq("source_url", listing.source_url) \
+                    .limit(1).execute()
+                
+                if existing.data and existing.data[0].get("status") not in ("available", None):
+                    continue
+                
+                sb.table("market_listings") \
+                    .upsert(data, on_conflict="source_url") \
+                    .execute()
+                saved_count += 1
+            except Exception as e:
+                logger.warning(f"[Partners] Error saving: {e}")
+                continue
+        
+        logger.info(f"[Partners] ✅ Saved {saved_count} partner listings")
+        
+        return {
+            "ok": True,
+            "vmf": len(vmf_listings),
+            "mortgage21": len(m21_listings),
+            "total_scraped": len(all_listings),
+            "saved": saved_count,
+        }
+        
+    except Exception as e:
+        logger.error(f"[Partners] Refresh failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
