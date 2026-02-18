@@ -458,7 +458,7 @@ function UploadBox({
   icon: React.ReactNode
   file: File | null
   preview: string | null
-  inputRef: React.RefObject<HTMLInputElement>
+  inputRef: React.RefObject<HTMLInputElement | null>
   onSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
   onClear: () => void
   required?: boolean
