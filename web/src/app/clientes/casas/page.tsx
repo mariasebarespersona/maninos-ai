@@ -365,17 +365,19 @@ function PropertyCard({ property }: { property: Property }) {
           </div>
         )}
 
-        {/* Renovated badge */}
-        {property.is_renovated && (
-          <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-[#222] text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm">
-            Renovada
-          </span>
-        )}
+        {/* Source badge */}
+        <span className={`absolute top-3 left-3 backdrop-blur-sm text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm ${
+          property.is_partner
+            ? 'bg-[#004274]/90 text-white'
+            : 'bg-white/90 text-[#004274]'
+        }`}>
+          {property.is_partner && property.partner_name ? property.partner_name : 'Maninos'}
+        </span>
 
-        {/* Partner badge */}
-        {property.is_partner && property.partner_name && (
-          <span className="absolute top-3 left-3 bg-[#004274]/90 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm">
-            {property.partner_name}
+        {/* Renovated badge */}
+        {!property.is_partner && property.is_renovated && (
+          <span className="absolute top-10 left-3 bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md shadow-sm">
+            Renovada
           </span>
         )}
 
