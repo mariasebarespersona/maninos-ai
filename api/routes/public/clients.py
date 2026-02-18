@@ -14,7 +14,7 @@ from tools.supabase_client import sb
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/clients", tags=["Public - Clients"])
 
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+# Sumsub is used for KYC — see api/services/sumsub_service.py
 
 
 @router.get("/lookup")
@@ -738,12 +738,15 @@ async def get_client_kyc_status(client_id: str):
 @router.post("/{client_id}/kyc-start")
 async def client_start_kyc(client_id: str, data: ClientKYCStart):
     """
-    Client initiates their Stripe Identity verification.
+    Client initiates their Sumsub identity verification.
+    Returns an access token for the Sumsub Web SDK.
     Called from the client portal when they click "Verificar mi identidad".
     """
     try:
+        from api.services import sumsub_service
+
         client_result = sb.table("clients") \
-            .select("id, name, email, kyc_verified, kyc_status") \
+            .select("id, name, email, phone, kyc_verified, kyc_status") \
             .eq("id", client_id) \
             .execute()
 
@@ -759,63 +762,49 @@ async def client_start_kyc(client_id: str, data: ClientKYCStart):
                 "message": "Tu identidad ya está verificada."
             }
 
-        if not STRIPE_SECRET_KEY:
+        if not sumsub_service.is_configured():
             raise HTTPException(
                 status_code=503,
                 detail="Servicio de verificación no disponible. Contacta soporte."
             )
 
-        # Production mode check
-        if STRIPE_SECRET_KEY.startswith("sk_test_"):
-            logger.warning("[KYC] Using Stripe TEST key — verifications will not be real. Use sk_live_ for production.")
+        # Create or get existing Sumsub applicant
+        external_user_id = client_id
+        applicant = await sumsub_service.get_applicant_by_external_id(external_user_id)
 
-        import stripe
-        stripe.api_key = STRIPE_SECRET_KEY
+        if not applicant:
+            applicant = await sumsub_service.create_applicant(
+                external_user_id=external_user_id,
+                email=client.get("email", ""),
+                phone=client.get("phone", ""),
+                name=client.get("name", ""),
+            )
 
-        # Return URL goes back to client portal
-        base_url = data.return_url or os.getenv("FRONTEND_URL") or os.getenv("APP_URL") or "http://localhost:3000"
-        return_url = f"{base_url}/clientes/mi-cuenta/verificacion?status=complete"
+        applicant_id = applicant.get("id")
 
-        # Create verification session (production-ready — uses live or test key based on env)
-        session = stripe.identity.VerificationSession.create(
-            type="document",
-            metadata={
-                "client_id": client_id,
-                "client_name": client.get("name", ""),
-                "client_email": client.get("email", ""),
-            },
-            options={
-                "document": {
-                    "allowed_types": ["driving_license", "passport", "id_card"],
-                    "require_id_number": False,
-                    "require_matching_selfie": True,
-                },
-            },
-            return_url=return_url,
-        )
+        # Generate access token for Sumsub Web SDK
+        token_data = await sumsub_service.get_access_token(external_user_id)
+        access_token = token_data.get("token")
 
-        # Update client record
+        # Update client record with Sumsub applicant ID
         sb.table("clients").update({
-            "kyc_session_id": session.id,
+            "kyc_session_id": applicant_id,
             "kyc_status": "pending",
-            "kyc_type": "document",
+            "kyc_type": "sumsub",
             "kyc_failure_reason": None,
         }).eq("id", client_id).execute()
 
-        logger.info(f"[KYC] Client {client_id} started Stripe verification, session {session.id}")
+        logger.info(f"[KYC] Client {client_id} started Sumsub verification, applicant {applicant_id}")
 
         return {
             "ok": True,
-            "session_id": session.id,
-            "url": session.url,
-            "client_secret": session.client_secret,
+            "access_token": access_token,
+            "applicant_id": applicant_id,
             "message": "Sesión de verificación creada. Completa la verificación."
         }
 
     except HTTPException:
         raise
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Servicio de verificación no disponible")
     except Exception as e:
         logger.error(f"Error starting KYC for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -824,10 +813,12 @@ async def client_start_kyc(client_id: str, data: ClientKYCStart):
 @router.post("/{client_id}/kyc-check")
 async def client_check_kyc(client_id: str):
     """
-    Client polls their KYC status after returning from Stripe.
-    Updates the DB with the latest Stripe status.
+    Client polls their KYC status.
+    Updates the DB with the latest Sumsub status.
     """
     try:
+        from api.services import sumsub_service
+
         client_result = sb.table("clients") \
             .select("id, kyc_session_id, kyc_status, kyc_verified") \
             .eq("id", client_id) \
@@ -841,41 +832,52 @@ async def client_check_kyc(client_id: str):
         if client.get("kyc_verified"):
             return {"ok": True, "verified": True, "status": "verified", "message": "✅ Tu identidad está verificada."}
 
-        session_id = client.get("kyc_session_id")
-        if not session_id:
+        applicant_id = client.get("kyc_session_id")
+        if not applicant_id:
             return {"ok": True, "verified": False, "status": "no_session", "message": "No hay verificación en proceso."}
 
-        if not STRIPE_SECRET_KEY:
-            raise HTTPException(status_code=503, detail="Servicio no disponible")
+        if not sumsub_service.is_configured():
+            raise HTTPException(status_code=503, detail="Servicio de verificación no disponible")
 
-        import stripe
-        stripe.api_key = STRIPE_SECRET_KEY
+        # Check Sumsub applicant status
+        status_data = await sumsub_service.get_applicant_status(applicant_id)
 
-        session = stripe.identity.VerificationSession.retrieve(session_id)
+        review_status = status_data.get("reviewStatus", "init")
+        review_result = status_data.get("reviewResult", {})
+        review_answer = review_result.get("reviewAnswer", "")
+        reject_labels = review_result.get("rejectLabels", [])
 
-        status_map = {
-            "requires_input": "requires_input",
-            "processing": "pending",
-            "verified": "verified",
-            "canceled": "failed",
-        }
-        our_status = status_map.get(session.status, "pending")
-        is_verified = session.status == "verified"
+        # Map Sumsub status to our internal status
+        if review_answer == "GREEN":
+            our_status = "verified"
+            is_verified = True
+        elif review_answer == "RED":
+            our_status = "failed"
+            is_verified = False
+        elif review_status in ("pending", "queued", "prechecked"):
+            our_status = "pending"
+            is_verified = False
+        elif review_status == "init":
+            our_status = "requires_input"
+            is_verified = False
+        else:
+            our_status = "pending"
+            is_verified = False
 
         update_data = {"kyc_status": our_status, "kyc_verified": is_verified}
         if is_verified:
             update_data["kyc_verified_at"] = datetime.utcnow().isoformat()
-        if session.status == "requires_input":
-            reason = "Verificación incompleta"
-            if hasattr(session, 'last_error') and session.last_error:
-                reason = str(getattr(session.last_error, 'reason', reason))
+        if our_status == "failed":
+            reason = ", ".join(reject_labels) if reject_labels else "Verificación rechazada"
             update_data["kyc_failure_reason"] = reason
+        if our_status == "requires_input":
+            update_data["kyc_failure_reason"] = "Verificación incompleta — sube tu documento e identidad"
 
         sb.table("clients").update(update_data).eq("id", client_id).execute()
 
         messages = {
             "verified": "✅ ¡Tu identidad ha sido verificada exitosamente!",
-            "failed": "❌ La verificación fue cancelada.",
+            "failed": "❌ La verificación fue rechazada.",
             "requires_input": "⚠️ La verificación no se completó. Puedes reintentar.",
             "pending": "⏳ Tu verificación está siendo procesada...",
         }
@@ -884,12 +886,36 @@ async def client_check_kyc(client_id: str):
             "ok": True,
             "verified": is_verified,
             "status": our_status,
-            "message": messages.get(our_status, f"Estado: {session.status}")
+            "message": messages.get(our_status, f"Estado: {review_status}")
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error checking KYC for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{client_id}/kyc-refresh-token")
+async def client_refresh_kyc_token(client_id: str):
+    """
+    Refresh the Sumsub Web SDK access token.
+    Called by the frontend when the current token expires during verification.
+    """
+    try:
+        from api.services import sumsub_service
+
+        if not sumsub_service.is_configured():
+            raise HTTPException(status_code=503, detail="Servicio de verificación no disponible")
+
+        token_data = await sumsub_service.get_access_token(client_id)
+        access_token = token_data.get("token")
+
+        return {"ok": True, "access_token": access_token}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing KYC token for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

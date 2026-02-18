@@ -2,8 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   ShieldCheck,
@@ -18,19 +17,28 @@ import {
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
 
+/* ───── Sumsub Web SDK type (loaded dynamically via <script>) ───── */
+declare global {
+  interface Window {
+    snsWebSdk: any
+  }
+}
+
 export default function ClientVerificationPage() {
-  const searchParams = useSearchParams()
-  const statusParam = searchParams.get('status') // 'complete' when returning from Stripe
   const { client, loading: authLoading } = useClientAuth()
 
   const [kycStatus, setKycStatus] = useState<string>('loading')
   const [kycVerified, setKycVerified] = useState(false)
   const [kycRequested, setKycRequested] = useState(false)
   const [kycFailReason, setKycFailReason] = useState<string | null>(null)
-  const [hasSession, setHasSession] = useState(false)
   const [starting, setStarting] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [showSdk, setShowSdk] = useState(false)
+  const [sdkReady, setSdkReady] = useState(false)
+  const sdkContainerRef = useRef<HTMLDivElement>(null)
+  const sdkInstanceRef = useRef<any>(null)
 
+  /* ─── Load KYC status from backend ─── */
   const loadKycStatus = useCallback(async (clientId: string) => {
     try {
       const res = await fetch(`/api/public/clients/${clientId}/kyc-status`)
@@ -40,7 +48,6 @@ export default function ClientVerificationPage() {
         setKycStatus(data.kyc_status || 'unverified')
         setKycRequested(data.kyc_requested || false)
         setKycFailReason(data.kyc_failure_reason || null)
-        setHasSession(data.has_session || false)
       }
     } catch (err) {
       console.error('Error loading KYC status:', err)
@@ -52,12 +59,25 @@ export default function ClientVerificationPage() {
     if (client) loadKycStatus(client.id)
   }, [client, loadKycStatus])
 
-  // If returning from Stripe, automatically poll result
+  /* ─── Load Sumsub Web SDK script dynamically ─── */
   useEffect(() => {
-    if (client && statusParam === 'complete') handleCheckResult()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, statusParam])
+    if (typeof window === 'undefined') return
+    if (window.snsWebSdk) {
+      setSdkReady(true)
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://static.sumsub.com/idensic/static/sns-websdk-builder.js'
+    script.async = true
+    script.onload = () => setSdkReady(true)
+    script.onerror = () => {
+      console.error('Failed to load Sumsub Web SDK')
+      toast.error('Error cargando el servicio de verificación')
+    }
+    document.head.appendChild(script)
+  }, [])
 
+  /* ─── Start verification → get token → launch SDK ─── */
   const handleStartVerification = async () => {
     if (!client) return
     setStarting(true)
@@ -68,8 +88,11 @@ export default function ClientVerificationPage() {
         body: JSON.stringify({ return_url: window.location.origin }),
       })
       const data = await res.json()
-      if (data.ok && data.url) {
-        window.location.href = data.url
+
+      if (data.ok && data.access_token) {
+        setShowSdk(true)
+        // Wait a tick for the container div to render
+        setTimeout(() => launchSumsubSdk(data.access_token), 150)
       } else if (data.already_verified) {
         toast.success('¡Tu identidad ya está verificada!')
         setKycVerified(true)
@@ -84,6 +107,55 @@ export default function ClientVerificationPage() {
     }
   }
 
+  /* ─── Initialize the Sumsub Web SDK ─── */
+  const launchSumsubSdk = (accessToken: string) => {
+    if (!window.snsWebSdk || !sdkContainerRef.current || !client) return
+
+    // Destroy previous instance if any
+    if (sdkInstanceRef.current) {
+      try { sdkInstanceRef.current.destroy() } catch { /* ignore */ }
+    }
+
+    const clientId = client.id
+
+    const snsWebSdkInstance = window.snsWebSdk
+      .init(accessToken, () => {
+        // Token expiration handler — refresh from our backend
+        return fetch(`/api/public/clients/${clientId}/kyc-refresh-token`, {
+          method: 'POST',
+        })
+          .then((res: Response) => res.json())
+          .then((data: { access_token: string }) => data.access_token)
+      })
+      .withConf({
+        lang: 'es',
+        theme: 'light',
+      })
+      .withOptions({
+        addViewportTag: false,
+        adaptIframeHeight: true,
+      })
+      .on('idCheck.onStepCompleted', (payload: any) => {
+        console.log('[Sumsub] Step completed:', payload)
+      })
+      .on('idCheck.onError', (error: any) => {
+        console.error('[Sumsub] Error:', error)
+        toast.error('Error durante la verificación')
+      })
+      .on('idCheck.onApplicantStatusChanged', (payload: any) => {
+        console.log('[Sumsub] Status changed:', payload)
+        // When Sumsub reports final status, poll our backend
+        if (payload?.reviewStatus === 'completed') {
+          handleCheckResult()
+        }
+      })
+      .build()
+
+    snsWebSdkInstance.launch('#sumsub-websdk-container')
+    sdkInstanceRef.current = snsWebSdkInstance
+  }
+
+  /* ─── Poll backend for verification result ─── */
   const handleCheckResult = async () => {
     if (!client) return
     setChecking(true)
@@ -95,11 +167,16 @@ export default function ClientVerificationPage() {
         setKycStatus(data.status || 'pending')
         if (data.verified) {
           toast.success('✅ ¡Tu identidad ha sido verificada!')
+          setShowSdk(false)
         } else if (data.status === 'pending') {
           toast.info('⏳ Tu verificación está siendo procesada...')
         } else if (data.status === 'requires_input') {
           toast.error('La verificación necesita reintento')
           setKycFailReason(data.message || null)
+        } else if (data.status === 'failed') {
+          toast.error(data.message || 'Verificación rechazada')
+          setKycFailReason(data.message || null)
+          setShowSdk(false)
         }
       }
     } catch {
@@ -109,6 +186,7 @@ export default function ClientVerificationPage() {
     }
   }
 
+  /* ─── Loading state ─── */
   if (authLoading || kycStatus === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -141,8 +219,32 @@ export default function ClientVerificationPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="max-w-xl mx-auto">
 
-          {/* VERIFIED */}
-          {kycVerified && (
+          {/* ═══════════ SUMSUB WEB SDK CONTAINER ═══════════ */}
+          {showSdk && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-bold text-[16px] text-[#222]" style={{ letterSpacing: '-0.015em' }}>
+                  Verificación en Curso
+                </h2>
+                <button
+                  onClick={handleCheckResult}
+                  disabled={checking}
+                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#004274] hover:underline"
+                >
+                  {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Verificar estado
+                </button>
+              </div>
+              <div
+                id="sumsub-websdk-container"
+                ref={sdkContainerRef}
+                style={{ minHeight: 600 }}
+              />
+            </div>
+          )}
+
+          {/* ═══════════ VERIFIED ═══════════ */}
+          {kycVerified && !showSdk && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-green-50 p-8 text-center">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -167,8 +269,8 @@ export default function ClientVerificationPage() {
             </div>
           )}
 
-          {/* PENDING */}
-          {!kycVerified && kycStatus === 'pending' && (
+          {/* ═══════════ PENDING ═══════════ */}
+          {!kycVerified && !showSdk && kycStatus === 'pending' && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-amber-50 p-8 text-center">
                 <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -190,23 +292,21 @@ export default function ClientVerificationPage() {
                   Verificar Estado
                 </button>
               </div>
-              {hasSession && (
-                <div className="p-6 border-t border-gray-100 text-center">
-                  <p className="text-[13px] text-[#717171] mb-2">¿No completaste la verificación?</p>
-                  <button
-                    onClick={handleStartVerification}
-                    disabled={starting}
-                    className="text-[13px] font-semibold text-[#004274] hover:underline"
-                  >
-                    Reiniciar verificación
-                  </button>
-                </div>
-              )}
+              <div className="p-6 border-t border-gray-100 text-center">
+                <p className="text-[13px] text-[#717171] mb-2">¿No completaste la verificación?</p>
+                <button
+                  onClick={handleStartVerification}
+                  disabled={starting || !sdkReady}
+                  className="text-[13px] font-semibold text-[#004274] hover:underline"
+                >
+                  Reiniciar verificación
+                </button>
+              </div>
             </div>
           )}
 
-          {/* FAILED / REQUIRES INPUT */}
-          {!kycVerified && (kycStatus === 'failed' || kycStatus === 'requires_input') && (
+          {/* ═══════════ FAILED / REQUIRES INPUT ═══════════ */}
+          {!kycVerified && !showSdk && (kycStatus === 'failed' || kycStatus === 'requires_input') && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-red-50 p-8 text-center">
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -223,7 +323,7 @@ export default function ClientVerificationPage() {
                 </p>
                 <button
                   onClick={handleStartVerification}
-                  disabled={starting}
+                  disabled={starting || !sdkReady}
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[14px] transition-colors"
                   style={{ background: '#004274' }}
                 >
@@ -234,8 +334,8 @@ export default function ClientVerificationPage() {
             </div>
           )}
 
-          {/* UNVERIFIED — ready to start */}
-          {!kycVerified && kycStatus === 'unverified' && (
+          {/* ═══════════ UNVERIFIED — ready to start ═══════════ */}
+          {!kycVerified && !showSdk && kycStatus === 'unverified' && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-blue-50 p-8 text-center">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -245,19 +345,19 @@ export default function ClientVerificationPage() {
                   Verifica tu Identidad
                 </h2>
                 <p className="text-[14px] text-[#717171] mb-6">
-                  {kycRequested 
+                  {kycRequested
                     ? 'Maninos Capital te ha solicitado verificar tu identidad para continuar con tu solicitud dueño a dueño RTO.'
                     : 'Para avanzar con tu solicitud dueño a dueño RTO, necesitamos verificar tu identidad.'
                   }
                 </p>
                 <button
                   onClick={handleStartVerification}
-                  disabled={starting}
-                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-[16px] transition-all hover:brightness-110"
+                  disabled={starting || !sdkReady}
+                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-[16px] transition-all hover:brightness-110 disabled:opacity-50"
                   style={{ background: '#0068b7', boxShadow: '0 4px 14px rgba(0,104,183,0.3)' }}
                 >
                   {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                  Verificar Mi Identidad
+                  {sdkReady ? 'Verificar Mi Identidad' : 'Cargando...'}
                 </button>
               </div>
 
@@ -291,12 +391,27 @@ export default function ClientVerificationPage() {
                   <div>
                     <p className="font-semibold text-[13px] text-green-800">Seguro y confidencial</p>
                     <p className="text-[12px] text-green-700">
-                      La verificación se realiza a través de Stripe, líder mundial en pagos seguros.
+                      La verificación se realiza a través de Sumsub, líder mundial en verificación de identidad.
                       Tu información personal está protegida y encriptada.
                     </p>
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ═══════════ ERROR ═══════════ */}
+          {kycStatus === 'error' && !showSdk && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden p-8 text-center">
+              <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+              <h2 className="text-[18px] font-bold text-[#222] mb-2">Error de conexión</h2>
+              <p className="text-[14px] text-[#717171] mb-4">No pudimos cargar tu estado de verificación.</p>
+              <button
+                onClick={() => { if (client) loadKycStatus(client.id) }}
+                className="px-5 py-2.5 rounded-lg bg-[#004274] text-white text-[14px] font-semibold hover:bg-[#00233d] transition-colors"
+              >
+                Reintentar
+              </button>
             </div>
           )}
         </div>
