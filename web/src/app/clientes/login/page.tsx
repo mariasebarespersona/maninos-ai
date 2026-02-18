@@ -33,7 +33,7 @@ export default function ClientLoginPage() {
     }
     const checkAuth = async () => {
       const user = await getClientUser()
-      if (user) { router.push('/clientes/mi-cuenta') }
+      if (user) { window.location.href = '/clientes/mi-cuenta' }
       else { setCheckingAuth(false) }
     }
     checkAuth()
@@ -55,13 +55,17 @@ export default function ClientLoginPage() {
         } else {
           setError('Error al iniciar sesión. Intenta de nuevo.')
         }
+        setLoading(false)
         return
       }
       toast.success('¡Bienvenido!')
-      router.push(nextUrl)
+      // Use full page navigation (not client-side router.push) to ensure
+      // the Supabase session cookie is properly read on the new page.
+      window.location.href = nextUrl
     } catch {
       setError('Error de conexión. Intenta de nuevo.')
-    } finally { setLoading(false) }
+      setLoading(false)
+    }
   }
 
   const handleRegister = async (e: React.FormEvent) => {

@@ -199,6 +199,46 @@ async def list_available_cities():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/partners/diagnostics")
+async def partner_diagnostics():
+    """
+    Diagnostic endpoint: show how many partner listings exist per source and status.
+    Useful for debugging why Vanderbilt / 21st Mortgage listings may not appear.
+    """
+    try:
+        # Get counts per source + status
+        result = sb.table("market_listings") \
+            .select("source, status") \
+            .in_("source", PARTNER_SOURCES) \
+            .execute()
+        
+        items = result.data or []
+        counts = {}
+        for item in items:
+            key = f"{item['source']}:{item['status']}"
+            counts[key] = counts.get(key, 0) + 1
+        
+        # Also check most recent scraped_at per source
+        recent = {}
+        for src in PARTNER_SOURCES:
+            r = sb.table("market_listings") \
+                .select("source, scraped_at, address, status") \
+                .eq("source", src) \
+                .order("scraped_at", desc=True) \
+                .limit(3) \
+                .execute()
+            recent[src] = r.data or []
+        
+        return {
+            "ok": True,
+            "counts_by_source_status": counts,
+            "total_partner_rows": len(items),
+            "most_recent_by_source": recent,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/stats/summary")
 async def get_public_stats():
     """
