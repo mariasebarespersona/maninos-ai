@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useInView } from '@/hooks/useInView'
 import {
   Search, MapPin, Bed, Bath, Square, X,
-  SlidersHorizontal, ChevronDown, Home, Heart
+  SlidersHorizontal, ChevronDown, Home, Heart, RefreshCw
 } from 'lucide-react'
+
+const AUTO_REFRESH_MS = 2 * 60 * 1000  // Poll every 2 minutes
 
 interface Property {
   id: string
@@ -35,9 +37,21 @@ export default function HouseCatalog() {
     maxPrice: ''
   })
   const [showFilters, setShowFilters] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [newCount, setNewCount] = useState(0)          // Number of new listings detected
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const prevIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => { fetchCities() }, [])
   useEffect(() => { fetchProperties() }, [filters])
+
+  // ── Auto-refresh: poll every 2 minutes for new listings ──
+  useEffect(() => {
+    const interval = setInterval(() => {
+      silentRefresh()
+    }, AUTO_REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [filters])
 
   const fetchCities = async () => {
     try {
@@ -47,41 +61,88 @@ export default function HouseCatalog() {
     } catch (error) { console.error('Error fetching cities:', error) }
   }
 
+  const doFetch = useCallback(async (): Promise<Property[]> => {
+    const params = new URLSearchParams()
+    if (filters.city) params.set('city', filters.city)
+    if (filters.minPrice) params.set('min_price', filters.minPrice)
+    if (filters.maxPrice) params.set('max_price', filters.maxPrice)
+
+    const [ownRes, partnerRes] = await Promise.all([
+      fetch(`/api/public/properties?${params}`),
+      fetch(`/api/public/properties/partners?${params}`),
+    ])
+    const ownData = await ownRes.json()
+    const partnerData = await partnerRes.json()
+
+    const all: Property[] = []
+    if (ownData.ok) all.push(...(ownData.properties || []))
+    if (partnerData.ok) all.push(...(partnerData.properties || []))
+    all.sort((a, b) => (a.sale_price || 0) - (b.sale_price || 0))
+    return all
+  }, [filters])
+
   const fetchProperties = async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
-      if (filters.city) params.set('city', filters.city)
-      if (filters.minPrice) params.set('min_price', filters.minPrice)
-      if (filters.maxPrice) params.set('max_price', filters.maxPrice)
-
-      // Fetch Maninos inventory + partner listings (Vanderbilt, 21st) in parallel
-      const [ownRes, partnerRes] = await Promise.all([
-        fetch(`/api/public/properties?${params}`),
-        fetch(`/api/public/properties/partners?${params}`),
-      ])
-      const ownData = await ownRes.json()
-      const partnerData = await partnerRes.json()
-      
-      const all: Property[] = []
-      if (ownData.ok) all.push(...(ownData.properties || []))
-      if (partnerData.ok) all.push(...(partnerData.properties || []))
-      
-      // Sort by price ascending
-      all.sort((a, b) => (a.sale_price || 0) - (b.sale_price || 0))
+      const all = await doFetch()
+      prevIdsRef.current = new Set(all.map(p => p.id))
       setProperties(all)
+      setLastUpdated(new Date())
+      setNewCount(0)
     } catch (error) { console.error('Error fetching properties:', error) }
     finally { setLoading(false) }
+  }
+
+  /** Silent background refresh — doesn't show loading skeleton */
+  const silentRefresh = async () => {
+    try {
+      const all = await doFetch()
+      const newIds = all.filter(p => !prevIdsRef.current.has(p.id))
+      if (newIds.length > 0) {
+        setNewCount(newIds.length)
+      }
+      // Always update the list silently
+      prevIdsRef.current = new Set(all.map(p => p.id))
+      setProperties(all)
+      setLastUpdated(new Date())
+    } catch { /* silent fail */ }
+  }
+
+  /** Manual refresh triggered by user */
+  const manualRefresh = async () => {
+    setIsRefreshing(true)
+    setNewCount(0)
+    try {
+      const all = await doFetch()
+      prevIdsRef.current = new Set(all.map(p => p.id))
+      setProperties(all)
+      setLastUpdated(new Date())
+    } catch (error) { console.error('Error refreshing:', error) }
+    finally { setTimeout(() => setIsRefreshing(false), 600) }
   }
 
   const clearFilters = () => setFilters({ city: '', minPrice: '', maxPrice: '' })
   const hasActiveFilters = filters.city || filters.minPrice || filters.maxPrice
 
+  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated) : null
+
   return (
     <div className="min-h-screen bg-white">
 
+      {/* ── NEW LISTINGS BANNER ── */}
+      {newCount > 0 && (
+        <div
+          className="sticky top-16 sm:top-20 z-50 bg-[#004274] text-white text-center py-2.5 cursor-pointer hover:bg-[#00233d] transition-colors"
+          onClick={() => { manualRefresh() }}
+        >
+          <span className="text-[13px] font-medium">
+            {newCount === 1 ? '1 casa nueva disponible' : `${newCount} casas nuevas disponibles`} — Toca para actualizar
+          </span>
+        </div>
+      )}
+
       {/* ── FILTER BAR ── Sticky, clean, Airbnb-style */}
-      <div className="sticky top-16 sm:top-20 z-40 bg-white border-b border-gray-200">
+      <div className={`sticky ${newCount > 0 ? 'top-[104px] sm:top-[120px]' : 'top-16 sm:top-20'} z-40 bg-white border-b border-gray-200`}>
         <div className="max-w-[1760px] mx-auto px-6 sm:px-8 lg:px-10 py-3">
           <div className="flex items-center gap-3">
 
@@ -120,9 +181,27 @@ export default function HouseCatalog() {
               )}
             </div>
 
-            <span className="text-[13px] whitespace-nowrap hidden sm:inline text-[#717171]">
-              <strong className="text-[#222] font-semibold">{properties.length}</strong> casas
-            </span>
+            {/* Count + refresh */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={manualRefresh}
+                disabled={isRefreshing}
+                className="p-1.5 rounded-full hover:bg-gray-100 transition-colors text-[#717171] hover:text-[#222] disabled:opacity-50"
+                title="Actualizar"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+              <div className="text-right hidden sm:block">
+                <span className="text-[13px] whitespace-nowrap text-[#717171] block leading-tight">
+                  <strong className="text-[#222] font-semibold">{properties.length}</strong> casas
+                </span>
+                {timeAgo && (
+                  <span className="text-[11px] text-[#b0b0b0] whitespace-nowrap block leading-tight">
+                    Actualizado {timeAgo}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {showFilters && (
@@ -194,6 +273,17 @@ export default function HouseCatalog() {
       </div>
     </div>
   )
+}
+
+/** Format a Date to relative "hace X min/seg" string */
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (seconds < 10) return 'ahora'
+  if (seconds < 60) return `hace ${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `hace ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  return `hace ${hours}h`
 }
 
 function FilterPill({ label, icon, onRemove }: { label: string; icon?: React.ReactNode; onRemove: () => void }) {

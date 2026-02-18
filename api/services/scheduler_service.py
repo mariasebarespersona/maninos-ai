@@ -1,12 +1,14 @@
 """
-Email Scheduler Service - Maninos AI
-Background job scheduling for automated emails, reminders, and alerts.
+Scheduler Service - Maninos AI
+Background job scheduling for automated emails, reminders, alerts,
+and partner listing refresh.
 
 Uses APScheduler to run:
-1. Process pending scheduled emails (every hour)
+1. Process pending scheduled emails (every 30 min)
 2. RTO payment reminders (daily at 8am CT)
 3. RTO overdue alerts (daily at 9am CT)
-4. Cash sale follow-ups (process review + referral emails)
+4. Portal sync (every 2 hours)
+5. Partner listings refresh — VMF Homes + 21st Mortgage (every 6 hours)
 """
 
 import logging
@@ -128,6 +130,102 @@ def _job_portal_sync():
         return {"ok": False, "error": str(e)}
 
 
+def _job_refresh_partner_listings():
+    """
+    Job: Refresh partner listings from VMF Homes + 21st Mortgage.
+    Both use direct JSON APIs — no browser needed, fast and reliable.
+    Saves new/updated listings to market_listings table.
+    """
+    import asyncio
+    from datetime import datetime as dt
+
+    try:
+        from api.agents.buscador.scraper import VMFHomesScraper, TwentyFirstMortgageScraper
+        from tools.supabase_client import sb
+
+        async def _scrape_and_save():
+            # Scrape both in parallel
+            vmf_task = VMFHomesScraper.scrape(min_price=5000, max_price=80000, max_listings=150)
+            m21_task = TwentyFirstMortgageScraper.scrape(min_price=5000, max_price=80000, max_listings=150)
+
+            results = await asyncio.gather(vmf_task, m21_task, return_exceptions=True)
+            vmf_listings = results[0] if not isinstance(results[0], Exception) else []
+            m21_listings = results[1] if not isinstance(results[1], Exception) else []
+
+            if isinstance(results[0], Exception):
+                logger.error(f"[scheduler] VMF scrape error: {results[0]}")
+            if isinstance(results[1], Exception):
+                logger.error(f"[scheduler] 21st scrape error: {results[1]}")
+
+            all_listings = list(vmf_listings) + list(m21_listings)
+            saved = 0
+
+            for listing in all_listings:
+                try:
+                    data = {
+                        "source": listing.source,
+                        "source_url": listing.source_url,
+                        "source_id": listing.source_id,
+                        "address": listing.address,
+                        "city": listing.city,
+                        "state": listing.state,
+                        "zip_code": listing.zip_code,
+                        "listing_price": listing.listing_price,
+                        "year_built": listing.year_built or 2000,
+                        "sqft": listing.sqft,
+                        "bedrooms": listing.bedrooms,
+                        "bathrooms": listing.bathrooms,
+                        "photos": listing.photos,
+                        "thumbnail_url": listing.thumbnail_url,
+                        "scraped_at": listing.scraped_at or dt.now().isoformat(),
+                        "status": "available",
+                    }
+
+                    existing = sb.table("market_listings") \
+                        .select("id, status") \
+                        .eq("source_url", listing.source_url) \
+                        .limit(1).execute()
+
+                    if existing.data and existing.data[0].get("status") not in ("available", None):
+                        continue
+
+                    sb.table("market_listings") \
+                        .upsert(data, on_conflict="source_url") \
+                        .execute()
+                    saved += 1
+                except Exception as e:
+                    logger.warning(f"[scheduler] Error saving partner listing: {e}")
+                    continue
+
+            return {
+                "ok": True,
+                "vmf": len(vmf_listings),
+                "mortgage21": len(m21_listings),
+                "saved": saved,
+            }
+
+        # Run the async scrape in the current event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # APScheduler runs in the asyncio loop — create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, _scrape_and_save()).result()
+        else:
+            result = asyncio.run(_scrape_and_save())
+
+        _log_job("refresh_partner_listings", result)
+        total = result.get("vmf", 0) + result.get("mortgage21", 0)
+        if total > 0:
+            logger.info(f"[scheduler] ✅ Partner refresh: {result['vmf']} VMF + {result['mortgage21']} 21st → {result['saved']} saved")
+        return result
+
+    except Exception as e:
+        logger.error(f"[scheduler] Error in refresh_partner_listings: {e}")
+        _log_job("refresh_partner_listings", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 # =========================================================================
 # SCHEDULER LIFECYCLE
 # =========================================================================
@@ -188,8 +286,18 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Job 5: Partner listings refresh - every 6 hours
+    # Scrapes VMF Homes + 21st Mortgage (both pure HTTP JSON APIs, fast)
+    _scheduler.add_job(
+        _job_refresh_partner_listings,
+        trigger=IntervalTrigger(hours=6),
+        id="refresh_partner_listings",
+        name="Refresh Partner Listings (VMF + 21st Mortgage)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("[scheduler] ✅ Email scheduler started with 4 jobs")
+    logger.info("[scheduler] ✅ Scheduler started with 5 jobs")
     return _scheduler
 
 
