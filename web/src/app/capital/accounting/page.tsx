@@ -2151,7 +2151,11 @@ function BudgetTab() {
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/capital/accounting/accounts')
-      if (res.ok) { const d = await res.json(); setAccounts(d.accounts || []) }
+      if (res.ok) {
+        const d = await res.json()
+        // Filter out header accounts — budgets should only be on detail (leaf) accounts
+        setAccounts((d.accounts || []).filter((a: any) => !a.is_header))
+      }
     } catch (e) { /* ignore */ }
   }, [])
 

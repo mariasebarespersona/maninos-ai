@@ -2043,7 +2043,11 @@ async def create_or_update_capital_budget(data: CapitalBudgetCreate):
 
 @router.get("/budgets/vs-actual")
 async def capital_budget_vs_actual(year: Optional[int] = None):
-    """Compare budgeted amounts vs actual spending per Capital account per month."""
+    """Compare budgeted amounts vs actual spending per Capital account per month.
+
+    Handles parent→child aggregation: if a budget is set on a parent account,
+    transactions on any child account also count toward that budget.
+    """
     target_year = year or date.today().year
 
     try:
@@ -2052,6 +2056,29 @@ async def capital_budget_vs_actual(year: Optional[int] = None):
             .select("*, capital_accounts(code, name, account_type, category)") \
             .eq("period_year", target_year) \
             .execute().data or []
+
+        # Get chart of accounts (for parent→child resolution)
+        all_accounts = sb.table("capital_accounts") \
+            .select("id, parent_account_id") \
+            .eq("is_active", True) \
+            .execute().data or []
+
+        # Build parent→children map (so we can aggregate child txns into parent budgets)
+        children_of: dict[str, set[str]] = {}  # parent_id → {child_ids, grandchild_ids, ...}
+        parent_map: dict[str, str | None] = {a["id"]: a.get("parent_account_id") for a in all_accounts}
+
+        def get_all_descendants(account_id: str) -> set[str]:
+            """Recursively get all descendant account IDs."""
+            descendants: set[str] = set()
+            for aid, pid in parent_map.items():
+                if pid == account_id:
+                    descendants.add(aid)
+                    descendants.update(get_all_descendants(aid))
+            return descendants
+
+        budget_account_ids = {b["account_id"] for b in budgets}
+        for baid in budget_account_ids:
+            children_of[baid] = get_all_descendants(baid)
 
         # Get actual transactions for the year
         start = f"{target_year}-01-01"
@@ -2063,20 +2090,25 @@ async def capital_budget_vs_actual(year: Optional[int] = None):
             .neq("status", "voided") \
             .execute().data or []
 
-        # Aggregate actuals by account + month
+        # Aggregate actuals by account + month (direct account AND parent accounts)
         actuals: dict[str, float] = {}
         for t in txns:
             aid = t.get("account_id")
             if not aid:
                 continue
             m = int(str(t["transaction_date"]).split("-")[1])
-            key = f"{aid}:{m}"
             amt = float(t["amount"])
-            # Expenses are typically not flagged as income
-            if not t.get("is_income"):
-                actuals[key] = actuals.get(key, 0) + abs(amt)
-            else:
-                actuals[key] = actuals.get(key, 0) + amt
+            value = abs(amt) if not t.get("is_income") else amt
+
+            # Add to direct account
+            key = f"{aid}:{m}"
+            actuals[key] = actuals.get(key, 0) + value
+
+            # Also add to any parent account that has a budget
+            for baid, child_ids in children_of.items():
+                if aid in child_ids:
+                    parent_key = f"{baid}:{m}"
+                    actuals[parent_key] = actuals.get(parent_key, 0) + value
 
         # Build comparison
         comparison = []
