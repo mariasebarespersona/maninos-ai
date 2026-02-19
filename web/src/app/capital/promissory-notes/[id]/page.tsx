@@ -106,8 +106,16 @@ function PayoffCalculator({ noteId, loanAmount, monthlyInterest, totalDue, paidA
       message = `El pago mensual (${fmt(payment)}) no cubre el interés mensual (${fmt(monthlyInterest)}). Se necesita un monto mayor.`
     } else {
       const netPaydown = payment - monthlyInterest
-      monthsToPayoff = Math.ceil(loanAmount / netPaydown)
-      totalPaidEstimate = payment * monthsToPayoff
+      const exactMonths = loanAmount / netPaydown
+      monthsToPayoff = Math.ceil(exactMonths)
+      
+      // Last month may be a partial payment (remaining capital + interest)
+      const fullMonths = monthsToPayoff - 1
+      const capitalPaidInFullMonths = fullMonths * netPaydown
+      const remainingCapital = loanAmount - capitalPaidInFullMonths
+      const lastMonthPayment = remainingCapital + monthlyInterest
+      
+      totalPaidEstimate = (fullMonths * payment) + lastMonthPayment
       totalInterestEstimate = monthlyInterest * monthsToPayoff
       message = `Con ${fmt(payment)}/mes, el capital se paga en ${monthsToPayoff} meses (${(monthsToPayoff / 12).toFixed(1)} años).`
     }

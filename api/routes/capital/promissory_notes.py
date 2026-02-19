@@ -781,8 +781,16 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
         
         # Net principal paydown per month
         net_paydown = monthly_payment - monthly_interest
-        months_to_payoff = math.ceil(loan_amount / net_paydown)
-        total_paid_estimate = monthly_payment * months_to_payoff
+        exact_months = loan_amount / net_paydown
+        months_to_payoff = math.ceil(exact_months)
+        
+        # Last month may be a partial payment (remaining capital + interest)
+        full_months = months_to_payoff - 1
+        capital_paid_in_full_months = full_months * net_paydown
+        remaining_capital = loan_amount - capital_paid_in_full_months
+        last_month_payment = remaining_capital + monthly_interest
+        
+        total_paid_estimate = (full_months * monthly_payment) + last_month_payment
         total_interest_paid = monthly_interest * months_to_payoff
         
         return {
@@ -793,6 +801,7 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
             "months_to_payoff": months_to_payoff,
             "total_paid_estimate": round(total_paid_estimate, 2),
             "total_interest_paid": round(total_interest_paid, 2),
+            "last_month_payment": round(last_month_payment, 2),
             "message": f"Con ${monthly_payment:,.2f}/mes, el capital se paga en {months_to_payoff} meses.",
         }
     except HTTPException:
