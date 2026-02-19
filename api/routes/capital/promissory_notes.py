@@ -740,12 +740,12 @@ async def download_promissory_note_pdf(note_id: str):
 async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
     """
     Estimate how many months to pay off the note given a fixed monthly payment.
-    With simple interest, monthly_interest is constant.
-    Net principal reduction per month = payment - monthly_interest.
+    The total to pay (capital + interest) is FIXED — it does not change.
+    Only the number of months varies: months = remaining_total / monthly_payment.
     """
     try:
         note = sb.table("promissory_notes") \
-            .select("loan_amount, monthly_rate, term_months, total_due, paid_amount") \
+            .select("loan_amount, total_interest, total_due, paid_amount") \
             .eq("id", note_id) \
             .single() \
             .execute()
@@ -755,54 +755,44 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
         
         n = note.data
         loan_amount = float(n["loan_amount"])
-        monthly_rate = float(n["monthly_rate"])
-        monthly_interest = round(loan_amount * monthly_rate, 2)
+        total_interest = float(n.get("total_interest", 0))
         total_due = float(n["total_due"])
         paid = float(n.get("paid_amount", 0) or 0)
-        remaining = max(0, total_due - paid)
+        remaining = round(max(0, total_due - paid), 2)
+        
+        if remaining <= 0:
+            return {
+                "ok": True,
+                "remaining": 0,
+                "months_to_payoff": 0,
+                "message": "La nota ya está completamente pagada.",
+            }
         
         if monthly_payment <= 0:
             return {
                 "ok": True,
-                "monthly_interest": monthly_interest,
                 "remaining": remaining,
                 "months_to_payoff": None,
-                "message": "Ingresa un monto mensual para calcular",
+                "message": "Ingresa un monto mensual para calcular.",
             }
         
-        if monthly_payment <= monthly_interest:
-            return {
-                "ok": True,
-                "monthly_interest": monthly_interest,
-                "remaining": remaining,
-                "months_to_payoff": None,
-                "message": f"El pago mensual (${monthly_payment:,.2f}) no cubre el interés mensual (${monthly_interest:,.2f}). Se requiere un pago mayor.",
-            }
-        
-        # Net principal paydown per month
-        net_paydown = monthly_payment - monthly_interest
-        exact_months = loan_amount / net_paydown
+        # Simple division: total fixed / monthly payment
+        exact_months = remaining / monthly_payment
         months_to_payoff = math.ceil(exact_months)
         
-        # Last month may be a partial payment (remaining capital + interest)
+        # Last month may be a partial payment
         full_months = months_to_payoff - 1
-        capital_paid_in_full_months = full_months * net_paydown
-        remaining_capital = loan_amount - capital_paid_in_full_months
-        last_month_payment = remaining_capital + monthly_interest
-        
-        total_paid_estimate = (full_months * monthly_payment) + last_month_payment
-        total_interest_paid = monthly_interest * months_to_payoff
+        last_month_payment = round(remaining - (full_months * monthly_payment), 2)
         
         return {
             "ok": True,
-            "monthly_interest": monthly_interest,
-            "net_paydown_per_month": round(net_paydown, 2),
+            "loan_amount": loan_amount,
+            "total_interest": total_interest,
+            "total_due": total_due,
             "remaining": remaining,
             "months_to_payoff": months_to_payoff,
-            "total_paid_estimate": round(total_paid_estimate, 2),
-            "total_interest_paid": round(total_interest_paid, 2),
-            "last_month_payment": round(last_month_payment, 2),
-            "message": f"Con ${monthly_payment:,.2f}/mes, el capital se paga en {months_to_payoff} meses.",
+            "last_month_payment": last_month_payment,
+            "message": f"Con ${monthly_payment:,.2f}/mes, se liquida en {months_to_payoff} meses. El interés y total no cambian.",
         }
     except HTTPException:
         raise

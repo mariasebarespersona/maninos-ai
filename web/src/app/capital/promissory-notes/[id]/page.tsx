@@ -86,38 +86,34 @@ const PAYMENT_METHODS: Record<string, string> = {
 }
 
 /* ── Months-to-Payoff Calculator ────────────────────────────────────────── */
-function PayoffCalculator({ noteId, loanAmount, monthlyInterest, totalDue, paidAmount }: {
-  noteId: string; loanAmount: number; monthlyInterest: number; totalDue: number; paidAmount: number
+function PayoffCalculator({ loanAmount, totalInterest, totalDue, paidAmount }: {
+  loanAmount: number; totalInterest: number; totalDue: number; paidAmount: number
 }) {
   const [monthlyPayment, setMonthlyPayment] = useState('')
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n)
 
   const payment = parseFloat(monthlyPayment) || 0
-  const remaining = Math.max(0, totalDue - paidAmount)
+  const remainingTotal = Math.max(0, totalDue - paidAmount)
 
+  // The total to pay is FIXED (capital + interest already calculated).
+  // The question is simply: total ÷ monthly payment = how many months?
   let monthsToPayoff: number | null = null
-  let totalPaidEstimate = 0
-  let totalInterestEstimate = 0
+  let lastMonthPayment = 0
   let message = ''
 
   if (payment > 0) {
-    if (payment <= monthlyInterest) {
-      message = `El pago mensual (${fmt(payment)}) no cubre el interés mensual (${fmt(monthlyInterest)}). Se necesita un monto mayor.`
+    if (remainingTotal <= 0) {
+      message = 'La nota ya está completamente pagada.'
     } else {
-      const netPaydown = payment - monthlyInterest
-      const exactMonths = loanAmount / netPaydown
+      const exactMonths = remainingTotal / payment
       monthsToPayoff = Math.ceil(exactMonths)
-      
-      // Last month may be a partial payment (remaining capital + interest)
+
+      // Last month is partial if it doesn't divide evenly
       const fullMonths = monthsToPayoff - 1
-      const capitalPaidInFullMonths = fullMonths * netPaydown
-      const remainingCapital = loanAmount - capitalPaidInFullMonths
-      const lastMonthPayment = remainingCapital + monthlyInterest
-      
-      totalPaidEstimate = (fullMonths * payment) + lastMonthPayment
-      totalInterestEstimate = monthlyInterest * monthsToPayoff
-      message = `Con ${fmt(payment)}/mes, el capital se paga en ${monthsToPayoff} meses (${(monthsToPayoff / 12).toFixed(1)} años).`
+      lastMonthPayment = Math.round((remainingTotal - (fullMonths * payment)) * 100) / 100
+
+      message = `Con ${fmt(payment)}/mes, se liquida en ${monthsToPayoff} meses (${(monthsToPayoff / 12).toFixed(1)} años).`
     }
   }
 
@@ -125,10 +121,10 @@ function PayoffCalculator({ noteId, loanAmount, monthlyInterest, totalDue, paidA
     <div className="card-luxury p-6">
       <h3 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>
         <TrendingUp className="w-4 h-4 inline mr-2" />
-        Calculadora: ¿En cuántos meses se paga el capital?
+        ¿En cuántos meses se paga?
       </h3>
       <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
-        Ingresa cuánto pagaría Sebastian por mes para ver en cuántos meses se liquida.
+        El interés y el total a pagar no cambian — solo varía el número de meses.
       </p>
 
       <div className="flex items-end gap-4 flex-wrap">
@@ -150,43 +146,48 @@ function PayoffCalculator({ noteId, loanAmount, monthlyInterest, totalDue, paidA
 
         <div className="text-sm p-3 rounded-lg flex-1 min-w-[200px]" style={{ backgroundColor: 'var(--cream)' }}>
           <div className="flex justify-between">
-            <span style={{ color: 'var(--ash)' }}>Interés mensual:</span>
-            <span className="font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(monthlyInterest)}</span>
+            <span style={{ color: 'var(--ash)' }}>Capital:</span>
+            <span className="font-medium" style={{ color: 'var(--ink)' }}>{fmt(loanAmount)}</span>
           </div>
           <div className="flex justify-between mt-1">
-            <span style={{ color: 'var(--ash)' }}>Abono a capital/mes:</span>
-            <span className="font-medium" style={{ color: payment > monthlyInterest ? 'var(--success)' : 'var(--error)' }}>
-              {payment > monthlyInterest ? fmt(payment - monthlyInterest) : '—'}
-            </span>
+            <span style={{ color: 'var(--ash)' }}>Interés (fijo):</span>
+            <span className="font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(totalInterest)}</span>
+          </div>
+          <div className="flex justify-between mt-1 pt-1" style={{ borderTop: '1px solid var(--sand)' }}>
+            <span style={{ color: 'var(--ash)' }}>Total a pagar:</span>
+            <span className="font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(remainingTotal)}</span>
           </div>
         </div>
       </div>
 
-      {payment > 0 && (
-        <div className="mt-4 p-4 rounded-lg" style={{
-          backgroundColor: monthsToPayoff ? 'var(--success-light)' : 'var(--error-light)',
-        }}>
-          <p className="text-sm font-medium" style={{
-            color: monthsToPayoff ? 'var(--success)' : 'var(--error)',
-          }}>
+      {payment > 0 && monthsToPayoff && (
+        <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--success-light)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
             {message}
           </p>
-          {monthsToPayoff && (
-            <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
-              <div>
-                <span style={{ color: 'var(--ash)' }}>Meses:</span>
-                <p className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>{monthsToPayoff}</p>
-              </div>
-              <div>
-                <span style={{ color: 'var(--ash)' }}>Total pagado:</span>
-                <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(totalPaidEstimate)}</p>
-              </div>
-              <div>
-                <span style={{ color: 'var(--ash)' }}>Total intereses:</span>
-                <p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(totalInterestEstimate)}</p>
-              </div>
+          <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+            <div>
+              <span style={{ color: 'var(--ash)' }}>Meses:</span>
+              <p className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>{monthsToPayoff}</p>
             </div>
-          )}
+            <div>
+              <span style={{ color: 'var(--ash)' }}>Pago meses 1-{monthsToPayoff - 1}:</span>
+              <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(payment)}</p>
+            </div>
+            <div>
+              <span style={{ color: 'var(--ash)' }}>Último mes:</span>
+              <p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(lastMonthPayment)}</p>
+            </div>
+          </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--ash)' }}>
+            Total pagado = {fmt(remainingTotal)} (el interés y total no cambian, solo el número de meses)
+          </p>
+        </div>
+      )}
+
+      {payment > 0 && remainingTotal <= 0 && (
+        <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--success-light)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>{message}</p>
         </div>
       )}
     </div>
@@ -797,7 +798,7 @@ export default function PromissoryNoteDetailPage() {
           </div>
 
           {/* Months-to-Payoff Calculator */}
-          <PayoffCalculator noteId={note.id} loanAmount={note.loan_amount} monthlyInterest={monthlyInt} totalDue={note.total_due} paidAmount={paidAmount} />
+          <PayoffCalculator loanAmount={note.loan_amount} totalInterest={note.total_interest} totalDue={note.total_due} paidAmount={paidAmount} />
         </div>
         )
       })()}
