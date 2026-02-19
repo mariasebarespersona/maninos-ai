@@ -218,7 +218,7 @@ export default function CapitalAccountingPage() {
     { id: 'transactions', label: 'Transacciones', icon: Receipt },
     { id: 'statements', label: 'Estados Financieros', icon: Scale },
     { id: 'chart', label: 'Plan de Cuentas', icon: BookOpen },
-    { id: 'banks', label: 'Bancos y Cash', icon: Landmark },
+    { id: 'banks', label: 'Estado de Cuenta', icon: FileUp },
     { id: 'budget', label: 'Presupuesto', icon: BarChart3 },
   ]
 
@@ -295,7 +295,7 @@ export default function CapitalAccountingPage() {
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'statements' && <StatementsTab />}
       {activeTab === 'chart' && <ChartOfAccountsTab />}
-      {activeTab === 'banks' && <BanksTab onAdd={() => setShowNewBankModal(true)} onRefresh={fetchDashboard} />}
+      {activeTab === 'banks' && <EstadoCuentaCapitalSection onRefresh={fetchDashboard} />}
       {activeTab === 'budget' && <BudgetTab />}
 
       {/* Modals */}
@@ -1703,7 +1703,7 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
 
       {/* ── SUB-TAB: Estado de Cuenta ── */}
       {subTab === 'estado_cuenta' && (
-        <EstadoCuentaCapitalSection bankAccounts={banks} onRefresh={() => { fetchBanks(); onRefresh() }} />
+        <EstadoCuentaCapitalSection onRefresh={() => { fetchBanks(); onRefresh() }} />
       )}
 
       {/* Transfer Modal */}
@@ -1716,10 +1716,11 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
 // ════════════════════════════════════════════════════════════════════════
 //  ESTADO DE CUENTA — Capital Bank Statement Import & AI Classification
 // ════════════════════════════════════════════════════════════════════════
-function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts: BankAccount[]; onRefresh: () => void }) {
+function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
   const toast = useToast()
   const [expandedDrawer, setExpandedDrawer] = useState<string | null>(null)
   const [statements, setStatements] = useState<Record<string, BankStatement[]>>({})
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState<string | null>(null)
   const [activeStatement, setActiveStatement] = useState<string | null>(null)
@@ -1728,6 +1729,20 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
   const [classifying, setClassifying] = useState(false)
   const [posting, setPosting] = useState(false)
   const [allAccounts, setAllAccounts] = useState<any[]>([])
+  const [showNewAccount, setShowNewAccount] = useState(false)
+  const [newAccountName, setNewAccountName] = useState('')
+  const [newAccountBank, setNewAccountBank] = useState('')
+  const [creatingAccount, setCreatingAccount] = useState(false)
+
+  const fetchBankAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/capital/accounting/bank-accounts')
+      if (res.ok) {
+        const data = await res.json()
+        setBankAccounts(data.bank_accounts || [])
+      }
+    } catch (e) { console.error(e) }
+  }, [])
 
   const fetchStatements = useCallback(async () => {
     setLoading(true)
@@ -1757,7 +1772,48 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
     } catch (e) { /* ignore */ }
   }, [])
 
-  useEffect(() => { fetchStatements(); fetchAccounts() }, [fetchStatements, fetchAccounts])
+  useEffect(() => { fetchBankAccounts(); fetchStatements(); fetchAccounts() }, [fetchBankAccounts, fetchStatements, fetchAccounts])
+
+  const createBankAccount = async () => {
+    if (!newAccountName.trim()) { toast.error('Nombre de cuenta requerido'); return }
+    setCreatingAccount(true)
+    try {
+      const res = await fetch('/api/capital/accounting/bank-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAccountName.trim(),
+          bank_name: newAccountBank.trim() || undefined,
+          account_type: 'checking',
+          current_balance: 0,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Cuenta bancaria creada')
+        setNewAccountName('')
+        setNewAccountBank('')
+        setShowNewAccount(false)
+        fetchBankAccounts()
+      } else {
+        toast.error('Error al crear cuenta')
+      }
+    } catch { toast.error('Error de conexión') }
+    finally { setCreatingAccount(false) }
+  }
+
+  const deleteBankAccount = async (bankId: string, name: string) => {
+    if (!confirm(`¿Eliminar la cuenta "${name}"? Los estados de cuenta asociados no se borran.`)) return
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-accounts/${bankId}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Cuenta eliminada')
+        fetchBankAccounts()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'No se pudo eliminar')
+      }
+    } catch { toast.error('Error de conexión') }
+  }
 
   const accountDrawers = bankAccounts.map((ba, i) => ({
     key: ba.id,
@@ -1882,12 +1938,71 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>Estado de Cuenta — Capital</h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>
-          Importa estados de cuenta bancarios · La IA extrae y clasifica los movimientos con el plan de cuentas de Capital
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>Estado de Cuenta</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>
+            Importa estados de cuenta bancarios · La IA extrae y clasifica los movimientos
+          </p>
+        </div>
+        <button
+          onClick={() => setShowNewAccount(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors hover:opacity-90"
+          style={{ backgroundColor: 'var(--gold-600)' }}
+        >
+          <Plus className="w-4 h-4" /> Nueva Cuenta
+        </button>
       </div>
+
+      {/* New Account Inline Form */}
+      {showNewAccount && (
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--gold-600)', backgroundColor: 'var(--pearl)' }}>
+          <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>Crear nueva cuenta bancaria</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nombre de cuenta *</label>
+              <input
+                type="text"
+                value={newAccountName}
+                onChange={e => setNewAccountName(e.target.value)}
+                placeholder="Ej: Capital Checking, Cash Houston"
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--stone)' }}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Banco (opcional)</label>
+              <input
+                type="text"
+                value={newAccountBank}
+                onChange={e => setNewAccountBank(e.target.value)}
+                placeholder="Ej: Chase, Wells Fargo"
+                className="w-full px-3 py-2 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--stone)' }}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={createBankAccount}
+              disabled={creatingAccount || !newAccountName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--gold-600)' }}
+            >
+              {creatingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
+              {creatingAccount ? 'Creando...' : 'Crear Cuenta'}
+            </button>
+            <button
+              onClick={() => { setShowNewAccount(false); setNewAccountName(''); setNewAccountBank('') }}
+              className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Account Drawers */}
       {loading ? (
@@ -1895,8 +2010,10 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
       ) : accountDrawers.length === 0 ? (
         <div className="text-center py-12 card-luxury">
           <Landmark className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
-          <p className="text-sm mb-3" style={{ color: 'var(--ash)' }}>No hay cuentas bancarias registradas</p>
-          <p className="text-xs" style={{ color: 'var(--slate)' }}>Primero crea una cuenta en la pestaña "Cuentas Bancarias"</p>
+          <p className="text-sm mb-3" style={{ color: 'var(--ash)' }}>No hay cuentas bancarias</p>
+          <button onClick={() => setShowNewAccount(true)} className="text-sm font-medium hover:underline" style={{ color: 'var(--gold-600)' }}>
+            + Crear primera cuenta
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -1935,6 +2052,13 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
                         Pendiente revisión
                       </span>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteBankAccount(drawer.id, drawer.label) }}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-stone-300 hover:text-red-500 transition-colors"
+                      title="Eliminar cuenta"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                     <button onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)} className="p-1">
                       {isExpanded ? <ChevronUp className="w-5 h-5 text-stone-400" /> : <ChevronDown className="w-5 h-5 text-stone-400" />}
                     </button>
