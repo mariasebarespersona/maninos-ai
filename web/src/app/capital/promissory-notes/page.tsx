@@ -174,7 +174,7 @@ export default function PromissoryNotesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Promissory Notes</h1>
-          <p style={{ color: 'var(--slate)' }}>Notas promisorias — interés compuesto con pago al vencimiento</p>
+          <p style={{ color: 'var(--slate)' }}>Notas promisorias — interés simple, pagos flexibles</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" />
@@ -409,29 +409,34 @@ export default function PromissoryNotesPage() {
                 />
               </div>
 
-              {/* Preview */}
+              {/* Preview — Simple Interest */}
               {form.loan_amount && parseFloat(form.loan_amount) > 0 && (
                 <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--slate)' }}>Vista Previa</p>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--slate)' }}>Vista Previa (interés simple)</p>
                   {(() => {
                     const loan = parseFloat(form.loan_amount)
-                    const rate = parseFloat(form.annual_rate) / 100 / 12
+                    const monthlyRate = parseFloat(form.annual_rate) / 100 / 12
                     const months = parseInt(form.term_months)
-                    const totalDue = loan * Math.pow(1 + rate, months)
-                    const totalInterest = totalDue - loan
+                    const monthlyInterest = loan * monthlyRate
+                    const totalInterest = monthlyInterest * months
+                    const totalDue = loan + totalInterest
                     return (
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span style={{ color: 'var(--ash)' }}>Tasa Mensual:</span>
-                          <span className="ml-1 font-medium">{(rate * 100).toFixed(2)}%</span>
+                          <span className="ml-1 font-medium">{(monthlyRate * 100).toFixed(2)}%</span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--ash)' }}>Interés/Mes:</span>
+                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(monthlyInterest)}</span>
                         </div>
                         <div>
                           <span style={{ color: 'var(--ash)' }}>Interés Total:</span>
                           <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(totalInterest)}</span>
                         </div>
-                        <div className="col-span-2">
-                          <span style={{ color: 'var(--ash)' }}>Total al Vencimiento:</span>
-                          <span className="ml-1 font-serif font-semibold text-lg" style={{ color: 'var(--navy-800)' }}>{fmt(totalDue)}</span>
+                        <div>
+                          <span style={{ color: 'var(--ash)' }}>Total a Pagar:</span>
+                          <span className="ml-1 font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(totalDue)}</span>
                         </div>
                       </div>
                     )

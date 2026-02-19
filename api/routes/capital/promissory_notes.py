@@ -1,6 +1,7 @@
 """
-Capital Promissory Notes - Compound interest, balloon payment structure
-Investors lend money → Capital pays back principal + accrued interest at maturity
+Capital Promissory Notes - Simple (non-accumulative) interest
+Investors lend money → Capital pays back principal + simple interest.
+Payments are flexible: monthly, lump-sum, or any combination.
 """
 
 import logging
@@ -68,56 +69,59 @@ class RecordPaymentRequest(BaseModel):
 # HELPERS
 # =============================================================================
 
-def _calculate_compound_schedule(loan_amount: float, monthly_rate: float, term_months: int) -> dict:
+def _calculate_simple_schedule(loan_amount: float, monthly_rate: float, term_months: int) -> dict:
     """
-    Calculate compound interest schedule for a balloon payment note.
-    Interest compounds monthly, full payment at maturity.
-    
+    Calculate **simple (non-accumulative) interest** schedule.
+    Interest is always computed on the ORIGINAL principal — it never compounds.
+
     Returns:
         {
             "total_interest": float,
             "total_due": float,
+            "monthly_interest": float,
             "schedule": [
-                { "term": 0, "interest": 0, "payment": 0, "capital": loan, "pending": loan },
-                { "term": 1, "interest": x, "payment": 0, "capital": loan+x, "pending": loan+x },
+                { "term": 0, "interest": 0, "accrued_interest": 0,
+                  "payment": 0, "principal": loan, "pending": loan },
+                { "term": 1, "interest": x, "accrued_interest": x,
+                  "payment": 0, "principal": loan, "pending": loan + x },
                 ...
-                { "term": N, "interest": x, "payment": total_due, "capital": total_due, "pending": 0 }
             ]
         }
     """
+    monthly_interest = round(loan_amount * monthly_rate, 2)
+    total_interest = round(monthly_interest * term_months, 2)
+    total_due = round(loan_amount + total_interest, 2)
+
     schedule = []
-    balance = loan_amount
-    
+
     # Term 0
     schedule.append({
         "term": 0,
         "interest": 0.0,
+        "accrued_interest": 0.0,
         "payment": 0.0,
-        "capital": round(loan_amount, 2),
+        "principal": round(loan_amount, 2),
         "pending": round(loan_amount, 2),
     })
-    
+
+    accrued = 0.0
     for month in range(1, term_months + 1):
-        interest = round(balance * monthly_rate, 2)
-        balance = round(balance + interest, 2)
-        
-        is_last = month == term_months
-        payment = balance if is_last else 0.0
-        pending = 0.0 if is_last else balance
-        
+        accrued = round(accrued + monthly_interest, 2)
+        pending = round(loan_amount + accrued, 2)
+
         schedule.append({
             "term": month,
-            "interest": interest,
-            "payment": round(payment, 2),
-            "capital": round(balance, 2),
-            "pending": round(pending, 2),
+            "interest": monthly_interest,
+            "accrued_interest": accrued,
+            "payment": 0.0,
+            "principal": round(loan_amount, 2),
+            "pending": pending,
         })
-    
-    total_interest = round(balance - loan_amount, 2)
-    
+
     return {
         "total_interest": total_interest,
-        "total_due": round(balance, 2),
+        "total_due": total_due,
+        "monthly_interest": monthly_interest,
         "schedule": schedule,
     }
 
@@ -233,8 +237,8 @@ async def get_promissory_note(note_id: str):
         loan_amount = float(note["loan_amount"])
         term_months = int(note["term_months"])
         
-        # Calculate compound interest schedule
-        calc = _calculate_compound_schedule(loan_amount, monthly_rate, term_months)
+        # Calculate simple interest schedule
+        calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
         
         # Get individual payment history
         payments = []
@@ -282,8 +286,8 @@ async def create_promissory_note(data: PromissoryNoteCreate):
         start = date.fromisoformat(data.start_date) if data.start_date else date.today()
         maturity = start + relativedelta(months=data.term_months)
         
-        # Calculate compound schedule
-        calc = _calculate_compound_schedule(data.loan_amount, monthly_rate, data.term_months)
+        # Calculate simple interest schedule
+        calc = _calculate_simple_schedule(data.loan_amount, monthly_rate, data.term_months)
         
         # Auto-populate lender info from investor if not provided
         lender_name = data.lender_name or inv["name"]
@@ -358,7 +362,7 @@ async def update_promissory_note(note_id: str, data: PromissoryNoteUpdate):
         
         if "annual_rate" in update or "term_months" in update:
             monthly_rate = annual_rate / 100 / 12
-            calc = _calculate_compound_schedule(loan_amount, monthly_rate, term_months)
+            calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
             update["monthly_rate"] = monthly_rate
             update["total_interest"] = calc["total_interest"]
             update["total_due"] = calc["total_due"]
@@ -474,7 +478,7 @@ async def get_note_schedule(note_id: str):
             raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
         
         n = note.data
-        calc = _calculate_compound_schedule(
+        calc = _calculate_simple_schedule(
             float(n["loan_amount"]),
             float(n["monthly_rate"]),
             int(n["term_months"]),
@@ -514,7 +518,7 @@ async def download_promissory_note_pdf(note_id: str):
         monthly_rate = float(note["monthly_rate"])
         loan_amount = float(note["loan_amount"])
         term_months = int(note["term_months"])
-        calc = _calculate_compound_schedule(loan_amount, monthly_rate, term_months)
+        calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
         
         # Generate PDF
         try:
@@ -524,6 +528,8 @@ async def download_promissory_note_pdf(note_id: str):
             from reportlab.lib.units import inch
             from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.graphics.shapes import Drawing, Polygon, Line, Rect
+            from reportlab.graphics import renderPDF
         except ImportError:
             raise HTTPException(status_code=500, detail="reportlab not installed")
         
@@ -549,7 +555,33 @@ async def download_promissory_note_pdf(note_id: str):
         elements = []
         fmt = lambda n: f"${n:,.2f}" if n else "$0.00"
         
-        # Header
+        # ── Logo: Phoenician Boat ──
+        def _draw_phoenician_boat():
+            """Draw a simple Phoenician boat icon."""
+            d = Drawing(60, 40)
+            navy = colors.HexColor("#1a2744")
+            gold = colors.HexColor("#d4a853")
+            # Hull (curved bottom shape)
+            d.add(Polygon(
+                points=[5,12, 15,4, 45,4, 55,12, 50,16, 10,16],
+                fillColor=navy, strokeColor=navy, strokeWidth=0.5
+            ))
+            # Sail (triangle)
+            d.add(Polygon(
+                points=[30,16, 30,38, 48,20],
+                fillColor=gold, strokeColor=navy, strokeWidth=0.5
+            ))
+            # Mast
+            d.add(Line(30, 16, 30, 38, strokeColor=navy, strokeWidth=1.5))
+            return d
+        
+        elements.append(_draw_phoenician_boat())
+        elements.append(Paragraph("MANINOS CAPITAL LLC", ParagraphStyle(
+            name='BrandTitle', parent=styles['Normal'],
+            fontSize=11, alignment=TA_CENTER, spaceAfter=4,
+            textColor=colors.HexColor("#1a2744"),
+            fontName='Helvetica-Bold',
+        )))
         elements.append(Paragraph("PROMISSORY NOTE", styles['DocTitle']))
         
         # Meta
@@ -565,11 +597,13 @@ async def download_promissory_note_pdf(note_id: str):
         
         city = note.get("signed_city", "Conroe")
         state = note.get("signed_state", "Texas")
+        monthly_int = calc.get("monthly_interest", 0)
         
         meta_data = [
             [f"Date: {signed_str}", f"City: {city}, {state}"],
             [f"Amount: {fmt(loan_amount)}", f"Term: {term_months} months"],
-            [f"Annual Rate: {note.get('annual_rate', 12)}%", f"Total Due at Maturity: {fmt(calc['total_due'])}"],
+            [f"Annual Rate: {note.get('annual_rate', 12)}% (simple)", f"Total Due: {fmt(calc['total_due'])}"],
+            [f"Monthly Interest: {fmt(monthly_int)}", f"Total Interest: {fmt(calc['total_interest'])}"],
         ]
         t = Table(meta_data, colWidths=[270, 270])
         t.setStyle(TableStyle([
@@ -591,9 +625,10 @@ async def download_promissory_note_pdf(note_id: str):
         body_text = f"""
         FOR VALUE RECEIVED, the undersigned <b>{subscriber}</b> ("Subscriber") promises to pay to the order of 
         <b>{lender}</b>{f' ({lender_co})' if lender_co else ''} ("Lender"), the principal sum of 
-        <b>{fmt(loan_amount)}</b>, together with accrued interest at the rate of 
-        <b>{note.get('annual_rate', 12)}%</b> per annum, compounded monthly, for a period of 
-        <b>{term_months} months</b>, resulting in a total amount due at maturity of <b>{fmt(calc['total_due'])}</b>.
+        <b>{fmt(loan_amount)}</b>, together with simple (non-accumulative) interest at the rate of 
+        <b>{note.get('annual_rate', 12)}%</b> per annum, calculated on the original principal, for a period of 
+        <b>{term_months} months</b>, resulting in a total amount due of <b>{fmt(calc['total_due'])}</b>.
+        Payments may be made at any time — monthly, in partial amounts, or as a lump sum.
         """
         elements.append(Paragraph(body_text.strip(), styles['Body']))
         elements.append(Spacer(1, 8))
@@ -617,19 +652,19 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(Spacer(1, 16))
         
         # Schedule table
-        elements.append(Paragraph("Compound Interest Schedule", styles['Section']))
-        sched_header = ["Month", "Interest", "Payment", "Balance", "Pending"]
+        elements.append(Paragraph("Simple Interest Schedule", styles['Section']))
+        sched_header = ["Month", "Monthly Interest", "Accrued Interest", "Principal", "Total Owed"]
         sched_rows = [sched_header]
         for row in calc["schedule"]:
             sched_rows.append([
                 str(row["term"]),
-                fmt(row["interest"]),
-                fmt(row["payment"]) if row["payment"] > 0 else "-",
-                fmt(row["capital"]),
+                fmt(row["interest"]) if row["interest"] > 0 else "-",
+                fmt(row["accrued_interest"]),
+                fmt(row["principal"]),
                 fmt(row["pending"]),
             ])
         
-        t = Table(sched_rows, colWidths=[60, 90, 90, 110, 110])
+        t = Table(sched_rows, colWidths=[50, 95, 95, 100, 100])
         style = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#283242")),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -664,6 +699,17 @@ async def download_promissory_note_pdf(note_id: str):
         ]))
         elements.append(t)
         
+        # Formula note
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph(
+            f"<i>Simple interest: Monthly interest = Principal × Monthly Rate = {fmt(loan_amount)} × "
+            f"{(monthly_rate * 100):.4f}% = {fmt(monthly_int)}/month. "
+            f"Total interest = {fmt(monthly_int)} × {term_months} months = {fmt(calc['total_interest'])}. "
+            f"Interest does not compound.</i>",
+            ParagraphStyle(name='FormulaNote', parent=styles['Normal'], fontSize=8,
+                           textColor=colors.HexColor("#666"), alignment=TA_CENTER)
+        ))
+
         # Footer
         elements.append(Spacer(1, 20))
         elements.append(Paragraph(
@@ -687,6 +733,72 @@ async def download_promissory_note_pdf(note_id: str):
         raise
     except Exception as e:
         logger.error(f"Error generating promissory note PDF {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{note_id}/payoff-estimate")
+async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
+    """
+    Estimate how many months to pay off the note given a fixed monthly payment.
+    With simple interest, monthly_interest is constant.
+    Net principal reduction per month = payment - monthly_interest.
+    """
+    try:
+        note = sb.table("promissory_notes") \
+            .select("loan_amount, monthly_rate, term_months, total_due, paid_amount") \
+            .eq("id", note_id) \
+            .single() \
+            .execute()
+        
+        if not note.data:
+            raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
+        
+        n = note.data
+        loan_amount = float(n["loan_amount"])
+        monthly_rate = float(n["monthly_rate"])
+        monthly_interest = round(loan_amount * monthly_rate, 2)
+        total_due = float(n["total_due"])
+        paid = float(n.get("paid_amount", 0) or 0)
+        remaining = max(0, total_due - paid)
+        
+        if monthly_payment <= 0:
+            return {
+                "ok": True,
+                "monthly_interest": monthly_interest,
+                "remaining": remaining,
+                "months_to_payoff": None,
+                "message": "Ingresa un monto mensual para calcular",
+            }
+        
+        if monthly_payment <= monthly_interest:
+            return {
+                "ok": True,
+                "monthly_interest": monthly_interest,
+                "remaining": remaining,
+                "months_to_payoff": None,
+                "message": f"El pago mensual (${monthly_payment:,.2f}) no cubre el interés mensual (${monthly_interest:,.2f}). Se requiere un pago mayor.",
+            }
+        
+        # Net principal paydown per month
+        net_paydown = monthly_payment - monthly_interest
+        months_to_payoff = math.ceil(loan_amount / net_paydown)
+        total_paid_estimate = monthly_payment * months_to_payoff
+        total_interest_paid = monthly_interest * months_to_payoff
+        
+        return {
+            "ok": True,
+            "monthly_interest": monthly_interest,
+            "net_paydown_per_month": round(net_paydown, 2),
+            "remaining": remaining,
+            "months_to_payoff": months_to_payoff,
+            "total_paid_estimate": round(total_paid_estimate, 2),
+            "total_interest_paid": round(total_interest_paid, 2),
+            "message": f"Con ${monthly_payment:,.2f}/mes, el capital se paga en {months_to_payoff} meses.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating payoff for note {note_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
