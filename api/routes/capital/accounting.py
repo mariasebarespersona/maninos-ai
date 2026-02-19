@@ -6,17 +6,19 @@ Features:
   - Transactions journal (auto + manual)
   - Financial Statements (Income Statement, Balance Sheet, Cash Flow)
   - Chart of Accounts (Capital-specific, user-provided)
+  - Bank Statement Import (PDF/Excel/Image) with AI classification
   - Sync from existing capital_flows / rto_payments / investments
   - Export CSV
 """
 
 import csv
 import io
+import json
 import logging
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -70,6 +72,7 @@ class AccountCreate(BaseModel):
     parent_account_id: Optional[str] = None
     is_header: bool = False
     description: Optional[str] = None
+    report_section: Optional[str] = None  # balance_sheet or profit_loss
 
 
 class AccountUpdate(BaseModel):
@@ -532,6 +535,14 @@ async def get_accounts_tree():
 async def create_account(data: AccountCreate):
     """Create a new Capital account."""
     try:
+        # Auto-derive report_section from account_type if not provided
+        report_section = data.report_section
+        if not report_section:
+            if data.account_type in ("asset", "liability", "equity"):
+                report_section = "balance_sheet"
+            else:
+                report_section = "profit_loss"
+
         record = {
             "code": data.code,
             "name": data.name,
@@ -540,6 +551,7 @@ async def create_account(data: AccountCreate):
             "parent_account_id": data.parent_account_id,
             "is_header": data.is_header,
             "description": data.description,
+            "report_section": report_section,
         }
         record = {k: v for k, v in record.items() if v is not None}
         result = sb.table("capital_accounts").insert(record).execute()
@@ -1247,4 +1259,619 @@ async def export_transactions_csv(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# FINANCIAL STATEMENTS — Account-tree-based (matches QuickBooks format)
+# ============================================================================
+
+@router.get("/reports/balance-sheet-tree")
+async def get_balance_sheet_tree():
+    """Balance Sheet built from the chart of accounts tree (QuickBooks format)."""
+    try:
+        accounts = sb.table("capital_accounts") \
+            .select("*") \
+            .eq("is_active", True) \
+            .eq("report_section", "balance_sheet") \
+            .order("display_order") \
+            .order("code") \
+            .execute().data or []
+    except Exception:
+        accounts = sb.table("capital_accounts") \
+            .select("*") \
+            .eq("is_active", True) \
+            .in_("account_type", ["asset", "liability", "equity"]) \
+            .order("code") \
+            .execute().data or []
+
+    # Compute balances from transactions
+    balances = {}
+    try:
+        txns = sb.table("capital_transactions") \
+            .select("account_id, amount, is_income") \
+            .neq("status", "voided") \
+            .execute().data or []
+        for t in txns:
+            aid = t.get("account_id")
+            if aid:
+                if aid not in balances:
+                    balances[aid] = 0
+                balances[aid] += float(t["amount"]) if t["is_income"] else -float(t["amount"])
+    except Exception as e:
+        logger.warning(f"[balance-sheet-tree] Could not compute balances: {e}")
+
+    # Add manual current_balance
+    for acc in accounts:
+        manual_bal = float(acc.get("current_balance") or 0)
+        if manual_bal != 0:
+            balances[acc["id"]] = balances.get(acc["id"], 0) + manual_bal
+
+    # Build tree
+    by_id = {}
+    for a in accounts:
+        by_id[a["id"]] = {
+            "id": a["id"], "code": a["code"], "name": a["name"],
+            "account_type": a["account_type"], "is_header": a.get("is_header", False),
+            "balance": round(balances.get(a["id"], 0), 2),
+            "children": [],
+        }
+
+    roots = []
+    for a in accounts:
+        node = by_id[a["id"]]
+        pid = a.get("parent_account_id")
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(node)
+        else:
+            roots.append(node)
+
+    def compute_subtotal(node):
+        subtotal = node["balance"]
+        for child in node.get("children", []):
+            subtotal += compute_subtotal(child)
+        node["subtotal"] = round(subtotal, 2)
+        return subtotal
+
+    for r in roots:
+        compute_subtotal(r)
+
+    # Group by account_type for the report
+    assets = [r for r in roots if r["account_type"] == "asset"]
+    liabilities = [r for r in roots if r["account_type"] == "liability"]
+    equity = [r for r in roots if r["account_type"] == "equity"]
+
+    total_assets = sum(r.get("subtotal", 0) for r in assets)
+    total_liabilities = sum(r.get("subtotal", 0) for r in liabilities)
+    total_equity = sum(r.get("subtotal", 0) for r in equity)
+
+    return {
+        "ok": True,
+        "date": date.today().isoformat(),
+        "assets": assets,
+        "liabilities": liabilities,
+        "equity": equity,
+        "total_assets": round(total_assets, 2),
+        "total_liabilities": round(total_liabilities, 2),
+        "total_equity": round(total_equity, 2),
+        "total_liabilities_and_equity": round(total_liabilities + total_equity, 2),
+    }
+
+
+@router.get("/reports/profit-loss-tree")
+async def get_profit_loss_tree(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """Profit & Loss built from the chart of accounts tree (QuickBooks format)."""
+    now = date.today()
+    sd = start_date or date(now.year, now.month, 1).isoformat()
+    ed = end_date or now.isoformat()
+
+    try:
+        accounts = sb.table("capital_accounts") \
+            .select("*") \
+            .eq("is_active", True) \
+            .eq("report_section", "profit_loss") \
+            .order("display_order") \
+            .order("code") \
+            .execute().data or []
+    except Exception:
+        accounts = sb.table("capital_accounts") \
+            .select("*") \
+            .eq("is_active", True) \
+            .in_("account_type", ["income", "expense", "cogs"]) \
+            .order("code") \
+            .execute().data or []
+
+    # Compute balances from transactions in period
+    balances = {}
+    try:
+        txns = sb.table("capital_transactions") \
+            .select("account_id, amount, is_income") \
+            .gte("transaction_date", sd) \
+            .lte("transaction_date", ed) \
+            .neq("status", "voided") \
+            .execute().data or []
+        for t in txns:
+            aid = t.get("account_id")
+            if aid:
+                if aid not in balances:
+                    balances[aid] = 0
+                balances[aid] += float(t["amount"])
+    except Exception as e:
+        logger.warning(f"[profit-loss-tree] Could not compute balances: {e}")
+
+    # Build tree
+    by_id = {}
+    for a in accounts:
+        by_id[a["id"]] = {
+            "id": a["id"], "code": a["code"], "name": a["name"],
+            "account_type": a["account_type"], "category": a.get("category", "general"),
+            "is_header": a.get("is_header", False),
+            "balance": round(balances.get(a["id"], 0), 2),
+            "children": [],
+        }
+
+    roots = []
+    for a in accounts:
+        node = by_id[a["id"]]
+        pid = a.get("parent_account_id")
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(node)
+        else:
+            roots.append(node)
+
+    def compute_subtotal(node):
+        subtotal = node["balance"]
+        for child in node.get("children", []):
+            subtotal += compute_subtotal(child)
+        node["subtotal"] = round(subtotal, 2)
+        return subtotal
+
+    for r in roots:
+        compute_subtotal(r)
+
+    # Separate income vs expense
+    income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") != "other"]
+    other_income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") == "other"]
+    expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") != "other"]
+    other_expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") == "other"]
+
+    total_income = sum(r.get("subtotal", 0) for r in income_roots)
+    total_other_income = sum(r.get("subtotal", 0) for r in other_income_roots)
+    total_expenses = sum(r.get("subtotal", 0) for r in expense_roots)
+    total_other_expenses = sum(r.get("subtotal", 0) for r in other_expense_roots)
+
+    gross_profit = total_income
+    net_operating_income = gross_profit - total_expenses
+    net_other_income = total_other_income - total_other_expenses
+    net_income = net_operating_income + net_other_income
+
+    return {
+        "ok": True,
+        "period": {"start": sd, "end": ed},
+        "income": income_roots,
+        "expenses": expense_roots,
+        "other_income": other_income_roots,
+        "other_expenses": other_expense_roots,
+        "total_income": round(total_income, 2),
+        "gross_profit": round(gross_profit, 2),
+        "total_expenses": round(total_expenses, 2),
+        "net_operating_income": round(net_operating_income, 2),
+        "total_other_income": round(total_other_income, 2),
+        "total_other_expenses": round(total_other_expenses, 2),
+        "net_other_income": round(net_other_income, 2),
+        "net_income": round(net_income, 2),
+    }
+
+
+# ============================================================================
+# BANK STATEMENT IMPORT — Upload, parse, classify, post (Capital)
+# ============================================================================
+
+@router.get("/bank-statements")
+async def list_capital_bank_statements():
+    """List all Capital bank statements."""
+    try:
+        result = sb.table("capital_bank_statements") \
+            .select("*") \
+            .order("created_at", desc=True) \
+            .execute()
+        return {"ok": True, "statements": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bank-statements/{statement_id}")
+async def get_capital_bank_statement(statement_id: str):
+    """Get a single statement with its movements."""
+    stmt = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
+    if not stmt.data:
+        raise HTTPException(status_code=404, detail="Statement not found")
+
+    movements = sb.table("capital_statement_movements") \
+        .select("*") \
+        .eq("statement_id", statement_id) \
+        .order("sort_order") \
+        .execute()
+
+    return {
+        "statement": stmt.data[0],
+        "movements": movements.data or [],
+    }
+
+
+@router.post("/bank-statements")
+async def upload_capital_bank_statement(
+    file: UploadFile = File(...),
+    bank_account_id: str = Form(...),
+):
+    """Upload a bank statement for Capital and parse it with AI."""
+    # Resolve bank account
+    ba = sb.table("capital_bank_accounts").select("id, name, bank_name").eq("id", bank_account_id).execute()
+    if not ba.data:
+        raise HTTPException(status_code=400, detail="Bank account not found")
+    account_label = ba.data[0]["name"]
+
+    # Validate file type
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
+    allowed = {"pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"File type .{ext} not supported. Use: {', '.join(allowed)}")
+
+    file_content = await file.read()
+    if len(file_content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # Upload to Supabase Storage
+    import uuid as _uuid
+    account_key = account_label.lower().replace(" ", "_")
+    storage_path = f"capital-bank-statements/{account_key}/{_uuid.uuid4().hex[:12]}_{file.filename}"
+    file_url = None
+    try:
+        sb.storage.from_("transaction-documents").upload(storage_path, file_content)
+        file_url = sb.storage.from_("transaction-documents").get_public_url(storage_path)
+    except Exception as e:
+        logger.warning(f"[CapitalBankStmt] Storage upload failed: {e}")
+
+    # Create statement record
+    result = sb.table("capital_bank_statements").insert({
+        "bank_account_id": bank_account_id,
+        "account_label": account_label,
+        "original_filename": file.filename,
+        "file_type": ext,
+        "storage_path": storage_path,
+        "file_url": file_url,
+        "status": "parsing",
+    }).execute()
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Error creating statement record")
+
+    statement = result.data[0]
+    statement_id = statement["id"]
+
+    # Extract text + parse movements (reuse Homes helpers)
+    try:
+        from routes.accounting import _extract_and_parse_statement
+        raw_text, movements = await _extract_and_parse_statement(file_content, ext, account_key)
+
+        # Save raw text
+        sb.table("capital_bank_statements").update({
+            "raw_extracted_text": raw_text[:50000] if raw_text else None,
+            "total_movements": len(movements),
+        }).eq("id", statement_id).execute()
+
+        # Insert movements
+        for i, mv in enumerate(movements):
+            mv_data = {
+                "statement_id": statement_id,
+                "movement_date": mv.get("date", date.today().isoformat()),
+                "description": mv.get("description", "")[:500],
+                "amount": float(mv.get("amount", 0)),
+                "is_credit": mv.get("is_credit", float(mv.get("amount", 0)) > 0),
+                "reference": mv.get("reference", "")[:200] if mv.get("reference") else None,
+                "payment_method": mv.get("payment_method"),
+                "counterparty": mv.get("counterparty", "")[:200] if mv.get("counterparty") else None,
+                "sort_order": i,
+                "status": "pending",
+            }
+            mv_data = {k: v for k, v in mv_data.items() if v is not None}
+            try:
+                sb.table("capital_statement_movements").insert(mv_data).execute()
+            except Exception as e:
+                logger.warning(f"[CapitalBankStmt] Failed to insert movement {i}: {e}")
+
+        # Update statement status
+        sb.table("capital_bank_statements").update({
+            "status": "parsed",
+            "total_movements": len(movements),
+            "bank_name": movements[0].get("bank_name") if movements else None,
+            "account_number_last4": movements[0].get("account_last4") if movements else None,
+        }).eq("id", statement_id).execute()
+
+        # Refresh
+        stmt_refresh = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
+        mvs = sb.table("capital_statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
+
+        return {
+            "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
+            "movements": mvs.data or [],
+            "message": f"Parsed {len(movements)} movements from statement",
+        }
+
+    except Exception as e:
+        logger.error(f"[CapitalBankStmt] Parse error: {e}")
+        sb.table("capital_bank_statements").update({
+            "status": "error",
+            "error_message": str(e)[:500],
+        }).eq("id", statement_id).execute()
+        raise HTTPException(status_code=500, detail=f"Error parsing statement: {str(e)}")
+
+
+@router.post("/bank-statements/{statement_id}/classify")
+async def classify_capital_statement(statement_id: str):
+    """Use AI to suggest accounting accounts for each Capital statement movement."""
+    stmt = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
+    if not stmt.data:
+        raise HTTPException(status_code=404, detail="Statement not found")
+
+    movements = (sb.table("capital_statement_movements")
+                 .select("*").eq("statement_id", statement_id)
+                 .in_("status", ["pending", "suggested"])
+                 .order("sort_order").execute())
+
+    if not movements.data:
+        return {"message": "No movements to classify", "classified": 0}
+
+    # Get Capital chart of accounts for AI context
+    accounts = sb.table("capital_accounts") \
+        .select("id, code, name, account_type, category, is_header") \
+        .eq("is_active", True) \
+        .order("display_order").execute()
+    accounts_list = [a for a in (accounts.data or []) if not a.get("is_header")]
+
+    accounts_ref = "\n".join([
+        f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category', '')})"
+        for a in accounts_list
+    ])
+
+    # Classify in batches
+    classified = 0
+    batch_size = 20
+    mvs = movements.data
+
+    for batch_start in range(0, len(mvs), batch_size):
+        batch = mvs[batch_start:batch_start + batch_size]
+        suggestions = await _ai_classify_capital_movements(batch, accounts_ref, accounts_list)
+
+        for mv, suggestion in zip(batch, suggestions):
+            update_data = {
+                "suggested_account_code": suggestion.get("account_code"),
+                "suggested_account_name": suggestion.get("account_name"),
+                "suggested_transaction_type": suggestion.get("transaction_type"),
+                "ai_confidence": suggestion.get("confidence", 0.5),
+                "ai_reasoning": suggestion.get("reasoning", ""),
+                "needs_subcategory": suggestion.get("needs_subcategory", False),
+                "status": "suggested",
+            }
+            # Try to find account ID
+            if suggestion.get("account_code"):
+                acct_match = sb.table("capital_accounts").select("id").eq("code", suggestion["account_code"]).execute()
+                if acct_match.data:
+                    update_data["suggested_account_id"] = acct_match.data[0]["id"]
+
+            sb.table("capital_statement_movements").update(update_data).eq("id", mv["id"]).execute()
+            classified += 1
+
+    # Update statement status
+    sb.table("capital_bank_statements").update({
+        "status": "review",
+        "classified_movements": classified,
+    }).eq("id", statement_id).execute()
+
+    return {"message": f"Classified {classified} movements", "classified": classified}
+
+
+@router.patch("/bank-statements/movements/{movement_id}")
+async def update_capital_movement(movement_id: str, data: dict):
+    """Accountant confirms or changes the classification of a Capital movement."""
+    allowed = {"final_account_id", "final_transaction_type", "final_notes", "status"}
+    update = {k: v for k, v in data.items() if k in allowed and v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    result = sb.table("capital_statement_movements").update(update).eq("id", movement_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Movement not found")
+    return result.data[0]
+
+
+@router.post("/bank-statements/{statement_id}/post")
+async def post_capital_statement(statement_id: str):
+    """Create Capital accounting transactions from confirmed movements."""
+    stmt = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
+    if not stmt.data:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    statement = stmt.data[0]
+
+    movements = (sb.table("capital_statement_movements")
+                 .select("*")
+                 .eq("statement_id", statement_id)
+                 .eq("status", "confirmed")
+                 .order("sort_order").execute())
+
+    if not movements.data:
+        return {"message": "No hay movimientos confirmados para publicar.", "posted": 0, "skipped": 0, "errors": []}
+
+    posted = 0
+    skipped = 0
+    errors = []
+    for mv in movements.data:
+        account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
+        txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
+
+        if not account_id:
+            skipped += 1
+            desc = mv.get("description", "")[:60]
+            errors.append(f"'{desc}' — sin cuenta contable asignada")
+            continue
+
+        txn_data = {
+            "transaction_date": mv["movement_date"],
+            "transaction_type": txn_type if txn_type in (
+                'rto_payment', 'down_payment', 'late_fee', 'acquisition',
+                'investor_deposit', 'investor_return', 'commission', 'insurance',
+                'tax', 'operating_expense', 'transfer', 'adjustment',
+                'other_income', 'other_expense'
+            ) else "adjustment",
+            "amount": abs(float(mv["amount"])),
+            "is_income": mv["is_credit"],
+            "account_id": account_id,
+            "bank_account_id": statement.get("bank_account_id"),
+            "payment_method": mv.get("payment_method"),
+            "payment_reference": mv.get("reference"),
+            "counterparty_name": mv.get("counterparty"),
+            "description": mv.get("description", "")[:500],
+            "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
+            "status": "confirmed",
+            "created_by": "bank-import",
+        }
+        txn_data = {k: v for k, v in txn_data.items() if v is not None}
+
+        try:
+            txn_result = sb.table("capital_transactions").insert(txn_data).execute()
+            if txn_result.data:
+                sb.table("capital_statement_movements").update({
+                    "status": "posted",
+                    "transaction_id": txn_result.data[0]["id"],
+                }).eq("id", mv["id"]).execute()
+                posted += 1
+            else:
+                skipped += 1
+                errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar")
+        except Exception as e:
+            logger.warning(f"[CapitalBankStmt] Failed to post movement {mv['id']}: {e}")
+            skipped += 1
+            errors.append(f"'{mv.get('description', '')[:60]}' — {str(e)[:80]}")
+
+    # Update statement stats
+    total_posted_result = (sb.table("capital_statement_movements")
+                    .select("id", count="exact")
+                    .eq("statement_id", statement_id)
+                    .eq("status", "posted").execute())
+    total_count = total_posted_result.count if hasattr(total_posted_result, 'count') else len(total_posted_result.data or [])
+
+    new_status = "completed" if total_count >= (statement.get("total_movements") or 0) else "partial"
+    sb.table("capital_bank_statements").update({
+        "posted_movements": total_count,
+        "status": new_status,
+    }).eq("id", statement_id).execute()
+
+    return {
+        "message": f"Publicados {posted} transacciones" + (f", {skipped} omitidos" if skipped > 0 else ""),
+        "posted": posted,
+        "skipped": skipped,
+        "errors": errors[:10],
+    }
+
+
+@router.delete("/bank-statements/{statement_id}")
+async def delete_capital_bank_statement(statement_id: str):
+    """Delete a Capital bank statement and all its movements."""
+    sb.table("capital_bank_statements").delete().eq("id", statement_id).execute()
+    return {"message": "Statement deleted"}
+
+
+# ============================================================================
+# AI CLASSIFICATION HELPER (for Capital context)
+# ============================================================================
+
+async def _ai_classify_capital_movements(
+    movements: list,
+    accounts_reference: str,
+    accounts_list: list,
+) -> list:
+    """Use GPT-4 to suggest accounting accounts for Capital bank movements."""
+    import os
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not configured")
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    movements_text = "\n".join([
+        f"{i+1}. [{mv['movement_date']}] {mv.get('description', '')} | ${mv['amount']} | {mv.get('counterparty', '')}"
+        for i, mv in enumerate(movements)
+    ])
+
+    prompt = f"""You are an expert accountant for Maninos Capital LLC, a mobile home rent-to-own (RTO) financing company in Texas.
+
+For each bank movement below, suggest the most appropriate accounting account from our Chart of Accounts.
+
+IMPORTANT RULES:
+- For INCOME movements (deposits/credits), classify to INCOME accounts (codes 4xxxx, 7xxxx).
+- For EXPENSE movements (withdrawals/debits), classify to EXPENSE accounts (codes 6xxxx, 71xxx).
+- For balance-sheet related items (loans, transfers), use the appropriate asset/liability account.
+- Use EXACT account codes from the chart below. Do NOT invent codes.
+
+CHART OF ACCOUNTS:
+{accounts_reference}
+
+CONTEXT about Maninos Capital:
+- They finance mobile homes through rent-to-own (RTO) contracts
+- Main income: interest earned on RTO loans, down payments
+- They have investors who lend money (VALTO, SGZ entities)
+- Common expenses: consulting services, legal fees, office expenses, commissions, interest paid to investors
+- Related parties: Maninos Homes, SGZ, La Agustedad
+- Banks: Bank of America, BOA Capital 9197, PNC, Monex Bank
+- They use Zelle extensively for payments
+
+MOVEMENTS TO CLASSIFY:
+{movements_text}
+
+For EACH movement (numbered), respond with a JSON array of objects:
+{{
+  "account_code": "the EXACT account code",
+  "account_name": "account name",
+  "transaction_type": one of ["rto_payment", "down_payment", "late_fee", "investor_deposit", "investor_return", "commission", "operating_expense", "other_income", "other_expense", "transfer", "adjustment"],
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation",
+  "needs_subcategory": true/false
+}}
+
+Return ONLY the JSON array with one object per movement in order. No other text."""
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are an expert accountant. Always return valid JSON arrays."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=4096,
+        temperature=0.1,
+    )
+
+    content = response.choices[0].message.content or "[]"
+    content = content.strip()
+
+    import re
+    if content.startswith("```"):
+        content = re.sub(r'^```(?:json)?\s*', '', content)
+        content = re.sub(r'\s*```$', '', content)
+
+    try:
+        suggestions = json.loads(content)
+    except json.JSONDecodeError:
+        logger.error(f"[CapitalClassify] Invalid JSON response: {content[:500]}")
+        suggestions = [{"account_code": "", "account_name": "", "transaction_type": "adjustment",
+                        "confidence": 0, "reasoning": "Error parsing AI response"}] * len(movements)
+
+    # Ensure we have one suggestion per movement
+    while len(suggestions) < len(movements):
+        suggestions.append({"account_code": "", "account_name": "", "transaction_type": "adjustment",
+                            "confidence": 0, "reasoning": "No suggestion"})
+
+    return suggestions[:len(movements)]
 

@@ -8,7 +8,8 @@ import {
   PieChart, Wallet, Receipt, Scale, BookOpen, FileText,
   ArrowRightLeft, Clock, X, Check, AlertCircle, Banknote,
   CircleDollarSign, Eye, Settings, History, Repeat,
-  ChevronLeft, MoreHorizontal
+  ChevronLeft, MoreHorizontal, Upload, Trash2, Image as ImageIcon,
+  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -74,6 +75,40 @@ interface CashFlowStatement {
   investing_activities: { property_acquisitions: number; net: number }
   financing_activities: { investor_deposits: number; investor_returns: number; net: number }
   net_change_in_cash: number
+}
+
+// ── Bank Statement Types ──
+interface BankStatement {
+  id: string; account_key: string; account_label: string; bank_account_id?: string; original_filename: string
+  file_type: string; file_url?: string; bank_name?: string; account_number_last4?: string
+  statement_period_start?: string; statement_period_end?: string
+  beginning_balance?: number; ending_balance?: number
+  status: string; total_movements: number; classified_movements: number; posted_movements: number
+  created_at: string; error_message?: string
+}
+
+interface StatementMovement {
+  id: string; statement_id: string; movement_date: string; description: string
+  amount: number; is_credit: boolean; reference?: string; payment_method?: string
+  counterparty?: string; suggested_account_id?: string; suggested_account_code?: string
+  suggested_account_name?: string; suggested_transaction_type?: string
+  ai_confidence?: number; ai_reasoning?: string; needs_subcategory?: boolean
+  final_account_id?: string; final_transaction_type?: string; final_notes?: string
+  status: string; transaction_id?: string
+}
+
+const DRAWER_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d', '#4f46e5', '#ca8a04', '#15803d']
+const DRAWER_ICONS = ['🏦', '🏠', '🏙️', '🌆', '💵', '💳', '🏢', '🏗️', '💰', '🔐']
+
+const STMT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  uploaded: { label: 'Subido', color: 'bg-gray-100 text-gray-700' },
+  parsing: { label: 'Analizando...', color: 'bg-blue-100 text-blue-700' },
+  parsed: { label: 'Movimientos extraídos', color: 'bg-amber-100 text-amber-700' },
+  classifying: { label: 'Clasificando...', color: 'bg-blue-100 text-blue-700' },
+  review: { label: 'En revisión', color: 'bg-purple-100 text-purple-700' },
+  partial: { label: 'Parcialmente importado', color: 'bg-amber-100 text-amber-700' },
+  completed: { label: 'Completado', color: 'bg-emerald-100 text-emerald-700' },
+  error: { label: 'Error', color: 'bg-red-100 text-red-700' },
 }
 
 // ── Helpers ──
@@ -564,28 +599,45 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
 
 
 // ════════════════════════════════════════════════════════════════════════
-//  STATEMENTS TAB
+//  STATEMENTS TAB — QuickBooks-style Balance Sheet & Profit/Loss
 // ════════════════════════════════════════════════════════════════════════
+
+interface ReportNode {
+  id: string; code: string; name: string; account_type: string
+  is_header: boolean; balance: number; subtotal?: number
+  children?: ReportNode[]; category?: string
+}
+
+interface BSTreeData {
+  date: string; assets: ReportNode[]; liabilities: ReportNode[]; equity: ReportNode[]
+  total_assets: number; total_liabilities: number; total_equity: number; total_liabilities_and_equity: number
+}
+
+interface PLTreeData {
+  period: { start: string; end: string }
+  income: ReportNode[]; expenses: ReportNode[]
+  other_income: ReportNode[]; other_expenses: ReportNode[]
+  total_income: number; gross_profit: number; total_expenses: number
+  net_operating_income: number; total_other_income: number
+  total_other_expenses: number; net_other_income: number; net_income: number
+}
+
 function StatementsTab() {
-  const [activeStatement, setActiveStatement] = useState<'income' | 'balance' | 'cashflow'>('income')
-  const [incomeStmt, setIncomeStmt] = useState<IncomeStatement | null>(null)
-  const [balanceSheet, setBalanceSheet] = useState<BalanceSheet | null>(null)
-  const [cashFlowStmt, setCashFlowStmt] = useState<CashFlowStatement | null>(null)
+  const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl'>('balance')
+  const [bsData, setBsData] = useState<BSTreeData | null>(null)
+  const [plData, setPlData] = useState<PLTreeData | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
-        if (activeStatement === 'income') {
-          const res = await fetch('/api/capital/accounting/reports/income-statement')
-          if (res.ok) { const data = await res.json(); setIncomeStmt(data) }
-        } else if (activeStatement === 'balance') {
-          const res = await fetch('/api/capital/accounting/reports/balance-sheet')
-          if (res.ok) { const data = await res.json(); setBalanceSheet(data) }
+        if (activeStatement === 'balance') {
+          const res = await fetch('/api/capital/accounting/reports/balance-sheet-tree')
+          if (res.ok) { const data = await res.json(); setBsData(data) }
         } else {
-          const res = await fetch('/api/capital/accounting/reports/cash-flow')
-          if (res.ok) { const data = await res.json(); setCashFlowStmt(data) }
+          const res = await fetch('/api/capital/accounting/reports/profit-loss-tree')
+          if (res.ok) { const data = await res.json(); setPlData(data) }
         }
       } catch (e) { console.error(e) }
       finally { setLoading(false) }
@@ -597,11 +649,10 @@ function StatementsTab() {
     <div className="space-y-4">
       <div className="flex gap-2">
         {[
-          { key: 'income', label: 'Estado de Resultados' },
-          { key: 'balance', label: 'Balance General' },
-          { key: 'cashflow', label: 'Flujo de Efectivo' },
+          { key: 'balance', label: 'Balance Sheet' },
+          { key: 'pnl', label: 'Profit and Loss' },
         ].map(s => (
-          <button key={s.key} onClick={() => setActiveStatement(s.key as any)}
+          <button key={s.key} onClick={() => setActiveStatement(s.key as 'balance' | 'pnl')}
             className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
             style={activeStatement === s.key ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { backgroundColor: 'var(--pearl)', color: 'var(--charcoal)' }}>
             {s.label}
@@ -613,99 +664,156 @@ function StatementsTab() {
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
       ) : (
         <>
-          {/* Income Statement */}
-          {activeStatement === 'income' && incomeStmt && (
+          {/* ── BALANCE SHEET ── */}
+          {activeStatement === 'balance' && bsData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
-                <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>MANINOS CAPITAL LLC</h2>
-                <p className="text-sm" style={{ color: 'var(--slate)' }}>Estado de Resultados</p>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>{incomeStmt.period.start} al {incomeStmt.period.end}</p>
+                <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Balance Sheet</h2>
+                <h3 className="text-sm font-semibold mt-1" style={{ color: 'var(--charcoal)' }}>MANINOS CAPITAL</h3>
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>As of {bsData.date}</p>
               </div>
 
-              <div className="max-w-lg mx-auto space-y-4">
-                <h3 className="font-semibold border-b pb-1" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>INGRESOS</h3>
-                <StmtRow label="Pagos RTO" value={incomeStmt.income.rto_payments} />
-                <StmtRow label="Intereses por Mora" value={incomeStmt.income.late_fees} />
-                <StmtRow label="Otros Ingresos" value={incomeStmt.income.other_income} />
-                <StmtRow label="TOTAL INGRESOS" value={incomeStmt.income.total} bold />
+              <div className="max-w-2xl mx-auto">
+                {/* Header row */}
+                <div className="flex justify-between py-2 border-b-2 mb-2" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>DISTRIBUTION ACCOUNT</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>TOTAL</span>
+                </div>
 
-                <h3 className="font-semibold border-b pb-1 pt-4" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>GASTOS</h3>
-                <StmtRow label="Adquisiciones" value={incomeStmt.expenses.acquisitions} />
-                <StmtRow label="Retornos a Inversionistas" value={incomeStmt.expenses.investor_returns} />
-                <StmtRow label="Gastos Operativos" value={incomeStmt.expenses.operating} />
-                <StmtRow label="Otros Gastos" value={incomeStmt.expenses.other_expenses} />
-                <StmtRow label="TOTAL GASTOS" value={incomeStmt.expenses.total} bold />
+                {/* Assets */}
+                <div className="mb-4">
+                  <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Assets</p>
+                  {bsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_assets)}</span>
+                  </div>
+                </div>
 
-                <div className="pt-4 border-t-2" style={{ borderColor: 'var(--gold-600)' }}>
-                  <StmtRow label="UTILIDAD NETA" value={incomeStmt.net_income} bold highlight />
-                  <p className="text-xs text-right mt-1" style={{ color: 'var(--slate)' }}>Margen: {incomeStmt.margin_percent}%</p>
+                {/* Liabilities and Equity */}
+                <div className="mb-4">
+                  <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Liabilities and Equity</p>
+
+                  {/* Liabilities */}
+                  <p className="font-semibold text-sm py-1 pl-4" style={{ color: 'var(--ink)' }}>Liabilities</p>
+                  {bsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_liabilities)}</span>
+                  </div>
+
+                  {/* Equity */}
+                  <p className="font-semibold text-sm py-1 pl-4 mt-2" style={{ color: 'var(--ink)' }}>Equity</p>
+                  {bsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_equity)}</span>
+                  </div>
+                </div>
+
+                {/* Grand Total */}
+                <div className="flex justify-between py-2 border-t-2 border-b-2 font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span style={{ color: 'var(--ink)' }}>Total for Liabilities and Equity</span>
+                  <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_liabilities_and_equity)}</span>
                 </div>
               </div>
+
+              <p className="text-[10px] text-center mt-6" style={{ color: 'var(--ash)' }}>
+                Accrual Basis · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
             </div>
           )}
 
-          {/* Balance Sheet */}
-          {activeStatement === 'balance' && balanceSheet && (
+          {/* ── PROFIT AND LOSS ── */}
+          {activeStatement === 'pnl' && plData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
-                <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>MANINOS CAPITAL LLC</h2>
-                <p className="text-sm" style={{ color: 'var(--slate)' }}>Balance General</p>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>Al {balanceSheet.date}</p>
+                <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Profit and Loss</h2>
+                <h3 className="text-sm font-semibold mt-1" style={{ color: 'var(--charcoal)' }}>MANINOS CAPITAL</h3>
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>{plData.period.start} — {plData.period.end}</p>
               </div>
 
-              <div className="max-w-lg mx-auto space-y-4">
-                <h3 className="font-semibold border-b pb-1" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>ACTIVOS</h3>
-                <StmtRow label="Cuentas Bancarias" value={balanceSheet.assets.bank_accounts} />
-                <StmtRow label="Efectivo en Mano" value={balanceSheet.assets.cash_on_hand} />
-                <StmtRow label="Cuentas por Cobrar" value={balanceSheet.assets.accounts_receivable} />
-                <StmtRow label="Propiedades (RTO)" value={balanceSheet.assets.property_held_for_rto} />
-                <StmtRow label="TOTAL ACTIVOS" value={balanceSheet.assets.total} bold />
+              <div className="max-w-2xl mx-auto">
+                {/* Header row */}
+                <div className="flex justify-between py-2 border-b-2 mb-2" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>DISTRIBUTION ACCOUNT</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>TOTAL</span>
+                </div>
 
-                <h3 className="font-semibold border-b pb-1 pt-4" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>PASIVOS</h3>
-                <StmtRow label="Pagarés por Pagar" value={balanceSheet.liabilities.promissory_notes_payable} />
-                <StmtRow label="Obligaciones con Inversionistas" value={balanceSheet.liabilities.investor_obligations} />
-                <StmtRow label="TOTAL PASIVOS" value={balanceSheet.liabilities.total} bold />
+                {/* Income */}
+                <div className="mb-2">
+                  <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Income</p>
+                  {plData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Total for Income</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_income)}</span>
+                  </div>
+                </div>
 
-                <h3 className="font-semibold border-b pb-1 pt-4" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>PATRIMONIO</h3>
-                <StmtRow label="Utilidades Retenidas" value={balanceSheet.equity.retained_earnings} />
-                <StmtRow label="TOTAL PATRIMONIO" value={balanceSheet.equity.total} bold />
+                {/* Gross Profit */}
+                <div className="flex justify-between py-2 border-t-2 border-b font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span style={{ color: 'var(--ink)' }}>Gross Profit</span>
+                  <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.gross_profit)}</span>
+                </div>
 
-                <div className="pt-4 border-t-2" style={{ borderColor: 'var(--gold-600)' }}>
-                  <StmtRow label="PASIVOS + PATRIMONIO" value={balanceSheet.total_liabilities_and_equity} bold highlight />
+                {/* Expenses */}
+                <div className="mb-2 mt-2">
+                  <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Expenses</p>
+                  {plData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_expenses)}</span>
+                  </div>
+                </div>
+
+                {/* Net Operating Income */}
+                <div className="flex justify-between py-2 border-t-2 border-b font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span style={{ color: 'var(--ink)' }}>Net Operating Income</span>
+                  <span style={{ color: plData.net_operating_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_operating_income)}</span>
+                </div>
+
+                {/* Other Income */}
+                {plData.other_income.length > 0 && (
+                  <div className="mb-2 mt-2">
+                    <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
+                    {plData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
+                      <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
+                      <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_other_income)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Other Expenses */}
+                {plData.other_expenses.length > 0 && (
+                  <div className="mb-2 mt-2">
+                    <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
+                    {plData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
+                      <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
+                      <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_other_expenses)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Net Other Income */}
+                {(plData.other_income.length > 0 || plData.other_expenses.length > 0) && (
+                  <div className="flex justify-between py-2 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
+                    <span style={{ color: 'var(--ink)' }}>Net Other Income</span>
+                    <span style={{ color: plData.net_other_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_other_income)}</span>
+                  </div>
+                )}
+
+                {/* Net Income */}
+                <div className="flex justify-between py-2 border-t-2 border-b-2 font-bold text-sm mt-2" style={{ borderColor: 'var(--charcoal)' }}>
+                  <span style={{ color: 'var(--ink)' }}>Net Income</span>
+                  <span style={{ color: plData.net_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_income)}</span>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Cash Flow Statement */}
-          {activeStatement === 'cashflow' && cashFlowStmt && (
-            <div className="card-luxury p-6">
-              <div className="text-center mb-6">
-                <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>MANINOS CAPITAL LLC</h2>
-                <p className="text-sm" style={{ color: 'var(--slate)' }}>Estado de Flujo de Efectivo</p>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>{cashFlowStmt.period.start} al {cashFlowStmt.period.end}</p>
-              </div>
-
-              <div className="max-w-lg mx-auto space-y-4">
-                <h3 className="font-semibold border-b pb-1" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>ACTIVIDADES OPERATIVAS</h3>
-                <StmtRow label="Cobros RTO" value={cashFlowStmt.operating_activities.rto_collections} />
-                <StmtRow label="Moras Cobradas" value={cashFlowStmt.operating_activities.late_fees_collected} />
-                <StmtRow label="Gastos Operativos" value={cashFlowStmt.operating_activities.operating_expenses} />
-                <StmtRow label="Neto Operativo" value={cashFlowStmt.operating_activities.net} bold />
-
-                <h3 className="font-semibold border-b pb-1 pt-4" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>ACTIVIDADES DE INVERSIÓN</h3>
-                <StmtRow label="Adquisición de Propiedades" value={cashFlowStmt.investing_activities.property_acquisitions} />
-                <StmtRow label="Neto Inversión" value={cashFlowStmt.investing_activities.net} bold />
-
-                <h3 className="font-semibold border-b pb-1 pt-4" style={{ color: 'var(--ink)', borderColor: 'var(--sand)' }}>ACTIVIDADES DE FINANCIAMIENTO</h3>
-                <StmtRow label="Depósitos de Inversionistas" value={cashFlowStmt.financing_activities.investor_deposits} />
-                <StmtRow label="Retornos a Inversionistas" value={cashFlowStmt.financing_activities.investor_returns} />
-                <StmtRow label="Neto Financiamiento" value={cashFlowStmt.financing_activities.net} bold />
-
-                <div className="pt-4 border-t-2" style={{ borderColor: 'var(--gold-600)' }}>
-                  <StmtRow label="CAMBIO NETO EN EFECTIVO" value={cashFlowStmt.net_change_in_cash} bold highlight />
-                </div>
-              </div>
+              <p className="text-[10px] text-center mt-6" style={{ color: 'var(--ash)' }}>
+                Accrual Basis · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
             </div>
           )}
         </>
@@ -714,11 +822,50 @@ function StatementsTab() {
   )
 }
 
-function StmtRow({ label, value, bold, highlight }: { label: string; value: number; bold?: boolean; highlight?: boolean }) {
+function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
+  const hasChildren = (node.children || []).length > 0
+  const indent = depth * 16
+
+  if (hasChildren) {
+    return (
+      <>
+        {/* Header row */}
+        <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+            {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
+            {node.name}
+          </span>
+          {node.balance !== 0 && !node.is_header && (
+            <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>
+              {fmtFull(node.balance)}
+            </span>
+          )}
+        </div>
+        {/* Children */}
+        {node.children!.map(child => <ReportTreeNode key={child.id} node={child} depth={depth + 1} />)}
+        {/* Subtotal row */}
+        <div className="flex justify-between py-0.5 border-t" style={{ paddingLeft: indent, borderColor: '#e5e5e5' }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+            Total for {node.code ? `${node.code} ` : ''}{node.name}
+          </span>
+          <span className="text-sm font-semibold font-mono" style={{ color: (node.subtotal || 0) < 0 ? 'var(--danger)' : 'var(--ink)' }}>
+            {fmtFull(node.subtotal || 0)}
+          </span>
+        </div>
+      </>
+    )
+  }
+
+  // Leaf account
   return (
-    <div className={`flex justify-between py-1 ${bold ? 'font-semibold' : ''}`}>
-      <span style={{ color: highlight ? 'var(--gold-700)' : 'var(--charcoal)' }}>{label}</span>
-      <span style={{ color: value < 0 ? 'var(--danger)' : highlight ? 'var(--gold-700)' : 'var(--ink)' }}>{fmtFull(value)}</span>
+    <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
+      <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
+        {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
+        {node.name}
+      </span>
+      <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>
+        {fmtFull(node.balance)}
+      </span>
     </div>
   )
 }
@@ -826,10 +973,11 @@ function AccountRow({ node, depth }: { node: AccountNode; depth: number }) {
 
 
 // ════════════════════════════════════════════════════════════════════════
-//  BANKS & CASH TAB
+//  BANKS & CASH TAB — with Estado de Cuenta (Bank Statement Import)
 // ════════════════════════════════════════════════════════════════════════
 function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => void }) {
   const toast = useToast()
+  const [subTab, setSubTab] = useState<'accounts' | 'estado_cuenta'>('accounts')
   const [banks, setBanks] = useState<BankAccount[]>([])
   const [summary, setSummary] = useState({ total_balance: 0, bank_balance: 0, cash_on_hand: 0, count: 0 })
   const [loading, setLoading] = useState(true)
@@ -917,154 +1065,779 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas registradas</p>
-        <div className="flex gap-2">
-          {banks.length >= 2 && (
-            <button onClick={() => setShowTransferModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
-              style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
-              <ArrowRightLeft className="w-4 h-4" /> Transferir
-            </button>
-          )}
-          <button onClick={onAdd}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
-            style={{ backgroundColor: 'var(--gold-600)' }}>
-            <Plus className="w-4 h-4" /> Nueva Cuenta
+      {/* Sub-tabs: Cuentas | Estado de Cuenta */}
+      <div className="flex gap-2 border-b" style={{ borderColor: 'var(--sand)' }}>
+        {[
+          { key: 'accounts' as const, label: 'Cuentas Bancarias', icon: Landmark },
+          { key: 'estado_cuenta' as const, label: 'Estado de Cuenta (Import)', icon: Upload },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setSubTab(tab.key)}
+            className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+            style={subTab === tab.key
+              ? { borderColor: 'var(--gold-600)', color: 'var(--gold-700)' }
+              : { borderColor: 'transparent', color: 'var(--slate)' }}>
+            <tab.icon className="w-4 h-4" /> {tab.label}
           </button>
-        </div>
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
-      ) : banks.length === 0 ? (
-        <div className="card-luxury p-12 text-center">
-          <Landmark className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-          <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>No hay cuentas bancarias</h3>
-          <p className="mt-2 text-sm" style={{ color: 'var(--slate)' }}>Registra tus cuentas de banco y efectivo</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Bank Cards */}
-          <div className="lg:col-span-1 space-y-3">
-            {banks.map(b => (
-              <div key={b.id}
-                className={`card-luxury p-5 cursor-pointer transition-all ${selectedBank === b.id ? 'ring-2' : 'hover:shadow-md'}`}
-                style={selectedBank === b.id ? { boxShadow: '0 0 0 2px var(--gold-600)' } : undefined}
-                onClick={() => { setSelectedBank(b.id); loadBankDetail(b.id); setEditingBalance(false) }}>
-                {b.is_primary && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Principal</span>}
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: b.account_type === 'cash' ? '#d1fae5' : '#dbeafe' }}>
-                    {b.account_type === 'cash'
-                      ? <Banknote className="w-5 h-5" style={{ color: '#059669' }} />
-                      : <Landmark className="w-5 h-5" style={{ color: '#1e40af' }} />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                      {b.bank_name || (b.account_type === 'cash' ? 'Efectivo' : b.account_type)}
-                      {b.account_number && ` ····${b.account_number.slice(-4)}`}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-xl font-bold mt-3" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p>
-              </div>
-            ))}
+      {/* ── SUB-TAB: Cuentas Bancarias ── */}
+      {subTab === 'accounts' && (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas registradas</p>
+            <div className="flex gap-2">
+              {banks.length >= 2 && (
+                <button onClick={() => setShowTransferModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                  <ArrowRightLeft className="w-4 h-4" /> Transferir
+                </button>
+              )}
+              <button onClick={onAdd}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
+                style={{ backgroundColor: 'var(--gold-600)' }}>
+                <Plus className="w-4 h-4" /> Nueva Cuenta
+              </button>
+            </div>
           </div>
 
-          {/* Bank Detail Panel */}
-          <div className="lg:col-span-2">
-            {selectedBank && bankDetail ? (
-              <div className="card-luxury p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>{bankDetail.name}</h3>
-                    <p className="text-sm" style={{ color: 'var(--slate)' }}>
-                      {bankDetail.bank_name || (bankDetail.account_type === 'cash' ? 'Efectivo' : bankDetail.account_type)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleDeactivate(bankDetail.id)}
-                      className="text-xs px-3 py-1.5 rounded-lg border text-red-600 border-red-200 hover:bg-red-50">
-                      Desactivar
-                    </button>
-                  </div>
-                </div>
-
-                {/* Balance */}
-                <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--pearl)' }}>
-                  <p className="text-xs font-medium uppercase" style={{ color: 'var(--ash)' }}>Saldo Actual</p>
-                  {editingBalance ? (
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-lg">$</span>
-                      <input type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)}
-                        className="text-2xl font-bold border-b-2 outline-none w-40" style={{ borderColor: 'var(--gold-600)' }} />
-                      <button onClick={handleUpdateBalance} className="text-emerald-600"><Check className="w-5 h-5" /></button>
-                      <button onClick={() => setEditingBalance(false)} className="text-red-500"><X className="w-5 h-5" /></button>
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+          ) : banks.length === 0 ? (
+            <div className="card-luxury p-12 text-center">
+              <Landmark className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
+              <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>No hay cuentas bancarias</h3>
+              <p className="mt-2 text-sm" style={{ color: 'var(--slate)' }}>Registra tus cuentas de banco y efectivo</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Bank Cards */}
+              <div className="lg:col-span-1 space-y-3">
+                {banks.map(b => (
+                  <div key={b.id}
+                    className={`card-luxury p-5 cursor-pointer transition-all ${selectedBank === b.id ? 'ring-2' : 'hover:shadow-md'}`}
+                    style={selectedBank === b.id ? { boxShadow: '0 0 0 2px var(--gold-600)' } : undefined}
+                    onClick={() => { setSelectedBank(b.id); loadBankDetail(b.id); setEditingBalance(false) }}>
+                    {b.is_primary && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Principal</span>}
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: b.account_type === 'cash' ? '#d1fae5' : '#dbeafe' }}>
+                        {b.account_type === 'cash'
+                          ? <Banknote className="w-5 h-5" style={{ color: '#059669' }} />
+                          : <Landmark className="w-5 h-5" style={{ color: '#1e40af' }} />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                          {b.bank_name || (b.account_type === 'cash' ? 'Efectivo' : b.account_type)}
+                          {b.account_number && ` ····${b.account_number.slice(-4)}`}
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(bankDetail.current_balance)}</p>
-                      <button onClick={() => { setEditingBalance(true); setNewBalance(String(bankDetail.current_balance)) }}
-                        className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
-                        Editar
-                      </button>
+                    <p className="text-xl font-bold mt-3" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Bank Detail Panel */}
+              <div className="lg:col-span-2">
+                {selectedBank && bankDetail ? (
+                  <div className="card-luxury p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>{bankDetail.name}</h3>
+                        <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                          {bankDetail.bank_name || (bankDetail.account_type === 'cash' ? 'Efectivo' : bankDetail.account_type)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleDeactivate(bankDetail.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg border text-red-600 border-red-200 hover:bg-red-50">
+                          Desactivar
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Account Info */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  {bankDetail.routing_number && (
-                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="font-mono" style={{ color: 'var(--charcoal)' }}>{bankDetail.routing_number}</p></div>
-                  )}
-                  {bankDetail.zelle_email && (
-                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Email</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_email}</p></div>
-                  )}
-                  {bankDetail.zelle_phone && (
-                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Teléfono</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_phone}</p></div>
-                  )}
-                  {bankDetail.notes && (
-                    <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Notas</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.notes}</p></div>
-                  )}
-                </div>
-
-                {/* Recent Transactions */}
-                <div>
-                  <h4 className="font-semibold text-sm mb-3" style={{ color: 'var(--ink)' }}>Últimos Movimientos</h4>
-                  {bankTxns.length === 0 ? (
-                    <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>Sin movimientos registrados</p>
-                  ) : (
-                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {bankTxns.map(t => (
-                        <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
-                          <div>
-                            <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
-                            <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_date}</p>
-                          </div>
-                          <span className={`font-semibold text-sm ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {t.is_income ? '+' : '-'}{fmtFull(t.amount)}
-                          </span>
+                    {/* Balance */}
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--pearl)' }}>
+                      <p className="text-xs font-medium uppercase" style={{ color: 'var(--ash)' }}>Saldo Actual</p>
+                      {editingBalance ? (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-lg">$</span>
+                          <input type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)}
+                            className="text-2xl font-bold border-b-2 outline-none w-40" style={{ borderColor: 'var(--gold-600)' }} />
+                          <button onClick={handleUpdateBalance} className="text-emerald-600"><Check className="w-5 h-5" /></button>
+                          <button onClick={() => setEditingBalance(false)} className="text-red-500"><X className="w-5 h-5" /></button>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(bankDetail.current_balance)}</p>
+                          <button onClick={() => { setEditingBalance(true); setNewBalance(String(bankDetail.current_balance)) }}
+                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
+                            Editar
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+
+                    {/* Account Info */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {bankDetail.routing_number && (
+                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="font-mono" style={{ color: 'var(--charcoal)' }}>{bankDetail.routing_number}</p></div>
+                      )}
+                      {bankDetail.zelle_email && (
+                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Email</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_email}</p></div>
+                      )}
+                      {bankDetail.zelle_phone && (
+                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Teléfono</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_phone}</p></div>
+                      )}
+                      {bankDetail.notes && (
+                        <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Notas</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.notes}</p></div>
+                      )}
+                    </div>
+
+                    {/* Recent Transactions */}
+                    <div>
+                      <h4 className="font-semibold text-sm mb-3" style={{ color: 'var(--ink)' }}>Últimos Movimientos</h4>
+                      {bankTxns.length === 0 ? (
+                        <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>Sin movimientos registrados</p>
+                      ) : (
+                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {bankTxns.map(t => (
+                            <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
+                              <div>
+                                <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
+                                <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_date}</p>
+                              </div>
+                              <span className={`font-semibold text-sm ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {t.is_income ? '+' : '-'}{fmtFull(t.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="card-luxury p-12 text-center">
+                    <Eye className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
+                    <p style={{ color: 'var(--slate)' }}>Selecciona una cuenta para ver sus detalles</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="card-luxury p-12 text-center">
-                <Eye className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-                <p style={{ color: 'var(--slate)' }}>Selecciona una cuenta para ver sus detalles</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── SUB-TAB: Estado de Cuenta ── */}
+      {subTab === 'estado_cuenta' && (
+        <EstadoCuentaCapitalSection bankAccounts={banks} onRefresh={() => { fetchBanks(); onRefresh() }} />
       )}
 
       {/* Transfer Modal */}
       {showTransferModal && <TransferModal banks={banks} onClose={() => setShowTransferModal(false)} onDone={() => { setShowTransferModal(false); fetchBanks(); onRefresh() }} />}
     </div>
+  )
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+//  ESTADO DE CUENTA — Capital Bank Statement Import & AI Classification
+// ════════════════════════════════════════════════════════════════════════
+function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts: BankAccount[]; onRefresh: () => void }) {
+  const toast = useToast()
+  const [expandedDrawer, setExpandedDrawer] = useState<string | null>(null)
+  const [statements, setStatements] = useState<Record<string, BankStatement[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState<string | null>(null)
+  const [activeStatement, setActiveStatement] = useState<string | null>(null)
+  const [activeMovements, setActiveMovements] = useState<StatementMovement[]>([])
+  const [movementsLoading, setMovementsLoading] = useState(false)
+  const [classifying, setClassifying] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [allAccounts, setAllAccounts] = useState<any[]>([])
+
+  const fetchStatements = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/capital/accounting/bank-statements')
+      if (res.ok) {
+        const data = await res.json()
+        const grouped: Record<string, BankStatement[]> = {}
+        for (const stmt of (data.statements || [])) {
+          const key = stmt.bank_account_id || stmt.account_key || 'uncategorized'
+          if (!grouped[key]) grouped[key] = []
+          grouped[key].push(stmt)
+        }
+        setStatements(grouped)
+      }
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [])
+
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/capital/accounting/accounts/tree')
+      if (res.ok) {
+        const data = await res.json()
+        setAllAccounts((data.flat || []).filter((a: any) => !a.is_header))
+      }
+    } catch (e) { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchStatements(); fetchAccounts() }, [fetchStatements, fetchAccounts])
+
+  const accountDrawers = bankAccounts.map((ba, i) => ({
+    key: ba.id,
+    id: ba.id,
+    label: ba.name,
+    bankName: ba.bank_name,
+    color: DRAWER_COLORS[i % DRAWER_COLORS.length],
+    icon: DRAWER_ICONS[i % DRAWER_ICONS.length],
+  }))
+
+  const handleUpload = async (bankAccountId: string, file: File) => {
+    setUploading(bankAccountId)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('bank_account_id', bankAccountId)
+
+      const res = await fetch('/api/capital/accounting/bank-statements', { method: 'POST', body: formData })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`${data.movements?.length || 0} movimientos extraídos`)
+        fetchStatements()
+        if (data.statement?.id) {
+          setActiveStatement(data.statement.id)
+          setActiveMovements(data.movements || [])
+          setExpandedDrawer(bankAccountId)
+        }
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al subir archivo')
+      }
+    } catch (e) {
+      toast.error('Error de conexión al subir archivo')
+    }
+    finally { setUploading(null) }
+  }
+
+  const openStatement = async (stmtId: string) => {
+    setActiveStatement(stmtId)
+    setMovementsLoading(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${stmtId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setActiveMovements(data.movements || [])
+      }
+    } catch (e) { console.error(e) }
+    finally { setMovementsLoading(false) }
+  }
+
+  const classifyMovements = async (stmtId: string) => {
+    setClassifying(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${stmtId}/classify`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`${data.classified || 0} movimientos clasificados con IA`)
+        await openStatement(stmtId)
+        fetchStatements()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al clasificar')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setClassifying(false) }
+  }
+
+  const updateMovement = async (mvId: string, data: Record<string, any>) => {
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/movements/${mvId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, ...updated } : m))
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  const postMovements = async (stmtId: string) => {
+    setPosting(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${stmtId}/post`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        let msg = `✅ ${data.posted} transacciones creadas en contabilidad Capital.`
+        if (data.skipped > 0) {
+          msg += `\n⚠️ ${data.skipped} movimientos omitidos (sin cuenta asignada).`
+        }
+        toast.success(msg.replace(/\n/g, ' '))
+        await openStatement(stmtId)
+        fetchStatements()
+        onRefresh()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al publicar')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setPosting(false) }
+  }
+
+  const deleteStatement = async (stmtId: string) => {
+    if (!confirm('¿Eliminar este estado de cuenta y todos sus movimientos?')) return
+    try {
+      await fetch(`/api/capital/accounting/bank-statements/${stmtId}`, { method: 'DELETE' })
+      if (activeStatement === stmtId) {
+        setActiveStatement(null)
+        setActiveMovements([])
+      }
+      fetchStatements()
+      toast.success('Estado de cuenta eliminado')
+    } catch (e) { console.error(e) }
+  }
+
+  const pendingCount = activeMovements.filter(m => m.status === 'pending' || m.status === 'suggested').length
+  const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
+  const postedCount = activeMovements.filter(m => m.status === 'posted').length
+  const activeStmt = activeStatement ? Object.values(statements).flat().find(s => s.id === activeStatement) : null
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>Estado de Cuenta — Capital</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>
+          Importa estados de cuenta bancarios · La IA extrae y clasifica los movimientos con el plan de cuentas de Capital
+        </p>
+      </div>
+
+      {/* Account Drawers */}
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+      ) : accountDrawers.length === 0 ? (
+        <div className="text-center py-12 card-luxury">
+          <Landmark className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
+          <p className="text-sm mb-3" style={{ color: 'var(--ash)' }}>No hay cuentas bancarias registradas</p>
+          <p className="text-xs" style={{ color: 'var(--slate)' }}>Primero crea una cuenta en la pestaña "Cuentas Bancarias"</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {accountDrawers.map(drawer => {
+            const directStmts = statements[drawer.key] || []
+            const legacyStmts = Object.entries(statements)
+              .filter(([k]) => k !== drawer.key && drawer.label.toLowerCase().includes(k.toLowerCase()))
+              .flatMap(([, stmts]) => stmts)
+            const drawerStmts = [...directStmts, ...legacyStmts]
+            const isExpanded = expandedDrawer === drawer.key
+
+            return (
+              <div key={drawer.id} className="rounded-xl border overflow-hidden transition-all" style={{ borderColor: 'var(--stone)' }}>
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between px-5 py-4 hover:bg-stone-50 transition-colors">
+                  <button
+                    onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)}
+                    className="flex-1 flex items-center gap-3 text-left"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                      style={{ backgroundColor: `${drawer.color}15`, border: `1px solid ${drawer.color}30` }}>
+                      {drawer.icon}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>{drawer.label}</h3>
+                      <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                        {drawer.bankName && <span>{drawer.bankName} · </span>}
+                        {drawerStmts.length === 0 ? 'Sin estados de cuenta' :
+                         `${drawerStmts.length} estado${drawerStmts.length > 1 ? 's' : ''} de cuenta`}
+                      </p>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {drawerStmts.some(s => s.status === 'review') && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-medium">
+                        Pendiente revisión
+                      </span>
+                    )}
+                    <button onClick={() => setExpandedDrawer(isExpanded ? null : drawer.key)} className="p-1">
+                      {isExpanded ? <ChevronUp className="w-5 h-5 text-stone-400" /> : <ChevronDown className="w-5 h-5 text-stone-400" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Drawer Content */}
+                {isExpanded && (
+                  <div className="border-t px-5 py-4 space-y-4" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                    {/* Upload Zone */}
+                    <label
+                      className={`relative flex flex-col items-center justify-center px-6 py-8 border-2 border-dashed rounded-xl cursor-pointer transition-all hover:border-solid ${uploading === drawer.key ? 'opacity-60 pointer-events-none' : ''}`}
+                      style={{ borderColor: `${drawer.color}50`, backgroundColor: `${drawer.color}05` }}
+                    >
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) handleUpload(drawer.key, f)
+                          e.target.value = ''
+                        }}
+                        disabled={uploading === drawer.key}
+                      />
+                      {uploading === drawer.key ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="w-8 h-8 animate-spin" style={{ color: drawer.color }} />
+                          <span className="text-sm font-medium" style={{ color: drawer.color }}>Subiendo y analizando...</span>
+                          <span className="text-xs" style={{ color: 'var(--ash)' }}>La IA está extrayendo los movimientos</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${drawer.color}15` }}>
+                            <Upload className="w-6 h-6" style={{ color: drawer.color }} />
+                          </div>
+                          <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                            Importar estado de cuenta
+                          </span>
+                          <span className="text-xs text-center" style={{ color: 'var(--ash)' }}>
+                            PDF, PNG, JPG, Excel (.xlsx) o CSV<br />
+                            Arrastra o haz clic para seleccionar
+                          </span>
+                        </div>
+                      )}
+                    </label>
+
+                    {/* Statement List */}
+                    {drawerStmts.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>
+                          Estados importados
+                        </h4>
+                        {drawerStmts.map(stmt => {
+                          const statusInfo = STMT_STATUS_LABELS[stmt.status] || STMT_STATUS_LABELS.uploaded
+                          const isActive = activeStatement === stmt.id
+                          return (
+                            <div
+                              key={stmt.id}
+                              className={`rounded-lg border p-3 transition-all ${isActive ? 'ring-2' : 'hover:border-stone-400'}`}
+                              style={{
+                                borderColor: isActive ? drawer.color : 'var(--stone)',
+                                backgroundColor: 'white',
+                              }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <button onClick={() => openStatement(stmt.id)} className="flex-1 text-left flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-stone-100">
+                                    {stmt.file_type === 'pdf' ? <FileText className="w-4 h-4 text-red-500" /> :
+                                     ['png','jpg','jpeg'].includes(stmt.file_type) ? <ImageIcon className="w-4 h-4 text-blue-500" /> :
+                                     <FileUp className="w-4 h-4 text-green-500" />}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{stmt.original_filename}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${statusInfo.color}`}>{statusInfo.label}</span>
+                                      <span className="text-[10px]" style={{ color: 'var(--ash)' }}>
+                                        {stmt.total_movements} movimientos
+                                        {stmt.posted_movements > 0 && ` · ${stmt.posted_movements} publicados`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </button>
+                                <button onClick={() => deleteStatement(stmt.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-stone-400 hover:text-red-500 transition-colors">
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Movement Classification Panel */}
+      {activeStatement && activeStmt && (
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)', backgroundColor: 'white' }}>
+          {/* Panel Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b flex-wrap gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+            <div>
+              <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>
+                {activeStmt.original_filename}
+                <span className="ml-2 font-normal text-xs" style={{ color: 'var(--slate)' }}>
+                  {activeStmt.account_label}
+                </span>
+              </h3>
+              <div className="flex items-center gap-4 mt-1 flex-wrap">
+                <span className="text-xs" style={{ color: 'var(--ash)' }}>
+                  {activeMovements.length} movimientos
+                </span>
+                {pendingCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{pendingCount} sin clasificar</span>}
+                {confirmedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{confirmedCount} confirmados</span>}
+                {postedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{postedCount} publicados</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(activeStmt.status === 'parsed' || pendingCount > 0) && (
+                <button
+                  onClick={() => classifyMovements(activeStatement)}
+                  disabled={classifying}
+                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                  style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
+                >
+                  {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {classifying ? 'Clasificando...' : 'Clasificar con IA'}
+                </button>
+              )}
+              {confirmedCount > 0 && (
+                <button
+                  onClick={() => postMovements(activeStatement)}
+                  disabled={posting}
+                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                  style={{ backgroundColor: posting ? '#9ca3af' : '#059669' }}
+                >
+                  {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  {posting ? 'Publicando...' : `Publicar ${confirmedCount} confirmados`}
+                </button>
+              )}
+              <button onClick={() => { setActiveStatement(null); setActiveMovements([]) }}
+                className="p-1.5 rounded-lg hover:bg-stone-100 transition-colors">
+                <X className="w-4 h-4 text-stone-400" />
+              </button>
+            </div>
+          </div>
+
+          {/* Movements Table */}
+          {movementsLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+          ) : activeMovements.length === 0 ? (
+            <div className="text-center py-12 px-6">
+              <p className="text-sm" style={{ color: 'var(--ash)' }}>No se encontraron movimientos</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeMovements.map((mv) => (
+                    <CapitalMovementRow
+                      key={mv.id}
+                      movement={mv}
+                      accounts={allAccounts}
+                      onUpdate={updateMovement}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Movement Row for Capital Bank Statement ──
+function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
+  movement: StatementMovement
+  accounts: any[]
+  onUpdate: (id: string, data: Record<string, any>) => void
+}) {
+  const [showAccountPicker, setShowAccountPicker] = useState(false)
+  const [accountSearch, setAccountSearch] = useState('')
+
+  const displayAccount = mv.final_account_id
+    ? accounts.find((a: any) => a.id === mv.final_account_id)
+    : mv.suggested_account_name
+    ? { code: mv.suggested_account_code, name: mv.suggested_account_name }
+    : null
+
+  const isPosted = mv.status === 'posted'
+  const isSkipped = mv.status === 'skipped'
+  const isConfirmed = mv.status === 'confirmed'
+
+  const filteredAccounts = accountSearch
+    ? accounts.filter((a: any) =>
+        a.name?.toLowerCase().includes(accountSearch.toLowerCase()) ||
+        a.code?.toLowerCase().includes(accountSearch.toLowerCase())
+      )
+    : accounts
+
+  const handleSelectAccount = (account: any) => {
+    onUpdate(mv.id, {
+      final_account_id: account.id,
+      status: 'confirmed',
+    })
+    setShowAccountPicker(false)
+    setAccountSearch('')
+  }
+
+  const confirmSuggestion = () => {
+    onUpdate(mv.id, {
+      final_account_id: mv.suggested_account_id,
+      final_transaction_type: mv.suggested_transaction_type,
+      status: 'confirmed',
+    })
+  }
+
+  const skipMovement = () => {
+    onUpdate(mv.id, { status: 'skipped' })
+  }
+
+  return (
+    <tr className={`border-b transition-colors ${isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
+      style={{ borderColor: '#f0f0f0' }}>
+      {/* Date */}
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{mv.movement_date}</span>
+      </td>
+
+      {/* Description */}
+      <td className="px-3 py-2.5 max-w-md">
+        <div>
+          <p className="text-xs leading-snug" style={{ color: 'var(--charcoal)' }}>{mv.description}</p>
+          {mv.counterparty && (
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+              {mv.counterparty}
+              {mv.payment_method && <span className="ml-1 px-1 py-0.5 rounded bg-stone-100 text-stone-500">{mv.payment_method}</span>}
+            </p>
+          )}
+          {mv.ai_reasoning && mv.status === 'suggested' && (
+            <p className="text-[10px] mt-1 italic flex items-center gap-1" style={{ color: '#7c3aed' }}>
+              <Brain className="w-3 h-3" /> {mv.ai_reasoning}
+            </p>
+          )}
+        </div>
+      </td>
+
+      {/* Amount */}
+      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+        <span className={`text-sm font-semibold tabular-nums ${mv.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
+          {mv.is_credit ? '+' : ''}{fmtFull(mv.amount)}
+        </span>
+      </td>
+
+      {/* Account */}
+      <td className="px-3 py-2.5 relative">
+        {isPosted ? (
+          <span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
+            {displayAccount ? `${displayAccount.code} ${displayAccount.name}` : '—'}
+          </span>
+        ) : showAccountPicker ? (
+          <div className="absolute z-20 top-0 left-0 w-80 bg-white border rounded-lg shadow-xl p-2" style={{ borderColor: 'var(--stone)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Search className="w-3.5 h-3.5 text-stone-400" />
+              <input
+                autoFocus
+                type="text"
+                value={accountSearch}
+                onChange={e => setAccountSearch(e.target.value)}
+                placeholder="Buscar cuenta Capital..."
+                className="flex-1 text-xs outline-none"
+              />
+              <button onClick={() => { setShowAccountPicker(false); setAccountSearch('') }}>
+                <X className="w-3.5 h-3.5 text-stone-400" />
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-0.5">
+              {filteredAccounts.slice(0, 30).map((a: any) => (
+                <button
+                  key={a.id}
+                  onClick={() => handleSelectAccount(a)}
+                  className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2"
+                >
+                  <span className="font-mono text-[10px] text-stone-400 w-14 shrink-0">{a.code}</span>
+                  <span style={{ color: 'var(--charcoal)' }}>{a.name}</span>
+                  <span className="ml-auto text-[10px] text-stone-400">{a.account_type}</span>
+                </button>
+              ))}
+              {filteredAccounts.length === 0 && (
+                <p className="text-xs text-center py-2" style={{ color: 'var(--ash)' }}>Sin resultados</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAccountPicker(true)}
+            className="text-left w-full group"
+            disabled={isPosted || isSkipped}
+          >
+            {displayAccount ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-stone-100 text-stone-500">{displayAccount.code}</span>
+                <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{displayAccount.name}</span>
+                {mv.ai_confidence != null && mv.status === 'suggested' && (
+                  <span className={`text-[10px] px-1 py-0.5 rounded ${mv.ai_confidence >= 0.8 ? 'bg-emerald-100 text-emerald-600' : mv.ai_confidence >= 0.5 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+                    {Math.round(mv.ai_confidence * 100)}%
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-xs italic group-hover:underline text-amber-600">
+                  Sin cuenta — clic para asignar
+                </span>
+              </div>
+            )}
+          </button>
+        )}
+      </td>
+
+      {/* Status */}
+      <td className="px-3 py-2.5 text-center">
+        {mv.status === 'posted' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700 font-medium">Publicado</span>}
+        {mv.status === 'confirmed' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-100 text-emerald-700 font-medium">Confirmado</span>}
+        {mv.status === 'suggested' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-medium">Sugerido</span>}
+        {mv.status === 'pending' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-600 font-medium">Pendiente</span>}
+        {mv.status === 'skipped' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-100 text-stone-500 font-medium">Omitido</span>}
+      </td>
+
+      {/* Actions */}
+      <td className="px-3 py-2.5 text-center">
+        {!isPosted && !isSkipped && (
+          <div className="flex items-center justify-center gap-1">
+            {mv.status === 'suggested' && mv.suggested_account_id && (
+              <button onClick={confirmSuggestion}
+                className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors"
+                title="Confirmar sugerencia">
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button onClick={() => setShowAccountPicker(true)}
+              className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
+              title="Cambiar cuenta">
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={skipMovement}
+              className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors"
+              title="Omitir">
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {isPosted && <CheckCircle2 className="w-4 h-4 text-blue-500 mx-auto" />}
+      </td>
+    </tr>
   )
 }
 
@@ -1337,9 +2110,15 @@ function NewAccountModal({ flat, onClose, onCreated }: { flat: AccountNode[]; on
   const toast = useToast()
   const [form, setForm] = useState({
     code: '', name: '', account_type: 'asset', category: 'general',
-    parent_account_id: '', is_header: false,
+    parent_account_id: '', is_header: false, report_section: 'balance_sheet',
   })
   const [saving, setSaving] = useState(false)
+
+  // Auto-update report_section when account_type changes
+  const handleTypeChange = (val: string) => {
+    const rs = ['asset', 'liability', 'equity'].includes(val) ? 'balance_sheet' : 'profit_loss'
+    setForm({ ...form, account_type: val, report_section: rs })
+  }
 
   const handleSubmit = async () => {
     if (!form.code || !form.name) { toast.warning('Código y nombre son requeridos'); return }
@@ -1366,7 +2145,7 @@ function NewAccountModal({ flat, onClose, onCreated }: { flat: AccountNode[]; on
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Nueva Cuenta Contable</h2>
           <button onClick={onClose}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
@@ -1388,25 +2167,37 @@ function NewAccountModal({ flat, onClose, onCreated }: { flat: AccountNode[]; on
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Tipo</label>
-              <select value={form.account_type} onChange={e => setForm({ ...form, account_type: e.target.value })}
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Tipo de Cuenta</label>
+              <select value={form.account_type} onChange={e => handleTypeChange(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
                 {Object.entries(ACCT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Padre</label>
-              <select value={form.parent_account_id} onChange={e => setForm({ ...form, parent_account_id: e.target.value })}
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Reporte *</label>
+              <select value={form.report_section} onChange={e => setForm({ ...form, report_section: e.target.value })}
                 className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
-                <option value="">Ninguna (raíz)</option>
-                {headers.map(h => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+                <option value="balance_sheet">📊 Balance Sheet</option>
+                <option value="profit_loss">📈 Profit &amp; Loss</option>
               </select>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                ¿En qué reporte aparecerá esta cuenta?
+              </p>
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Padre</label>
+            <select value={form.parent_account_id} onChange={e => setForm({ ...form, parent_account_id: e.target.value })}
+              className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Ninguna (raíz)</option>
+              {headers.map(h => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+            </select>
           </div>
 
           <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
             <input type="checkbox" checked={form.is_header} onChange={e => setForm({ ...form, is_header: e.target.checked })} />
-            Es encabezado (grupo)
+            Es encabezado (grupo de cuentas)
           </label>
         </div>
 
