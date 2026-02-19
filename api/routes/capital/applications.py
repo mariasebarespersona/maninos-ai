@@ -127,6 +127,14 @@ async def review_application(application_id: str, review: ApplicationReview):
             monthly_rent = review.monthly_rent or 0
             term_months = review.term_months or 36
             down_payment = review.down_payment or 0
+
+            # Validate minimum 30% down payment
+            if sale_price > 0 and down_payment < sale_price * 0.30:
+                min_dp = round(sale_price * 0.30, 2)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El enganche mínimo es 30% del precio de venta (${min_dp:,.2f})"
+                )
             
             # Update sale status to rto_approved
             sb.table("sales").update({

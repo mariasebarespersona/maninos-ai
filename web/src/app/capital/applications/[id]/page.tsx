@@ -520,7 +520,7 @@ export default function ApplicationDetailPage() {
     else if (dtiRatio > 35) warnings.push('DTI entre 35-50%: Riesgo moderado')
     if (disposableRatio > 60) warnings.push('Cuota > 60% del ingreso disponible: Alto riesgo')
     if (totalIncome < 2000) warnings.push('Ingreso mensual bajo (<$2,000)')
-    if (dp < salePrice * 0.10) warnings.push('Down payment < 10% del precio')
+    if (dp < salePrice * 0.30) warnings.push('Enganche < 30% del precio de venta (mínimo requerido)')
     if ((client?.time_at_job_years ?? 0) < 1 && (client?.time_at_job_months ?? 0) < 6)
       warnings.push('Menos de 6 meses en empleo actual')
     if (!client?.employer_name) warnings.push('Sin información de empleador')
@@ -590,6 +590,14 @@ export default function ApplicationDetailPage() {
         const sp = app?.properties?.sale_price || 0
         const dp = downPayment ? parseFloat(downPayment) : (app?.desired_down_payment || 0)
         const tm = termMonths ? parseInt(termMonths) : (app?.desired_term_months || 36)
+
+        // Validate minimum 30% down payment
+        const minDP = sp * 0.30
+        if (dp < minDP) {
+          toast.error(`El enganche mínimo es 30% del precio de venta ($${Math.ceil(minDP).toLocaleString()})`)
+          setReviewing(false)
+          return
+        }
 
         if (monthlyRent) {
           // Capital overrode the monthly rent manually
@@ -1366,14 +1374,17 @@ export default function ApplicationDetailPage() {
                   </div>
             </div>
             <div>
-              <label className="label">Enganche</label>
+              <label className="label">Enganche (mín. 30%)</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
                     <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
-                      placeholder={desiredDP ? String(desiredDP) : '0'}
+                      placeholder={desiredDP ? String(desiredDP) : String(Math.ceil(salePrice * 0.30))}
                   className="input pl-8"
                 />
               </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                Mínimo: {fmt(Math.ceil(salePrice * 0.30))} (30%)
+              </p>
             </div>
                 <div>
                   <label className="label">Renta Mensual (override)</label>
@@ -1431,6 +1442,7 @@ export default function ApplicationDetailPage() {
                     principal={liveRTO.financeAmount}
                     monthlyPayment={liveMonthly}
                     termMonths={liveTM}
+                    annualRate={annualRatePct / 100}
                     title={`${app.clients?.name || 'Cliente'} — ${prop?.address || 'Propiedad'}`}
                   />
               </div>

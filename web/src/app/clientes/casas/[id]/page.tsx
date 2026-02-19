@@ -35,7 +35,7 @@ interface Property {
    ──────────────────────────────────────────────────────────────── */
 function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId: string }) {
   const router = useRouter()
-  const [downPaymentPct, setDownPaymentPct] = useState(5)
+  const [downPaymentPct, setDownPaymentPct] = useState(30)
   const [termMonths, setTermMonths] = useState(36)
 
   const downPaymentAmount = useMemo(() => Math.round(salePrice * (downPaymentPct / 100)), [salePrice, downPaymentPct])
@@ -84,14 +84,14 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
           <span className="font-semibold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
         </div>
         <input
-          type="range" min={0} max={40} step={1}
+          type="range" min={30} max={60} step={1}
           value={downPaymentPct}
           onChange={(e) => setDownPaymentPct(Number(e.target.value))}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200"
           style={{ accentColor: '#222' }}
         />
         <div className="flex justify-between text-[11px] text-[#b0b0b0] mt-1">
-          <span>0%</span><span>40%</span>
+          <span>30%</span><span>60%</span>
         </div>
       </div>
 

@@ -22,6 +22,8 @@ interface AmortizationTableProps {
   termMonths: number
   /** If provided, skips auto-solving the rate */
   monthlyRate?: number
+  /** Fixed annual rate (decimal, e.g. 0.24 = 24 %). Uses this rate and lets months vary. */
+  annualRate?: number
   /** Label to display (e.g. client name, contract #) */
   title?: string
   /** Start date for labeling periods (defaults to next month) */
@@ -65,6 +67,7 @@ export default function AmortizationTable({
   monthlyPayment,
   termMonths,
   monthlyRate,
+  annualRate,
   title,
   startDate,
   compact = false,
@@ -78,9 +81,13 @@ export default function AmortizationTable({
         monthlyPayment,
         termMonths,
         monthlyRate,
+        annualRate,
       }),
-    [principal, monthlyPayment, termMonths, monthlyRate],
+    [principal, monthlyPayment, termMonths, monthlyRate, annualRate],
   )
+
+  // Use actual months from schedule (may differ from termMonths prop when using fixed rate)
+  const actualMonths = schedule.rows.length
 
   const start = startDate ?? new Date()
 
@@ -146,7 +153,7 @@ export default function AmortizationTable({
             className="text-xs px-2 py-0.5 rounded-full"
             style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}
           >
-            {termMonths} meses
+            {actualMonths} meses
           </span>
           {expanded ? (
             <ChevronUp className="w-4 h-4" style={{ color: 'var(--slate)' }} />
@@ -180,8 +187,11 @@ export default function AmortizationTable({
                 color="var(--warning)"
               />
               <SummaryCard
-                label="Tasa Compuesta"
-                value={`${(schedule.annualCompoundRate * 100).toFixed(2)}%`}
+                label={schedule.fixedAnnualRate !== undefined ? 'Tasa Anual' : 'Tasa Compuesta'}
+                value={`${(schedule.fixedAnnualRate !== undefined
+                  ? schedule.fixedAnnualRate * 100
+                  : schedule.annualCompoundRate * 100
+                ).toFixed(2)}%`}
                 subtitle={`${(schedule.monthlyRate * 100).toFixed(2)}%/mes`}
                 icon={<TrendingDown className="w-3.5 h-3.5" />}
                 color="var(--info)"
@@ -260,10 +270,20 @@ export default function AmortizationTable({
                 <strong>Fórmula:</strong> Interés del mes = Saldo anterior × {(schedule.monthlyRate * 100).toFixed(4)}%
                 &nbsp;|&nbsp; Abono capital = Pago − Interés &nbsp;|&nbsp; Saldo = Saldo anterior − Abono capital
               </p>
-              <p className="mt-1">
-                La tasa mensual ({(schedule.monthlyRate * 100).toFixed(4)}%) se calcula para que el saldo
-                sea exactamente <strong>$0.00</strong> en el mes {schedule.termMonths}.
-              </p>
+              {schedule.fixedAnnualRate !== undefined ? (
+                <p className="mt-1">
+                  Tasa anual fija: <strong>{(schedule.fixedAnnualRate * 100).toFixed(2)}%</strong> ({(schedule.monthlyRate * 100).toFixed(4)}%/mes).
+                  El saldo llega a <strong>$0.00</strong> en el mes {actualMonths}.
+                  {actualMonths !== termMonths && (
+                    <span> (plazo original: {termMonths} meses)</span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-1">
+                  La tasa mensual ({(schedule.monthlyRate * 100).toFixed(4)}%) se calcula para que el saldo
+                  sea exactamente <strong>$0.00</strong> en el mes {schedule.termMonths}.
+                </p>
+              )}
             </div>
           )}
         </div>

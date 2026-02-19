@@ -151,8 +151,10 @@ export interface AmortizationSchedule {
   principal: number
   /** Fixed monthly payment */
   monthlyPayment: number
-  /** Number of months */
+  /** Actual number of months in the schedule (may differ from input when using fixed rate) */
   termMonths: number
+  /** The fixed annual rate that was provided (undefined when rate was solved) */
+  fixedAnnualRate?: number
 }
 
 /**
@@ -211,18 +213,27 @@ export function solveMonthlyRate(
 /**
  * Generate a full amortization schedule (declining-balance compound interest).
  *
- * If `monthlyRate` is not provided, it is solved automatically from the
- * other three parameters so that the balance hits 0 on the last period.
+ * **Mode 1 – Fixed rate (recommended):**
+ *   Provide `annualRate`. The monthly rate is `annualRate / 12` and the
+ *   schedule runs until the balance reaches $0. The actual number of months
+ *   may differ from `termMonths` (which is only used as a fallback / label).
+ *
+ * **Mode 2 – Solved rate (legacy):**
+ *   If neither `annualRate` nor `monthlyRate` are provided, the monthly rate
+ *   is solved via Newton's method so the balance hits 0 in exactly
+ *   `termMonths` periods.
  *
  * @example
  * ```ts
+ * // Fixed rate mode – months may vary
  * const schedule = generateAmortizationSchedule({
  *   principal: 20_000,
  *   monthlyPayment: 1_000,
  *   termMonths: 36,
+ *   annualRate: 0.24,
  * })
- * // schedule.rows[35].saldo ≈ 0
- * // schedule.annualCompoundRate ≈ 0.4321  (43.21 %)
+ * // schedule.fixedAnnualRate === 0.24
+ * // schedule.termMonths === actual months (may be < or > 36)
  * ```
  */
 export function generateAmortizationSchedule(params: {
@@ -231,6 +242,9 @@ export function generateAmortizationSchedule(params: {
   termMonths: number
   /** Provide to skip solving; otherwise it's derived automatically. */
   monthlyRate?: number
+  /** Fixed annual rate (decimal, e.g. 0.24 = 24 %).
+   *  When provided, the schedule uses this rate and runs until balance = 0. */
+  annualRate?: number
 }): AmortizationSchedule {
   const { principal, monthlyPayment, termMonths } = params
 
@@ -247,35 +261,74 @@ export function generateAmortizationSchedule(params: {
     }
   }
 
-  const monthlyRate =
-    params.monthlyRate ?? solveMonthlyRate(principal, monthlyPayment, termMonths)
+  // Determine mode
+  const fixedRateMode = params.annualRate !== undefined
+  let monthlyRate: number
+
+  if (fixedRateMode) {
+    monthlyRate = params.annualRate! / 12
+  } else if (params.monthlyRate !== undefined) {
+    monthlyRate = params.monthlyRate
+  } else {
+    monthlyRate = solveMonthlyRate(principal, monthlyPayment, termMonths)
+  }
 
   const rows: AmortizationRow[] = []
   let balance = principal
   let totalInterest = 0
+  // Safety cap: 50 years (600 months) to prevent infinite loops
+  const maxPeriods = fixedRateMode ? 600 : termMonths
 
-  for (let p = 1; p <= termMonths; p++) {
+  for (let p = 1; p <= maxPeriods; p++) {
     const interes = balance * monthlyRate
     let abonoCapital = monthlyPayment - interes
 
-    // On the very last payment, adjust so balance = 0 exactly
-    if (p === termMonths) {
-      abonoCapital = balance
-      // The actual last payment = capital + interest (might differ slightly from fixed payment)
+    if (fixedRateMode) {
+      // Fixed rate mode: check if we can pay off the remaining balance
+      if (abonoCapital >= balance) {
+        // Last payment — pay off the remaining balance
+        abonoCapital = balance
+        const pago = abonoCapital + interes
+        balance = 0
+        totalInterest += interes
+        rows.push({
+          period: p,
+          abonoCapital: Math.round(abonoCapital * 100) / 100,
+          interes: Math.round(interes * 100) / 100,
+          pago: Math.round(pago * 100) / 100,
+          saldo: 0,
+        })
+        break
+      }
+      // Normal monthly payment
+      balance = Math.max(balance - abonoCapital, 0)
+      totalInterest += interes
+      rows.push({
+        period: p,
+        abonoCapital: Math.round(abonoCapital * 100) / 100,
+        interes: Math.round(interes * 100) / 100,
+        pago: Math.round(monthlyPayment * 100) / 100,
+        saldo: Math.round(balance * 100) / 100,
+      })
+    } else {
+      // Legacy solved-rate mode: exactly termMonths periods
+      if (p === termMonths) {
+        abonoCapital = balance
+      }
+      const pago = p === termMonths ? abonoCapital + interes : monthlyPayment
+      balance = Math.max(balance - abonoCapital, 0)
+      totalInterest += interes
+      rows.push({
+        period: p,
+        abonoCapital: Math.round(abonoCapital * 100) / 100,
+        interes: Math.round(interes * 100) / 100,
+        pago: Math.round(pago * 100) / 100,
+        saldo: Math.round(balance * 100) / 100,
+      })
     }
-
-    const pago = p === termMonths ? abonoCapital + interes : monthlyPayment
-    balance = Math.max(balance - abonoCapital, 0)
-    totalInterest += interes
-
-    rows.push({
-      period: p,
-      abonoCapital: Math.round(abonoCapital * 100) / 100,
-      interes: Math.round(interes * 100) / 100,
-      pago: Math.round(pago * 100) / 100,
-      saldo: Math.round(balance * 100) / 100,
-    })
   }
+
+  const actualTermMonths = rows.length
 
   return {
     rows,
@@ -285,7 +338,8 @@ export function generateAmortizationSchedule(params: {
     totalPaid: Math.round((principal + totalInterest) * 100) / 100,
     principal,
     monthlyPayment,
-    termMonths,
+    termMonths: actualTermMonths,
+    ...(fixedRateMode ? { fixedAnnualRate: params.annualRate } : {}),
   }
 }
 
