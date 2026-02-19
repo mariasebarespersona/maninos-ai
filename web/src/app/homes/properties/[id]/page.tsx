@@ -33,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   Landmark,
+  Pencil,
+  Check,
 } from 'lucide-react'
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -56,6 +58,9 @@ interface Property {
   bedrooms?: number
   bathrooms?: number
   square_feet?: number
+  property_code?: string
+  length_ft?: number
+  width_ft?: number
   photos: string[]
   checklist_completed: boolean
   checklist_data: Record<string, boolean>
@@ -157,6 +162,10 @@ export default function PropertyDetailPage() {
   const [savingMove, setSavingMove] = useState(false)
   const [expandedMove, setExpandedMove] = useState<string | null>(null)
   
+  // Editable property code
+  const [editingCode, setEditingCode] = useState(false)
+  const [codeInput, setCodeInput] = useState('')
+
   // 80% rule recommended price
   const [recommendedPrice, setRecommendedPrice] = useState<{
     market_value?: number | null
@@ -323,6 +332,33 @@ export default function PropertyDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching recommended price:', error)
+    }
+  }
+
+  const handleSavePropertyCode = async () => {
+    if (!property) return
+    const trimmed = codeInput.trim().toUpperCase()
+    if (!trimmed) {
+      toast.warning('El código no puede estar vacío')
+      return
+    }
+    try {
+      const res = await fetch(`/api/properties/${property.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_code: trimmed }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setProperty(updated)
+        setEditingCode(false)
+        toast.success(`Código actualizado a ${trimmed}`)
+      } else {
+        const data = await res.json()
+        toast.error(data.detail || 'Error al actualizar código')
+      }
+    } catch {
+      toast.error('Error de conexión')
     }
   }
 
@@ -501,7 +537,40 @@ export default function PropertyDetailPage() {
               <ArrowLeft className="w-4 h-4" />
               Volver a Propiedades
             </Link>
-            <h1 className="font-serif text-2xl text-navy-900">{property.address}</h1>
+            <h1 className="font-serif text-2xl text-navy-900 flex items-center gap-2 flex-wrap">
+              {/* Editable property code badge */}
+              {property.property_code && !editingCode && (
+                <button
+                  onClick={() => { setCodeInput(property.property_code || ''); setEditingCode(true) }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm font-bold rounded bg-gold-100 text-gold-700 border border-gold-200 hover:bg-gold-200 transition-colors cursor-pointer"
+                  title="Clic para editar código"
+                >
+                  {property.property_code}
+                  <Pencil className="w-3 h-3 opacity-50" />
+                </button>
+              )}
+              {editingCode && (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={e => setCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSavePropertyCode(); if (e.key === 'Escape') setEditingCode(false) }}
+                    className="w-20 px-2 py-0.5 text-sm font-bold border-2 border-gold-400 rounded focus:outline-none focus:border-gold-500 bg-white"
+                    autoFocus
+                    placeholder="A1"
+                    maxLength={5}
+                  />
+                  <button onClick={handleSavePropertyCode} className="p-0.5 rounded hover:bg-emerald-100 text-emerald-600" title="Guardar">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingCode(false)} className="p-0.5 rounded hover:bg-red-100 text-red-500" title="Cancelar">
+                    <X className="w-4 h-4" />
+                  </button>
+                </span>
+              )}
+              <span>{property.address}</span>
+            </h1>
             {property.city && (
               <div className="flex items-center gap-1 text-navy-500 mt-1">
                 <MapPin className="w-4 h-4" />
@@ -735,9 +804,20 @@ export default function PropertyDetailPage() {
                 <DetailItem label="Año" value={property.year?.toString()} />
                 <DetailItem label="Habitaciones" value={property.bedrooms?.toString()} />
                 <DetailItem label="Baños" value={property.bathrooms?.toString()} />
-                <DetailItem label="Pies²" value={property.square_feet?.toLocaleString()} />
+                <div>
+                  <p className="text-sm text-navy-500">Pies²</p>
+                  <p className="font-medium text-navy-900">
+                    {property.square_feet ? property.square_feet.toLocaleString() : '—'}
+                    {property.length_ft && property.width_ft && (
+                      <span className="text-sm font-normal text-navy-400 ml-1">
+                        ({property.length_ft} × {property.width_ft})
+                      </span>
+                    )}
+                  </p>
+                </div>
                 <DetailItem label="HUD" value={property.hud_number} />
                 <DetailItem label="Código Postal" value={property.zip_code} />
+                <DetailItem label="ID" value={property.property_code} />
               </div>
             </div>
           </div>

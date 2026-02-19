@@ -13,6 +13,7 @@ interface Property {
   city: string
   status: string
   checklist_data?: Record<string, boolean>
+  property_code?: string
 }
 
 export default function PropertyChecklistPage() {
@@ -131,7 +132,14 @@ export default function PropertyChecklistPage() {
               <Home className="w-5 h-5 text-gold-600" />
             </div>
             <div>
-              <h1 className="font-serif text-2xl text-navy-900">{property.address}</h1>
+              <h1 className="font-serif text-2xl text-navy-900">
+                {property.property_code && (
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 mr-1.5 text-xs font-bold rounded bg-gold-100 text-gold-700 border border-gold-200 align-middle">
+                    {property.property_code}
+                  </span>
+                )}
+                {property.address}
+              </h1>
               <p className="text-navy-500">{property.city}</p>
             </div>
           </div>

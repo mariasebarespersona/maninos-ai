@@ -27,6 +27,7 @@ interface Property {
   bedrooms?: number
   bathrooms?: number
   photos: string[]
+  property_code?: string
   created_at: string
 }
 
@@ -66,7 +67,8 @@ export default function PropertiesPage() {
     const matchesStatus = !statusFilter || p.status === statusFilter
     const matchesSearch = !search || 
       p.address.toLowerCase().includes(search.toLowerCase()) ||
-      p.city?.toLowerCase().includes(search.toLowerCase())
+      p.city?.toLowerCase().includes(search.toLowerCase()) ||
+      p.property_code?.toLowerCase().includes(search.toLowerCase())
     return matchesStatus && matchesSearch
   })
 
@@ -196,6 +198,11 @@ function PropertyCard({ property }: { property: Property }) {
       <div className="p-4">
         <h3 className="font-medium group-hover:text-navy-600 transition-colors line-clamp-1"
             style={{ color: 'var(--charcoal)' }}>
+          {property.property_code && (
+            <span className="inline-flex items-center justify-center px-1.5 py-0.5 mr-1.5 text-xs font-bold rounded bg-gold-100 text-gold-700 border border-gold-200">
+              {property.property_code}
+            </span>
+          )}
           {property.address}
         </h3>
         

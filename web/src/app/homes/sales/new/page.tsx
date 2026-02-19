@@ -43,6 +43,7 @@ interface Property {
   address: string
   sale_price: number
   status: string
+  property_code?: string
 }
 
 interface Client {
@@ -324,7 +325,8 @@ function NewSaleContent() {
   }
 
   const filteredProperties = properties.filter(p =>
-    p.address.toLowerCase().includes(propertySearch.toLowerCase())
+    p.address.toLowerCase().includes(propertySearch.toLowerCase()) ||
+    p.property_code?.toLowerCase().includes(propertySearch.toLowerCase())
   )
 
   const filteredClients = clients.filter(c =>
@@ -444,7 +446,14 @@ function NewSaleContent() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-navy-900">{property.address}</span>
+                      <span className="font-medium text-navy-900">
+                        {property.property_code && (
+                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 mr-1.5 text-xs font-bold rounded bg-gold-100 text-gold-700 border border-gold-200">
+                            {property.property_code}
+                          </span>
+                        )}
+                        {property.address}
+                      </span>
                       <span className="text-gold-600 font-semibold">
                         ${property.sale_price?.toLocaleString()}
                       </span>

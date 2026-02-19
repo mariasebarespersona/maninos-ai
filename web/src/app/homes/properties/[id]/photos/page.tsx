@@ -12,6 +12,7 @@ interface Property {
   address: string
   status: string
   photos: string[]
+  property_code?: string
 }
 
 export default function PropertyPhotosPage() {

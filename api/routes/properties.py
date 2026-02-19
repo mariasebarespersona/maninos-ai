@@ -126,9 +126,14 @@ async def create_property(data: PropertyCreate):
     """
     Create a new property (Paso 1: Compra Casa).
     Property starts in 'purchased' status.
+    Auto-generates property_code (A1, A2, ...) if not provided.
     """
     # Get data from request
     request_data = data.model_dump(exclude_none=True)
+    
+    # Auto-generate property_code if not provided
+    if "property_code" not in request_data or not request_data.get("property_code"):
+        request_data["property_code"] = _generate_next_property_code()
     
     # Build insert data with defaults, but respect values from request
     insert_data = {
@@ -144,7 +149,7 @@ async def create_property(data: PropertyCreate):
     for key in ["purchase_price", "sale_price", "bathrooms"]:
         if key in insert_data and insert_data[key] is not None:
             insert_data[key] = float(insert_data[key])
-    for key in ["year", "bedrooms", "square_feet"]:
+    for key in ["year", "bedrooms", "square_feet", "length_ft", "width_ft"]:
         if key in insert_data and insert_data[key] is not None:
             insert_data[key] = int(insert_data[key])
     
@@ -170,7 +175,7 @@ async def update_property(property_id: str, data: PropertyUpdate):
     for key in ["purchase_price", "sale_price", "bathrooms"]:
         if key in update_data and update_data[key] is not None:
             update_data[key] = float(update_data[key])
-    for key in ["year", "bedrooms", "square_feet"]:
+    for key in ["year", "bedrooms", "square_feet", "length_ft", "width_ft"]:
         if key in update_data and update_data[key] is not None:
             update_data[key] = int(update_data[key])
     
@@ -631,6 +636,50 @@ async def get_available_actions(property_id: str):
 # HELPERS
 # ============================================================================
 
+def _generate_next_property_code() -> str:
+    """
+    Generate the next property_code in the sequence A1, A2, ..., A999, B1, B2, ...
+    Queries existing codes and returns the next available one.
+    """
+    import re
+    try:
+        result = sb.table("properties") \
+            .select("property_code") \
+            .not_.is_("property_code", "null") \
+            .execute()
+        
+        existing_codes = [r["property_code"] for r in (result.data or []) if r.get("property_code")]
+        
+        if not existing_codes:
+            return "A1"
+        
+        # Parse codes like "A1", "A2", "B1" etc.
+        max_letter = "A"
+        max_number = 0
+        
+        for code in existing_codes:
+            match = re.match(r'^([A-Z])(\d+)$', code.upper())
+            if match:
+                letter, num = match.group(1), int(match.group(2))
+                if letter > max_letter or (letter == max_letter and num > max_number):
+                    max_letter = letter
+                    max_number = num
+        
+        # Increment
+        next_number = max_number + 1
+        if next_number > 999:
+            # Move to next letter
+            next_letter = chr(ord(max_letter) + 1)
+            if next_letter > 'Z':
+                next_letter = 'A'  # Wrap around (unlikely)
+            return f"{next_letter}1"
+        
+        return f"{max_letter}{next_number}"
+    except Exception as e:
+        logger.warning(f"Error generating property code: {e}")
+        return "A1"
+
+
 def _format_property(data: dict) -> PropertyResponse:
     """Format database row to PropertyResponse."""
     return PropertyResponse(
@@ -646,6 +695,9 @@ def _format_property(data: dict) -> PropertyResponse:
         bedrooms=data.get("bedrooms"),
         bathrooms=data.get("bathrooms"),
         square_feet=data.get("square_feet"),
+        property_code=data.get("property_code"),
+        length_ft=data.get("length_ft"),
+        width_ft=data.get("width_ft"),
         status=PropertyStatus(data["status"]),
         is_renovated=data.get("is_renovated", False),
         photos=data.get("photos", []) or [],

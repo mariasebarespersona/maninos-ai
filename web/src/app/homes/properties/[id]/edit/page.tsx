@@ -32,6 +32,9 @@ interface PropertyForm {
   bedrooms: string
   bathrooms: string
   square_feet: string
+  property_code: string
+  length_ft: string
+  width_ft: string
 }
 
 export default function EditPropertyPage() {
@@ -52,6 +55,9 @@ export default function EditPropertyPage() {
     bedrooms: '',
     bathrooms: '',
     square_feet: '',
+    property_code: '',
+    length_ft: '',
+    width_ft: '',
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -83,6 +89,9 @@ export default function EditPropertyPage() {
         bedrooms: property.bedrooms?.toString() || '',
         bathrooms: property.bathrooms?.toString() || '',
         square_feet: property.square_feet?.toString() || '',
+        property_code: property.property_code || '',
+        length_ft: property.length_ft?.toString() || '',
+        width_ft: property.width_ft?.toString() || '',
       })
     } catch (err: any) {
       toast.error(err.message)
@@ -127,6 +136,9 @@ export default function EditPropertyPage() {
         bedrooms: form.bedrooms ? parseInt(form.bedrooms) : undefined,
         bathrooms: form.bathrooms ? parseFloat(form.bathrooms) : undefined,
         square_feet: form.square_feet ? parseInt(form.square_feet) : undefined,
+        property_code: form.property_code?.trim().toUpperCase() || undefined,
+        length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
+        width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
       }
 
       const res = await fetch(`/api/properties/${propertyId}`, {
@@ -251,6 +263,16 @@ export default function EditPropertyPage() {
             Detalles de la Propiedad
           </div>
 
+          <FormInput
+            label="Código de Propiedad (ID)"
+            name="property_code"
+            value={form.property_code}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            placeholder="A1"
+            helperText="Identificador corto (ej: A1, A2, B1)"
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <FormInput
               type="number"
@@ -272,6 +294,31 @@ export default function EditPropertyPage() {
               onChange={handleChange}
               onBlur={handleBlur}
               placeholder="1200"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput
+              type="number"
+              label="Largo (ft)"
+              name="length_ft"
+              value={form.length_ft}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="76"
+              min={0}
+              helperText="Largo en pies"
+            />
+            <FormInput
+              type="number"
+              label="Ancho (ft)"
+              name="width_ft"
+              value={form.width_ft}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="16"
+              min={0}
+              helperText="Ancho en pies"
             />
           </div>
 

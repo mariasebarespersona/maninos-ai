@@ -31,6 +31,8 @@ interface PropertyForm {
   bedrooms: string
   bathrooms: string
   square_feet: string
+  length_ft: string
+  width_ft: string
 }
 
 const initialForm: PropertyForm = {
@@ -44,6 +46,8 @@ const initialForm: PropertyForm = {
   bedrooms: '',
   bathrooms: '',
   square_feet: '',
+  length_ft: '',
+  width_ft: '',
 }
 
 export default function NewPropertyPage() {
@@ -93,6 +97,8 @@ export default function NewPropertyPage() {
         bedrooms: form.bedrooms ? parseInt(form.bedrooms) : undefined,
         bathrooms: form.bathrooms ? parseFloat(form.bathrooms) : undefined,
         square_feet: form.square_feet ? parseInt(form.square_feet) : undefined,
+        length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
+        width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
       }
 
       console.log('Sending payload:', payload)
@@ -238,6 +244,31 @@ export default function NewPropertyPage() {
               onChange={handleChange}
               onBlur={handleBlur}
               placeholder="1200"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput
+              type="number"
+              label="Largo (ft)"
+              name="length_ft"
+              value={form.length_ft}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="76"
+              min={0}
+              helperText="Largo en pies"
+            />
+            <FormInput
+              type="number"
+              label="Ancho (ft)"
+              name="width_ft"
+              value={form.width_ft}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="16"
+              min={0}
+              helperText="Ancho en pies"
             />
           </div>
 

@@ -65,6 +65,9 @@ class PropertyBase(BaseModel):
     bedrooms: Optional[int] = None
     bathrooms: Optional[Decimal] = None
     square_feet: Optional[int] = None
+    property_code: Optional[str] = None
+    length_ft: Optional[int] = None
+    width_ft: Optional[int] = None
 
 
 class PropertyCreate(PropertyBase):
@@ -90,6 +93,9 @@ class PropertyUpdate(BaseModel):
     bedrooms: Optional[int] = None
     bathrooms: Optional[Decimal] = None
     square_feet: Optional[int] = None
+    property_code: Optional[str] = None
+    length_ft: Optional[int] = None
+    width_ft: Optional[int] = None
     photos: Optional[list[str]] = None
     checklist_completed: Optional[bool] = None
     checklist_data: Optional[dict] = None
