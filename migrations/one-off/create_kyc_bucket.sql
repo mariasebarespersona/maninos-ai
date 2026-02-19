@@ -29,6 +29,12 @@ CREATE POLICY "Service role upload kyc-documents"
     TO service_role
     WITH CHECK (bucket_id = 'kyc-documents');
 
+-- 3b. Allow anon to INSERT (upload from Next.js with anon key)
+CREATE POLICY "Anon upload kyc-documents"
+    ON storage.objects FOR INSERT
+    TO anon
+    WITH CHECK (bucket_id = 'kyc-documents');
+
 -- 4. Allow service_role to UPDATE (upsert)
 CREATE POLICY "Service role update kyc-documents"
     ON storage.objects FOR UPDATE
