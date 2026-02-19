@@ -1819,7 +1819,7 @@ async def upload_capital_bank_statement(
 
     # Extract text + parse movements (reuse Homes helpers)
     try:
-        from routes.accounting import _extract_and_parse_statement
+        from api.routes.accounting import _extract_and_parse_statement
         raw_text, movements = await _extract_and_parse_statement(file_content, ext, account_key)
 
         # Save raw text
