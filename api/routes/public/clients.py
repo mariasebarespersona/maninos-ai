@@ -5,9 +5,10 @@ Client lookup, data access, and KYC endpoints.
 
 import os
 import logging
+import uuid
 from datetime import datetime, date, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel
 from tools.supabase_client import sb
 
@@ -808,6 +809,114 @@ async def get_client_kyc_status(client_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting KYC status for {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+KYC_BUCKET = "kyc-documents"
+KYC_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]
+KYC_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/{client_id}/kyc-upload")
+async def client_upload_kyc_documents(
+    client_id: str,
+    id_front: UploadFile = File(...),
+    selfie: UploadFile = File(...),
+    id_back: Optional[UploadFile] = File(None),
+    id_type: str = Form("drivers_license"),
+):
+    """
+    Client uploads KYC document files (ID front, selfie, optional ID back).
+    Files are uploaded to Supabase Storage and URLs saved to client record.
+    """
+    try:
+        # Verify client exists
+        client_result = sb.table("clients") \
+            .select("id, name, kyc_verified") \
+            .eq("id", client_id) \
+            .execute()
+
+        if not client_result.data:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        client = client_result.data[0]
+
+        if client.get("kyc_verified"):
+            return {
+                "ok": True,
+                "already_verified": True,
+                "message": "Tu identidad ya está verificada.",
+            }
+
+        # Validate file types
+        for label, file in [("id_front", id_front), ("selfie", selfie), ("id_back", id_back)]:
+            if file is None:
+                continue
+            if file.content_type not in KYC_ALLOWED_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Archivo {label}: tipo no permitido ({file.content_type}). Usa JPG, PNG o WebP.",
+                )
+
+        timestamp = int(datetime.utcnow().timestamp() * 1000)
+
+        async def upload_file(file: UploadFile, label: str) -> str:
+            ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
+            path = f"{client_id}/{label}_{timestamp}.{ext}"
+            content = await file.read()
+
+            logger.info(f"[KYC Upload] {label} → {KYC_BUCKET}/{path} ({len(content)} bytes, {file.content_type})")
+
+            try:
+                sb.storage.from_(KYC_BUCKET).upload(
+                    path, content, {"content-type": file.content_type}
+                )
+            except Exception as upload_err:
+                logger.error(f"[KYC Upload] Storage upload failed for {label}: {upload_err}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error subiendo {label}: {str(upload_err)}",
+                )
+
+            url = sb.storage.from_(KYC_BUCKET).get_public_url(path)
+            logger.info(f"[KYC Upload] {label} OK → {url}")
+            return url
+
+        # Upload files
+        id_front_url = await upload_file(id_front, "id_front")
+        selfie_url = await upload_file(selfie, "selfie")
+        id_back_url = None
+        if id_back:
+            id_back_url = await upload_file(id_back, "id_back")
+
+        # Save URLs and update status
+        now = datetime.utcnow().isoformat()
+        kyc_docs = {
+            "id_front_url": id_front_url,
+            "id_back_url": id_back_url,
+            "selfie_url": selfie_url,
+            "id_type": id_type,
+            "submitted_at": now,
+        }
+
+        sb.table("clients").update({
+            "kyc_documents": kyc_docs,
+            "kyc_status": "pending_review",
+            "kyc_failure_reason": None,
+        }).eq("id", client_id).execute()
+
+        logger.info(f"[KYC] Client {client_id} ({client.get('name')}) uploaded & submitted KYC documents")
+
+        return {
+            "ok": True,
+            "message": "¡Documentos enviados! Maninos Capital revisará tu identidad pronto.",
+            "status": "pending_review",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[KYC Upload] Error for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
