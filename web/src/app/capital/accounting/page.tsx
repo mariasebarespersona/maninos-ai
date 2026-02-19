@@ -790,6 +790,35 @@ function StatementsTab() {
     } catch (e) { toast.error('Error al archivar reporte') }
   }
 
+  // ── Reset / Vaciar Cifras ──
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetScope, setResetScope] = useState<'all' | 'profit_loss' | 'balance_sheet'>('all')
+  const [resetting, setResetting] = useState(false)
+
+  const handleResetBalances = async () => {
+    setResetting(true)
+    try {
+      const res = await fetch('/api/capital/accounting/accounts/reset-balances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: resetScope }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Cifras vaciadas')
+        setShowResetModal(false)
+        // Reload both reports
+        loadReport('balance', { silent: true })
+        loadReport('pnl', { silent: true })
+      } else {
+        toast.error(data.detail || 'Error al vaciar cifras')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+    finally { setResetting(false) }
+  }
+
   // Determine which data to render (live or saved)
   const renderBsData = viewingSaved?.report_type === 'balance_sheet' && viewingSavedData ? viewingSavedData as BSTreeData : bsData
   const renderPlData = viewingSaved?.report_type === 'profit_loss' && viewingSavedData ? viewingSavedData as PLTreeData : plData
@@ -812,11 +841,18 @@ function StatementsTab() {
         ))}
         </div>
         {!isViewingSaved && (
-          <button onClick={() => { setSaveName(`${activeStatement === 'balance' ? 'Balance Sheet' : 'Profit & Loss'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-            style={{ backgroundColor: 'var(--gold-600)', color: 'white' }}>
-            <Download className="w-4 h-4" /> Guardar Reporte
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowResetModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-red-50"
+              style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+              <Trash2 className="w-4 h-4" /> Vaciar Cifras
+            </button>
+            <button onClick={() => { setSaveName(`${activeStatement === 'balance' ? 'Balance Sheet' : 'Profit & Loss'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--gold-600)', color: 'white' }}>
+              <Download className="w-4 h-4" /> Guardar Reporte
+            </button>
+          </div>
         )}
       </div>
 
@@ -1114,6 +1150,68 @@ function StatementsTab() {
                 style={{ backgroundColor: 'var(--gold-600)', color: 'white' }}>
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── RESET / VACIAR CIFRAS MODAL ── */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(220,38,38,0.1)' }}>
+                <Trash2 className="w-5 h-5" style={{ color: 'var(--danger)' }} />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg font-bold" style={{ color: 'var(--ink)' }}>Vaciar Cifras del Plan de Cuentas</h3>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Resetea los balances manuales a $0.00</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg mb-4 text-xs leading-relaxed" style={{ backgroundColor: 'rgba(255,165,0,0.08)', color: 'var(--charcoal)' }}>
+              <strong>⚠️ Importante:</strong> Esto pone a cero los montos que hayas editado manualmente en las cuentas.
+              Los balances calculados desde transacciones no se borran (esos dependen del período seleccionado).
+              <br /><br />
+              <strong>Recomendación:</strong> Guarda primero un snapshot del reporte actual con "Guardar Reporte" antes de vaciar.
+            </div>
+
+            <div className="space-y-2 mb-5">
+              <label className="text-xs font-semibold block" style={{ color: 'var(--charcoal)' }}>¿Qué cuentas vaciar?</label>
+              {[
+                { value: 'all', label: '🗑  Todas las cuentas', desc: 'Balance Sheet + P&L' },
+                { value: 'profit_loss', label: '📊 Solo P&L', desc: 'Ingresos y Gastos' },
+                { value: 'balance_sheet', label: '⚖️  Solo Balance Sheet', desc: 'Activos, Pasivos y Patrimonio' },
+              ].map(opt => (
+                <label key={opt.value}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${resetScope === opt.value ? 'border-red-400 bg-red-50/50' : 'border-stone-200 hover:border-stone-300'}`}>
+                  <input
+                    type="radio"
+                    name="resetScope"
+                    value={opt.value}
+                    checked={resetScope === opt.value}
+                    onChange={() => setResetScope(opt.value as typeof resetScope)}
+                    className="accent-red-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{opt.label}</span>
+                    <span className="text-xs ml-2" style={{ color: 'var(--ash)' }}>— {opt.desc}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowResetModal(false)}
+                className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>
+                Cancelar
+              </button>
+              <button onClick={handleResetBalances} disabled={resetting}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                style={{ backgroundColor: 'var(--danger)', color: 'white' }}>
+                {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {resetting ? 'Vaciando...' : 'Vaciar Cifras'}
               </button>
             </div>
           </div>

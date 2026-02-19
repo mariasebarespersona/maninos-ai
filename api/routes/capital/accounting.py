@@ -600,6 +600,70 @@ async def deactivate_account(account_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ResetBalancesRequest(BaseModel):
+    scope: str = "all"  # "all" | "profit_loss" | "balance_sheet"
+
+
+@router.post("/accounts/reset-balances")
+async def reset_account_balances(data: ResetBalancesRequest):
+    """Reset current_balance to 0 for accounts after closing a period.
+
+    scope options:
+      - "all"           → reset ALL active accounts
+      - "profit_loss"   → reset only income / expense / cogs accounts
+      - "balance_sheet" → reset only asset / liability / equity accounts
+    """
+    try:
+        # Fetch active accounts
+        accounts = sb.table("capital_accounts") \
+            .select("id, code, name, account_type, report_section, current_balance") \
+            .eq("is_active", True) \
+            .execute().data or []
+
+        # Filter by scope
+        if data.scope == "profit_loss":
+            targets = [a for a in accounts if a.get("account_type") in ("income", "expense", "cogs")
+                       or a.get("report_section") == "profit_loss"]
+        elif data.scope == "balance_sheet":
+            targets = [a for a in accounts if a.get("account_type") in ("asset", "liability", "equity")
+                       or a.get("report_section") == "balance_sheet"]
+        else:
+            targets = accounts
+
+        # Only reset accounts that actually have a non-zero balance
+        to_reset = [a for a in targets if float(a.get("current_balance") or 0) != 0]
+
+        if not to_reset:
+            return {
+                "ok": True,
+                "message": "No hay cifras manuales que vaciar.",
+                "reset_count": 0,
+            }
+
+        # Reset each account's current_balance to 0
+        for acc in to_reset:
+            sb.table("capital_accounts") \
+                .update({"current_balance": 0}) \
+                .eq("id", acc["id"]) \
+                .execute()
+
+        scope_label = {
+            "all": "todas las cuentas",
+            "profit_loss": "cuentas de P&L (ingresos/gastos)",
+            "balance_sheet": "cuentas del Balance (activos/pasivos/patrimonio)",
+        }.get(data.scope, data.scope)
+
+        return {
+            "ok": True,
+            "message": f"Cifras vaciadas en {len(to_reset)} de {len(targets)} {scope_label}.",
+            "reset_count": len(to_reset),
+            "accounts_reset": [{"code": a["code"], "name": a["name"]} for a in to_reset],
+        }
+    except Exception as e:
+        logger.error(f"Error resetting account balances: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # BANK ACCOUNTS & CASH
 # ============================================================================

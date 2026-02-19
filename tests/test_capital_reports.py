@@ -303,6 +303,79 @@ async def test_manual_balance_on_header():
     print("  ✅ Manual balance on header account propagates correctly\n")
 
 
+# ── Test 11: Reset balances — all scope ──
+async def test_reset_balances_all():
+    print("TEST 11: Reset balances — all scope...")
+
+    from api.routes.capital.accounting import ResetBalancesRequest
+
+    accts = [
+        make_account("inc-1", "4000", "Revenue", "income", current_balance=5000),
+        make_account("exp-1", "6000", "Expenses", "expense", current_balance=3000),
+        make_account("ast-1", "1000", "Cash", "asset", current_balance=10000),
+        make_account("zero-1", "9000", "Unused", "equity", current_balance=0),
+    ]
+
+    updated_ids = []
+    class TrackingQuery(MockQuery):
+        def update(self, data, **kw):
+            # track which accounts get updated
+            self._update_data = data
+            return self
+        def eq(self, col, val, **kw):
+            if col == "id" and hasattr(self, '_update_data'):
+                updated_ids.append(val)
+            return self
+
+    def mock_table(name):
+        if name == "capital_accounts":
+            q = TrackingQuery(accts)
+            return q
+        return MockQuery()
+
+    accounting_mod.sb = MagicMock()
+    accounting_mod.sb.table = mock_table
+
+    result = await accounting_mod.reset_account_balances(ResetBalancesRequest(scope="all"))
+
+    assert result["ok"] == True
+    # 3 accounts have non-zero balance, 1 has zero → only 3 should be reset
+    assert result["reset_count"] == 3, f"Expected 3 reset, got {result['reset_count']}"
+    assert len(result["accounts_reset"]) == 3
+    print("  ✅ Reset balances resets only non-zero accounts\n")
+
+
+# ── Test 12: Reset balances — profit_loss scope ──
+async def test_reset_balances_pl_scope():
+    print("TEST 12: Reset balances — profit_loss scope...")
+
+    from api.routes.capital.accounting import ResetBalancesRequest
+
+    accts = [
+        make_account("inc-1", "4000", "Revenue", "income", current_balance=5000),
+        make_account("exp-1", "6000", "Expenses", "expense", current_balance=3000),
+        make_account("ast-1", "1000", "Cash", "asset", current_balance=10000),
+    ]
+
+    def mock_table(name):
+        if name == "capital_accounts":
+            return MockQuery(accts)
+        return MockQuery()
+
+    accounting_mod.sb = MagicMock()
+    accounting_mod.sb.table = mock_table
+
+    result = await accounting_mod.reset_account_balances(ResetBalancesRequest(scope="profit_loss"))
+
+    assert result["ok"] == True
+    # Only income + expense accounts → 2 reset, asset excluded
+    assert result["reset_count"] == 2, f"Expected 2 reset, got {result['reset_count']}"
+    codes = [a["code"] for a in result["accounts_reset"]]
+    assert "4000" in codes and "6000" in codes
+    assert "1000" not in codes, "Asset account should NOT be reset in P&L scope"
+    print("  ✅ Reset respects profit_loss scope\n")
+
+
 # ── Run all tests ──
 async def main():
     print("=" * 60)
@@ -320,6 +393,8 @@ async def main():
         test_empty_reports,
         test_pl_date_filtering,
         test_manual_balance_on_header,
+        test_reset_balances_all,
+        test_reset_balances_pl_scope,
     ]
 
     passed = 0
