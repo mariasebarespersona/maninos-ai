@@ -664,57 +664,81 @@ function StatementsTab() {
 
   useEffect(() => { fetchSavedReports() }, [fetchSavedReports])
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      setViewingSaved(null)
-      setViewingSavedData(null)
-      try {
-        if (activeStatement === 'balance') {
-          const res = await fetch('/api/capital/accounting/reports/balance-sheet-tree')
-          const data = await res.json().catch(() => null)
-          if (data) {
-            setBsData(data)
+  // Reusable report loader — used on mount and after edits
+  const loadReport = useCallback(async (statement: 'balance' | 'pnl', options?: { silent?: boolean }) => {
+    if (!options?.silent) { setLoading(true); setError(null) }
+    try {
+      if (statement === 'balance') {
+        const res = await fetch('/api/capital/accounting/reports/balance-sheet-tree')
+        const data = await res.json().catch(() => null)
+        if (data) {
+          setBsData(data)
         } else {
-            setBsData({
-              date: new Date().toISOString().slice(0, 10),
-              assets: [], liabilities: [], equity: [],
-              total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0,
-            })
-            setError('No se pudieron cargar las cuentas del Balance. Verifica que la migración 042 se haya ejecutado.')
-          }
-        } else {
-          const res = await fetch('/api/capital/accounting/reports/profit-loss-tree')
-          const data = await res.json().catch(() => null)
-          if (data) {
-            setPlData(data)
-          } else {
-            const now = new Date()
-            setPlData({
-              period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) },
-              income: [], expenses: [], other_income: [], other_expenses: [],
-              total_income: 0, gross_profit: 0, total_expenses: 0,
-              net_operating_income: 0, total_other_income: 0,
-              total_other_expenses: 0, net_other_income: 0, net_income: 0,
-            })
-            setError('No se pudieron cargar las cuentas de P&L. Verifica que la migración 042 se haya ejecutado.')
-          }
+          setBsData({
+            date: new Date().toISOString().slice(0, 10),
+            assets: [], liabilities: [], equity: [],
+            total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0,
+          })
+          if (!options?.silent) setError('No se pudieron cargar las cuentas del Balance. Verifica que la migración 042 se haya ejecutado.')
         }
-      } catch (e) {
-        console.error(e)
+      } else {
+        const res = await fetch('/api/capital/accounting/reports/profit-loss-tree')
+        const data = await res.json().catch(() => null)
+        if (data) {
+          setPlData(data)
+        } else {
+          const now = new Date()
+          setPlData({
+            period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) },
+            income: [], expenses: [], other_income: [], other_expenses: [],
+            total_income: 0, gross_profit: 0, total_expenses: 0,
+            net_operating_income: 0, total_other_income: 0,
+            total_other_expenses: 0, net_other_income: 0, net_income: 0,
+          })
+          if (!options?.silent) setError('No se pudieron cargar las cuentas de P&L. Verifica que la migración 042 se haya ejecutado.')
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      if (!options?.silent) {
         setError('Error de conexión al cargar estados financieros.')
-        if (activeStatement === 'balance') {
+        if (statement === 'balance') {
           setBsData({ date: new Date().toISOString().slice(0, 10), assets: [], liabilities: [], equity: [], total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0 })
         } else {
           const now = new Date()
           setPlData({ period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) }, income: [], expenses: [], other_income: [], other_expenses: [], total_income: 0, gross_profit: 0, total_expenses: 0, net_operating_income: 0, total_other_income: 0, total_other_expenses: 0, net_other_income: 0, net_income: 0 })
         }
       }
-      finally { setLoading(false) }
     }
-    load()
-  }, [activeStatement])
+    finally { if (!options?.silent) setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    setViewingSaved(null)
+    setViewingSavedData(null)
+    loadReport(activeStatement)
+  }, [activeStatement, loadReport])
+
+  // Update a single account's manual balance, then refresh the report
+  const handleUpdateBalance = useCallback(async (accountId: string, newBalance: number) => {
+    try {
+      const res = await fetch(`/api/capital/accounting/accounts/${accountId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_balance: newBalance }),
+      })
+      if (res.ok) {
+        toast.success('Balance actualizado')
+        // Silently reload both reports so subtotals recalculate
+        loadReport(activeStatement, { silent: true })
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al actualizar balance')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }, [activeStatement, loadReport, toast])
 
   const handleSave = async () => {
     if (!saveName.trim()) { toast.warning('Ingresa un nombre para el reporte'); return }
@@ -816,6 +840,17 @@ function StatementsTab() {
         </div>
       )}
 
+      {/* Info: auto-populate + editable */}
+      {!isViewingSaved && (
+        <div className="flex items-center gap-2 p-3 rounded-lg text-xs" style={{ backgroundColor: 'var(--ivory)', color: 'var(--slate)' }}>
+          <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--gold-600)' }} />
+          <span>
+            Los balances se calculan automáticamente desde transacciones y movimientos bancarios.
+            <strong className="ml-1">Haz clic en cualquier monto</strong> para ajustarlo manualmente.
+          </span>
+        </div>
+      )}
+
       {error && !isViewingSaved && (
         <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(255,165,0,0.1)', color: 'var(--gold-700)', border: '1px solid var(--gold-400)' }}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -849,7 +884,7 @@ function StatementsTab() {
                   {renderBsData.assets.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
                   )}
-                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_assets)}</span>
@@ -865,7 +900,7 @@ function StatementsTab() {
                   {renderBsData.liabilities.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
                   )}
-                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
@@ -876,7 +911,7 @@ function StatementsTab() {
                   {renderBsData.equity.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
                   )}
-                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
@@ -918,7 +953,7 @@ function StatementsTab() {
                   {renderPlData.income.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
                   )}
-                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_income)}</span>
@@ -937,7 +972,7 @@ function StatementsTab() {
                   {renderPlData.expenses.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
                   )}
-                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
@@ -954,7 +989,7 @@ function StatementsTab() {
                 {renderPlData.other_income.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
-                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
@@ -966,7 +1001,7 @@ function StatementsTab() {
                 {renderPlData.other_expenses.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
-                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
@@ -1088,12 +1123,16 @@ function StatementsTab() {
   )
 }
 
-function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
+function ReportTreeNode({ node, depth, onUpdateBalance, isViewingSaved }: {
+  node: ReportNode; depth: number
+  onUpdateBalance?: (accountId: string, newBalance: number) => void
+  isViewingSaved?: boolean
+}) {
   const hasChildren = (node.children || []).length > 0
   const indent = depth * 16
 
   if (hasChildren) {
-  return (
+    return (
       <>
         {/* Header row */}
         <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
@@ -1102,13 +1141,14 @@ function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
             {node.name}
           </span>
           {node.balance !== 0 && !node.is_header && (
-            <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>
-              {fmtFull(node.balance)}
-            </span>
+            <EditableBalance value={node.balance} accountId={node.id} onSave={onUpdateBalance} disabled={isViewingSaved} />
           )}
-    </div>
+        </div>
         {/* Children */}
-        {node.children!.map(child => <ReportTreeNode key={child.id} node={child} depth={depth + 1} />)}
+        {node.children!.map(child => (
+          <ReportTreeNode key={child.id} node={child} depth={depth + 1}
+            onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
+        ))}
         {/* Subtotal row */}
         <div className="flex justify-between py-0.5 border-t" style={{ paddingLeft: indent, borderColor: '#e5e5e5' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
@@ -1129,10 +1169,76 @@ function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
         {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
         {node.name}
       </span>
-      <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>
-        {fmtFull(node.balance)}
-      </span>
+      <EditableBalance value={node.balance} accountId={node.id} onSave={onUpdateBalance} disabled={isViewingSaved} />
     </div>
+  )
+}
+
+
+// ── Inline editable balance for report nodes ──
+function EditableBalance({ value, accountId, onSave, disabled }: {
+  value: number; accountId: string
+  onSave?: (accountId: string, newBalance: number) => void
+  disabled?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const startEdit = () => {
+    if (disabled || !onSave) return
+    setDraft(String(value))
+    setEditing(true)
+  }
+
+  const cancel = () => { setEditing(false); setDraft('') }
+
+  const save = async () => {
+    const num = parseFloat(draft)
+    if (isNaN(num)) { cancel(); return }
+    if (num === value) { cancel(); return }
+    setSaving(true)
+    try {
+      onSave?.(accountId, num)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') save()
+    if (e.key === 'Escape') cancel()
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          step="0.01"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={handleKey}
+          onBlur={save}
+          autoFocus
+          className="w-28 px-2 py-0.5 text-sm font-mono text-right border rounded focus:outline-none focus:ring-1 focus:ring-[var(--gold-400)]"
+          style={{ borderColor: 'var(--gold-400)' }}
+        />
+        {saving && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--gold-600)' }} />}
+      </div>
+    )
+  }
+
+  return (
+    <span
+      onClick={startEdit}
+      className={`text-sm font-mono ${!disabled && onSave ? 'cursor-pointer hover:bg-[var(--pearl)] hover:underline rounded px-1 -mx-1 transition-colors' : ''}`}
+      style={{ color: value < 0 ? 'var(--danger)' : 'var(--ink)' }}
+      title={!disabled && onSave ? 'Clic para editar monto' : undefined}
+    >
+      {fmtFull(value)}
+    </span>
   )
 }
 

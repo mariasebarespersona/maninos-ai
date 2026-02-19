@@ -83,6 +83,7 @@ class AccountUpdate(BaseModel):
     is_header: Optional[bool] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    current_balance: Optional[float] = None
 
 
 class BankAccountCreate(BaseModel):
@@ -1446,6 +1447,12 @@ async def get_profit_loss_tree(
                     balances[aid] += float(t["amount"])
         except Exception as e:
             logger.warning(f"[profit-loss-tree] Could not compute balances: {e}")
+
+        # Add manual current_balance (same as Balance Sheet)
+        for acc in accounts:
+            manual_bal = float(acc.get("current_balance") or 0)
+            if manual_bal != 0:
+                balances[acc["id"]] = balances.get(acc["id"], 0) + manual_bal
 
         # Build tree
         by_id = {}
