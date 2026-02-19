@@ -674,7 +674,7 @@ function StatementsTab() {
           const data = await res.json().catch(() => null)
           if (data) {
             setBsData(data)
-          } else {
+        } else {
             setBsData({
               date: new Date().toISOString().slice(0, 10),
               assets: [], liabilities: [], equity: [],
@@ -773,17 +773,17 @@ function StatementsTab() {
     <div className="space-y-4">
       {/* Tab buttons + Save button */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-2">
-          {[
+      <div className="flex gap-2">
+        {[
             { key: 'balance', label: 'Balance Sheet' },
             { key: 'pnl', label: 'Profit and Loss' },
-          ].map(s => (
+        ].map(s => (
             <button key={s.key} onClick={() => { setActiveStatement(s.key as 'balance' | 'pnl'); setViewingSaved(null); setViewingSavedData(null) }}
-              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
               style={activeStatement === s.key && !isViewingSaved ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { backgroundColor: 'var(--pearl)', color: 'var(--charcoal)' }}>
-              {s.label}
-            </button>
-          ))}
+            {s.label}
+          </button>
+        ))}
         </div>
         {!isViewingSaved && (
           <button onClick={() => { setSaveName(`${activeStatement === 'balance' ? 'Balance Sheet' : 'Profit & Loss'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
@@ -867,7 +867,7 @@ function StatementsTab() {
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
-                  </div>
+                </div>
 
                   {/* Equity */}
                   <p className="font-semibold text-sm py-1 pl-4 mt-2" style={{ color: 'var(--ink)' }}>Equity</p>
@@ -878,7 +878,7 @@ function StatementsTab() {
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
-                  </div>
+              </div>
                 </div>
 
                 {/* Grand Total */}
@@ -939,7 +939,7 @@ function StatementsTab() {
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
-                  </div>
+                </div>
                 </div>
 
                 {/* Net Operating Income */}
@@ -956,9 +956,9 @@ function StatementsTab() {
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
-                    </div>
-                  </div>
-                )}
+              </div>
+            </div>
+          )}
 
                 {/* Other Expenses */}
                 {renderPlData.other_expenses.length > 0 && (
@@ -968,7 +968,7 @@ function StatementsTab() {
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
-                    </div>
+              </div>
                   </div>
                 )}
 
@@ -1002,7 +1002,7 @@ function StatementsTab() {
             <History className="w-4 h-4 inline-block mr-2" style={{ color: 'var(--gold-600)' }} />
             Reportes Guardados
           </h3>
-        </div>
+                </div>
         {loadingSaved ? (
           <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
         ) : savedReports.length === 0 ? (
@@ -1021,7 +1021,7 @@ function StatementsTab() {
                       {stmt.report_type === 'balance_sheet' ? 'Balance' : 'P&L'}
                     </span>
                     <span className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{stmt.name}</span>
-                  </div>
+              </div>
                   <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
                     <span>{new Date(stmt.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     {stmt.report_type === 'balance_sheet' && stmt.total_assets != null && (
@@ -1045,8 +1045,8 @@ function StatementsTab() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
+            </div>
+          )}
       </div>
 
       {/* ── SAVE MODAL ── */}
@@ -1091,7 +1091,7 @@ function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
   const indent = depth * 16
 
   if (hasChildren) {
-    return (
+  return (
       <>
         {/* Header row */}
         <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
@@ -1104,7 +1104,7 @@ function ReportTreeNode({ node, depth }: { node: ReportNode; depth: number }) {
               {fmtFull(node.balance)}
             </span>
           )}
-        </div>
+    </div>
         {/* Children */}
         {node.children!.map(child => <ReportTreeNode key={child.id} node={child} depth={depth + 1} />)}
         {/* Subtotal row */}
@@ -1348,149 +1348,149 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
       {/* ── SUB-TAB: Cuentas Bancarias ── */}
       {subTab === 'accounts' && (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas registradas</p>
-            <div className="flex gap-2">
-              {banks.length >= 2 && (
-                <button onClick={() => setShowTransferModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
-                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
-                  <ArrowRightLeft className="w-4 h-4" /> Transferir
-                </button>
-              )}
-              <button onClick={onAdd}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
-                style={{ backgroundColor: 'var(--gold-600)' }}>
-                <Plus className="w-4 h-4" /> Nueva Cuenta
-              </button>
-            </div>
+      <div className="flex items-center justify-between">
+        <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas registradas</p>
+        <div className="flex gap-2">
+          {banks.length >= 2 && (
+            <button onClick={() => setShowTransferModal(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+              style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+              <ArrowRightLeft className="w-4 h-4" /> Transferir
+            </button>
+          )}
+          <button onClick={onAdd}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
+            style={{ backgroundColor: 'var(--gold-600)' }}>
+            <Plus className="w-4 h-4" /> Nueva Cuenta
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+      ) : banks.length === 0 ? (
+        <div className="card-luxury p-12 text-center">
+          <Landmark className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
+          <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>No hay cuentas bancarias</h3>
+          <p className="mt-2 text-sm" style={{ color: 'var(--slate)' }}>Registra tus cuentas de banco y efectivo</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Bank Cards */}
+          <div className="lg:col-span-1 space-y-3">
+            {banks.map(b => (
+              <div key={b.id}
+                className={`card-luxury p-5 cursor-pointer transition-all ${selectedBank === b.id ? 'ring-2' : 'hover:shadow-md'}`}
+                style={selectedBank === b.id ? { boxShadow: '0 0 0 2px var(--gold-600)' } : undefined}
+                onClick={() => { setSelectedBank(b.id); loadBankDetail(b.id); setEditingBalance(false) }}>
+                {b.is_primary && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Principal</span>}
+                <div className="flex items-center gap-3 mt-2">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: b.account_type === 'cash' ? '#d1fae5' : '#dbeafe' }}>
+                    {b.account_type === 'cash'
+                      ? <Banknote className="w-5 h-5" style={{ color: '#059669' }} />
+                      : <Landmark className="w-5 h-5" style={{ color: '#1e40af' }} />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                      {b.bank_name || (b.account_type === 'cash' ? 'Efectivo' : b.account_type)}
+                      {b.account_number && ` ····${b.account_number.slice(-4)}`}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xl font-bold mt-3" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p>
+              </div>
+            ))}
           </div>
 
-          {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
-          ) : banks.length === 0 ? (
-            <div className="card-luxury p-12 text-center">
-              <Landmark className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-              <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>No hay cuentas bancarias</h3>
-              <p className="mt-2 text-sm" style={{ color: 'var(--slate)' }}>Registra tus cuentas de banco y efectivo</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Bank Cards */}
-              <div className="lg:col-span-1 space-y-3">
-                {banks.map(b => (
-                  <div key={b.id}
-                    className={`card-luxury p-5 cursor-pointer transition-all ${selectedBank === b.id ? 'ring-2' : 'hover:shadow-md'}`}
-                    style={selectedBank === b.id ? { boxShadow: '0 0 0 2px var(--gold-600)' } : undefined}
-                    onClick={() => { setSelectedBank(b.id); loadBankDetail(b.id); setEditingBalance(false) }}>
-                    {b.is_primary && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Principal</span>}
-                    <div className="flex items-center gap-3 mt-2">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: b.account_type === 'cash' ? '#d1fae5' : '#dbeafe' }}>
-                        {b.account_type === 'cash'
-                          ? <Banknote className="w-5 h-5" style={{ color: '#059669' }} />
-                          : <Landmark className="w-5 h-5" style={{ color: '#1e40af' }} />}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
-                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                          {b.bank_name || (b.account_type === 'cash' ? 'Efectivo' : b.account_type)}
-                          {b.account_number && ` ····${b.account_number.slice(-4)}`}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-xl font-bold mt-3" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p>
+          {/* Bank Detail Panel */}
+          <div className="lg:col-span-2">
+            {selectedBank && bankDetail ? (
+              <div className="card-luxury p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>{bankDetail.name}</h3>
+                    <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                      {bankDetail.bank_name || (bankDetail.account_type === 'cash' ? 'Efectivo' : bankDetail.account_type)}
+                    </p>
                   </div>
-                ))}
+                  <div className="flex gap-2">
+                    <button onClick={() => handleDeactivate(bankDetail.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg border text-red-600 border-red-200 hover:bg-red-50">
+                      Desactivar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Balance */}
+                <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--pearl)' }}>
+                  <p className="text-xs font-medium uppercase" style={{ color: 'var(--ash)' }}>Saldo Actual</p>
+                  {editingBalance ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-lg">$</span>
+                      <input type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)}
+                        className="text-2xl font-bold border-b-2 outline-none w-40" style={{ borderColor: 'var(--gold-600)' }} />
+                      <button onClick={handleUpdateBalance} className="text-emerald-600"><Check className="w-5 h-5" /></button>
+                      <button onClick={() => setEditingBalance(false)} className="text-red-500"><X className="w-5 h-5" /></button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(bankDetail.current_balance)}</p>
+                      <button onClick={() => { setEditingBalance(true); setNewBalance(String(bankDetail.current_balance)) }}
+                        className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
+                        Editar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Account Info */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {bankDetail.routing_number && (
+                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="font-mono" style={{ color: 'var(--charcoal)' }}>{bankDetail.routing_number}</p></div>
+                  )}
+                  {bankDetail.zelle_email && (
+                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Email</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_email}</p></div>
+                  )}
+                  {bankDetail.zelle_phone && (
+                    <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Teléfono</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_phone}</p></div>
+                  )}
+                  {bankDetail.notes && (
+                    <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Notas</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.notes}</p></div>
+                  )}
+                </div>
+
+                {/* Recent Transactions */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-3" style={{ color: 'var(--ink)' }}>Últimos Movimientos</h4>
+                  {bankTxns.length === 0 ? (
+                    <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>Sin movimientos registrados</p>
+                  ) : (
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {bankTxns.map(t => (
+                        <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
+                          <div>
+                            <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
+                            <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_date}</p>
+                          </div>
+                          <span className={`font-semibold text-sm ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {t.is_income ? '+' : '-'}{fmtFull(t.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Bank Detail Panel */}
-              <div className="lg:col-span-2">
-                {selectedBank && bankDetail ? (
-                  <div className="card-luxury p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>{bankDetail.name}</h3>
-                        <p className="text-sm" style={{ color: 'var(--slate)' }}>
-                          {bankDetail.bank_name || (bankDetail.account_type === 'cash' ? 'Efectivo' : bankDetail.account_type)}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleDeactivate(bankDetail.id)}
-                          className="text-xs px-3 py-1.5 rounded-lg border text-red-600 border-red-200 hover:bg-red-50">
-                          Desactivar
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Balance */}
-                    <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--pearl)' }}>
-                      <p className="text-xs font-medium uppercase" style={{ color: 'var(--ash)' }}>Saldo Actual</p>
-                      {editingBalance ? (
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-lg">$</span>
-                          <input type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)}
-                            className="text-2xl font-bold border-b-2 outline-none w-40" style={{ borderColor: 'var(--gold-600)' }} />
-                          <button onClick={handleUpdateBalance} className="text-emerald-600"><Check className="w-5 h-5" /></button>
-                          <button onClick={() => setEditingBalance(false)} className="text-red-500"><X className="w-5 h-5" /></button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(bankDetail.current_balance)}</p>
-                          <button onClick={() => { setEditingBalance(true); setNewBalance(String(bankDetail.current_balance)) }}
-                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
-                            Editar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Account Info */}
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      {bankDetail.routing_number && (
-                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="font-mono" style={{ color: 'var(--charcoal)' }}>{bankDetail.routing_number}</p></div>
-                      )}
-                      {bankDetail.zelle_email && (
-                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Email</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_email}</p></div>
-                      )}
-                      {bankDetail.zelle_phone && (
-                        <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Zelle Teléfono</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.zelle_phone}</p></div>
-                      )}
-                      {bankDetail.notes && (
-                        <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Notas</p><p style={{ color: 'var(--charcoal)' }}>{bankDetail.notes}</p></div>
-                      )}
-                    </div>
-
-                    {/* Recent Transactions */}
-                    <div>
-                      <h4 className="font-semibold text-sm mb-3" style={{ color: 'var(--ink)' }}>Últimos Movimientos</h4>
-                      {bankTxns.length === 0 ? (
-                        <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>Sin movimientos registrados</p>
-                      ) : (
-                        <div className="space-y-2 max-h-80 overflow-y-auto">
-                          {bankTxns.map(t => (
-                            <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
-                              <div>
-                                <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
-                                <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_date}</p>
-                              </div>
-                              <span className={`font-semibold text-sm ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {t.is_income ? '+' : '-'}{fmtFull(t.amount)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="card-luxury p-12 text-center">
-                    <Eye className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-                    <p style={{ color: 'var(--slate)' }}>Selecciona una cuenta para ver sus detalles</p>
-                  </div>
-                )}
+            ) : (
+              <div className="card-luxury p-12 text-center">
+                <Eye className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
+                <p style={{ color: 'var(--slate)' }}>Selecciona una cuenta para ver sus detalles</p>
               </div>
-            </div>
+            )}
+          </div>
+        </div>
           )}
         </>
       )}
@@ -2450,13 +2450,13 @@ function NewAccountModal({ flat, onClose, onCreated }: { flat: AccountNode[]; on
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Padre</label>
-            <select value={form.parent_account_id} onChange={e => setForm({ ...form, parent_account_id: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
-              <option value="">Ninguna (raíz)</option>
-              {headers.map(h => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
-            </select>
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Padre</label>
+              <select value={form.parent_account_id} onChange={e => setForm({ ...form, parent_account_id: e.target.value })}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+                <option value="">Ninguna (raíz)</option>
+                {headers.map(h => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+              </select>
           </div>
 
           <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
