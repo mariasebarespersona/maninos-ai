@@ -197,11 +197,38 @@ export default function CapitalAccountingPage() {
       const res = await fetch('/api/capital/accounting/sync', { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
-        toast.success(`Sincronización completada: ${data.imported} transacciones importadas`)
+        const msg = data.message || `${data.imported} transacciones importadas`
+        if (data.unmapped > 0) {
+          toast.warning(msg)
+        } else {
+          toast.success(msg)
+        }
         fetchDashboard()
         if (activeTab === 'transactions') fetchTransactions()
       }
     } catch (e) { toast.error('Error sincronizando datos') }
+    finally { setSyncing(false) }
+  }
+
+  const handleBackfillAccounts = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/capital/accounting/backfill-accounts', { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.updated > 0) {
+          toast.success(data.message)
+        } else if (data.skipped > 0) {
+          toast.warning(data.message)
+        } else {
+          toast.info(data.message)
+        }
+        fetchDashboard()
+        if (activeTab === 'transactions') fetchTransactions()
+      } else {
+        toast.error('Error al asignar cuentas')
+      }
+    } catch (e) { toast.error('Error de conexión') }
     finally { setSyncing(false) }
   }
 
@@ -236,6 +263,13 @@ export default function CapitalAccountingPage() {
             style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          <button onClick={handleBackfillAccounts} disabled={syncing}
+            title="Asignar cuentas contables a transacciones sin cuenta"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            <ArrowRightLeft className="w-4 h-4" />
+            Mapear Cuentas
           </button>
           <button onClick={() => setShowNewTxnModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"

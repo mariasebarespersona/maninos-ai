@@ -143,6 +143,89 @@ def _get_period_dates(period: str, year: int, month: int):
 
 
 # ============================================================================
+# ACCOUNT MAPPING — transaction_type → accounting account code
+# ============================================================================
+# This mapping connects each transaction_type to its corresponding
+# account in the chart of accounts (capital_accounts.code).
+#
+# When Sebastian provides the complete chart of accounts, update the codes
+# here — the rest of the system picks them up automatically.
+#
+# Format: transaction_type → account_code (from capital_accounts)
+# ============================================================================
+
+# ── INCOME transaction types → account codes ──
+INCOME_ACCOUNT_MAP: dict[str, str] = {
+    "rto_payment":      "41000",   # RTO Rental Income (placeholder — needs account)
+    "down_payment":     "42000",   # Down Payment Income (placeholder — needs account)
+    "late_fee":         "43000",   # Late Fee Income (placeholder — needs account)
+    "other_income":     "70000",   # OTHER INCOME (exists)
+}
+
+# ── EXPENSE transaction types → account codes ──
+EXPENSE_ACCOUNT_MAP: dict[str, str] = {
+    "acquisition":       "14100",  # Other Current Assets (property purchases)
+    "investor_return":   "71400",  # Interest paid (exists)
+    "commission":        "60100",  # Commissions & fees (exists)
+    "operating_expense": "60500",  # Office expenses (exists)
+    "insurance":         "60500",  # Office expenses (fallback — update when account exists)
+    "tax":               "60500",  # Office expenses (fallback — update when account exists)
+    "other_expense":     "71000",  # Other Business Expenses (header child — exists)
+}
+
+# ── BALANCE SHEET transaction types → account codes ──
+BALANCE_ACCOUNT_MAP: dict[str, str] = {
+    "investor_deposit":  "23000",  # Notes Payable header (investor obligation)
+    "transfer":          "10100",  # Bank and Cash Equivalents (inter-account transfer)
+}
+
+# Combined lookup for convenience
+_FULL_ACCOUNT_MAP = {**INCOME_ACCOUNT_MAP, **EXPENSE_ACCOUNT_MAP, **BALANCE_ACCOUNT_MAP}
+
+# Cache: code → account_id (populated lazily from DB)
+_account_id_cache: dict[str, str | None] = {}
+
+
+def _resolve_account_id(transaction_type: str) -> str | None:
+    """Resolve a transaction_type to its account_id via the mapping.
+
+    Returns the UUID of the matching capital_account, or None if the
+    account code doesn't exist in the DB yet (placeholder).
+
+    Uses an in-memory cache so we don't query Supabase for every single
+    transaction during a sync batch.
+    """
+    code = _FULL_ACCOUNT_MAP.get(transaction_type)
+    if not code:
+        return None
+
+    # Check cache first
+    if code in _account_id_cache:
+        return _account_id_cache[code]
+
+    # Query DB
+    try:
+        result = sb.table("capital_accounts") \
+            .select("id") \
+            .eq("code", code) \
+            .eq("is_active", True) \
+            .limit(1) \
+            .execute()
+        account_id = result.data[0]["id"] if result.data else None
+        _account_id_cache[code] = account_id
+        return account_id
+    except Exception as e:
+        logger.warning(f"[account-mapping] Could not resolve code '{code}': {e}")
+        _account_id_cache[code] = None
+        return None
+
+
+def _clear_account_cache():
+    """Clear the account mapping cache (call after adding new accounts)."""
+    _account_id_cache.clear()
+
+
+# ============================================================================
 # DASHBOARD
 # ============================================================================
 
@@ -383,14 +466,21 @@ async def list_transactions(
 
 @router.post("/transactions")
 async def create_transaction(data: TransactionCreate):
-    """Create a manual capital transaction."""
+    """Create a manual capital transaction.
+
+    If no account_id is provided, the system auto-assigns one based on
+    the transaction_type using the ACCOUNT_MAP.
+    """
     try:
+        # Auto-assign account_id if not explicitly provided
+        account_id = data.account_id or _resolve_account_id(data.transaction_type)
+
         record = {
             "transaction_date": data.transaction_date,
             "transaction_type": data.transaction_type,
             "amount": data.amount,
             "is_income": data.is_income,
-            "account_id": data.account_id,
+            "account_id": account_id,
             "bank_account_id": data.bank_account_id,
             "description": data.description,
             "investor_id": data.investor_id,
@@ -1089,8 +1179,15 @@ async def sync_transactions():
     """
     Auto-import transactions from capital_flows and rto_payments
     that don't already have a corresponding capital_transaction.
+
+    Every transaction is automatically linked to its accounting account
+    via the ACCOUNT_MAP (transaction_type → account code → account_id).
     """
     imported = 0
+    mapped = 0  # How many got an account_id
+
+    # Clear cache so we pick up any newly-added accounts
+    _clear_account_cache()
 
     try:
         # 1. Sync from capital_flows
@@ -1123,6 +1220,8 @@ async def sync_transactions():
                 continue
 
             txn_type, is_income = flow_type_map[ft]
+            account_id = _resolve_account_id(txn_type)
+
             record = {
                 "transaction_date": flow.get("flow_date") or date.today().isoformat(),
                 "transaction_type": txn_type,
@@ -1133,12 +1232,15 @@ async def sync_transactions():
                 "investor_id": flow.get("investor_id"),
                 "property_id": flow.get("property_id"),
                 "rto_contract_id": flow.get("rto_contract_id"),
+                "account_id": account_id,
                 "status": "confirmed",
                 "created_by": "auto-sync",
             }
             record = {k: v for k, v in record.items() if v is not None}
             sb.table("capital_transactions").insert(record).execute()
             imported += 1
+            if account_id:
+                mapped += 1
 
         # 2. Sync from rto_payments (paid ones)
         paid = sb.table("rto_payments") \
@@ -1152,6 +1254,9 @@ async def sync_transactions():
             .not_.is_("rto_payment_id", "null") \
             .execute().data or []
         synced_pmt_ids = {e["rto_payment_id"] for e in existing_pmt}
+
+        rto_account_id = _resolve_account_id("rto_payment")
+        late_fee_account_id = _resolve_account_id("late_fee")
 
         for pmt in paid:
             if pmt["id"] in synced_pmt_ids:
@@ -1168,12 +1273,15 @@ async def sync_transactions():
                 "property_id": contract.get("property_id"),
                 "payment_method": pmt.get("payment_method"),
                 "payment_reference": pmt.get("payment_reference"),
+                "account_id": rto_account_id,
                 "status": "confirmed",
                 "created_by": "auto-sync",
             }
             record = {k: v for k, v in record.items() if v is not None}
             sb.table("capital_transactions").insert(record).execute()
             imported += 1
+            if rto_account_id:
+                mapped += 1
 
             # Also import late fees as separate transactions
             late_fee = float(pmt.get("late_fee_amount", 0) or 0)
@@ -1186,12 +1294,15 @@ async def sync_transactions():
                     "description": f"Recargo por mora — Pago #{pmt['id'][:8]}",
                     "rto_payment_id": pmt["id"],
                     "client_id": contract.get("client_id"),
+                    "account_id": late_fee_account_id,
                     "status": "confirmed",
                     "created_by": "auto-sync",
                 }
                 fee_record = {k: v for k, v in fee_record.items() if v is not None}
                 sb.table("capital_transactions").insert(fee_record).execute()
                 imported += 1
+                if late_fee_account_id:
+                    mapped += 1
 
         # 3. Sync from rto_commissions (paid ones)
         try:
@@ -1207,6 +1318,8 @@ async def sync_transactions():
                 .execute().data or []
             synced_comm_notes = {e.get("notes") for e in existing_desc if e.get("notes")}
 
+            commission_account_id = _resolve_account_id("commission")
+
             for comm in paid_comms:
                 tag = f"comm:{comm['id']}"
                 if tag in synced_comm_notes:
@@ -1220,6 +1333,7 @@ async def sync_transactions():
                     "property_id": comm.get("property_id"),
                     "client_id": comm.get("client_id"),
                     "rto_contract_id": comm.get("contract_id"),
+                    "account_id": commission_account_id,
                     "notes": tag,
                     "status": "confirmed",
                     "created_by": "auto-sync",
@@ -1227,6 +1341,8 @@ async def sync_transactions():
                 record = {k: v for k, v in record.items() if v is not None}
                 sb.table("capital_transactions").insert(record).execute()
                 imported += 1
+                if commission_account_id:
+                    mapped += 1
         except Exception as comm_err:
             logger.warning(f"Could not sync commissions: {comm_err}")
 
@@ -1244,6 +1360,8 @@ async def sync_transactions():
                 .execute().data or []
             synced_pn_notes = {e.get("notes") for e in existing_pn if e.get("notes")}
 
+            investor_return_account_id = _resolve_account_id("investor_return")
+
             for pnp in pn_payments:
                 tag = f"pnp:{pnp['id']}"
                 if tag in synced_pn_notes:
@@ -1259,6 +1377,7 @@ async def sync_transactions():
                     "investor_id": note_data.get("investor_id"),
                     "payment_method": pnp.get("payment_method"),
                     "payment_reference": pnp.get("reference"),
+                    "account_id": investor_return_account_id,
                     "notes": tag,
                     "status": "confirmed",
                     "created_by": "auto-sync",
@@ -1266,6 +1385,8 @@ async def sync_transactions():
                 record = {k: v for k, v in record.items() if v is not None}
                 sb.table("capital_transactions").insert(record).execute()
                 imported += 1
+                if investor_return_account_id:
+                    mapped += 1
         except Exception as pn_err:
             logger.warning(f"Could not sync promissory note payments: {pn_err}")
 
@@ -1273,7 +1394,109 @@ async def sync_transactions():
         logger.error(f"Error syncing capital transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"ok": True, "imported": imported, "message": f"{imported} transacciones importadas"}
+    unmapped = imported - mapped
+    msg = f"{imported} transacciones importadas ({mapped} con cuenta contable)"
+    if unmapped > 0:
+        msg += f" — {unmapped} sin cuenta (faltan cuentas en el plan)"
+
+    return {"ok": True, "imported": imported, "mapped": mapped, "unmapped": unmapped, "message": msg}
+
+
+@router.post("/backfill-accounts")
+async def backfill_transaction_accounts():
+    """Assign account_id to existing transactions that don't have one.
+
+    Uses the ACCOUNT_MAP to look up the correct account based on
+    each transaction's transaction_type.  Useful after adding new
+    accounts to the chart of accounts.
+    """
+    _clear_account_cache()
+
+    try:
+        # Fetch all transactions without account_id
+        orphans = sb.table("capital_transactions") \
+            .select("id, transaction_type") \
+            .is_("account_id", "null") \
+            .neq("status", "voided") \
+            .execute().data or []
+
+        if not orphans:
+            return {
+                "ok": True,
+                "updated": 0,
+                "skipped": 0,
+                "message": "Todas las transacciones ya tienen cuenta contable.",
+            }
+
+        updated = 0
+        skipped = 0
+        skipped_types: dict[str, int] = {}
+
+        for txn in orphans:
+            account_id = _resolve_account_id(txn["transaction_type"])
+            if account_id:
+                sb.table("capital_transactions") \
+                    .update({"account_id": account_id}) \
+                    .eq("id", txn["id"]) \
+                    .execute()
+                updated += 1
+            else:
+                skipped += 1
+                tt = txn["transaction_type"]
+                skipped_types[tt] = skipped_types.get(tt, 0) + 1
+
+        msg = f"{updated} transacciones actualizadas con cuenta contable"
+        if skipped > 0:
+            missing = ", ".join(f"{tt} ({n})" for tt, n in skipped_types.items())
+            msg += f" — {skipped} sin asignar (cuentas faltantes: {missing})"
+
+        return {
+            "ok": True,
+            "updated": updated,
+            "skipped": skipped,
+            "skipped_types": skipped_types,
+            "message": msg,
+        }
+
+    except Exception as e:
+        logger.error(f"Error backfilling transaction accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/account-mapping")
+async def get_account_mapping():
+    """Return the current transaction_type → account mapping with resolution status.
+
+    Useful for debugging and for the frontend to show which types are
+    mapped and which are missing their account in the chart.
+    """
+    _clear_account_cache()
+
+    mapping = []
+    for txn_type, code in _FULL_ACCOUNT_MAP.items():
+        account_id = _resolve_account_id(txn_type)
+        is_income = txn_type in INCOME_ACCOUNT_MAP
+        is_balance = txn_type in BALANCE_ACCOUNT_MAP
+
+        mapping.append({
+            "transaction_type": txn_type,
+            "account_code": code,
+            "account_id": account_id,
+            "resolved": account_id is not None,
+            "flow": "income" if is_income else ("balance" if is_balance else "expense"),
+        })
+
+    resolved = sum(1 for m in mapping if m["resolved"])
+    total = len(mapping)
+
+    return {
+        "ok": True,
+        "mapping": mapping,
+        "resolved": resolved,
+        "total": total,
+        "missing": total - resolved,
+        "message": f"{resolved}/{total} tipos mapeados a cuentas existentes",
+    }
 
 
 # ============================================================================
