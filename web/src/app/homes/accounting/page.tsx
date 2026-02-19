@@ -2134,6 +2134,7 @@ function EstadoCuentaTab() {
       const res = await fetch('/api/accounting/bank-statements', { method: 'POST', body: formData })
       if (res.ok) {
         const data = await res.json()
+        if (data.message) alert(data.message)
         fetchStatements()
         if (data.statement?.id) {
           setActiveStatement(data.statement.id)

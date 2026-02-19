@@ -1987,7 +1987,7 @@ async def get_bank_statement(statement_id: str):
     }
 
 
-@router.post("/bank-statements/upload")
+@router.post("/bank-statements")
 async def upload_bank_statement(
     file: UploadFile = File(...),
     bank_account_id: str = Form(None),
@@ -2092,6 +2092,19 @@ async def upload_bank_statement(
             "account_number_last4": movements[0].get("account_last4") if movements else None,
         }).eq("id", statement_id).execute()
 
+        # ── AUTO-CLASSIFY: AI associates movements to Homes accounts ──
+        classify_message = ""
+        try:
+            logger.info(f"[BankStmt] Auto-classifying {len(movements)} movements...")
+            sb.table("bank_statements").update({"status": "classifying"}).eq("id", statement_id).execute()
+            classify_result = await classify_statement_movements(statement_id)
+            classify_message = f" → AI classified {classify_result.get('classified', 0)} movements"
+            logger.info(f"[BankStmt] Auto-classify done: {classify_message}")
+        except Exception as ce:
+            logger.warning(f"[BankStmt] Auto-classify failed (will require manual): {ce}")
+            sb.table("bank_statements").update({"status": "parsed"}).eq("id", statement_id).execute()
+            classify_message = " → Auto-clasificación falló, usa el botón 'Clasificar con IA'"
+
         # Refresh statement from DB
         stmt_refresh = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
         mvs = sb.table("statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
@@ -2099,7 +2112,7 @@ async def upload_bank_statement(
         return {
             "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
             "movements": mvs.data or [],
-            "message": f"Parsed {len(movements)} movements from statement",
+            "message": f"Parsed {len(movements)} movements from statement{classify_message}",
         }
 
     except Exception as e:

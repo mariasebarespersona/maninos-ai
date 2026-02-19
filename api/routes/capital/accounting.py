@@ -1641,6 +1641,19 @@ async def upload_capital_bank_statement(
             "account_number_last4": movements[0].get("account_last4") if movements else None,
         }).eq("id", statement_id).execute()
 
+        # ── AUTO-CLASSIFY: AI associates movements to Capital accounts ──
+        classify_message = ""
+        try:
+            logger.info(f"[CapitalBankStmt] Auto-classifying {len(movements)} movements...")
+            sb.table("capital_bank_statements").update({"status": "classifying"}).eq("id", statement_id).execute()
+            classify_result = await classify_capital_statement(statement_id)
+            classify_message = f" → AI classified {classify_result.get('classified', 0)} movements"
+            logger.info(f"[CapitalBankStmt] Auto-classify done: {classify_message}")
+        except Exception as ce:
+            logger.warning(f"[CapitalBankStmt] Auto-classify failed (will require manual): {ce}")
+            sb.table("capital_bank_statements").update({"status": "parsed"}).eq("id", statement_id).execute()
+            classify_message = " → Auto-clasificación falló, usa el botón 'Clasificar con IA'"
+
         # Refresh
         stmt_refresh = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
         mvs = sb.table("capital_statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
@@ -1648,7 +1661,7 @@ async def upload_capital_bank_statement(
         return {
             "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
             "movements": mvs.data or [],
-            "message": f"Parsed {len(movements)} movements from statement",
+            "message": f"Parsed {len(movements)} movements from statement{classify_message}",
         }
 
     except Exception as e:

@@ -1376,7 +1376,7 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
       const res = await fetch('/api/capital/accounting/bank-statements', { method: 'POST', body: formData })
       if (res.ok) {
         const data = await res.json()
-        toast.success(`${data.movements?.length || 0} movimientos extraídos`)
+        toast.success(data.message || `${data.movements?.length || 0} movimientos extraídos`)
         fetchStatements()
         if (data.statement?.id) {
           setActiveStatement(data.statement.id)
