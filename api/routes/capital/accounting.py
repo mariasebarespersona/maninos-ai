@@ -112,6 +112,14 @@ class BankAccountUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class CapitalBudgetCreate(BaseModel):
+    account_id: str
+    period_month: int
+    period_year: int
+    budgeted_amount: float
+    notes: Optional[str] = None
+
+
 # ============================================================================
 # HELPERS
 # ============================================================================
@@ -1980,6 +1988,130 @@ async def delete_capital_bank_statement(statement_id: str):
     """Delete a Capital bank statement and all its movements."""
     sb.table("capital_bank_statements").delete().eq("id", statement_id).execute()
     return {"message": "Statement deleted"}
+
+
+# ============================================================================
+# BUDGETS (Presupuestos)
+# ============================================================================
+
+@router.get("/budgets")
+async def list_capital_budgets(year: Optional[int] = None):
+    """List all Capital budgets for a given year."""
+    target_year = year or date.today().year
+    try:
+        result = sb.table("capital_budgets") \
+            .select("*, capital_accounts(code, name, account_type, category)") \
+            .eq("period_year", target_year) \
+            .order("period_month") \
+            .execute()
+        return {"ok": True, "budgets": result.data or [], "year": target_year}
+    except Exception as e:
+        logger.error(f"Error listing capital budgets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/budgets")
+async def create_or_update_capital_budget(data: CapitalBudgetCreate):
+    """Create or update a Capital budget (upsert by account + month + year)."""
+    try:
+        existing = sb.table("capital_budgets") \
+            .select("id") \
+            .eq("account_id", data.account_id) \
+            .eq("period_month", data.period_month) \
+            .eq("period_year", data.period_year) \
+            .execute()
+
+        insert_data = {k: v for k, v in data.model_dump().items() if v is not None}
+
+        if existing.data:
+            result = sb.table("capital_budgets") \
+                .update(insert_data) \
+                .eq("id", existing.data[0]["id"]) \
+                .execute()
+        else:
+            result = sb.table("capital_budgets").insert(insert_data).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Error saving budget")
+        return {"ok": True, "budget": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating/updating capital budget: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/budgets/vs-actual")
+async def capital_budget_vs_actual(year: Optional[int] = None):
+    """Compare budgeted amounts vs actual spending per Capital account per month."""
+    target_year = year or date.today().year
+
+    try:
+        # Get budgets
+        budgets = sb.table("capital_budgets") \
+            .select("*, capital_accounts(code, name, account_type, category)") \
+            .eq("period_year", target_year) \
+            .execute().data or []
+
+        # Get actual transactions for the year
+        start = f"{target_year}-01-01"
+        end = f"{target_year}-12-31"
+        txns = sb.table("capital_transactions") \
+            .select("account_id, amount, is_income, transaction_date") \
+            .gte("transaction_date", start) \
+            .lte("transaction_date", end) \
+            .neq("status", "voided") \
+            .execute().data or []
+
+        # Aggregate actuals by account + month
+        actuals: dict[str, float] = {}
+        for t in txns:
+            aid = t.get("account_id")
+            if not aid:
+                continue
+            m = int(str(t["transaction_date"]).split("-")[1])
+            key = f"{aid}:{m}"
+            amt = float(t["amount"])
+            # Expenses are typically not flagged as income
+            if not t.get("is_income"):
+                actuals[key] = actuals.get(key, 0) + abs(amt)
+            else:
+                actuals[key] = actuals.get(key, 0) + amt
+
+        # Build comparison
+        comparison = []
+        for b in budgets:
+            aid = b["account_id"]
+            m = b["period_month"]
+            actual = actuals.get(f"{aid}:{m}", 0)
+            budgeted = float(b.get("budgeted_amount") or 0)
+            variance = budgeted - actual
+            variance_pct = round((variance / budgeted * 100), 1) if budgeted != 0 else 0
+
+            comparison.append({
+                "account_id": aid,
+                "account": b.get("capital_accounts"),
+                "month": m,
+                "budgeted": budgeted,
+                "actual": round(actual, 2),
+                "variance": round(variance, 2),
+                "variance_pct": variance_pct,
+            })
+
+        return {"ok": True, "comparison": comparison, "year": target_year}
+    except Exception as e:
+        logger.error(f"Error computing capital budget vs actual: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/budgets/{budget_id}")
+async def delete_capital_budget(budget_id: str):
+    """Delete a Capital budget entry."""
+    try:
+        sb.table("capital_budgets").delete().eq("id", budget_id).execute()
+        return {"ok": True, "message": "Budget deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

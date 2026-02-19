@@ -144,7 +144,7 @@ const ACCT_TYPE_LABELS: Record<string, string> = {
   income: 'Ingresos', expense: 'Gastos', cogs: 'Costo de Ventas',
 }
 
-type TabId = 'overview' | 'transactions' | 'statements' | 'chart' | 'banks'
+type TabId = 'overview' | 'transactions' | 'statements' | 'chart' | 'banks' | 'budget'
 
 // ── Main Component ──
 export default function CapitalAccountingPage() {
@@ -219,6 +219,7 @@ export default function CapitalAccountingPage() {
     { id: 'statements', label: 'Estados Financieros', icon: Scale },
     { id: 'chart', label: 'Plan de Cuentas', icon: BookOpen },
     { id: 'banks', label: 'Bancos y Cash', icon: Landmark },
+    { id: 'budget', label: 'Presupuesto', icon: BarChart3 },
   ]
 
   return (
@@ -295,6 +296,7 @@ export default function CapitalAccountingPage() {
       {activeTab === 'statements' && <StatementsTab />}
       {activeTab === 'chart' && <ChartOfAccountsTab />}
       {activeTab === 'banks' && <BanksTab onAdd={() => setShowNewBankModal(true)} onRefresh={fetchDashboard} />}
+      {activeTab === 'budget' && <BudgetTab />}
 
       {/* Modals */}
       {showNewTxnModal && <NewTransactionModal bankAccounts={dashboard?.bank_accounts || []} onClose={() => setShowNewTxnModal(false)} onCreated={() => { setShowNewTxnModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
@@ -2102,6 +2104,213 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
         {isPosted && <CheckCircle2 className="w-4 h-4 text-blue-500 mx-auto" />}
       </td>
     </tr>
+  )
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+//  BUDGET TAB — Presupuesto vs Real
+// ════════════════════════════════════════════════════════════════════════
+
+interface CapitalAccountRef {
+  code: string
+  name: string
+  account_type: string
+  category?: string
+}
+
+function BudgetTab() {
+  const [comparison, setComparison] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [showAdd, setShowAdd] = useState(false)
+  const [accounts, setAccounts] = useState<(CapitalAccountRef & { id: string })[]>([])
+  const [addForm, setAddForm] = useState({ account_id: '', period_month: new Date().getMonth() + 1, budgeted_amount: '' })
+  const [saving, setSaving] = useState(false)
+
+  const fetchComparison = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/budgets/vs-actual?year=${year}`)
+      if (res.ok) { const d = await res.json(); setComparison(d.comparison || []) }
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false) }
+  }, [year])
+
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/capital/accounting/accounts')
+      if (res.ok) { const d = await res.json(); setAccounts(d.accounts || []) }
+    } catch (e) { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchComparison() }, [fetchComparison])
+  useEffect(() => { fetchAccounts() }, [fetchAccounts])
+
+  const handleAddBudget = async () => {
+    if (!addForm.account_id || !addForm.budgeted_amount) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/capital/accounting/budgets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...addForm, budgeted_amount: parseFloat(addForm.budgeted_amount), period_year: year }),
+      })
+      if (res.ok) {
+        setShowAdd(false)
+        setAddForm({ account_id: '', period_month: new Date().getMonth() + 1, budgeted_amount: '' })
+        fetchComparison()
+      }
+    } catch (e) { /* ignore */ }
+    finally { setSaving(false) }
+  }
+
+  // Totals
+  const totalBudgeted = comparison.reduce((s, c) => s + c.budgeted, 0)
+  const totalActual = comparison.reduce((s, c) => s + c.actual, 0)
+  const totalVariance = totalBudgeted - totalActual
+  const totalVariancePct = totalBudgeted !== 0 ? (totalVariance / totalBudgeted * 100) : 0
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>Presupuesto vs Real</h3>
+          <select value={year} onChange={e => setYear(Number(e.target.value))} className="px-3 py-1.5 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
+          style={{ backgroundColor: 'var(--gold-600)' }}>
+          <Plus className="w-4 h-4" /> Agregar Presupuesto
+        </button>
+      </div>
+
+      {/* Summary KPIs */}
+      {comparison.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="card-luxury p-4">
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Total Presupuestado</p>
+            <p className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>{fmtFull(totalBudgeted)}</p>
+          </div>
+          <div className="card-luxury p-4">
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Total Real</p>
+            <p className="font-serif text-lg font-semibold" style={{ color: 'var(--charcoal)' }}>{fmtFull(totalActual)}</p>
+          </div>
+          <div className="card-luxury p-4">
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Variación</p>
+            <p className={`font-serif text-lg font-semibold ${totalVariance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {totalVariance >= 0 ? '+' : ''}{fmtFull(totalVariance)}
+            </p>
+          </div>
+          <div className="card-luxury p-4">
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>% Variación</p>
+            <p className={`font-serif text-lg font-semibold ${totalVariancePct < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {totalVariancePct >= 0 ? '+' : ''}{totalVariancePct.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="card-luxury p-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta</label>
+            <select value={addForm.account_id} onChange={e => setAddForm(f => ({ ...f, account_id: e.target.value }))}
+              className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Seleccionar...</option>
+              {accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs').map(a => (
+                <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Mes</label>
+            <select value={addForm.period_month} onChange={e => setAddForm(f => ({ ...f, period_month: Number(e.target.value) }))}
+              className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
+              {MONTH_NAMES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($)</label>
+            <input type="number" step="0.01" value={addForm.budgeted_amount}
+              onChange={e => setAddForm(f => ({ ...f, budgeted_amount: e.target.value }))}
+              className="px-3 py-2 text-sm rounded-lg border w-32" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" />
+          </div>
+          <button onClick={handleAddBudget} disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white rounded-lg"
+            style={{ backgroundColor: 'var(--gold-600)' }}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button onClick={() => setShowAdd(false)}
+            className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+      ) : comparison.length === 0 ? (
+        <div className="text-center py-12 card-luxury">
+          <BookOpen className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
+          <p className="text-sm" style={{ color: 'var(--ash)' }}>No hay presupuestos para {year}.</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Agrega uno para comparar con los gastos reales de Capital.</p>
+        </div>
+      ) : (
+        <div className="card-luxury overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--ivory)' }}>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Cuenta</th>
+                <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--slate)' }}>Mes</th>
+                <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Presupuesto</th>
+                <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Real</th>
+                <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Variación</th>
+                <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparison.map((c, i) => {
+                const overBudget = c.variance < 0
+                return (
+                  <tr key={i} className="border-b" style={{ borderColor: 'var(--sand)' }}>
+                    <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
+                      {c.account ? `${c.account.code} — ${c.account.name}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-center" style={{ color: 'var(--slate)' }}>{MONTH_NAMES[c.month]}</td>
+                    <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{fmtFull(c.budgeted)}</td>
+                    <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{fmtFull(c.actual)}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${overBudget ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {overBudget ? '' : '+'}{fmtFull(c.variance)}
+                    </td>
+                    <td className={`px-4 py-3 text-right text-xs font-medium ${overBudget ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {c.variance_pct > 0 ? '+' : ''}{c.variance_pct}%
+                    </td>
+                  </tr>
+                )
+              })}
+              {/* Totals row */}
+              <tr className="border-t-2 font-semibold" style={{ borderColor: 'var(--charcoal)', backgroundColor: 'var(--pearl)' }}>
+                <td className="px-4 py-3" style={{ color: 'var(--ink)' }}>Total</td>
+                <td />
+                <td className="px-4 py-3 text-right" style={{ color: 'var(--ink)' }}>{fmtFull(totalBudgeted)}</td>
+                <td className="px-4 py-3 text-right" style={{ color: 'var(--ink)' }}>{fmtFull(totalActual)}</td>
+                <td className={`px-4 py-3 text-right ${totalVariance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {totalVariance >= 0 ? '+' : ''}{fmtFull(totalVariance)}
+                </td>
+                <td className={`px-4 py-3 text-right text-xs ${totalVariancePct < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {totalVariancePct >= 0 ? '+' : ''}{totalVariancePct.toFixed(1)}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
