@@ -627,19 +627,65 @@ function StatementsTab() {
   const [bsData, setBsData] = useState<BSTreeData | null>(null)
   const [plData, setPlData] = useState<PLTreeData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
+      setError(null)
       try {
         if (activeStatement === 'balance') {
           const res = await fetch('/api/capital/accounting/reports/balance-sheet-tree')
-          if (res.ok) { const data = await res.json(); setBsData(data) }
+          const data = await res.json().catch(() => null)
+          if (data) {
+            setBsData(data)
+          } else {
+            // Set empty but valid structure so the format always renders
+            setBsData({
+              date: new Date().toISOString().slice(0, 10),
+              assets: [], liabilities: [], equity: [],
+              total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0,
+            })
+            setError('No se pudieron cargar las cuentas del Balance. Verifica que la migración 042 se haya ejecutado.')
+          }
         } else {
           const res = await fetch('/api/capital/accounting/reports/profit-loss-tree')
-          if (res.ok) { const data = await res.json(); setPlData(data) }
+          const data = await res.json().catch(() => null)
+          if (data) {
+            setPlData(data)
+          } else {
+            const now = new Date()
+            setPlData({
+              period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) },
+              income: [], expenses: [], other_income: [], other_expenses: [],
+              total_income: 0, gross_profit: 0, total_expenses: 0,
+              net_operating_income: 0, total_other_income: 0,
+              total_other_expenses: 0, net_other_income: 0, net_income: 0,
+            })
+            setError('No se pudieron cargar las cuentas de P&L. Verifica que la migración 042 se haya ejecutado.')
+          }
         }
-      } catch (e) { console.error(e) }
+      } catch (e) {
+        console.error(e)
+        setError('Error de conexión al cargar estados financieros.')
+        // Still set empty data so format renders
+        if (activeStatement === 'balance') {
+          setBsData({
+            date: new Date().toISOString().slice(0, 10),
+            assets: [], liabilities: [], equity: [],
+            total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0,
+          })
+        } else {
+          const now = new Date()
+          setPlData({
+            period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) },
+            income: [], expenses: [], other_income: [], other_expenses: [],
+            total_income: 0, gross_profit: 0, total_expenses: 0,
+            net_operating_income: 0, total_other_income: 0,
+            total_other_expenses: 0, net_other_income: 0, net_income: 0,
+          })
+        }
+      }
       finally { setLoading(false) }
     }
     load()
@@ -659,6 +705,13 @@ function StatementsTab() {
           </button>
         ))}
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(255,165,0,0.1)', color: 'var(--gold-700)', border: '1px solid var(--gold-400)' }}>
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>

@@ -73,9 +73,15 @@ export default function ClientRTOPage() {
         setPayments(data.payments || [])
         setProgress(data.progress)
         if (data.message) setMessage(data.message)
+      } else {
+        // API returned error — show the message to the user
+        const errMsg = data.error || data.detail || 'No se pudo cargar el contrato'
+        console.error('RTO contract load error:', errMsg)
+        setMessage(errMsg)
       }
     } catch (err) {
       console.error('Error loading RTO:', err)
+      setMessage('Error de conexión. Por favor intenta de nuevo.')
     } finally {
       setLoading(false)
     }

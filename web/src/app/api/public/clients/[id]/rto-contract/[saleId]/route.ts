@@ -4,17 +4,28 @@ const API = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://lo
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; saleId: string } }
+  { params }: { params: Promise<{ id: string; saleId: string }> }
 ) {
   try {
+    const { id, saleId } = await params
     const res = await fetch(
-      `${API}/api/public/clients/${params.id}/rto-contract/${params.saleId}`,
+      `${API}/api/public/clients/${id}/rto-contract/${saleId}`,
       { cache: 'no-store' }
     )
     const data = await res.json()
+
+    // Normalize FastAPI errors
+    if (!res.ok && !('ok' in data)) {
+      return NextResponse.json(
+        { ok: false, error: data.detail || 'Error del servidor' },
+        { status: res.status }
+      )
+    }
+
     return NextResponse.json(data, { status: res.status })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: 'Backend unavailable' }, { status: 500 })
+    console.error('Error proxying rto-contract:', error)
+    return NextResponse.json({ ok: false, error: 'No se pudo conectar con el servidor' }, { status: 500 })
   }
 }
 

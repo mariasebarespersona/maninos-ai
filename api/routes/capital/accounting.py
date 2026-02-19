@@ -1269,92 +1269,117 @@ async def export_transactions_csv(
 async def get_balance_sheet_tree():
     """Balance Sheet built from the chart of accounts tree (QuickBooks format)."""
     try:
-        accounts = sb.table("capital_accounts") \
-            .select("*") \
-            .eq("is_active", True) \
-            .eq("report_section", "balance_sheet") \
-            .order("display_order") \
-            .order("code") \
-            .execute().data or []
-    except Exception:
-        accounts = sb.table("capital_accounts") \
-            .select("*") \
-            .eq("is_active", True) \
-            .in_("account_type", ["asset", "liability", "equity"]) \
-            .order("code") \
-            .execute().data or []
+        # Try multiple query strategies — columns may not exist yet
+        accounts = []
+        for query_fn in [
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .eq("report_section", "balance_sheet").order("display_order").order("code").execute(),
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .eq("report_section", "balance_sheet").order("code").execute(),
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .in_("account_type", ["asset", "liability", "equity"]).order("code").execute(),
+        ]:
+            try:
+                result = query_fn()
+                accounts = result.data or []
+                if accounts:
+                    break
+            except Exception as qe:
+                logger.warning(f"[balance-sheet-tree] Query attempt failed: {qe}")
+                continue
 
-    # Compute balances from transactions
-    balances = {}
-    try:
-        txns = sb.table("capital_transactions") \
-            .select("account_id, amount, is_income") \
-            .neq("status", "voided") \
-            .execute().data or []
-        for t in txns:
-            aid = t.get("account_id")
-            if aid:
-                if aid not in balances:
-                    balances[aid] = 0
-                balances[aid] += float(t["amount"]) if t["is_income"] else -float(t["amount"])
-    except Exception as e:
-        logger.warning(f"[balance-sheet-tree] Could not compute balances: {e}")
+        # If still empty, get ALL accounts and filter locally
+        if not accounts:
+            try:
+                all_accts = sb.table("capital_accounts").select("*").eq("is_active", True).order("code").execute().data or []
+                accounts = [a for a in all_accts if a.get("account_type") in ("asset", "liability", "equity")]
+            except Exception as e2:
+                logger.error(f"[balance-sheet-tree] Final fallback failed: {e2}")
+                accounts = []
 
-    # Add manual current_balance
-    for acc in accounts:
-        manual_bal = float(acc.get("current_balance") or 0)
-        if manual_bal != 0:
-            balances[acc["id"]] = balances.get(acc["id"], 0) + manual_bal
+        # Compute balances from transactions
+        balances = {}
+        try:
+            txns = sb.table("capital_transactions") \
+                .select("account_id, amount, is_income") \
+                .neq("status", "voided") \
+                .execute().data or []
+            for t in txns:
+                aid = t.get("account_id")
+                if aid:
+                    if aid not in balances:
+                        balances[aid] = 0
+                    balances[aid] += float(t["amount"]) if t["is_income"] else -float(t["amount"])
+        except Exception as e:
+            logger.warning(f"[balance-sheet-tree] Could not compute balances: {e}")
 
-    # Build tree
-    by_id = {}
-    for a in accounts:
-        by_id[a["id"]] = {
-            "id": a["id"], "code": a["code"], "name": a["name"],
-            "account_type": a["account_type"], "is_header": a.get("is_header", False),
-            "balance": round(balances.get(a["id"], 0), 2),
-            "children": [],
+        # Add manual current_balance
+        for acc in accounts:
+            manual_bal = float(acc.get("current_balance") or 0)
+            if manual_bal != 0:
+                balances[acc["id"]] = balances.get(acc["id"], 0) + manual_bal
+
+        # Build tree
+        by_id = {}
+        for a in accounts:
+            by_id[a["id"]] = {
+                "id": a["id"], "code": a["code"], "name": a["name"],
+                "account_type": a["account_type"], "is_header": a.get("is_header", False),
+                "balance": round(balances.get(a["id"], 0), 2),
+                "children": [],
+            }
+
+        roots = []
+        for a in accounts:
+            node = by_id[a["id"]]
+            pid = a.get("parent_account_id")
+            if pid and pid in by_id:
+                by_id[pid]["children"].append(node)
+            else:
+                roots.append(node)
+
+        def compute_subtotal(node):
+            subtotal = node["balance"]
+            for child in node.get("children", []):
+                subtotal += compute_subtotal(child)
+            node["subtotal"] = round(subtotal, 2)
+            return subtotal
+
+        for r in roots:
+            compute_subtotal(r)
+
+        # Group by account_type for the report
+        assets = [r for r in roots if r["account_type"] == "asset"]
+        liabilities = [r for r in roots if r["account_type"] == "liability"]
+        equity = [r for r in roots if r["account_type"] == "equity"]
+
+        total_assets = sum(r.get("subtotal", 0) for r in assets)
+        total_liabilities = sum(r.get("subtotal", 0) for r in liabilities)
+        total_equity = sum(r.get("subtotal", 0) for r in equity)
+
+        return {
+            "ok": True,
+            "date": date.today().isoformat(),
+            "assets": assets,
+            "liabilities": liabilities,
+            "equity": equity,
+            "total_assets": round(total_assets, 2),
+            "total_liabilities": round(total_liabilities, 2),
+            "total_equity": round(total_equity, 2),
+            "total_liabilities_and_equity": round(total_liabilities + total_equity, 2),
         }
 
-    roots = []
-    for a in accounts:
-        node = by_id[a["id"]]
-        pid = a.get("parent_account_id")
-        if pid and pid in by_id:
-            by_id[pid]["children"].append(node)
-        else:
-            roots.append(node)
-
-    def compute_subtotal(node):
-        subtotal = node["balance"]
-        for child in node.get("children", []):
-            subtotal += compute_subtotal(child)
-        node["subtotal"] = round(subtotal, 2)
-        return subtotal
-
-    for r in roots:
-        compute_subtotal(r)
-
-    # Group by account_type for the report
-    assets = [r for r in roots if r["account_type"] == "asset"]
-    liabilities = [r for r in roots if r["account_type"] == "liability"]
-    equity = [r for r in roots if r["account_type"] == "equity"]
-
-    total_assets = sum(r.get("subtotal", 0) for r in assets)
-    total_liabilities = sum(r.get("subtotal", 0) for r in liabilities)
-    total_equity = sum(r.get("subtotal", 0) for r in equity)
-
-    return {
-        "ok": True,
-        "date": date.today().isoformat(),
-        "assets": assets,
-        "liabilities": liabilities,
-        "equity": equity,
-        "total_assets": round(total_assets, 2),
-        "total_liabilities": round(total_liabilities, 2),
-        "total_equity": round(total_equity, 2),
-        "total_liabilities_and_equity": round(total_liabilities + total_equity, 2),
-    }
+    except Exception as e:
+        logger.error(f"[balance-sheet-tree] Unexpected error: {e}")
+        # Return empty but valid structure so the frontend always renders
+        return {
+            "ok": False,
+            "error": str(e),
+            "date": date.today().isoformat(),
+            "assets": [], "liabilities": [], "equity": [],
+            "total_assets": 0, "total_liabilities": 0, "total_equity": 0,
+            "total_liabilities_and_equity": 0,
+        }
 
 
 @router.get("/reports/profit-loss-tree")
@@ -1368,101 +1393,127 @@ async def get_profit_loss_tree(
     ed = end_date or now.isoformat()
 
     try:
-        accounts = sb.table("capital_accounts") \
-            .select("*") \
-            .eq("is_active", True) \
-            .eq("report_section", "profit_loss") \
-            .order("display_order") \
-            .order("code") \
-            .execute().data or []
-    except Exception:
-        accounts = sb.table("capital_accounts") \
-            .select("*") \
-            .eq("is_active", True) \
-            .in_("account_type", ["income", "expense", "cogs"]) \
-            .order("code") \
-            .execute().data or []
+        # Try multiple query strategies — columns may not exist yet
+        accounts = []
+        for query_fn in [
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .eq("report_section", "profit_loss").order("display_order").order("code").execute(),
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .eq("report_section", "profit_loss").order("code").execute(),
+            lambda: sb.table("capital_accounts").select("*").eq("is_active", True)
+                      .in_("account_type", ["income", "expense", "cogs"]).order("code").execute(),
+        ]:
+            try:
+                result = query_fn()
+                accounts = result.data or []
+                if accounts:
+                    break
+            except Exception as qe:
+                logger.warning(f"[profit-loss-tree] Query attempt failed: {qe}")
+                continue
 
-    # Compute balances from transactions in period
-    balances = {}
-    try:
-        txns = sb.table("capital_transactions") \
-            .select("account_id, amount, is_income") \
-            .gte("transaction_date", sd) \
-            .lte("transaction_date", ed) \
-            .neq("status", "voided") \
-            .execute().data or []
-        for t in txns:
-            aid = t.get("account_id")
-            if aid:
-                if aid not in balances:
-                    balances[aid] = 0
-                balances[aid] += float(t["amount"])
-    except Exception as e:
-        logger.warning(f"[profit-loss-tree] Could not compute balances: {e}")
+        # If still empty, get ALL accounts and filter locally
+        if not accounts:
+            try:
+                all_accts = sb.table("capital_accounts").select("*").eq("is_active", True).order("code").execute().data or []
+                accounts = [a for a in all_accts if a.get("account_type") in ("income", "expense", "cogs")]
+            except Exception as e2:
+                logger.error(f"[profit-loss-tree] Final fallback failed: {e2}")
+                accounts = []
 
-    # Build tree
-    by_id = {}
-    for a in accounts:
-        by_id[a["id"]] = {
-            "id": a["id"], "code": a["code"], "name": a["name"],
-            "account_type": a["account_type"], "category": a.get("category", "general"),
-            "is_header": a.get("is_header", False),
-            "balance": round(balances.get(a["id"], 0), 2),
-            "children": [],
+        # Compute balances from transactions in period
+        balances = {}
+        try:
+            txns = sb.table("capital_transactions") \
+                .select("account_id, amount, is_income") \
+                .gte("transaction_date", sd) \
+                .lte("transaction_date", ed) \
+                .neq("status", "voided") \
+                .execute().data or []
+            for t in txns:
+                aid = t.get("account_id")
+                if aid:
+                    if aid not in balances:
+                        balances[aid] = 0
+                    balances[aid] += float(t["amount"])
+        except Exception as e:
+            logger.warning(f"[profit-loss-tree] Could not compute balances: {e}")
+
+        # Build tree
+        by_id = {}
+        for a in accounts:
+            by_id[a["id"]] = {
+                "id": a["id"], "code": a["code"], "name": a["name"],
+                "account_type": a["account_type"], "category": a.get("category", "general"),
+                "is_header": a.get("is_header", False),
+                "balance": round(balances.get(a["id"], 0), 2),
+                "children": [],
+            }
+
+        roots = []
+        for a in accounts:
+            node = by_id[a["id"]]
+            pid = a.get("parent_account_id")
+            if pid and pid in by_id:
+                by_id[pid]["children"].append(node)
+            else:
+                roots.append(node)
+
+        def compute_subtotal(node):
+            subtotal = node["balance"]
+            for child in node.get("children", []):
+                subtotal += compute_subtotal(child)
+            node["subtotal"] = round(subtotal, 2)
+            return subtotal
+
+        for r in roots:
+            compute_subtotal(r)
+
+        # Separate income vs expense
+        income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") != "other"]
+        other_income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") == "other"]
+        expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") != "other"]
+        other_expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") == "other"]
+
+        total_income = sum(r.get("subtotal", 0) for r in income_roots)
+        total_other_income = sum(r.get("subtotal", 0) for r in other_income_roots)
+        total_expenses = sum(r.get("subtotal", 0) for r in expense_roots)
+        total_other_expenses = sum(r.get("subtotal", 0) for r in other_expense_roots)
+
+        gross_profit = total_income
+        net_operating_income = gross_profit - total_expenses
+        net_other_income = total_other_income - total_other_expenses
+        net_income = net_operating_income + net_other_income
+
+        return {
+            "ok": True,
+            "period": {"start": sd, "end": ed},
+            "income": income_roots,
+            "expenses": expense_roots,
+            "other_income": other_income_roots,
+            "other_expenses": other_expense_roots,
+            "total_income": round(total_income, 2),
+            "gross_profit": round(gross_profit, 2),
+            "total_expenses": round(total_expenses, 2),
+            "net_operating_income": round(net_operating_income, 2),
+            "total_other_income": round(total_other_income, 2),
+            "total_other_expenses": round(total_other_expenses, 2),
+            "net_other_income": round(net_other_income, 2),
+            "net_income": round(net_income, 2),
         }
 
-    roots = []
-    for a in accounts:
-        node = by_id[a["id"]]
-        pid = a.get("parent_account_id")
-        if pid and pid in by_id:
-            by_id[pid]["children"].append(node)
-        else:
-            roots.append(node)
-
-    def compute_subtotal(node):
-        subtotal = node["balance"]
-        for child in node.get("children", []):
-            subtotal += compute_subtotal(child)
-        node["subtotal"] = round(subtotal, 2)
-        return subtotal
-
-    for r in roots:
-        compute_subtotal(r)
-
-    # Separate income vs expense
-    income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") != "other"]
-    other_income_roots = [r for r in roots if r["account_type"] == "income" and r.get("category") == "other"]
-    expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") != "other"]
-    other_expense_roots = [r for r in roots if r["account_type"] in ("expense", "cogs") and r.get("category") == "other"]
-
-    total_income = sum(r.get("subtotal", 0) for r in income_roots)
-    total_other_income = sum(r.get("subtotal", 0) for r in other_income_roots)
-    total_expenses = sum(r.get("subtotal", 0) for r in expense_roots)
-    total_other_expenses = sum(r.get("subtotal", 0) for r in other_expense_roots)
-
-    gross_profit = total_income
-    net_operating_income = gross_profit - total_expenses
-    net_other_income = total_other_income - total_other_expenses
-    net_income = net_operating_income + net_other_income
-
-    return {
-        "ok": True,
-        "period": {"start": sd, "end": ed},
-        "income": income_roots,
-        "expenses": expense_roots,
-        "other_income": other_income_roots,
-        "other_expenses": other_expense_roots,
-        "total_income": round(total_income, 2),
-        "gross_profit": round(gross_profit, 2),
-        "total_expenses": round(total_expenses, 2),
-        "net_operating_income": round(net_operating_income, 2),
-        "total_other_income": round(total_other_income, 2),
-        "total_other_expenses": round(total_other_expenses, 2),
-        "net_other_income": round(net_other_income, 2),
-        "net_income": round(net_income, 2),
-    }
+    except Exception as e:
+        logger.error(f"[profit-loss-tree] Unexpected error: {e}")
+        # Return empty but valid structure so the frontend always renders
+        return {
+            "ok": False,
+            "error": str(e),
+            "period": {"start": sd, "end": ed},
+            "income": [], "expenses": [], "other_income": [], "other_expenses": [],
+            "total_income": 0, "gross_profit": 0, "total_expenses": 0,
+            "net_operating_income": 0, "total_other_income": 0,
+            "total_other_expenses": 0, "net_other_income": 0, "net_income": 0,
+        }
 
 
 # ============================================================================

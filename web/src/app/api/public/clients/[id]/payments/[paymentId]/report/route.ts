@@ -21,11 +21,19 @@ export async function POST(
     )
 
     const data = await res.json()
+
+    if (!res.ok && !('ok' in data)) {
+      return NextResponse.json(
+        { ok: false, error: data.detail || 'Error del servidor' },
+        { status: res.status }
+      )
+    }
+
     return NextResponse.json(data, { status: res.status })
   } catch (error) {
     console.error('Error proxying payment report:', error)
     return NextResponse.json(
-      { ok: false, error: 'Error de conexión con el servidor' },
+      { ok: false, error: 'No se pudo conectar con el servidor' },
       { status: 500 }
     )
   }

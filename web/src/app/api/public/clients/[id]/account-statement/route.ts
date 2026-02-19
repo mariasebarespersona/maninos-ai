@@ -13,10 +13,19 @@ export async function GET(
     })
     
     const data = await res.json()
+
+    // If backend returned a FastAPI error (no 'ok' field), normalize it
+    if (!res.ok && !('ok' in data)) {
+      return NextResponse.json(
+        { ok: false, error: data.detail || 'Error del servidor' },
+        { status: res.status }
+      )
+    }
+
     return NextResponse.json(data, { status: res.status })
   } catch (error) {
-    console.error('Error proxying to API:', error)
-    return NextResponse.json({ ok: false, error: 'API connection error' }, { status: 500 })
+    console.error('Error proxying account-statement to API:', error)
+    return NextResponse.json({ ok: false, error: 'No se pudo conectar con el servidor' }, { status: 500 })
   }
 }
 

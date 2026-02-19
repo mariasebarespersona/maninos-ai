@@ -17,6 +17,32 @@ router = APIRouter(prefix="/public/clients", tags=["Public - Clients"])
 # KYC: Manual verification — client uploads ID photos + selfie, Capital reviews
 
 
+def _safe_parse_date(value) -> Optional[date]:
+    """
+    Safely parse a date value from Supabase (could be DATE 'YYYY-MM-DD',
+    TIMESTAMPTZ '2026-02-15T00:00:00+00:00', or None).
+    Returns a date object or None.
+    """
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    # Try date-only first
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    # Last resort: take first 10 chars
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except Exception:
+        logger.warning(f"Could not parse date: {value}")
+        return None
+
+
 @router.get("/lookup")
 async def lookup_client(email: str = Query(..., description="Client email")):
     """
@@ -95,12 +121,51 @@ async def get_client_rto_contract(client_id: str, sale_id: str):
         if not sale_result.data:
             raise HTTPException(status_code=404, detail="Venta no encontrada")
         
-        sale = type('Sale', (), {'data': sale_result.data[0]})()
+        sale_data = sale_result.data[0]
         
-        if sale.data.get("sale_type") != "rto":
+        if sale_data.get("sale_type") != "rto":
             raise HTTPException(status_code=400, detail="Esta compra no es Rent-to-Own")
         
-        contract_id = sale.data.get("rto_contract_id")
+        contract_id = sale_data.get("rto_contract_id")
+        
+        # ── FALLBACK: if rto_contract_id is NULL on the sale, try to find
+        # the contract through rto_contracts.sale_id (self-healing) ──
+        if not contract_id:
+            logger.warning(f"[RTO] sale {sale_id} has no rto_contract_id — trying fallback via rto_contracts.sale_id")
+            fallback = sb.table("rto_contracts") \
+                .select("id") \
+                .eq("sale_id", sale_id) \
+                .execute()
+            if fallback.data:
+                contract_id = fallback.data[0]["id"]
+                # Self-heal: update the sale so this doesn't happen again
+                try:
+                    sb.table("sales").update({
+                        "rto_contract_id": contract_id,
+                    }).eq("id", sale_id).execute()
+                    logger.info(f"[RTO] Self-healed: sale {sale_id} now linked to contract {contract_id}")
+                except Exception as heal_err:
+                    logger.warning(f"[RTO] Could not self-heal sale {sale_id}: {heal_err}")
+        
+        # ── FALLBACK 2: try to find by property_id + client_id ──
+        if not contract_id:
+            property_id = sale_data.get("property_id")
+            if property_id:
+                fallback2 = sb.table("rto_contracts") \
+                    .select("id") \
+                    .eq("property_id", property_id) \
+                    .eq("client_id", client_id) \
+                    .execute()
+                if fallback2.data:
+                    contract_id = fallback2.data[0]["id"]
+                    try:
+                        sb.table("sales").update({
+                            "rto_contract_id": contract_id,
+                        }).eq("id", sale_id).execute()
+                        logger.info(f"[RTO] Self-healed (fallback2): sale {sale_id} → contract {contract_id}")
+                    except Exception as heal_err:
+                        logger.warning(f"[RTO] Could not self-heal sale {sale_id}: {heal_err}")
+        
         if not contract_id:
             return {
                 "ok": True,
@@ -393,7 +458,7 @@ async def get_client_payments(client_id: str):
                 # Client said they paid — treat as upcoming (awaiting confirmation)
                 upcoming_payments.append(enriched)
             elif p["status"] in ("scheduled", "pending"):
-                due = datetime.strptime(p["due_date"], "%Y-%m-%d").date() if p.get("due_date") else None
+                due = _safe_parse_date(p.get("due_date"))
                 if due and due < today:
                     overdue_payments.append(enriched)
                 else:
@@ -420,9 +485,9 @@ async def get_client_payments(client_id: str):
             next_pmt = upcoming_sorted[0]
             due_str = next_pmt.get("due_date", "")
             if due_str:
-                due_date = datetime.strptime(due_str, "%Y-%m-%d").date()
-                days_until = (due_date - today).days
-                if 0 <= days_until <= 7:
+                due_date = _safe_parse_date(due_str)
+                days_until = (due_date - today).days if due_date else None
+                if days_until is not None and 0 <= days_until <= 7:
                     alerts.append({
                         "type": "upcoming",
                         "severity": "warning",
@@ -527,22 +592,27 @@ async def get_client_account_statement(client_id: str):
                 .execute()
 
             payments = pmt_res.data or []
-            today_str = date.today().isoformat()
+            today = date.today()
             paid_pmts = [p for p in payments if p["status"] == "paid"]
-            overdue_pmts = [p for p in payments if p["status"] in ("late", "scheduled", "pending") and p.get("due_date") and str(p["due_date"])[:10] < today_str]
+            overdue_pmts = []
+            for p in payments:
+                if p["status"] in ("late", "scheduled", "pending"):
+                    due_d = _safe_parse_date(p.get("due_date"))
+                    if due_d and due_d < today:
+                        overdue_pmts.append(p)
 
-            total_expected = sum(float(p.get("amount", 0)) for p in payments)
+            total_expected = sum(float(p.get("amount", 0) or 0) for p in payments)
             total_paid = sum(float(p.get("paid_amount", 0) or 0) for p in paid_pmts)
             total_late_fees = sum(float(p.get("late_fee_amount", 0) or 0) for p in payments)
-            total_overdue = sum(float(p.get("amount", 0)) - float(p.get("paid_amount", 0) or 0) for p in overdue_pmts)
+            total_overdue = sum(float(p.get("amount", 0) or 0) - float(p.get("paid_amount", 0) or 0) for p in overdue_pmts)
 
-            # Count on-time vs late
+            # Count on-time vs late (robust date parsing)
             for p in paid_pmts:
-                if p.get("paid_date") and p.get("due_date"):
-                    grace = c.get("grace_period_days", 5)
-                    paid_d = datetime.strptime(p["paid_date"], "%Y-%m-%d").date()
-                    due_d = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
-                    if paid_d <= due_d + timedelta(days=grace):
+                paid_d = _safe_parse_date(p.get("paid_date"))
+                due_d = _safe_parse_date(p.get("due_date"))
+                if paid_d and due_d:
+                    grace = c.get("grace_period_days") or 5
+                    if paid_d <= due_d + timedelta(days=int(grace)):
                         on_time_payments += 1
                     else:
                         late_payments += 1

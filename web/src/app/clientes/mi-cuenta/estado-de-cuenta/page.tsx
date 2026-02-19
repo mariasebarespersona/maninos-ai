@@ -91,7 +91,15 @@ export default function AccountStatementPage() {
       if (data.ok) {
         setStatement(data)
       } else {
-        setFetchError(data.error || 'No se pudo cargar el estado de cuenta')
+        // FastAPI HTTPException returns {detail: "..."}, our proxy returns {ok: false, error: "..."}
+        const errMsg = data.error || data.detail || 'No se pudo cargar el estado de cuenta'
+        console.error('Account statement error:', errMsg, 'status:', res.status)
+        // If no contracts exist yet, show empty state instead of error
+        if (res.status === 404 || errMsg.includes('no encontrado')) {
+          setStatement(null) // triggers empty state
+        } else {
+          setFetchError(errMsg)
+        }
       }
     } catch (err) {
       console.error('Error fetching account statement:', err)
