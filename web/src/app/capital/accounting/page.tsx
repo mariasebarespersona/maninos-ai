@@ -1548,7 +1548,7 @@ function EstadoCuentaCapitalSection({ bankAccounts, onRefresh }: { bankAccounts:
       const res = await fetch('/api/capital/accounting/accounts/tree')
       if (res.ok) {
         const data = await res.json()
-        setAllAccounts((data.flat || []).filter((a: any) => !a.is_header))
+        setAllAccounts(data.flat || [])
       }
     } catch (e) { /* ignore */ }
   }, [])
@@ -2029,10 +2029,10 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
                 <button
                   key={a.id}
                   onClick={() => handleSelectAccount(a)}
-                  className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2"
+                  className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2 ${a.is_header ? 'font-semibold bg-stone-50' : ''}`}
                 >
                   <span className="font-mono text-[10px] text-stone-400 w-14 shrink-0">{a.code}</span>
-                  <span style={{ color: 'var(--charcoal)' }}>{a.name}</span>
+                  <span style={{ color: 'var(--charcoal)' }}>{a.name}{a.is_header ? ' (grupo)' : ''}</span>
                   <span className="ml-auto text-[10px] text-stone-400">{a.account_type}</span>
                 </button>
               ))}
@@ -2117,6 +2117,7 @@ interface CapitalAccountRef {
   name: string
   account_type: string
   category?: string
+  is_header?: boolean
 }
 
 function BudgetTab() {
@@ -2148,13 +2149,13 @@ function BudgetTab() {
     finally { setLoading(false) }
   }, [year])
 
+  // Fetch from accounts/tree — the SAME source used by P&L and Balance Sheet
   const fetchAccounts = useCallback(async () => {
     try {
-      const res = await fetch('/api/capital/accounting/accounts')
+      const res = await fetch('/api/capital/accounting/accounts/tree')
       if (res.ok) {
         const d = await res.json()
-        // Filter out header accounts — budgets should only be on detail (leaf) accounts
-        setAccounts((d.accounts || []).filter((a: any) => !a.is_header))
+        setAccounts(d.flat || [])
       }
     } catch (e) { /* ignore */ }
   }, [])
@@ -2252,14 +2253,39 @@ function BudgetTab() {
               <option value="">Seleccionar cuenta...</option>
               {accounts.length > 0 && (
                 <>
-                  <optgroup label="Gastos">
+                  <optgroup label="📉 Gastos (Profit & Loss)">
                     {accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs').map(a => (
-                      <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`}
+                      </option>
                     ))}
                   </optgroup>
-                  <optgroup label="Ingresos">
+                  <optgroup label="📈 Ingresos (Profit & Loss)">
                     {accounts.filter(a => a.account_type === 'income').map(a => (
-                      <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="🏦 Activos (Balance Sheet)">
+                    {accounts.filter(a => a.account_type === 'asset').map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="📋 Pasivos (Balance Sheet)">
+                    {accounts.filter(a => a.account_type === 'liability').map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="💼 Patrimonio (Balance Sheet)">
+                    {accounts.filter(a => a.account_type === 'equity').map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`}
+                      </option>
                     ))}
                   </optgroup>
                 </>
@@ -2403,11 +2429,11 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
   const [saving, setSaving] = useState(false)
   const [accounts, setAccounts] = useState<{ id: string; code: string; name: string; account_type: string; is_header: boolean }[]>([])
 
-  // Fetch chart of accounts on mount
+  // Fetch from accounts/tree — the SAME source used by P&L and Balance Sheet
   useEffect(() => {
-    fetch('/api/capital/accounting/accounts')
+    fetch('/api/capital/accounting/accounts/tree')
       .then(r => r.json())
-      .then(d => setAccounts((d.accounts || []).filter((a: any) => !a.is_header)))
+      .then(d => setAccounts(d.flat || []))
       .catch(() => {})
   }, [])
 
@@ -2453,12 +2479,16 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
     return EXPENSE_TYPES.includes(k) || k === 'transfer' || k === 'adjustment'
   })
 
-  // Group accounts by type for the selector
+  // Group accounts by type for the selector — same grouping used in P&L / Balance Sheet
   const incomeAccounts = accounts.filter(a => a.account_type === 'income')
   const expenseAccounts = accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs')
   const assetAccounts = accounts.filter(a => a.account_type === 'asset')
   const liabilityAccounts = accounts.filter(a => a.account_type === 'liability')
   const equityAccounts = accounts.filter(a => a.account_type === 'equity')
+
+  // Render account option label — same format everywhere
+  const acctLabel = (a: { code: string; name: string; is_header: boolean }) =>
+    a.is_header ? `${a.code} — ${a.name} (grupo)` : `  ${a.code} — ${a.name}`
 
   const handleSubmit = async () => {
     if (!form.amount || !form.description) { toast.warning('Monto y descripción son requeridos'); return }
@@ -2530,43 +2560,43 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
               {form.is_income ? (
                 <>
                   {incomeAccounts.length > 0 && (
-                    <optgroup label="📈 Ingresos">
-                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    <optgroup label="📈 Ingresos (Profit & Loss)">
+                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                     </optgroup>
                   )}
                   {expenseAccounts.length > 0 && (
-                    <optgroup label="📉 Gastos">
-                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    <optgroup label="📉 Gastos (Profit & Loss)">
+                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                     </optgroup>
                   )}
                 </>
               ) : (
                 <>
                   {expenseAccounts.length > 0 && (
-                    <optgroup label="📉 Gastos">
-                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    <optgroup label="📉 Gastos (Profit & Loss)">
+                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                     </optgroup>
                   )}
                   {incomeAccounts.length > 0 && (
-                    <optgroup label="📈 Ingresos">
-                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    <optgroup label="📈 Ingresos (Profit & Loss)">
+                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                     </optgroup>
                   )}
                 </>
               )}
               {assetAccounts.length > 0 && (
-                <optgroup label="🏦 Activos">
-                  {assetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                <optgroup label="🏦 Activos (Balance Sheet)">
+                  {assetAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                 </optgroup>
               )}
               {liabilityAccounts.length > 0 && (
-                <optgroup label="📋 Pasivos">
-                  {liabilityAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                <optgroup label="📋 Pasivos (Balance Sheet)">
+                  {liabilityAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                 </optgroup>
               )}
               {equityAccounts.length > 0 && (
-                <optgroup label="💼 Patrimonio">
-                  {equityAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                <optgroup label="💼 Patrimonio (Balance Sheet)">
+                  {equityAccounts.map(a => <option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
                 </optgroup>
               )}
             </select>
