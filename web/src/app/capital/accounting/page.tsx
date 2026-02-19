@@ -2386,9 +2386,10 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
   const toast = useToast()
   const [form, setForm] = useState({
     transaction_date: new Date().toISOString().split('T')[0],
-    transaction_type: 'other_income',
+    transaction_type: 'operating_expense',
     amount: '',
-    is_income: true,
+    is_income: false,
+    account_id: '',
     description: '',
     bank_account_id: '',
     payment_method: '',
@@ -2396,18 +2397,83 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
     notes: '',
   })
   const [saving, setSaving] = useState(false)
+  const [accounts, setAccounts] = useState<{ id: string; code: string; name: string; account_type: string; is_header: boolean }[]>([])
+
+  // Fetch chart of accounts on mount
+  useEffect(() => {
+    fetch('/api/capital/accounting/accounts')
+      .then(r => r.json())
+      .then(d => setAccounts((d.accounts || []).filter((a: any) => !a.is_header)))
+      .catch(() => {})
+  }, [])
+
+  // Maps: which transaction types are income vs expense
+  const INCOME_TYPES = ['rto_payment', 'down_payment', 'late_fee', 'investor_deposit', 'other_income']
+  const EXPENSE_TYPES = ['acquisition', 'investor_return', 'commission', 'insurance', 'tax', 'operating_expense', 'other_expense']
+
+  // When account changes, auto-set is_income and suggest a transaction_type
+  const handleAccountChange = (accountId: string) => {
+    const acct = accounts.find(a => a.id === accountId)
+    if (acct) {
+      const isIncome = acct.account_type === 'income'
+      const isExpense = acct.account_type === 'expense' || acct.account_type === 'cogs'
+      setForm(f => ({
+        ...f,
+        account_id: accountId,
+        is_income: isIncome ? true : isExpense ? false : f.is_income,
+        transaction_type: isIncome
+          ? (INCOME_TYPES.includes(f.transaction_type) ? f.transaction_type : 'other_income')
+          : isExpense
+            ? (EXPENSE_TYPES.includes(f.transaction_type) ? f.transaction_type : 'operating_expense')
+            : f.transaction_type,
+      }))
+    } else {
+      setForm(f => ({ ...f, account_id: accountId }))
+    }
+  }
+
+  // When flow (is_income) changes, auto-adjust transaction_type if it conflicts
+  const handleFlowChange = (isIncome: boolean) => {
+    setForm(f => ({
+      ...f,
+      is_income: isIncome,
+      transaction_type: isIncome
+        ? (INCOME_TYPES.includes(f.transaction_type) ? f.transaction_type : 'other_income')
+        : (EXPENSE_TYPES.includes(f.transaction_type) ? f.transaction_type : 'operating_expense'),
+    }))
+  }
+
+  // Filter type options based on current flow
+  const filteredTypes = Object.entries(TYPE_LABELS).filter(([k]) => {
+    if (form.is_income) return INCOME_TYPES.includes(k) || k === 'transfer' || k === 'adjustment'
+    return EXPENSE_TYPES.includes(k) || k === 'transfer' || k === 'adjustment'
+  })
+
+  // Group accounts by type for the selector
+  const incomeAccounts = accounts.filter(a => a.account_type === 'income')
+  const expenseAccounts = accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs')
+  const assetAccounts = accounts.filter(a => a.account_type === 'asset')
+  const liabilityAccounts = accounts.filter(a => a.account_type === 'liability')
+  const equityAccounts = accounts.filter(a => a.account_type === 'equity')
 
   const handleSubmit = async () => {
     if (!form.amount || !form.description) { toast.warning('Monto y descripción son requeridos'); return }
+    if (!form.account_id) { toast.warning('Selecciona una cuenta contable para clasificar la transacción'); return }
     setSaving(true)
     try {
       const res = await fetch('/api/capital/accounting/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, amount: parseFloat(form.amount), bank_account_id: form.bank_account_id || undefined }),
+        body: JSON.stringify({
+          ...form,
+          amount: parseFloat(form.amount),
+          bank_account_id: form.bank_account_id || undefined,
+          account_id: form.account_id || undefined,
+        }),
       })
       if (res.ok) {
-        toast.success('Transacción registrada')
+        const selectedAcct = accounts.find(a => a.id === form.account_id)
+        toast.success(`Transacción registrada → ${selectedAcct?.code} ${selectedAcct?.name || ''}`)
         onCreated()
       } else {
         toast.error('Error al registrar')
@@ -2424,7 +2490,88 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
           <button onClick={onClose}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
         </div>
 
+        {/* Info banner */}
+        <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: 'var(--ivory)', color: 'var(--slate)' }}>
+          💡 Selecciona una <strong>cuenta contable</strong> para que la transacción se refleje en los estados financieros y el presupuesto.
+        </div>
+
         <div className="space-y-3">
+          {/* Row 1: Flow toggle (prominent) */}
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>¿Es ingreso o gasto?</label>
+            <div className="flex rounded-lg border overflow-hidden mt-1" style={{ borderColor: 'var(--stone)' }}>
+              <button onClick={() => handleFlowChange(true)}
+                className="flex-1 py-2.5 text-sm font-medium transition-all"
+                style={form.is_income ? { backgroundColor: '#059669', color: 'white' } : { color: 'var(--charcoal)' }}>
+                ↗ Ingreso
+              </button>
+              <button onClick={() => handleFlowChange(false)}
+                className="flex-1 py-2.5 text-sm font-medium transition-all"
+                style={!form.is_income ? { backgroundColor: '#dc2626', color: 'white' } : { color: 'var(--charcoal)' }}>
+                ↘ Gasto
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: Cuenta Contable (THE KEY FIELD) */}
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>
+              Cuenta Contable <span className="text-red-500">*</span>
+            </label>
+            <select value={form.account_id} onChange={e => handleAccountChange(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border mt-1"
+              style={{ borderColor: form.account_id ? 'var(--gold-600)' : 'var(--stone)', fontWeight: form.account_id ? 500 : 400 }}>
+              <option value="">Seleccionar cuenta...</option>
+              {/* Show expense accounts first if expense, income first if income */}
+              {form.is_income ? (
+                <>
+                  {incomeAccounts.length > 0 && (
+                    <optgroup label="📈 Ingresos">
+                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    </optgroup>
+                  )}
+                  {expenseAccounts.length > 0 && (
+                    <optgroup label="📉 Gastos">
+                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    </optgroup>
+                  )}
+                </>
+              ) : (
+                <>
+                  {expenseAccounts.length > 0 && (
+                    <optgroup label="📉 Gastos">
+                      {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    </optgroup>
+                  )}
+                  {incomeAccounts.length > 0 && (
+                    <optgroup label="📈 Ingresos">
+                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                    </optgroup>
+                  )}
+                </>
+              )}
+              {assetAccounts.length > 0 && (
+                <optgroup label="🏦 Activos">
+                  {assetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                </optgroup>
+              )}
+              {liabilityAccounts.length > 0 && (
+                <optgroup label="📋 Pasivos">
+                  {liabilityAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                </optgroup>
+              )}
+              {equityAccounts.length > 0 && (
+                <optgroup label="💼 Patrimonio">
+                  {equityAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                </optgroup>
+              )}
+            </select>
+            {!form.account_id && (
+              <p className="text-[10px] mt-1 text-amber-600">⚠ Sin cuenta contable, la transacción no aparecerá en estados financieros ni presupuesto.</p>
+            )}
+          </div>
+
+          {/* Row 3: Date + Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Fecha</label>
@@ -2432,43 +2579,29 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
                 className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} />
             </div>
             <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Tipo</label>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Categoría</label>
               <select value={form.transaction_type} onChange={e => setForm({ ...form, transaction_type: e.target.value })}
                 className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {filteredTypes.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Monto ($)</label>
-              <input type="number" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Flujo</label>
-              <div className="flex rounded-lg border overflow-hidden mt-1" style={{ borderColor: 'var(--stone)' }}>
-                <button onClick={() => setForm({ ...form, is_income: true })}
-                  className="flex-1 py-2 text-xs font-medium"
-                  style={form.is_income ? { backgroundColor: '#059669', color: 'white' } : { color: 'var(--charcoal)' }}>
-                  Ingreso
-                </button>
-                <button onClick={() => setForm({ ...form, is_income: false })}
-                  className="flex-1 py-2 text-xs font-medium"
-                  style={!form.is_income ? { backgroundColor: '#dc2626', color: 'white' } : { color: 'var(--charcoal)' }}>
-                  Gasto
-                </button>
-              </div>
-            </div>
+          {/* Row 4: Amount */}
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Monto ($) <span className="text-red-500">*</span></label>
+            <input type="number" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
+              className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" />
           </div>
 
+          {/* Row 5: Description */}
           <div>
-            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Descripción</label>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Descripción <span className="text-red-500">*</span></label>
             <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
               className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="Descripción del movimiento" />
           </div>
 
+          {/* Row 6: Bank Account */}
           <div>
             <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Bancaria</label>
             <select value={form.bank_account_id} onChange={e => setForm({ ...form, bank_account_id: e.target.value })}
@@ -2478,6 +2611,7 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
             </select>
           </div>
 
+          {/* Row 7: Payment + Counterparty */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Método de Pago</label>
@@ -2494,6 +2628,7 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
             </div>
           </div>
 
+          {/* Row 8: Notes */}
           <div>
             <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Notas</label>
             <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
