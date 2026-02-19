@@ -569,7 +569,7 @@ async def get_client_account_statement(client_id: str):
 
         # 3. Get all RTO contracts
         contracts_res = sb.table("rto_contracts") \
-            .select("id, status, purchase_price, down_payment, monthly_rent, term_months, start_date, end_date, interest_rate, late_fee_per_day, grace_period_days, properties(address, city, state)") \
+            .select("id, status, purchase_price, down_payment, monthly_rent, term_months, start_date, end_date, late_fee_per_day, grace_period_days, properties(address, city, state)") \
             .eq("client_id", client_id) \
             .order("start_date", desc=True) \
             .execute()
@@ -628,7 +628,6 @@ async def get_client_account_statement(client_id: str):
                 "down_payment": c.get("down_payment", 0),
                 "monthly_rent": c.get("monthly_rent", 0),
                 "term_months": c.get("term_months", 0),
-                "interest_rate": c.get("interest_rate"),
                 "start_date": c.get("start_date"),
                 "end_date": c.get("end_date"),
                 "total_expected": total_expected,

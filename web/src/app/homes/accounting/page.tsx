@@ -12,6 +12,16 @@ import {
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
   ChevronUp, Sparkles, ImageIcon, Trash2
 } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+
+// ── Saved Statements Types ──
+interface SavedStatement {
+  id: string; portal: string; report_type: string; name: string
+  as_of_date?: string; period_start?: string; period_end?: string
+  total_assets?: number; total_liabilities?: number; total_equity?: number
+  total_income?: number; total_expenses?: number; net_income?: number
+  notes?: string; saved_by?: string; status: string; created_at: string
+}
 
 // ── Types ──
 interface DashboardData {
@@ -745,15 +755,47 @@ function QBComputedLine({ label, amount, bold, thick, highlight }: {
 }
 
 function StatementsTab() {
+  const toast = useToast()
   const [activeReport, setActiveReport] = useState<'income' | 'balance' | 'cashflow'>('income')
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  // Save / Saved reports state
+  const [saving, setSaving] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveNotes, setSaveNotes] = useState('')
+  const [savedReports, setSavedReports] = useState<SavedStatement[]>([])
+  const [loadingSaved, setLoadingSaved] = useState(false)
+  const [viewingSaved, setViewingSaved] = useState<SavedStatement | null>(null)
+  const [viewingSavedData, setViewingSavedData] = useState<any>(null)
+
+  const fmtMoney = (v: number | null | undefined) => {
+    if (v == null) return '$0.00'
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
+  }
+
+  const fetchSavedReports = useCallback(async () => {
+    setLoadingSaved(true)
+    try {
+      const res = await fetch('/api/accounting/reports/saved')
+      if (res.ok) {
+        const data = await res.json()
+        setSavedReports(data.statements || [])
+      }
+    } catch (e) { console.error(e) }
+    finally { setLoadingSaved(false) }
+  }, [])
+
+  useEffect(() => { fetchSavedReports() }, [fetchSavedReports])
+
   useEffect(() => {
     (async () => {
       setLoading(true)
       setReport(null)
+      setViewingSaved(null)
+      setViewingSavedData(null)
       try {
         const endpoints: Record<string, string> = {
           income: '/api/accounting/reports/income-statement',
@@ -772,14 +814,15 @@ function StatementsTab() {
   }
 
   const collapseAll = () => {
-    if (!report?.sections) return
+    const data = viewingSavedData || report
+    if (!data?.sections) return
     const allIds: Record<string, boolean> = {}
     const collectIds = (nodes: QBTreeNode[]) => {
       for (const n of nodes) {
         if (n.children?.length) { allIds[n.id] = false; collectIds(n.children) }
       }
     }
-    const sec = report.sections
+    const sec = data.sections
     if (sec.income) collectIds(sec.income)
     if (sec.cost_of_goods_sold) collectIds(sec.cost_of_goods_sold)
     if (sec.expenses) collectIds(sec.expenses)
@@ -792,14 +835,72 @@ function StatementsTab() {
 
   const expandAll = () => setExpanded({})
 
+  const handleSave = async () => {
+    if (!saveName.trim()) { toast.warning('Ingresa un nombre para el reporte'); return }
+    setSaving(true)
+    try {
+      const reportType = activeReport === 'income' ? 'profit_loss' : 'balance_sheet'
+      const res = await fetch('/api/accounting/reports/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          report_type: reportType,
+          name: saveName.trim(),
+          notes: saveNotes.trim() || undefined,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message || 'Reporte guardado')
+        setShowSaveModal(false)
+        setSaveName('')
+        setSaveNotes('')
+        fetchSavedReports()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al guardar')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  const handleViewSaved = async (stmt: SavedStatement) => {
+    try {
+      const res = await fetch(`/api/accounting/reports/saved/${stmt.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setViewingSaved(stmt)
+        setViewingSavedData(data.statement?.report_data)
+        setExpanded({})
+      }
+    } catch (e) { toast.error('Error al cargar reporte guardado') }
+  }
+
+  const handleDeleteSaved = async (id: string) => {
+    try {
+      const res = await fetch(`/api/accounting/reports/saved/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Reporte archivado')
+        fetchSavedReports()
+        if (viewingSaved?.id === id) { setViewingSaved(null); setViewingSavedData(null) }
+      }
+    } catch (e) { toast.error('Error al archivar reporte') }
+  }
+
+  const isViewingSaved = !!viewingSaved
+  const renderReport = isViewingSaved && viewingSavedData ? viewingSavedData : report
+  const effectiveActiveReport = isViewingSaved
+    ? (viewingSaved!.report_type === 'balance_sheet' ? 'balance' : 'income')
+    : activeReport
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-lg border overflow-hidden w-fit" style={{ borderColor: 'var(--stone)' }}>
           {([['income', 'Profit & Loss'], ['balance', 'Balance Sheet'], ['cashflow', 'Cash Flow']] as const).map(([key, label]) => (
-            <button key={key} onClick={() => { setActiveReport(key as any); setExpanded({}) }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${activeReport === key ? 'text-white' : ''}`}
-              style={activeReport === key ? { backgroundColor: 'var(--navy-800)', color: 'white' } : { color: 'var(--charcoal)' }}>
+            <button key={key} onClick={() => { setActiveReport(key as any); setExpanded({}); setViewingSaved(null); setViewingSavedData(null) }}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${activeReport === key && !isViewingSaved ? 'text-white' : ''}`}
+              style={activeReport === key && !isViewingSaved ? { backgroundColor: 'var(--navy-800)', color: 'white' } : { color: 'var(--charcoal)' }}>
               {label}
             </button>
           ))}
@@ -811,7 +912,7 @@ function StatementsTab() {
           <button onClick={collapseAll} className="px-3 py-1.5 text-xs rounded border hover:bg-stone-50 transition-colors" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
             Colapsar todo
           </button>
-          {activeReport !== 'cashflow' && (
+          {activeReport !== 'cashflow' && !isViewingSaved && (
             <a
               href={activeReport === 'income'
                 ? '/api/accounting/reports/income-statement/export-csv'
@@ -823,19 +924,134 @@ function StatementsTab() {
               <Download className="w-3 h-3" /> Exportar CSV
             </a>
           )}
+          {activeReport !== 'cashflow' && !isViewingSaved && (
+            <button onClick={() => { setSaveName(`${activeReport === 'income' ? 'Profit & Loss' : 'Balance Sheet'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
+              style={{ backgroundColor: 'var(--navy-800)' }}>
+              <Download className="w-3 h-3" /> Guardar Reporte
+            </button>
+          )}
         </div>
       </div>
 
-      {loading ? (
+      {/* Viewing saved banner */}
+      {isViewingSaved && viewingSaved && (
+        <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'rgba(30,58,138,0.06)', border: '1px solid rgba(30,58,138,0.3)' }}>
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4" style={{ color: 'var(--navy-800)' }} />
+            <span className="text-sm font-medium" style={{ color: 'var(--navy-800)' }}>
+              Viendo reporte guardado: {viewingSaved.name}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--slate)' }}>
+              ({new Date(viewingSaved.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })})
+            </span>
+          </div>
+          <button onClick={() => { setViewingSaved(null); setViewingSavedData(null) }}
+            className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg transition-colors text-white"
+            style={{ backgroundColor: 'var(--navy-800)' }}>
+            <X className="w-3 h-3" /> Volver al actual
+          </button>
+        </div>
+      )}
+
+      {loading && !isViewingSaved ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-navy-600" /></div>
-      ) : !report ? (
+      ) : !renderReport ? (
         <div className="text-center py-12 card-luxury"><p className="text-sm" style={{ color: 'var(--ash)' }}>No hay datos disponibles</p></div>
-      ) : activeReport === 'income' ? (
-        <QBIncomeStatement data={report} expanded={expanded} toggleExpand={toggleExpand} />
-      ) : activeReport === 'balance' ? (
-        <QBBalanceSheet data={report} expanded={expanded} toggleExpand={toggleExpand} />
+      ) : effectiveActiveReport === 'income' ? (
+        <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
+      ) : effectiveActiveReport === 'balance' ? (
+        <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
       ) : (
-        <CashFlowStatement data={report} />
+        <CashFlowStatement data={renderReport} />
+      )}
+
+      {/* ── SAVED REPORTS ── */}
+      <div className="card-luxury p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-serif text-base font-bold" style={{ color: 'var(--ink)' }}>
+            <History className="w-4 h-4 inline-block mr-2" style={{ color: 'var(--navy-700)' }} />
+            Reportes Guardados
+          </h3>
+        </div>
+        {loadingSaved ? (
+          <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--navy-700)' }} /></div>
+        ) : savedReports.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>
+            No hay reportes guardados. Usa el botón "Guardar Reporte" para crear un snapshot.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {savedReports.map(stmt => (
+              <div key={stmt.id} className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:border-[var(--navy-300)]"
+                style={{ borderColor: viewingSaved?.id === stmt.id ? 'var(--navy-500)' : 'var(--sand)', backgroundColor: viewingSaved?.id === stmt.id ? 'rgba(30,58,138,0.04)' : 'white' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: stmt.report_type === 'balance_sheet' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)', color: stmt.report_type === 'balance_sheet' ? '#3b82f6' : '#10b981' }}>
+                      {stmt.report_type === 'balance_sheet' ? 'Balance' : 'P&L'}
+                    </span>
+                    <span className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{stmt.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
+                    <span>{new Date(stmt.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {stmt.report_type === 'balance_sheet' && stmt.total_assets != null && (
+                      <span>Assets: {fmtMoney(stmt.total_assets)}</span>
+                    )}
+                    {stmt.report_type === 'profit_loss' && stmt.net_income != null && (
+                      <span>Net Income: {fmtMoney(stmt.net_income)}</span>
+                    )}
+                    {stmt.notes && <span className="italic truncate max-w-[200px]">{stmt.notes}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 ml-2">
+                  <button onClick={() => handleViewSaved(stmt)} title="Ver reporte"
+                    className="p-1.5 rounded-lg transition-colors hover:bg-stone-50">
+                    <Eye className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
+                  </button>
+                  <button onClick={() => handleDeleteSaved(stmt.id)} title="Archivar"
+                    className="p-1.5 rounded-lg transition-colors hover:bg-red-50">
+                    <Trash2 className="w-4 h-4" style={{ color: 'var(--danger)' }} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── SAVE MODAL ── */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl mx-4">
+            <h3 className="font-serif text-lg font-bold mb-4" style={{ color: 'var(--ink)' }}>
+              Guardar {activeReport === 'income' ? 'Profit & Loss' : 'Balance Sheet'}
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Nombre del reporte *</label>
+                <input value={saveName} onChange={e => setSaveName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-400"
+                  style={{ borderColor: 'var(--sand)' }} placeholder="Ej: Balance Sheet Febrero 2026" />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Notas (opcional)</label>
+                <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-400"
+                  style={{ borderColor: 'var(--sand)' }} placeholder="Notas adicionales..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>Cancelar</button>
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 text-white"
+                style={{ backgroundColor: 'var(--navy-800)' }}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
