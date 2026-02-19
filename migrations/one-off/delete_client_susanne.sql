@@ -71,13 +71,15 @@ BEGIN
     BEGIN
         UPDATE capital_transactions SET client_id = NULL WHERE client_id = v_client_id;
         RAISE NOTICE 'Nullified capital_transactions';
-    EXCEPTION WHEN undefined_table THEN
-        RAISE NOTICE 'capital_transactions table does not exist, skipping';
+    EXCEPTION 
+        WHEN undefined_table THEN RAISE NOTICE 'capital_transactions table does not exist, skipping';
+        WHEN undefined_column THEN RAISE NOTICE 'capital_transactions.client_id column does not exist, skipping';
     END;
 
-    -- 8. Nullify accounting_transactions
+    -- 8. Nullify accounting_transactions (uses entity_type/entity_id, no client_id column)
     BEGIN
-        UPDATE accounting_transactions SET client_id = NULL WHERE client_id = v_client_id;
+        UPDATE accounting_transactions SET entity_id = NULL 
+        WHERE entity_type = 'client' AND entity_id = v_client_id;
         RAISE NOTICE 'Nullified accounting_transactions';
     EXCEPTION WHEN undefined_table THEN
         RAISE NOTICE 'accounting_transactions table does not exist, skipping';
