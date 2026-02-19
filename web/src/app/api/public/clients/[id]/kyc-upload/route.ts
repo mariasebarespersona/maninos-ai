@@ -9,9 +9,9 @@ const BUCKET = 'kyc-documents'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const clientId = params.id
+  const { id: clientId } = await params
 
   try {
     const formData = await request.formData()
@@ -46,6 +46,25 @@ export async function POST(
 
     // Create Supabase client with service role key for storage access
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // Ensure the bucket exists (auto-create if missing)
+    const { data: buckets } = await supabase.storage.listBuckets()
+    const bucketExists = buckets?.some(b => b.name === BUCKET)
+    if (!bucketExists) {
+      const { error: createError } = await supabase.storage.createBucket(BUCKET, {
+        public: true,
+        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+      })
+      if (createError) {
+        console.error(`Failed to create bucket ${BUCKET}:`, createError)
+        return NextResponse.json(
+          { ok: false, error: `Error configurando almacenamiento: ${createError.message}` },
+          { status: 500 }
+        )
+      }
+      console.log(`Created storage bucket: ${BUCKET}`)
+    }
 
     const timestamp = Date.now()
 
@@ -103,4 +122,3 @@ export async function POST(
     )
   }
 }
-
