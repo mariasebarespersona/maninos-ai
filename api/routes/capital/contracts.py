@@ -17,6 +17,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/contracts", tags=["Capital - Contracts"])
 
 
+def _safe_date(value) -> Optional[date]:
+    """Parse date from Supabase (handles DATE and TIMESTAMPTZ formats)."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except Exception:
+        logger.warning(f"Could not parse date: {value}")
+        return None
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -168,7 +188,7 @@ async def create_contract(data: ContractCreate):
             )
         
         # Calculate end date
-        start = datetime.strptime(data.start_date, "%Y-%m-%d").date()
+        start = _safe_date(data.start_date) or date.today()
         end = start + relativedelta(months=data.term_months)
         
         # Create contract
@@ -238,13 +258,13 @@ async def update_contract(contract_id: str, data: ContractUpdate):
         
         if "start_date" in update and "term_months" not in update:
             # Recalculate end date
-            start = datetime.strptime(update["start_date"], "%Y-%m-%d").date()
+            start = _safe_date(update["start_date"]) or date.today()
             c = sb.table("rto_contracts").select("term_months").eq("id", contract_id).single().execute()
             end = start + relativedelta(months=c.data["term_months"])
             update["end_date"] = end.isoformat()
         elif "term_months" in update:
             c = sb.table("rto_contracts").select("start_date").eq("id", contract_id).single().execute()
-            start = datetime.strptime(c.data["start_date"], "%Y-%m-%d").date()
+            start = _safe_date(c.data["start_date"]) or date.today()
             end = start + relativedelta(months=update["term_months"])
             update["end_date"] = end.isoformat()
         
@@ -292,7 +312,7 @@ async def activate_contract(contract_id: str, data: ContractActivate):
         }).eq("id", contract_id).execute()
         
         # Generate payment schedule
-        start = datetime.strptime(c["start_date"], "%Y-%m-%d").date()
+        start = _safe_date(c["start_date"]) or date.today()
         payments_to_insert = []
         
         for i in range(c["term_months"]):
@@ -350,11 +370,11 @@ async def activate_contract(contract_id: str, data: ContractActivate):
                 monthly_rent=float(c["monthly_rent"]),
                 down_payment=float(c.get("down_payment", 0)),
                 purchase_price=float(c["purchase_price"]),
-                start_date=datetime.strptime(c["start_date"], "%Y-%m-%d"),
-                end_date=datetime.strptime(c["end_date"], "%Y-%m-%d") if c.get("end_date") else None,
+                start_date=_safe_date(c["start_date"]) or date.today(),
+                end_date=_safe_date(c.get("end_date")),
                 payment_due_day=c.get("payment_due_day", 15),
-                late_fee_per_day=float(c.get("late_fee_per_day", 15)),
-                grace_period_days=c.get("grace_period_days", 5),
+                late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
+                grace_period_days=c.get("grace_period_days", 5) or 5,
             )
             
             # Upload to Supabase Storage
@@ -614,11 +634,11 @@ async def download_contract_pdf(contract_id: str):
             monthly_rent=float(c["monthly_rent"]),
             down_payment=float(c.get("down_payment", 0)),
             purchase_price=float(c["purchase_price"]),
-            start_date=datetime.strptime(c["start_date"], "%Y-%m-%d"),
-            end_date=datetime.strptime(c["end_date"], "%Y-%m-%d") if c.get("end_date") else None,
+            start_date=_safe_date(c["start_date"]) or date.today(),
+            end_date=_safe_date(c.get("end_date")),
             payment_due_day=c.get("payment_due_day", 15),
-            late_fee_per_day=float(c.get("late_fee_per_day", 15)),
-            grace_period_days=c.get("grace_period_days", 5),
+            late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
+            grace_period_days=c.get("grace_period_days", 5) or 5,
         )
         
         client_name = (c["clients"].get("name", "contract") if c.get("clients") else "contract").replace(" ", "_")

@@ -15,10 +15,11 @@ ADD COLUMN IF NOT EXISTS report_section TEXT DEFAULT 'balance_sheet'
     CHECK (report_section IN ('balance_sheet', 'profit_loss'));
 
 -- Set report_section based on account_type for any existing rows
+-- NOTE: Cannot use IS NULL because DEFAULT already fills the value on ADD COLUMN
 UPDATE capital_accounts SET report_section = 'balance_sheet'
-WHERE account_type IN ('asset', 'liability', 'equity') AND report_section IS NULL;
+WHERE account_type IN ('asset', 'liability', 'equity');
 UPDATE capital_accounts SET report_section = 'profit_loss'
-WHERE account_type IN ('income', 'expense', 'cogs') AND report_section IS NULL;
+WHERE account_type IN ('income', 'expense', 'cogs');
 
 
 -- ============================================================================

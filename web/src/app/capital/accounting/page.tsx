@@ -736,6 +736,9 @@ function StatementsTab() {
                 {/* Assets */}
                 <div className="mb-4">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Assets</p>
+                  {bsData.assets.length === 0 && (
+                    <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
+                  )}
                   {bsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
@@ -749,6 +752,9 @@ function StatementsTab() {
 
                   {/* Liabilities */}
                   <p className="font-semibold text-sm py-1 pl-4" style={{ color: 'var(--ink)' }}>Liabilities</p>
+                  {bsData.liabilities.length === 0 && (
+                    <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
+                  )}
                   {bsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
@@ -757,6 +763,9 @@ function StatementsTab() {
 
                   {/* Equity */}
                   <p className="font-semibold text-sm py-1 pl-4 mt-2" style={{ color: 'var(--ink)' }}>Equity</p>
+                  {bsData.equity.length === 0 && (
+                    <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
+                  )}
                   {bsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
@@ -796,6 +805,9 @@ function StatementsTab() {
                 {/* Income */}
                 <div className="mb-2">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Income</p>
+                  {plData.income.length === 0 && (
+                    <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
+                  )}
                   {plData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
@@ -812,6 +824,9 @@ function StatementsTab() {
                 {/* Expenses */}
                 <div className="mb-2 mt-2">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Expenses</p>
+                  {plData.expenses.length === 0 && (
+                    <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
+                  )}
                   {plData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
