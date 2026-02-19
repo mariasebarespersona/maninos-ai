@@ -13,6 +13,15 @@ export async function POST(
 ) {
   const { id: clientId } = await params
 
+  // Early check: service role key must be set
+  if (!supabaseServiceKey || supabaseServiceKey === 'undefined') {
+    console.error('[KYC Upload] SUPABASE_SERVICE_ROLE_KEY is not set!')
+    return NextResponse.json(
+      { ok: false, error: 'Error de configuración del servidor. Contacta soporte.' },
+      { status: 500 }
+    )
+  }
+
   try {
     const formData = await request.formData()
     const idFront = formData.get('id_front') as File | null
@@ -47,23 +56,32 @@ export async function POST(
     // Create Supabase client with service role key for storage access
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Ensure the bucket exists (auto-create if missing)
-    const { data: buckets } = await supabase.storage.listBuckets()
+    // Verify bucket exists
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets()
+    if (listError) {
+      console.error('[KYC Upload] Failed to list buckets:', listError.message)
+      return NextResponse.json(
+        { ok: false, error: `Error de almacenamiento: ${listError.message}` },
+        { status: 500 }
+      )
+    }
+
     const bucketExists = buckets?.some(b => b.name === BUCKET)
     if (!bucketExists) {
+      console.log(`[KYC Upload] Bucket "${BUCKET}" not found. Attempting to create...`)
       const { error: createError } = await supabase.storage.createBucket(BUCKET, {
         public: true,
-        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+        fileSizeLimit: 10 * 1024 * 1024,
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
       })
       if (createError) {
-        console.error(`Failed to create bucket ${BUCKET}:`, createError)
+        console.error(`[KYC Upload] Failed to create bucket:`, createError.message)
         return NextResponse.json(
-          { ok: false, error: `Error configurando almacenamiento: ${createError.message}` },
+          { ok: false, error: `No se pudo crear almacenamiento: ${createError.message}. Pide al admin crear el bucket "kyc-documents" en Supabase Storage.` },
           { status: 500 }
         )
       }
-      console.log(`Created storage bucket: ${BUCKET}`)
+      console.log(`[KYC Upload] Bucket "${BUCKET}" created successfully`)
     }
 
     const timestamp = Date.now()
@@ -74,6 +92,8 @@ export async function POST(
       const path = `${clientId}/${label}_${timestamp}.${ext}`
       const buffer = Buffer.from(await file.arrayBuffer())
 
+      console.log(`[KYC Upload] Uploading ${label} → ${BUCKET}/${path} (${file.size} bytes, ${file.type})`)
+
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
         .upload(path, buffer, {
@@ -82,6 +102,7 @@ export async function POST(
         })
 
       if (uploadError) {
+        console.error(`[KYC Upload] Upload failed for ${label}:`, uploadError.message)
         throw new Error(`Error subiendo ${label}: ${uploadError.message}`)
       }
 
@@ -89,6 +110,7 @@ export async function POST(
         .from(BUCKET)
         .getPublicUrl(path)
 
+      console.log(`[KYC Upload] ${label} uploaded OK → ${urlData.publicUrl}`)
       return urlData.publicUrl
     }
 
@@ -101,6 +123,7 @@ export async function POST(
     }
 
     // Call FastAPI to save the URLs and update status
+    console.log(`[KYC Upload] Files uploaded. Calling backend to save URLs...`)
     const res = await fetch(`${API_URL}/api/public/clients/${clientId}/kyc-submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -111,11 +134,28 @@ export async function POST(
         id_type: idType,
       }),
     })
-    const data = await res.json()
 
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error(`[KYC Upload] Backend responded ${res.status}:`, errorText)
+      try {
+        const errorData = JSON.parse(errorText)
+        return NextResponse.json(
+          { ok: false, error: errorData.detail || errorData.error || 'Error del servidor' },
+          { status: res.status }
+        )
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: `Error del servidor (${res.status})` },
+          { status: res.status }
+        )
+      }
+    }
+
+    const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (error: any) {
-    console.error(`Error uploading KYC docs for client ${clientId}:`, error)
+    console.error(`[KYC Upload] Error for client ${clientId}:`, error?.message || error)
     return NextResponse.json(
       { ok: false, error: error.message || 'Error al subir documentos.' },
       { status: 500 }
