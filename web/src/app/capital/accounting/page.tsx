@@ -2246,7 +2246,7 @@ function BudgetTab() {
             <select value={addForm.account_id} onChange={e => setAddForm(f => ({ ...f, account_id: e.target.value }))}
               className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
               <option value="">Seleccionar cuenta...</option>
-              {accounts.filter(a => !a.is_header).length > 0 && (
+              {accounts.length > 0 && (
                 <>
                   <optgroup label="Gastos">
                     {accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs').map(a => (
