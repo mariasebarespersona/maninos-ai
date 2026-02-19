@@ -117,6 +117,7 @@ type TabId = 'overview' | 'transactions' | 'invoices' | 'statements' | 'chart' |
 
 // ── Main Component ──
 export default function AccountingPage() {
+  const toast = useToast()
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<AccountInfo[]>([])
@@ -178,11 +179,33 @@ export default function AccountingPage() {
       const res = await fetch('/api/accounting/sync', { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
-        alert(`✅ Sincronización completada: ${data.created} nuevas transacciones`)
+        toast.success(`Sincronización completada: ${data.created} nuevas transacciones`)
         fetchDashboard()
         if (activeTab === 'transactions') fetchTransactions()
       }
-    } catch (e) { alert('Error sincronizando datos') }
+    } catch (e) { toast.error('Error sincronizando datos') }
+    finally { setSyncing(false) }
+  }
+
+  const handleBackfillAccounts = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/accounting/backfill-accounts', { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.updated > 0) {
+          toast.success(data.message)
+        } else if (data.skipped > 0) {
+          toast.warning(data.message)
+        } else {
+          toast.info(data.message)
+        }
+        fetchDashboard()
+        if (activeTab === 'transactions') fetchTransactions()
+      } else {
+        toast.error('Error al asignar cuentas')
+      }
+    } catch (e) { toast.error('Error de conexión') }
     finally { setSyncing(false) }
   }
 
@@ -223,6 +246,13 @@ export default function AccountingPage() {
             style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          <button onClick={handleBackfillAccounts} disabled={syncing}
+            title="Asignar cuentas contables a transacciones sin cuenta"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            <ArrowRightLeft className="w-4 h-4" />
+            Mapear Cuentas
           </button>
           <button onClick={() => setShowNewTxnModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
@@ -668,15 +698,36 @@ interface QBTreeNode {
 }
 
 // Recursive tree row component for QuickBooks-style indentation
-function QBTreeRow({ node, depth = 0, expanded, toggleExpand }: {
+function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onUpdateBalance, isViewingSaved }: {
   node: QBTreeNode; depth?: number; expanded: Record<string, boolean>
   toggleExpand: (id: string) => void
+  onUpdateBalance?: (accountId: string, newBalance: number) => Promise<void>
+  isViewingSaved?: boolean
 }) {
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
+
   const hasChildren = node.children && node.children.length > 0
   const isExpanded = expanded[node.id] !== false // default expanded
   const indent = depth * 24
   const isTopLevel = depth === 0
   const isTotal = node.is_header && hasChildren
+  const isLeaf = !hasChildren
+  const canEdit = isLeaf && onUpdateBalance && !isViewingSaved
+
+  const handleStartEdit = () => {
+    if (!canEdit) return
+    const displayVal = node.total !== 0 ? node.total : node.balance
+    setEditValue(String(displayVal || 0))
+    setEditing(true)
+  }
+
+  const handleSave = async () => {
+    if (!onUpdateBalance) return
+    const val = parseFloat(editValue) || 0
+    await onUpdateBalance(node.id, val)
+    setEditing(false)
+  }
 
   return (
     <>
@@ -700,18 +751,31 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand }: {
           </div>
         </td>
         <td className="py-1.5 text-right pr-4">
-          {(!hasChildren || (hasChildren && !isExpanded)) && (
-            <span className={`text-sm tabular-nums ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
-              style={{ color: 'var(--charcoal)' }}>
+          {editing ? (
+            <input type="number" step="0.01" value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false) }}
+              onBlur={handleSave}
+              autoFocus
+              className="w-28 px-2 py-0.5 text-sm text-right border rounded"
+              style={{ borderColor: 'var(--navy-400)' }}
+            />
+          ) : (!hasChildren || (hasChildren && !isExpanded)) ? (
+            <span
+              className={`text-sm tabular-nums ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''} ${canEdit ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 rounded transition-colors' : ''}`}
+              style={{ color: 'var(--charcoal)' }}
+              onClick={canEdit ? handleStartEdit : undefined}
+              title={canEdit ? 'Clic para editar monto' : undefined}
+            >
               {node.total !== 0 ? fmtFull(node.total) : node.balance !== 0 ? fmtFull(node.balance) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
             </span>
-          )}
+          ) : null}
         </td>
       </tr>
       {hasChildren && isExpanded && (
         <>
           {node.children.map(child => (
-            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           {/* Total line for this section */}
           <tr className="border-b" style={{ borderColor: '#ccc' }}>
@@ -771,6 +835,9 @@ function StatementsTab() {
   const [viewingSaved, setViewingSaved] = useState<SavedStatement | null>(null)
   const [viewingSavedData, setViewingSavedData] = useState<any>(null)
 
+  // Reset balances state
+  const [showResetModal, setShowResetModal] = useState(false)
+
   const fmtMoney = (v: number | null | undefined) => {
     if (v == null) return '$0.00'
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
@@ -789,6 +856,59 @@ function StatementsTab() {
   }, [])
 
   useEffect(() => { fetchSavedReports() }, [fetchSavedReports])
+
+  const loadReportData = useCallback(async () => {
+    setLoading(true)
+    setReport(null)
+    try {
+      const endpoints: Record<string, string> = {
+        income: '/api/accounting/reports/income-statement',
+        balance: '/api/accounting/reports/balance-sheet',
+        cashflow: '/api/accounting/reports/cash-flow',
+      }
+      const res = await fetch(endpoints[activeReport])
+      if (res.ok) setReport(await res.json())
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false) }
+  }, [activeReport])
+
+  const updateAccountBalance = useCallback(async (accountId: string, newBalance: number) => {
+    try {
+      const res = await fetch(`/api/accounting/accounts/${accountId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_balance: newBalance }),
+      })
+      if (res.ok) {
+        toast.success('Monto actualizado')
+        loadReportData()
+      } else {
+        toast.error('Error al actualizar monto')
+      }
+    } catch (e) {
+      toast.error('Error de conexión')
+    }
+  }, [toast, loadReportData])
+
+  const handleResetBalances = useCallback(async (scope: string) => {
+    try {
+      const res = await fetch('/api/accounting/accounts/reset-balances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message || 'Cifras vaciadas')
+        setShowResetModal(false)
+        loadReportData()
+      } else {
+        toast.error('Error al vaciar cifras')
+      }
+    } catch (e) {
+      toast.error('Error de conexión')
+    }
+  }, [toast, loadReportData])
 
   useEffect(() => {
     (async () => {
@@ -931,6 +1051,13 @@ function StatementsTab() {
               <Download className="w-3 h-3" /> Guardar Reporte
             </button>
           )}
+          {activeReport !== 'cashflow' && !isViewingSaved && (
+            <button onClick={() => setShowResetModal(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors border hover:bg-red-50"
+              style={{ borderColor: 'var(--stone)', color: 'var(--danger)' }}>
+              <Trash2 className="w-3 h-3" /> Vaciar Cifras
+            </button>
+          )}
         </div>
       </div>
 
@@ -959,9 +1086,9 @@ function StatementsTab() {
       ) : !renderReport ? (
         <div className="text-center py-12 card-luxury"><p className="text-sm" style={{ color: 'var(--ash)' }}>No hay datos disponibles</p></div>
       ) : effectiveActiveReport === 'income' ? (
-        <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
+        <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={updateAccountBalance} isViewingSaved={isViewingSaved} />
       ) : effectiveActiveReport === 'balance' ? (
-        <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
+        <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={updateAccountBalance} isViewingSaved={isViewingSaved} />
       ) : (
         <CashFlowStatement data={renderReport} />
       )}
@@ -1053,11 +1180,43 @@ function StatementsTab() {
           </div>
         </div>
       )}
+
+      {/* ── RESET BALANCES MODAL ── */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl mx-4">
+            <h3 className="font-serif text-lg font-bold mb-2" style={{ color: 'var(--ink)' }}>Vaciar Cifras Manuales</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--slate)' }}>
+              Esto reseteará a $0 las cifras manuales (current_balance) de las cuentas seleccionadas. Las transacciones NO se eliminan.
+            </p>
+            <div className="space-y-2">
+              <button onClick={() => handleResetBalances('all')}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Todas las cuentas
+              </button>
+              <button onClick={() => handleResetBalances('profit_loss')}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Solo cuentas de P&L (Income/Expenses)
+              </button>
+              <button onClick={() => handleResetBalances('balance_sheet')}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Solo cuentas de Balance Sheet (Assets/Liabilities/Equity)
+              </button>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setShowResetModal(false)} className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void }) {
+function QBIncomeStatement({ data, expanded, toggleExpand, onUpdateBalance, isViewingSaved }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onUpdateBalance?: (accountId: string, newBalance: number) => Promise<void>; isViewingSaved?: boolean }) {
   const sec = data.sections || {}
   const today = new Date()
   return (
@@ -1081,20 +1240,20 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
         <tbody>
           {/* Income */}
           {(sec.income || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           <QBComputedLine label="Total for Income" amount={sec.income?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold />
 
           {/* COGS */}
           {(sec.cost_of_goods_sold || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           <QBComputedLine label="Total for Cost of Goods Sold" amount={sec.cost_of_goods_sold?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold />
           <QBComputedLine label="Gross Profit" amount={sec.gross_profit || 0} bold thick highlight />
 
           {/* Expenses */}
           {(sec.expenses || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           <QBComputedLine label="Total for Expenses" amount={sec.total_expenses || 0} bold />
           <QBComputedLine label="Net Operating Income" amount={sec.net_operating_income || 0} bold thick />
@@ -1103,7 +1262,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
           {(sec.other_expenses || []).length > 0 && (
             <>
               {(sec.other_expenses || []).map((node: QBTreeNode) => (
-                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
               ))}
               <QBComputedLine label="Total for Other Expenses" amount={sec.total_other_expenses || 0} bold />
               <QBComputedLine label="Net Other Income" amount={sec.net_other_income || 0} bold />
@@ -1115,14 +1274,14 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
       </table>
 
       <div className="flex items-center justify-between px-4 py-2 border-t text-xs" style={{ borderColor: 'var(--sand)', color: 'var(--ash)' }}>
-        <span>Accrual basis</span>
+        <span>Accrual basis · Clic en un monto para editar manualmente</span>
         <span>{today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} {today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>
   )
 }
 
-function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void }) {
+function QBBalanceSheet({ data, expanded, toggleExpand, onUpdateBalance, isViewingSaved }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onUpdateBalance?: (accountId: string, newBalance: number) => Promise<void>; isViewingSaved?: boolean }) {
   const sec = data.sections || {}
   const today = new Date()
   return (
@@ -1146,7 +1305,7 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
         <tbody>
           {/* Assets */}
           {(sec.assets || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           <QBComputedLine label="Total for Assets" amount={sec.total_assets || 0} bold thick />
 
@@ -1159,13 +1318,13 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
 
           {/* Liabilities */}
           {(sec.liabilities || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           <QBComputedLine label="Total for Liabilities" amount={sec.total_liabilities || 0} bold />
 
           {/* Equity */}
           {(sec.equity || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
           ))}
           {sec.net_income !== undefined && sec.net_income !== 0 && (
             <tr className="border-b" style={{ borderColor: '#ddd' }}>
@@ -1184,7 +1343,7 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
       </table>
 
       <div className="flex items-center justify-between px-4 py-2 border-t text-xs" style={{ borderColor: 'var(--sand)', color: 'var(--ash)' }}>
-        <span>Accrual basis</span>
+        <span>Accrual basis · Clic en un monto para editar manualmente</span>
         <span>{today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} {today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>

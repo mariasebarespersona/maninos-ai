@@ -181,6 +181,70 @@ def _get_account_by_category(category: str) -> Optional[str]:
     return None
 
 
+# ============================================================================
+# ACCOUNT MAPPING — transaction_type → accounting account (code-based)
+# ============================================================================
+# Mirrors the Capital mapping system.  Each transaction_type maps to an
+# account code in accounting_accounts.  When new accounts are added,
+# only these maps need updating.
+# ============================================================================
+
+HOMES_INCOME_MAP: dict[str, str] = {
+    "sale_cash":         "PL_INCOME",   # Uses root code for ventas
+    "sale_rto_capital":  "PL_INCOME",
+    "deposit_received":  "PL_INCOME",
+    "other_income":      "PL_INCOME",
+}
+
+HOMES_EXPENSE_MAP: dict[str, str] = {
+    "purchase_house":    "PL_COGS",
+    "renovation":        "PL_EXPENSES",
+    "moving_transport":  "PL_EXPENSES",
+    "commission":        "PL_EXPENSES",
+    "operating_expense": "PL_EXPENSES",
+    "other_expense":     "PL_OTHER_EXPENSES",
+}
+
+# Combined: transaction_type → category fallback (used by legacy sync)
+HOMES_TYPE_TO_CATEGORY: dict[str, str] = {
+    "sale_cash": "ventas_contado",
+    "sale_rto_capital": "ventas_capital",
+    "deposit_received": "depositos",
+    "other_income": "otros_ingresos",
+    "purchase_house": "compras_casas",
+    "renovation": "renovaciones",
+    "moving_transport": "transporte",
+    "commission": "comisiones",
+    "operating_expense": "operativos",
+    "other_expense": "otros_gastos",
+}
+
+_homes_account_cache: dict[str, str | None] = {}
+
+
+def _resolve_homes_account_id(transaction_type: str) -> str | None:
+    """Resolve transaction_type to account_id via category lookup.
+
+    Uses category-based resolution (Homes uses `category` field on accounts).
+    Falls back gracefully if no matching account exists.
+    """
+    cat = HOMES_TYPE_TO_CATEGORY.get(transaction_type)
+    if not cat:
+        return None
+
+    if cat in _homes_account_cache:
+        return _homes_account_cache[cat]
+
+    account_id = _get_account_by_category(cat)
+    _homes_account_cache[cat] = account_id
+    return account_id
+
+
+def _clear_homes_account_cache():
+    """Clear the Homes account mapping cache."""
+    _homes_account_cache.clear()
+
+
 def _log_audit(table_name: str, record_id: str, action: str, changes: dict = None,
                description: str = None, user_id: str = None, user_email: str = None):
     """Write to audit log. Fire-and-forget."""
@@ -1076,7 +1140,11 @@ async def budget_vs_actual(
     year: Optional[int] = None,
     yard_id: Optional[str] = None,
 ):
-    """Compare budgeted amounts vs actual spending per account per month."""
+    """Compare budgeted amounts vs actual spending per account per month.
+
+    When a budget is set on a parent/header account, the actual amount
+    aggregates transactions from that account AND all its children.
+    """
     target_year = year or date.today().year
 
     # Get budgets
@@ -1086,6 +1154,25 @@ async def budget_vs_actual(
     if yard_id:
         bq = bq.eq("yard_id", yard_id)
     budgets = (bq.execute()).data or []
+
+    # Get all accounts to build parent→children map
+    all_accounts = sb.table("accounting_accounts") \
+        .select("id, parent_account_id") \
+        .eq("is_active", True) \
+        .execute().data or []
+
+    children_map: dict[str, list[str]] = {}  # parent_id → [child_ids]
+    for acc in all_accounts:
+        pid = acc.get("parent_account_id")
+        if pid:
+            children_map.setdefault(pid, []).append(acc["id"])
+
+    def _get_all_descendants(account_id: str) -> list[str]:
+        """Get all descendant account IDs (recursive)."""
+        result = [account_id]
+        for child_id in children_map.get(account_id, []):
+            result.extend(_get_all_descendants(child_id))
+        return result
 
     # Get actual transactions for the year
     start = f"{target_year}-01-01"
@@ -1109,12 +1196,16 @@ async def budget_vs_actual(
         key = f"{aid}:{m}"
         actuals[key] = actuals.get(key, 0) + float(t["amount"])
 
-    # Build comparison
+    # Build comparison — aggregate children for parent budgets
     comparison = []
     for b in budgets:
         aid = b["account_id"]
         m = b["period_month"]
-        actual = actuals.get(f"{aid}:{m}", 0)
+
+        # Sum actuals from this account + all descendants
+        all_ids = _get_all_descendants(aid)
+        actual = sum(actuals.get(f"{a}:{m}", 0) for a in all_ids)
+
         budgeted = float(b.get("budgeted_amount") or 0)
         variance = budgeted - actual
         comparison.append({
@@ -2085,6 +2176,141 @@ async def sync_from_existing_data():
             skipped += 1
 
     return {"created": created, "skipped": skipped, "message": f"Sync complete: {created} new transactions"}
+
+
+@router.post("/backfill-accounts")
+async def backfill_transaction_accounts():
+    """Assign account_id to existing Homes transactions that don't have one.
+
+    Uses the category-based mapping to look up the correct account.
+    Useful after adding new accounts to the chart.
+    """
+    _clear_homes_account_cache()
+
+    try:
+        orphans = sb.table("accounting_transactions") \
+            .select("id, transaction_type") \
+            .is_("account_id", "null") \
+            .neq("status", "voided") \
+            .execute().data or []
+
+        if not orphans:
+            return {
+                "ok": True,
+                "updated": 0,
+                "skipped": 0,
+                "message": "Todas las transacciones ya tienen cuenta contable.",
+            }
+
+        updated = 0
+        skipped = 0
+        skipped_types: dict[str, int] = {}
+
+        for txn in orphans:
+            account_id = _resolve_homes_account_id(txn["transaction_type"])
+            if account_id:
+                sb.table("accounting_transactions") \
+                    .update({"account_id": account_id}) \
+                    .eq("id", txn["id"]) \
+                    .execute()
+                updated += 1
+            else:
+                skipped += 1
+                tt = txn["transaction_type"]
+                skipped_types[tt] = skipped_types.get(tt, 0) + 1
+
+        msg = f"{updated} transacciones actualizadas con cuenta contable"
+        if skipped > 0:
+            missing = ", ".join(f"{tt} ({n})" for tt, n in skipped_types.items())
+            msg += f" — {skipped} sin asignar (tipos faltantes: {missing})"
+
+        return {
+            "ok": True,
+            "updated": updated,
+            "skipped": skipped,
+            "skipped_types": skipped_types,
+            "message": msg,
+        }
+
+    except Exception as e:
+        logger.error(f"Error backfilling Homes transaction accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/account-mapping")
+async def get_homes_account_mapping():
+    """Return the current transaction_type → account mapping with resolution status."""
+    _clear_homes_account_cache()
+
+    mapping = []
+    for txn_type, cat in HOMES_TYPE_TO_CATEGORY.items():
+        account_id = _resolve_homes_account_id(txn_type)
+        is_income = txn_type in HOMES_INCOME_MAP
+        mapping.append({
+            "transaction_type": txn_type,
+            "category": cat,
+            "account_id": account_id,
+            "resolved": account_id is not None,
+            "flow": "income" if is_income else "expense",
+        })
+
+    resolved = sum(1 for m in mapping if m["resolved"])
+    total = len(mapping)
+
+    return {
+        "ok": True,
+        "mapping": mapping,
+        "resolved": resolved,
+        "total": total,
+        "missing": total - resolved,
+        "message": f"{resolved}/{total} tipos mapeados a cuentas existentes",
+    }
+
+
+@router.post("/accounts/reset-balances")
+async def reset_homes_account_balances(request: Request):
+    """Reset current_balance to 0 for Homes accounting accounts.
+
+    Body: { "scope": "all" | "profit_loss" | "balance_sheet" }
+    """
+    try:
+        body = await request.json()
+        scope = body.get("scope", "all")
+
+        accounts = sb.table("accounting_accounts") \
+            .select("id, code, account_type, current_balance") \
+            .eq("is_active", True) \
+            .execute().data or []
+
+        reset_count = 0
+        for acc in accounts:
+            bal = float(acc.get("current_balance") or 0)
+            if bal == 0:
+                continue
+
+            atype = acc.get("account_type", "")
+            if scope == "profit_loss" and atype not in ("income", "expense", "cogs"):
+                continue
+            if scope == "balance_sheet" and atype not in ("asset", "liability", "equity"):
+                continue
+
+            sb.table("accounting_accounts") \
+                .update({"current_balance": 0}) \
+                .eq("id", acc["id"]) \
+                .execute()
+            reset_count += 1
+
+        scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
+        return {
+            "ok": True,
+            "reset_count": reset_count,
+            "scope": scope,
+            "message": f"{reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
+        }
+
+    except Exception as e:
+        logger.error(f"Error resetting Homes account balances: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
