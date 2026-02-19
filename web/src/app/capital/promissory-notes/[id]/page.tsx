@@ -714,6 +714,42 @@ export default function PromissoryNoteDetailPage() {
       {activeTab === 'schedule' && (() => {
         const monthlyInt = note.loan_amount * note.monthly_rate
 
+        // ── Payment-status helpers ──────────────────────────────────
+        // Cumulative obligation at month M:
+        //   • M = 0 → 0 (no payment due yet, just disbursement)
+        //   • 1 ≤ M < term_months → M × monthlyInterest (interest-only)
+        //   • M = term_months → total_due (principal + all interest)
+        const cumulativeObligation = (m: number) => {
+          if (m <= 0) return 0
+          if (m < note.term_months) return m * monthlyInt
+          return note.total_due // final month: everything due
+        }
+
+        type RowStatus = 'paid' | 'partial' | 'pending' | 'neutral'
+        const rowStatus = (m: number): RowStatus => {
+          if (m === 0) return 'neutral'
+          const obligation = cumulativeObligation(m)
+          const prevObligation = cumulativeObligation(m - 1)
+          if (paidAmount >= obligation) return 'paid'
+          if (paidAmount > prevObligation) return 'partial'
+          return 'pending'
+        }
+
+        const statusStyle = (st: RowStatus) => {
+          switch (st) {
+            case 'paid':    return { bg: 'var(--sand)', color: 'var(--ash)', opacity: 0.75, icon: '✓' }
+            case 'partial': return { bg: 'var(--warning-light)', color: 'var(--charcoal)', opacity: 1, icon: '◐' }
+            case 'pending': return { bg: 'transparent', color: 'var(--error)', opacity: 1, icon: '○' }
+            default:        return { bg: 'transparent', color: 'var(--charcoal)', opacity: 1, icon: '' }
+          }
+        }
+
+        // How many months fully covered
+        const monthsPaid = monthlyInt > 0
+          ? Math.min(note.term_months, Math.floor(paidAmount / monthlyInt))
+          : 0
+        const monthsRemaining = note.term_months - monthsPaid
+
         return (
         <div className="space-y-6">
           <div className="card-luxury overflow-hidden">
@@ -727,7 +763,7 @@ export default function PromissoryNoteDetailPage() {
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-5" style={{ borderBottom: '1px solid var(--sand)' }}>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 p-5" style={{ borderBottom: '1px solid var(--sand)' }}>
               <div>
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Préstamo</p>
                 <p className="font-serif font-semibold" style={{ color: 'var(--ink)' }}>{fmt(note.loan_amount)}</p>
@@ -748,12 +784,53 @@ export default function PromissoryNoteDetailPage() {
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>Total a Pagar</p>
                 <p className="font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(note.total_due)}</p>
               </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Meses Pagados</p>
+                <p className="font-serif font-semibold" style={{ color: monthsPaid >= note.term_months ? 'var(--success)' : 'var(--charcoal)' }}>
+                  {monthsPaid} / {note.term_months}
+                </p>
+              </div>
             </div>
+
+            {/* Payment-status legend */}
+            <div className="flex items-center gap-5 px-5 py-3" style={{ borderBottom: '1px solid var(--sand)', backgroundColor: 'var(--cream)' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Estado:</span>
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--sand)' }} />
+                <span style={{ color: 'var(--ash)' }}>Pagado</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--warning-light)', border: '1px solid var(--warning)' }} />
+                <span style={{ color: 'var(--charcoal)' }}>Pago parcial</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ border: '1px solid var(--error)' }} />
+                <span style={{ color: 'var(--error)' }}>Pendiente</span>
+              </span>
+            </div>
+
+            {/* Overpayment / ahead banner */}
+            {monthsPaid > 0 && monthsRemaining > 0 && (
+              <div className="px-5 py-3 text-sm flex items-center gap-2" style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>
+                  <strong>{monthsPaid} {monthsPaid === 1 ? 'mes' : 'meses'}</strong> de interés cubiertos.
+                  {monthsRemaining > 0 && <> Faltan <strong>{monthsRemaining} {monthsRemaining === 1 ? 'mes' : 'meses'}</strong> + principal.</>}
+                </span>
+              </div>
+            )}
+            {paidAmount >= note.total_due && (
+              <div className="px-5 py-3 text-sm flex items-center gap-2" style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
+                <CheckCircle2 className="w-4 h-4" />
+                <strong>Nota completamente pagada</strong>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="table w-full">
                 <thead>
                   <tr>
+                    <th className="text-center" style={{ width: 50 }}></th>
                     <th className="text-center">Mes</th>
                     <th className="text-right">Interés Mensual</th>
                     <th className="text-right">Interés Acumulado</th>
@@ -762,21 +839,40 @@ export default function PromissoryNoteDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {schedule.map(row => (
-                    <tr key={row.term} className={row.term === note.term_months ? 'font-semibold' : ''}>
-                      <td className="text-center">{row.term}</td>
-                      <td className="text-right" style={{ color: row.interest > 0 ? 'var(--gold-700)' : 'var(--ash)' }}>
+                  {schedule.map(row => {
+                    const st = rowStatus(row.term)
+                    const sty = statusStyle(st)
+                    return (
+                    <tr
+                      key={row.term}
+                      className={row.term === note.term_months ? 'font-semibold' : ''}
+                      style={{
+                        backgroundColor: sty.bg,
+                        opacity: sty.opacity,
+                        transition: 'background-color 0.2s',
+                      }}
+                    >
+                      <td className="text-center text-sm" style={{ color: sty.color }}>
+                        {sty.icon}
+                      </td>
+                      <td className="text-center" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
+                        {row.term}
+                      </td>
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : row.interest > 0 ? 'var(--gold-700)' : 'var(--ash)' }}>
                         {row.interest > 0 ? fmt(row.interest) : '—'}
                       </td>
-                      <td className="text-right" style={{ color: 'var(--charcoal)' }}>
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
                         {fmt(row.accrued_interest)}
                       </td>
-                      <td className="text-right">{fmt(row.principal)}</td>
-                      <td className="text-right" style={{ color: 'var(--navy-800)' }}>
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
+                        {fmt(row.principal)}
+                      </td>
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : st === 'pending' ? 'var(--error)' : 'var(--navy-800)' }}>
                         {fmt(row.pending)}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -793,6 +889,8 @@ export default function PromissoryNoteDetailPage() {
               <p className="text-xs mt-2" style={{ color: 'var(--ash)' }}>
                 Interés simple no acumulativo — el interés siempre se calcula sobre el principal original.
                 Los pagos son flexibles: mensuales, parciales, o de golpe.
+                <br />
+                <strong>Colores:</strong> Gris = pagado · Rojo = pendiente. Si se paga más de lo acordado mensualmente, los meses cubiertos se actualizan automáticamente.
               </p>
             </div>
           </div>
@@ -804,10 +902,15 @@ export default function PromissoryNoteDetailPage() {
       })()}
 
       {/* TAB: Payments (#4 - Individual payment history) */}
-      {activeTab === 'payments' && (
+      {activeTab === 'payments' && (() => {
+        const monthlyInt = note.loan_amount * note.monthly_rate
+        const monthsPaidInterest = monthlyInt > 0 ? Math.min(note.term_months, Math.floor(paidAmount / monthlyInt)) : 0
+        const monthsRemainInterest = note.term_months - monthsPaidInterest
+
+        return (
         <div className="space-y-6">
           {/* Payment Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="card-luxury p-4 text-center">
               <p className="text-xs" style={{ color: 'var(--ash)' }}>Total a Pagar</p>
               <p className="font-serif text-lg font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(note.total_due)}</p>
@@ -819,6 +922,15 @@ export default function PromissoryNoteDetailPage() {
             <div className="card-luxury p-4 text-center">
               <p className="text-xs" style={{ color: 'var(--ash)' }}>Pendiente</p>
               <p className="font-serif text-lg font-semibold" style={{ color: remaining > 0 ? 'var(--error)' : 'var(--success)' }}>{fmt(remaining)}</p>
+            </div>
+            <div className="card-luxury p-4 text-center">
+              <p className="text-xs" style={{ color: 'var(--ash)' }}>Meses Cubiertos</p>
+              <p className="font-serif text-lg font-semibold" style={{ color: monthsPaidInterest >= note.term_months ? 'var(--success)' : 'var(--charcoal)' }}>
+                {monthsPaidInterest} / {note.term_months}
+              </p>
+              {monthsRemainInterest > 0 && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--error)' }}>Faltan {monthsRemainInterest}</p>
+              )}
             </div>
           </div>
 
@@ -953,7 +1065,8 @@ export default function PromissoryNoteDetailPage() {
             )}
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Notes */}
       {note.notes && (
@@ -966,10 +1079,29 @@ export default function PromissoryNoteDetailPage() {
       {/* Pay Modal — Flexible payments */}
       {showPayModal && (() => {
         const monthlyInt = note.loan_amount * note.monthly_rate
-        const paymentPresets = [
-          { label: 'Solo interés del mes', amount: monthlyInt },
-          { label: 'Pago total restante', amount: remaining },
-        ]
+        // Calculate months of interest already covered
+        const monthsAlreadyPaid = monthlyInt > 0 ? Math.floor(paidAmount / monthlyInt) : 0
+        const monthsLeft = Math.max(0, note.term_months - monthsAlreadyPaid)
+
+        // Build smart presets
+        const presets: { label: string; amount: number }[] = []
+        if (monthlyInt > 0 && remaining > monthlyInt) {
+          presets.push({ label: '1 mes de interés', amount: monthlyInt })
+        }
+        if (monthlyInt > 0 && remaining > monthlyInt * 3 && monthsLeft >= 3) {
+          presets.push({ label: '3 meses de interés', amount: monthlyInt * 3 })
+        }
+        if (monthlyInt > 0 && remaining > monthlyInt * 6 && monthsLeft >= 6) {
+          presets.push({ label: '6 meses de interés', amount: monthlyInt * 6 })
+        }
+        if (monthlyInt > 0 && monthsLeft > 0) {
+          const allRemainingInterest = monthlyInt * monthsLeft
+          if (allRemainingInterest < remaining && allRemainingInterest > 0) {
+            presets.push({ label: `Todo interés restante (${monthsLeft}m)`, amount: allRemainingInterest })
+          }
+        }
+        presets.push({ label: 'Liquidar todo', amount: remaining })
+        const paymentPresets = presets
 
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4" onClick={() => setShowPayModal(false)}>
