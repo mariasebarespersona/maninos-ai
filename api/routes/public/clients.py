@@ -211,6 +211,7 @@ async def get_client_rto_contract(client_id: str, sale_id: str):
             "payment_due_day": c.get("payment_due_day", 15),
             "status": c["status"],
             "properties": c.get("properties"),
+            "contract_pdf_url": c.get("contract_pdf_url"),
         }
         
         return {

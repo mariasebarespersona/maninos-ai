@@ -1362,6 +1362,141 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     }
 
 
+# ============================================================================
+# SAVED FINANCIAL STATEMENTS — Snapshots of Balance Sheet & P&L
+# ============================================================================
+
+class SaveStatementRequest(BaseModel):
+    report_type: str  # 'balance_sheet' or 'profit_loss'
+    name: str
+    notes: Optional[str] = None
+    saved_by: Optional[str] = None
+
+
+@router.post("/reports/save")
+async def save_financial_statement(data: SaveStatementRequest):
+    """Save a snapshot of the current Balance Sheet or P&L for Homes."""
+    try:
+        if data.report_type == "balance_sheet":
+            report = await get_balance_sheet()
+            record = {
+                "portal": "homes",
+                "report_type": "balance_sheet",
+                "name": data.name,
+                "as_of_date": report.get("as_of_date", date.today().isoformat()),
+                "report_data": json.dumps(report),
+                "total_assets": report.get("sections", {}).get("total_assets", 0),
+                "total_liabilities": report.get("sections", {}).get("total_liabilities", 0),
+                "total_equity": report.get("sections", {}).get("total_equity", 0),
+                "net_income": report.get("sections", {}).get("net_income", 0),
+                "notes": data.notes,
+                "saved_by": data.saved_by,
+            }
+        elif data.report_type == "profit_loss":
+            report = await get_income_statement()
+            sections = report.get("sections", {})
+            record = {
+                "portal": "homes",
+                "report_type": "profit_loss",
+                "name": data.name,
+                "period_start": report.get("period", {}).get("start"),
+                "period_end": report.get("period", {}).get("end"),
+                "report_data": json.dumps(report),
+                "total_income": sum(n.get("total", 0) for n in sections.get("income", [])),
+                "total_expenses": sections.get("total_expenses", 0),
+                "net_income": sections.get("net_income", 0),
+                "notes": data.notes,
+                "saved_by": data.saved_by,
+            }
+        else:
+            raise HTTPException(status_code=400, detail="report_type must be 'balance_sheet' or 'profit_loss'")
+
+        record = {k: v for k, v in record.items() if v is not None}
+        result = sb.table("saved_financial_statements").insert(record).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Error saving statement")
+
+        return {"ok": True, "statement": result.data[0], "message": f"Estado financiero '{data.name}' guardado exitosamente"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[save-financial-statement-homes] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reports/saved")
+async def list_saved_statements(report_type: Optional[str] = None):
+    """List all saved financial statements for Homes."""
+    try:
+        q = sb.table("saved_financial_statements") \
+            .select("id, portal, report_type, name, as_of_date, period_start, period_end, "
+                    "total_assets, total_liabilities, total_equity, total_income, total_expenses, "
+                    "net_income, notes, saved_by, status, created_at") \
+            .eq("portal", "homes") \
+            .neq("status", "archived") \
+            .order("created_at", desc=True)
+
+        if report_type:
+            q = q.eq("report_type", report_type)
+
+        result = q.execute()
+        return {"ok": True, "statements": result.data or []}
+
+    except Exception as e:
+        logger.error(f"[list-saved-statements-homes] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reports/saved/{statement_id}")
+async def get_saved_statement(statement_id: str):
+    """Get a specific saved financial statement with full report data."""
+    try:
+        result = sb.table("saved_financial_statements") \
+            .select("*") \
+            .eq("id", statement_id) \
+            .eq("portal", "homes") \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Saved statement not found")
+
+        stmt = result.data[0]
+        if isinstance(stmt.get("report_data"), str):
+            stmt["report_data"] = json.loads(stmt["report_data"])
+
+        return {"ok": True, "statement": stmt}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[get-saved-statement-homes] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/reports/saved/{statement_id}")
+async def delete_saved_statement(statement_id: str):
+    """Archive (soft-delete) a saved financial statement."""
+    try:
+        result = sb.table("saved_financial_statements") \
+            .update({"status": "archived"}) \
+            .eq("id", statement_id) \
+            .eq("portal", "homes") \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Saved statement not found")
+
+        return {"ok": True, "message": "Estado financiero archivado"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[delete-saved-statement-homes] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── CSV Export Helpers ──────────────────────────────────────────────────────
 def _flatten_tree_to_csv_rows(nodes, depth=0):
     """Recursively flatten a report tree into CSV rows with indented names."""

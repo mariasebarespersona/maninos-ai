@@ -622,17 +622,52 @@ interface PLTreeData {
   total_other_expenses: number; net_other_income: number; net_income: number
 }
 
+interface SavedStatement {
+  id: string; portal: string; report_type: string; name: string
+  as_of_date?: string; period_start?: string; period_end?: string
+  total_assets?: number; total_liabilities?: number; total_equity?: number
+  total_income?: number; total_expenses?: number; net_income?: number
+  notes?: string; saved_by?: string; status: string; created_at: string
+}
+
 function StatementsTab() {
+  const toast = useToast()
   const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl'>('balance')
   const [bsData, setBsData] = useState<BSTreeData | null>(null)
   const [plData, setPlData] = useState<PLTreeData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Save / Saved reports state
+  const [saving, setSaving] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveNotes, setSaveNotes] = useState('')
+  const [savedReports, setSavedReports] = useState<SavedStatement[]>([])
+  const [loadingSaved, setLoadingSaved] = useState(false)
+  const [viewingSaved, setViewingSaved] = useState<SavedStatement | null>(null)
+  const [viewingSavedData, setViewingSavedData] = useState<any>(null)
+
+  const fetchSavedReports = useCallback(async () => {
+    setLoadingSaved(true)
+    try {
+      const res = await fetch('/api/capital/accounting/reports/saved')
+      if (res.ok) {
+        const data = await res.json()
+        setSavedReports(data.statements || [])
+      }
+    } catch (e) { console.error(e) }
+    finally { setLoadingSaved(false) }
+  }, [])
+
+  useEffect(() => { fetchSavedReports() }, [fetchSavedReports])
+
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setError(null)
+      setViewingSaved(null)
+      setViewingSavedData(null)
       try {
         if (activeStatement === 'balance') {
           const res = await fetch('/api/capital/accounting/reports/balance-sheet-tree')
@@ -640,7 +675,6 @@ function StatementsTab() {
           if (data) {
             setBsData(data)
           } else {
-            // Set empty but valid structure so the format always renders
             setBsData({
               date: new Date().toISOString().slice(0, 10),
               assets: [], liabilities: [], equity: [],
@@ -668,22 +702,11 @@ function StatementsTab() {
       } catch (e) {
         console.error(e)
         setError('Error de conexión al cargar estados financieros.')
-        // Still set empty data so format renders
         if (activeStatement === 'balance') {
-          setBsData({
-            date: new Date().toISOString().slice(0, 10),
-            assets: [], liabilities: [], equity: [],
-            total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0,
-          })
+          setBsData({ date: new Date().toISOString().slice(0, 10), assets: [], liabilities: [], equity: [], total_assets: 0, total_liabilities: 0, total_equity: 0, total_liabilities_and_equity: 0 })
         } else {
           const now = new Date()
-          setPlData({
-            period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) },
-            income: [], expenses: [], other_income: [], other_expenses: [],
-            total_income: 0, gross_profit: 0, total_expenses: 0,
-            net_operating_income: 0, total_other_income: 0,
-            total_other_expenses: 0, net_other_income: 0, net_income: 0,
-          })
+          setPlData({ period: { start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, end: now.toISOString().slice(0,10) }, income: [], expenses: [], other_income: [], other_expenses: [], total_income: 0, gross_profit: 0, total_expenses: 0, net_operating_income: 0, total_other_income: 0, total_other_expenses: 0, net_other_income: 0, net_income: 0 })
         }
       }
       finally { setLoading(false) }
@@ -691,39 +714,124 @@ function StatementsTab() {
     load()
   }, [activeStatement])
 
+  const handleSave = async () => {
+    if (!saveName.trim()) { toast.warning('Ingresa un nombre para el reporte'); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/capital/accounting/reports/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          report_type: activeStatement === 'balance' ? 'balance_sheet' : 'profit_loss',
+          name: saveName.trim(),
+          notes: saveNotes.trim() || undefined,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message || 'Reporte guardado')
+        setShowSaveModal(false)
+        setSaveName('')
+        setSaveNotes('')
+        fetchSavedReports()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al guardar')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  const handleViewSaved = async (stmt: SavedStatement) => {
+    try {
+      const res = await fetch(`/api/capital/accounting/reports/saved/${stmt.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setViewingSaved(stmt)
+        setViewingSavedData(data.statement?.report_data)
+      }
+    } catch (e) { toast.error('Error al cargar reporte guardado') }
+  }
+
+  const handleDeleteSaved = async (id: string) => {
+    try {
+      const res = await fetch(`/api/capital/accounting/reports/saved/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Reporte archivado')
+        fetchSavedReports()
+        if (viewingSaved?.id === id) { setViewingSaved(null); setViewingSavedData(null) }
+      }
+    } catch (e) { toast.error('Error al archivar reporte') }
+  }
+
+  // Determine which data to render (live or saved)
+  const renderBsData = viewingSaved?.report_type === 'balance_sheet' && viewingSavedData ? viewingSavedData as BSTreeData : bsData
+  const renderPlData = viewingSaved?.report_type === 'profit_loss' && viewingSavedData ? viewingSavedData as PLTreeData : plData
+  const isViewingSaved = !!viewingSaved
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        {[
-          { key: 'balance', label: 'Balance Sheet' },
-          { key: 'pnl', label: 'Profit and Loss' },
-        ].map(s => (
-          <button key={s.key} onClick={() => setActiveStatement(s.key as 'balance' | 'pnl')}
-            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-            style={activeStatement === s.key ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { backgroundColor: 'var(--pearl)', color: 'var(--charcoal)' }}>
-            {s.label}
+      {/* Tab buttons + Save button */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-2">
+          {[
+            { key: 'balance', label: 'Balance Sheet' },
+            { key: 'pnl', label: 'Profit and Loss' },
+          ].map(s => (
+            <button key={s.key} onClick={() => { setActiveStatement(s.key as 'balance' | 'pnl'); setViewingSaved(null); setViewingSavedData(null) }}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+              style={activeStatement === s.key && !isViewingSaved ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { backgroundColor: 'var(--pearl)', color: 'var(--charcoal)' }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {!isViewingSaved && (
+          <button onClick={() => { setSaveName(`${activeStatement === 'balance' ? 'Balance Sheet' : 'Profit & Loss'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+            style={{ backgroundColor: 'var(--gold-600)', color: 'white' }}>
+            <Download className="w-4 h-4" /> Guardar Reporte
           </button>
-        ))}
+        )}
       </div>
 
-      {error && (
+      {/* Viewing saved banner */}
+      {isViewingSaved && viewingSaved && (
+        <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.3)' }}>
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4" style={{ color: '#7c3aed' }} />
+            <span className="text-sm font-medium" style={{ color: '#7c3aed' }}>
+              Viendo reporte guardado: {viewingSaved.name}
+            </span>
+            <span className="text-xs" style={{ color: '#9f7aea' }}>
+              ({new Date(viewingSaved.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })})
+            </span>
+          </div>
+          <button onClick={() => { setViewingSaved(null); setViewingSavedData(null) }}
+            className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg transition-colors"
+            style={{ backgroundColor: '#7c3aed', color: 'white' }}>
+            <X className="w-3 h-3" /> Volver al actual
+          </button>
+        </div>
+      )}
+
+      {error && !isViewingSaved && (
         <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(255,165,0,0.1)', color: 'var(--gold-700)', border: '1px solid var(--gold-400)' }}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {loading ? (
+      {loading && !isViewingSaved ? (
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
       ) : (
         <>
           {/* ── BALANCE SHEET ── */}
-          {activeStatement === 'balance' && bsData && (
+          {((activeStatement === 'balance' && !isViewingSaved) || viewingSaved?.report_type === 'balance_sheet') && renderBsData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
                 <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Balance Sheet</h2>
                 <h3 className="text-sm font-semibold mt-1" style={{ color: 'var(--charcoal)' }}>MANINOS CAPITAL</h3>
-                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>As of {bsData.date}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>As of {renderBsData.date}</p>
               </div>
 
               <div className="max-w-2xl mx-auto">
@@ -736,13 +844,13 @@ function StatementsTab() {
                 {/* Assets */}
                 <div className="mb-4">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Assets</p>
-                  {bsData.assets.length === 0 && (
+                  {renderBsData.assets.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
                   )}
-                  {bsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
-                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_assets)}</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_assets)}</span>
                   </div>
                 </div>
 
@@ -752,31 +860,31 @@ function StatementsTab() {
 
                   {/* Liabilities */}
                   <p className="font-semibold text-sm py-1 pl-4" style={{ color: 'var(--ink)' }}>Liabilities</p>
-                  {bsData.liabilities.length === 0 && (
+                  {renderBsData.liabilities.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
                   )}
-                  {bsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
-                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_liabilities)}</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
                   </div>
 
                   {/* Equity */}
                   <p className="font-semibold text-sm py-1 pl-4 mt-2" style={{ color: 'var(--ink)' }}>Equity</p>
-                  {bsData.equity.length === 0 && (
+                  {renderBsData.equity.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
                   )}
-                  {bsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
-                    <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_equity)}</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
                   </div>
                 </div>
 
                 {/* Grand Total */}
                 <div className="flex justify-between py-2 border-t-2 border-b-2 font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
                   <span style={{ color: 'var(--ink)' }}>Total for Liabilities and Equity</span>
-                  <span style={{ color: 'var(--ink)' }}>{fmtFull(bsData.total_liabilities_and_equity)}</span>
+                  <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities_and_equity)}</span>
                 </div>
               </div>
 
@@ -787,12 +895,12 @@ function StatementsTab() {
           )}
 
           {/* ── PROFIT AND LOSS ── */}
-          {activeStatement === 'pnl' && plData && (
+          {((activeStatement === 'pnl' && !isViewingSaved) || viewingSaved?.report_type === 'profit_loss') && renderPlData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
                 <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Profit and Loss</h2>
                 <h3 className="text-sm font-semibold mt-1" style={{ color: 'var(--charcoal)' }}>MANINOS CAPITAL</h3>
-                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>{plData.period.start} — {plData.period.end}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>{renderPlData.period.start} — {renderPlData.period.end}</p>
               </div>
 
               <div className="max-w-2xl mx-auto">
@@ -805,77 +913,77 @@ function StatementsTab() {
                 {/* Income */}
                 <div className="mb-2">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Income</p>
-                  {plData.income.length === 0 && (
+                  {renderPlData.income.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
                   )}
-                  {plData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
-                    <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_income)}</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_income)}</span>
                   </div>
                 </div>
 
                 {/* Gross Profit */}
                 <div className="flex justify-between py-2 border-t-2 border-b font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
                   <span style={{ color: 'var(--ink)' }}>Gross Profit</span>
-                  <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.gross_profit)}</span>
+                  <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.gross_profit)}</span>
                 </div>
 
                 {/* Expenses */}
                 <div className="mb-2 mt-2">
                   <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Expenses</p>
-                  {plData.expenses.length === 0 && (
+                  {renderPlData.expenses.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
                   )}
-                  {plData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
-                    <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_expenses)}</span>
+                    <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
                   </div>
                 </div>
 
                 {/* Net Operating Income */}
                 <div className="flex justify-between py-2 border-t-2 border-b font-bold text-sm" style={{ borderColor: 'var(--charcoal)' }}>
                   <span style={{ color: 'var(--ink)' }}>Net Operating Income</span>
-                  <span style={{ color: plData.net_operating_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_operating_income)}</span>
+                  <span style={{ color: renderPlData.net_operating_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(renderPlData.net_operating_income)}</span>
                 </div>
 
                 {/* Other Income */}
-                {plData.other_income.length > 0 && (
+                {renderPlData.other_income.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
-                    {plData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
-                      <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_other_income)}</span>
+                      <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
                     </div>
                   </div>
                 )}
 
                 {/* Other Expenses */}
-                {plData.other_expenses.length > 0 && (
+                {renderPlData.other_expenses.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
-                    {plData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
-                      <span style={{ color: 'var(--ink)' }}>{fmtFull(plData.total_other_expenses)}</span>
+                      <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
                     </div>
                   </div>
                 )}
 
                 {/* Net Other Income */}
-                {(plData.other_income.length > 0 || plData.other_expenses.length > 0) && (
+                {(renderPlData.other_income.length > 0 || renderPlData.other_expenses.length > 0) && (
                   <div className="flex justify-between py-2 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Net Other Income</span>
-                    <span style={{ color: plData.net_other_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_other_income)}</span>
+                    <span style={{ color: renderPlData.net_other_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(renderPlData.net_other_income)}</span>
                   </div>
                 )}
 
                 {/* Net Income */}
                 <div className="flex justify-between py-2 border-t-2 border-b-2 font-bold text-sm mt-2" style={{ borderColor: 'var(--charcoal)' }}>
                   <span style={{ color: 'var(--ink)' }}>Net Income</span>
-                  <span style={{ color: plData.net_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(plData.net_income)}</span>
+                  <span style={{ color: renderPlData.net_income < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(renderPlData.net_income)}</span>
                 </div>
               </div>
 
@@ -885,6 +993,94 @@ function StatementsTab() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── SAVED REPORTS ── */}
+      <div className="card-luxury p-5 mt-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-serif text-base font-bold" style={{ color: 'var(--ink)' }}>
+            <History className="w-4 h-4 inline-block mr-2" style={{ color: 'var(--gold-600)' }} />
+            Reportes Guardados
+          </h3>
+        </div>
+        {loadingSaved ? (
+          <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+        ) : savedReports.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>
+            No hay reportes guardados. Usa el botón "Guardar Reporte" para crear un snapshot.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {savedReports.map(stmt => (
+              <div key={stmt.id} className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:border-[var(--gold-300)]"
+                style={{ borderColor: viewingSaved?.id === stmt.id ? 'var(--gold-500)' : 'var(--sand)', backgroundColor: viewingSaved?.id === stmt.id ? 'rgba(212,175,55,0.06)' : 'white' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: stmt.report_type === 'balance_sheet' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)', color: stmt.report_type === 'balance_sheet' ? '#3b82f6' : '#10b981' }}>
+                      {stmt.report_type === 'balance_sheet' ? 'Balance' : 'P&L'}
+                    </span>
+                    <span className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{stmt.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
+                    <span>{new Date(stmt.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {stmt.report_type === 'balance_sheet' && stmt.total_assets != null && (
+                      <span>Assets: {fmtFull(stmt.total_assets)}</span>
+                    )}
+                    {stmt.report_type === 'profit_loss' && stmt.net_income != null && (
+                      <span>Net Income: {fmtFull(stmt.net_income)}</span>
+                    )}
+                    {stmt.notes && <span className="italic truncate max-w-[200px]">{stmt.notes}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 ml-2">
+                  <button onClick={() => handleViewSaved(stmt)} title="Ver reporte"
+                    className="p-1.5 rounded-lg transition-colors hover:bg-[var(--pearl)]">
+                    <Eye className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                  </button>
+                  <button onClick={() => handleDeleteSaved(stmt.id)} title="Archivar"
+                    className="p-1.5 rounded-lg transition-colors hover:bg-red-50">
+                    <Trash2 className="w-4 h-4" style={{ color: 'var(--danger)' }} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── SAVE MODAL ── */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl mx-4">
+            <h3 className="font-serif text-lg font-bold mb-4" style={{ color: 'var(--ink)' }}>
+              Guardar {activeStatement === 'balance' ? 'Balance Sheet' : 'Profit & Loss'}
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Nombre del reporte *</label>
+                <input value={saveName} onChange={e => setSaveName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--gold-400)]"
+                  style={{ borderColor: 'var(--sand)' }} placeholder="Ej: Balance Sheet Febrero 2026" />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Notas (opcional)</label>
+                <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--gold-400)]"
+                  style={{ borderColor: 'var(--sand)' }} placeholder="Notas adicionales..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>Cancelar</button>
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                style={{ backgroundColor: 'var(--gold-600)', color: 'white' }}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
