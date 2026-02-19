@@ -2120,8 +2120,10 @@ interface CapitalAccountRef {
 }
 
 function BudgetTab() {
+  const toast = useToast()
   const [comparison, setComparison] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
   const [showAdd, setShowAdd] = useState(false)
   const [accounts, setAccounts] = useState<(CapitalAccountRef & { id: string })[]>([])
@@ -2130,10 +2132,19 @@ function BudgetTab() {
 
   const fetchComparison = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const res = await fetch(`/api/capital/accounting/budgets/vs-actual?year=${year}`)
-      if (res.ok) { const d = await res.json(); setComparison(d.comparison || []) }
-    } catch (e) { /* ignore */ }
+      if (res.ok) {
+        const d = await res.json()
+        setComparison(d.comparison || [])
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setError(d.detail || `Error ${res.status} al cargar presupuestos. ¿Ya ejecutaste la migración 044?`)
+      }
+    } catch (e) {
+      setError('Error de conexión al cargar presupuestos.')
+    }
     finally { setLoading(false) }
   }, [year])
 
@@ -2148,7 +2159,14 @@ function BudgetTab() {
   useEffect(() => { fetchAccounts() }, [fetchAccounts])
 
   const handleAddBudget = async () => {
-    if (!addForm.account_id || !addForm.budgeted_amount) return
+    if (!addForm.account_id) {
+      toast.warning('Selecciona una cuenta.')
+      return
+    }
+    if (!addForm.budgeted_amount || parseFloat(addForm.budgeted_amount) <= 0) {
+      toast.warning('Ingresa un monto válido mayor a 0.')
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/capital/accounting/budgets', {
@@ -2156,11 +2174,18 @@ function BudgetTab() {
         body: JSON.stringify({ ...addForm, budgeted_amount: parseFloat(addForm.budgeted_amount), period_year: year }),
       })
       if (res.ok) {
+        const acct = accounts.find(a => a.id === addForm.account_id)
+        toast.success(`Presupuesto guardado: ${acct?.name || 'Cuenta'} — ${MONTH_NAMES[addForm.period_month]} ${year}`)
         setShowAdd(false)
         setAddForm({ account_id: '', period_month: new Date().getMonth() + 1, budgeted_amount: '' })
         fetchComparison()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Error al guardar presupuesto. ¿Ya ejecutaste la migración 044_capital_budgets.sql?')
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      toast.error('Error de conexión al guardar presupuesto.')
+    }
     finally { setSaving(false) }
   }
 
@@ -2220,10 +2245,21 @@ function BudgetTab() {
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta</label>
             <select value={addForm.account_id} onChange={e => setAddForm(f => ({ ...f, account_id: e.target.value }))}
               className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
-              <option value="">Seleccionar...</option>
-              {accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs').map(a => (
-                <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-              ))}
+              <option value="">Seleccionar cuenta...</option>
+              {accounts.filter(a => !a.is_header).length > 0 && (
+                <>
+                  <optgroup label="Gastos">
+                    {accounts.filter(a => a.account_type === 'expense' || a.account_type === 'cogs').map(a => (
+                      <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Ingresos">
+                    {accounts.filter(a => a.account_type === 'income').map(a => (
+                      <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                    ))}
+                  </optgroup>
+                </>
+              )}
             </select>
           </div>
           <div>
@@ -2251,14 +2287,41 @@ function BudgetTab() {
         </div>
       )}
 
+      {/* Error */}
+      {error && (
+        <div className="card-luxury p-4 flex items-start gap-3" style={{ borderColor: 'var(--error)', borderWidth: 1 }}>
+          <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'var(--error)' }} />
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--error)' }}>Error al cargar presupuestos</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--charcoal)' }}>{error}</p>
+            <p className="text-xs mt-2" style={{ color: 'var(--ash)' }}>
+              Asegúrate de ejecutar la migración <code className="px-1 py-0.5 rounded" style={{ backgroundColor: 'var(--cream)' }}>044_capital_budgets.sql</code> en Supabase SQL Editor.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Info: ¿Qué es el presupuesto? */}
+      <div className="card-luxury p-4" style={{ backgroundColor: 'var(--cream)' }}>
+        <p className="text-xs" style={{ color: 'var(--slate)' }}>
+          <strong>¿Cómo funciona?</strong> Define cuánto <em>planeas</em> gastar por cuenta/mes.
+          La tabla compara tu presupuesto contra los gastos <em>reales</em> registrados en transacciones.
+          Variación positiva (verde) = gastaste menos de lo planeado. Negativa (rojo) = te pasaste del presupuesto.
+          Esto NO afecta los estados financieros — es solo una herramienta de análisis.
+        </p>
+      </div>
+
       {/* Table */}
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
-      ) : comparison.length === 0 ? (
+      ) : !error && comparison.length === 0 ? (
         <div className="text-center py-12 card-luxury">
           <BookOpen className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
           <p className="text-sm" style={{ color: 'var(--ash)' }}>No hay presupuestos para {year}.</p>
           <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Agrega uno para comparar con los gastos reales de Capital.</p>
+          <button onClick={() => setShowAdd(true)} className="mt-3 px-4 py-2 text-sm font-medium text-white rounded-lg" style={{ backgroundColor: 'var(--gold-600)' }}>
+            <Plus className="w-4 h-4 inline mr-1" /> Crear primer presupuesto
+          </button>
         </div>
       ) : (
         <div className="card-luxury overflow-hidden">
