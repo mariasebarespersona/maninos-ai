@@ -2,6 +2,7 @@
 Capital Dashboard - KPIs, overview metrics, cartera health
 """
 
+from typing import Optional
 from fastapi import APIRouter
 from tools.supabase_client import sb
 from datetime import datetime, date, timedelta
@@ -9,6 +10,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["Capital - Dashboard"])
+
+
+def _safe_date(value) -> Optional[date]:
+    """Parse date from Supabase (handles DATE and TIMESTAMPTZ formats)."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
 
 
 def safe_query(table: str, query_fn):
@@ -141,7 +161,7 @@ async def get_cartera_health():
         client_overdue_map: dict = {}  # client_id -> { count, amount, max_days_late }
 
         for p in overdue_result:
-            due = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+            due = _safe_date(p["due_date"]) or today
             days = (today - due).days
             amt = float(p.get("amount", 0))
             total_overdue_amount += amt

@@ -15,6 +15,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Capital - Payments"])
 
 
+def _safe_date(value) -> Optional[date]:
+    """Parse date from Supabase (handles DATE and TIMESTAMPTZ formats)."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except Exception:
+        logger.warning(f"Could not parse date: {value}")
+        return None
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -100,7 +120,7 @@ async def list_overdue_payments():
         
         overdue = []
         for p in (result.data or []):
-            due = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+            due = _safe_date(p["due_date"]) or date.today()
             days_late = (date.today() - due).days
             contract = p.get("rto_contracts", {})
             grace = contract.get("grace_period_days", 5)
@@ -144,10 +164,8 @@ async def record_payment(payment_id: str, data: RecordPayment):
             raise HTTPException(status_code=400, detail="Este pago ya fue registrado")
         
         # Calculate late fee
-        paid_date = datetime.strptime(
-            data.paid_date or date.today().isoformat(), "%Y-%m-%d"
-        ).date()
-        due = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+        paid_date = _safe_date(data.paid_date) or date.today()
+        due = _safe_date(p["due_date"]) or date.today()
         days_late = max(0, (paid_date - due).days)
         
         contract = p.get("rto_contracts", {})
@@ -342,10 +360,10 @@ async def get_mora_summary():
             prop = contract.get("properties", {}) or {}
             cid = client.get("id") or contract.get("client_id", "unknown")
             
-            due = datetime.strptime(p["due_date"], "%Y-%m-%d").date()
+            due = _safe_date(p["due_date"]) or today_d
             days_late = (today_d - due).days
-            grace = contract.get("grace_period_days", 5)
-            fee_per_day = float(contract.get("late_fee_per_day", 15))
+            grace = int(contract.get("grace_period_days") or 5)
+            fee_per_day = float(contract.get("late_fee_per_day") or 15)
             late_fee = max(0, (days_late - grace)) * fee_per_day if days_late > grace else 0
             
             if cid not in client_map:
