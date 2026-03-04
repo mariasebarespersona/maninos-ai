@@ -146,14 +146,18 @@ export default function EditPropertyPage() {
       }
 
       const res = await fetch(`/api/properties/${propertyId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.detail || 'Error al actualizar la propiedad')
+        let detail = 'Error al actualizar la propiedad'
+        try {
+          const data = await res.json()
+          detail = data.detail || detail
+        } catch { /* empty response body */ }
+        throw new Error(detail)
       }
 
       toast.success('¡Propiedad actualizada exitosamente!')

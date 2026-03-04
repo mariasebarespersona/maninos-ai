@@ -208,13 +208,13 @@ describe('Edit Property Page — Dimensions', () => {
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      // Check the PUT call was made with computed square_feet
-      const putCall = (global.fetch as jest.Mock).mock.calls.find(
-        (call: any[]) => call[1]?.method === 'PUT'
+      // Check the PATCH call was made with computed square_feet
+      const patchCall = (global.fetch as jest.Mock).mock.calls.find(
+        (call: any[]) => call[1]?.method === 'PATCH'
       )
       
-      if (putCall) {
-        const payload = JSON.parse(putCall[1].body)
+      if (patchCall) {
+        const payload = JSON.parse(patchCall[1].body)
         expect(payload.length_ft).toBe(76)
         expect(payload.width_ft).toBe(16)
         expect(payload.square_feet).toBe(76 * 16) // 1216
