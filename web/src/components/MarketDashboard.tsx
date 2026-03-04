@@ -267,6 +267,7 @@ export default function MarketDashboard() {
   const [tdhcaLoading, setTdhcaLoading] = useState(false);
   const [tdhcaResult, setTdhcaResult] = useState<any>(null);
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
+  const [tdhcaPageText, setTdhcaPageText] = useState<string>('');
 
   // Evaluation report state (set by DesktopEvaluatorPanel callback)
   const [evalReport, setEvalReport] = useState<any>(null);
@@ -639,6 +640,7 @@ export default function MarketDashboard() {
           console.log('[MarketDashboard] TDHCA page_text (first 1000):', data.page_text?.substring(0, 1000));
         }
         setTdhcaResult(data.data);
+        setTdhcaPageText(data.page_text || '');
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados');
@@ -689,6 +691,45 @@ export default function MarketDashboard() {
     const bad = new Set(['weight', 'size', 'serial', 'serial #', 'serial#', 'label/seal', 'label/seal#', 'w', 'l', 'width', 'length']);
     const v = (value || '').trim();
     return bad.has(v.toLowerCase()) ? '' : v;
+  };
+
+  // ── CLIENT-SIDE TEXT EXTRACTION (last-resort fallback) ────────────
+  // Searches the raw page text from TDHCA for fields the parser might have missed.
+  // This is the DEFINITIVE safety net: even if the backend parser fails,
+  // regex on the raw text will find the data.
+  const extractFromText = (text: string, ...patterns: RegExp[]): string => {
+    if (!text) return '';
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m && m[1]?.trim()) return m[1].trim();
+    }
+    return '';
+  };
+
+  // Wind Zone validation: only accept I, II, III, 1, 2, 3
+  const isValidWindZone = (v: string): boolean => /^[IVX123]{1,3}$/i.test(v.trim());
+
+  // Get field with 3-layer fallback: structured → raw_fields → pageText regex
+  const getField = (structuredKey: string, rawKeys: string[], textPatterns: RegExp[]): string => {
+    // Layer 1: structured field from backend
+    const structured = tdhcaResult?.[structuredKey];
+    if (typeof structured === 'string' && structured.trim()) return structured.trim();
+
+    // Layer 2: raw_fields
+    const raw = (tdhcaResult?.raw_fields || {}) as Record<string, any>;
+    for (const rk of rawKeys) {
+      const rv = raw[rk];
+      if (rv !== undefined && rv !== null && String(rv).trim()) return String(rv).trim();
+      // Case-insensitive check
+      const lower = rk.toLowerCase();
+      const found = Object.entries(raw).find(([k]) => k.toLowerCase() === lower);
+      if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim()) {
+        return String(found[1]).trim();
+      }
+    }
+
+    // Layer 3: regex on page text
+    return extractFromText(tdhcaPageText, ...textPatterns);
   };
 
   const deriveDimensions = () => {
@@ -2181,42 +2222,21 @@ export default function MarketDashboard() {
                           <span className="text-sm font-semibold text-green-800">Título Encontrado</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
-                          {tdhcaResult.certificate_number && (
-                            <div><span className="font-semibold text-gray-600">Certificado:</span> <span className="text-gray-900">{tdhcaResult.certificate_number}</span></div>
-                          )}
-                          {tdhcaResult.manufacturer && (
-                            <div className="col-span-2"><span className="font-semibold text-gray-600">Fabricante:</span> <span className="text-gray-900">{tdhcaResult.manufacturer}</span></div>
-                          )}
-                          {tdhcaResult.model && (
-                            <div><span className="font-semibold text-gray-600">Modelo:</span> <span className="text-gray-900">{tdhcaResult.model}</span></div>
-                          )}
-                          {tdhcaResult.year && (
-                            <div><span className="font-semibold text-gray-600">Año:</span> <span className="text-gray-900">{tdhcaResult.year}</span></div>
-                          )}
-                          {tdhcaResult.serial_number && (
-                            <div><span className="font-semibold text-gray-600">Serial #:</span> <span className="text-gray-900">{tdhcaResult.serial_number}</span></div>
-                          )}
-                          {tdhcaResult.label_seal && (
-                            <div><span className="font-semibold text-gray-600">Label/Seal #:</span> <span className="text-gray-900">{tdhcaResult.label_seal}</span></div>
-                          )}
-                          {tdhcaResult.square_feet && (
-                            <div><span className="font-semibold text-gray-600">Sq Ft:</span> <span className="text-gray-900">{tdhcaResult.square_feet}</span></div>
-                          )}
-                          {tdhcaResult.wind_zone && (
-                            <div><span className="font-semibold text-gray-600">Wind Zone:</span> <span className="text-gray-900">{tdhcaResult.wind_zone}</span></div>
-                          )}
-                          {(tdhcaResult.width && tdhcaResult.length) && (
-                            <div><span className="font-semibold text-gray-600">Tamaño:</span> <span className="text-gray-900">{tdhcaResult.width} × {tdhcaResult.length}</span></div>
-                          )}
-                          {tdhcaResult.buyer && (
-                            <div className="col-span-2"><span className="font-semibold text-gray-600">Dueño actual (vende a nosotros):</span> <span className="text-gray-900">{tdhcaResult.buyer}</span></div>
-                          )}
-                          {tdhcaResult.seller && (
-                            <div><span className="font-semibold text-gray-600">Dueño anterior:</span> <span className="text-gray-900">{tdhcaResult.seller}</span></div>
-                          )}
-                          {tdhcaResult.county && (
-                            <div><span className="font-semibold text-gray-600">Condado:</span> <span className="text-gray-900">{tdhcaResult.county}</span></div>
-                          )}
+                          {/* Show ALL fields — even empty ones — so user can see what was extracted */}
+                          <div><span className="font-semibold text-gray-600">Certificado:</span> <span className={tdhcaResult.certificate_number ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.certificate_number || '—'}</span></div>
+                          <div className="col-span-2"><span className="font-semibold text-gray-600">Fabricante:</span> <span className={tdhcaResult.manufacturer ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Dirección Fab.:</span> <span className={tdhcaResult.manufacturer_address ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer_address || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Ciudad/Estado/ZIP:</span> <span className={tdhcaResult.manufacturer_city_state_zip ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer_city_state_zip || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Modelo:</span> <span className={tdhcaResult.model ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.model || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Año/Fecha:</span> <span className={tdhcaResult.year ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.year || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Serial #:</span> <span className={tdhcaResult.serial_number ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.serial_number || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Label/Seal #:</span> <span className={tdhcaResult.label_seal ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.label_seal || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Sq Ft:</span> <span className={tdhcaResult.square_feet ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.square_feet || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Wind Zone:</span> <span className={tdhcaResult.wind_zone ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.wind_zone || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Tamaño:</span> <span className={(tdhcaResult.width && tdhcaResult.length) ? 'text-gray-900' : 'text-red-400 italic'}>{(tdhcaResult.width && tdhcaResult.length) ? `${tdhcaResult.width} × ${tdhcaResult.length}` : '—'}</span></div>
+                          <div className="col-span-2"><span className="font-semibold text-gray-600">Dueño actual (Buyer):</span> <span className={tdhcaResult.buyer ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.buyer || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Dueño anterior (Seller):</span> <span className={tdhcaResult.seller ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.seller || '—'}</span></div>
+                          <div><span className="font-semibold text-gray-600">Condado:</span> <span className={tdhcaResult.county ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.county || '—'}</span></div>
                           {tdhcaResult.transfer_date && (
                             <div><span className="font-semibold text-gray-600">Fecha Transferencia:</span> <span className="text-gray-900">{tdhcaResult.transfer_date}</span></div>
                           )}
@@ -2224,6 +2244,7 @@ export default function MarketDashboard() {
                             <div className="col-span-2"><span className="font-semibold text-gray-600">Gravamen:</span> <span className="text-gray-900">{tdhcaResult.lien_info}</span></div>
                           )}
                         </div>
+                        <p className="text-[10px] text-gray-400 mt-2">Los campos en rojo (—) no están disponibles en el registro TDHCA para este título.</p>
                         
                         {/* Link to full TDHCA record */}
                         {(tdhcaResult.detail_url || tdhcaResult.print_url) && (
@@ -2280,28 +2301,65 @@ export default function MarketDashboard() {
                           transactionType="purchase"
                           initialData={selectedListing ? (() => {
                             const mfr = splitManufacturerParts();
+                            // ═══════════════════════════════════════════════════════════
+                            // 3-LAYER FALLBACK: structured → raw_fields → page text regex
+                            // This is DEFINITIVE: if data exists ANYWHERE on the TDHCA page, we find it.
+                            // ═══════════════════════════════════════════════════════════
+                            const serial = cleanSuspiciousValue(
+                              getField('serial_number', ['Serial #', 'Serial', 'Serial Number', 'Complete Serial Number'],
+                                [/Serial\s*#?\s*[:=]?\s*([A-Z0-9]{4,})/i, /Section\s*1[\s\S]{0,30}?([A-Z0-9]{5,}TX[A-Z0-9]*)/i])
+                            );
+                            const label = cleanSuspiciousValue(
+                              getField('label_seal', ['Label/Seal#', 'Label/Seal', 'Label/Seal Number', 'Label/Seal #', 'HUD Label'],
+                                [/Label\/Seal\s*#?\s*[:=]?\s*([A-Z]{2,4}\d{5,})/i, /(?:TEX|NTA|RAD|TRA)\d{5,}/i])
+                            );
+                            const model = getField('model', ['Model', 'Make'],
+                              [/Model\s*[:=]?\s*([A-Z][A-Z0-9\s\-]+)/i]);
+                            const dateManf = getField('date_of_manufacture', ['Date Manf', 'Date of Manufacture', 'Date Manufactured'],
+                              [/Date\s*(?:Manf|of\s*Manufacture|Manufactured|Mfg)\s*[:=]?\s*(\d{1,2}\/\d{4})/i])
+                              || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i]);
+                            const sqft = getField('square_feet', ['Square Ftg', 'Square Feet', 'Sq Ftg', 'Total Square Feet'],
+                              [/Square\s*(?:Ftg|Feet|Footage)\s*[:=]?\s*(\d{3,})/i]);
+                            const rawWind = getField('wind_zone', ['Wind Zone'],
+                              [/Wind\s*Zone\s*[:=]?\s*([IVX123]{1,3})\b/i]);
+                            const windZone = isValidWindZone(rawWind) ? rawWind : '';
+                            const dims = deriveDimensions();
+                            const buyer = getField('buyer', ['Buyer/Transferee', 'Buyer'],
+                              [/Buyer\/Transferee\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i, /Buyer\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i]);
+                            const seller = getField('seller', ['Seller/Transferor', 'Seller'],
+                              [/Seller\/Transferor\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i, /Seller\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i]);
+                            const year = dateManf || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i])
+                              || (selectedListing.year_built?.toString() || '');
+
+                            console.log('[MarketDashboard] 🔍 DEFINITIVE field extraction:', {
+                              mfr_name: mfr.name, mfr_addr: mfr.address, mfr_csz: mfr.cityStateZip,
+                              model, dateManf, year, sqft, windZone, serial, label,
+                              buyer, seller, dims_w: dims.width, dims_l: dims.length,
+                              page_text_length: tdhcaPageText?.length || 0,
+                            });
+
                             return {
                             // Block 1 defaults
                             applicant_name: 'MANINOS HOMES LLC',
                             is_new: false,
                             is_used: true,
-                            // Block 2A — auto-fill from TDHCA title (client-side split as safety net)
+                            // Block 2A — auto-fill from TDHCA with 3-layer fallback
                             manufacturer: mfr.name,
                             manufacturer_address: mfr.address,
                             manufacturer_city_state_zip: mfr.cityStateZip,
-                            make: getTdhcaField('model', 'Model'),
-                            year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || (selectedListing.year_built?.toString() || ''),
-                            date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
-                            total_sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || selectedListing.sqft?.toString() || '',
-                            section1_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                            section1_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
-                            section1_width: deriveDimensions().width,
-                            section1_length: deriveDimensions().length,
-                            wind_zone: getTdhcaField('wind_zone', 'Wind Zone'),
-                            // Legacy compat (still needed for mapping)
-                            serial_number: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
-                            label_seal_number: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                            sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || selectedListing.sqft?.toString() || '',
+                            make: model,
+                            year,
+                            date_of_manufacture: dateManf,
+                            total_sqft: sqft || selectedListing.sqft?.toString() || '',
+                            section1_label: label,
+                            section1_serial: serial,
+                            section1_width: dims.width,
+                            section1_length: dims.length,
+                            wind_zone: windZone,
+                            // Legacy compat
+                            serial_number: serial,
+                            label_seal_number: label,
+                            sqft: sqft || selectedListing.sqft?.toString() || '',
                             bedrooms: selectedListing.bedrooms?.toString() || '',
                             bathrooms: selectedListing.bathrooms?.toString() || '',
                             // Block 2B — default Yes
@@ -2317,8 +2375,8 @@ export default function MarketDashboard() {
                             home_moved_no: true,
                             home_installed: false,
                             home_installed_no: true,
-                            // Block 4A — seller auto-fill from title (current owner = tdhcaResult.buyer)
-                            seller_name: getTdhcaField('buyer', 'Buyer/Transferee', 'Buyer'),
+                            // Block 4A — seller = current title owner (TDHCA buyer)
+                            seller_name: buyer,
                             // Block 4B — buyer is always Maninos
                             buyer_name: 'MANINOS HOMES LLC',
                             // Block 4C/D
@@ -2326,8 +2384,8 @@ export default function MarketDashboard() {
                             sale_date: new Date().toISOString().split('T')[0],
                             sale_transfer_date: new Date().toISOString().split('T')[0],
                             // Page 2 — auto-sync from Block 2A
-                            page2_hud_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                            page2_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
+                            page2_hud_label: label,
+                            page2_serial: serial,
                             // Block 6 — default Inventory
                             election_inventory: true,
                           }; })() : undefined}

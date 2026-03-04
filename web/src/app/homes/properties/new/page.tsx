@@ -116,6 +116,7 @@ export default function NewPropertyPage() {
   const [tdhcaLoading, setTdhcaLoading] = useState(false)
   const [tdhcaResult, setTdhcaResult] = useState<any>(null)
   const [tdhcaError, setTdhcaError] = useState<string | null>(null)
+  const [tdhcaPageText, setTdhcaPageText] = useState<string>('')
 
   // Payment state
   const [payment, setPayment] = useState<PaymentInfo>({
@@ -178,6 +179,7 @@ export default function NewPropertyPage() {
       const data = await res.json()
       if (data.success) {
         setTdhcaResult(data.data)
+        setTdhcaPageText(data.page_text || '')
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados')
       }
@@ -218,6 +220,33 @@ export default function NewPropertyPage() {
     const bad = new Set(['weight', 'size', 'serial', 'serial #', 'serial#', 'label/seal', 'label/seal#', 'w', 'l', 'width', 'length'])
     const v = (value || '').trim()
     return bad.has(v.toLowerCase()) ? '' : v
+  }
+
+  // ── CLIENT-SIDE TEXT EXTRACTION (last-resort fallback) ────────────
+  const extractFromText = (text: string, ...patterns: RegExp[]): string => {
+    if (!text) return ''
+    for (const p of patterns) {
+      const m = text.match(p)
+      if (m && m[1]?.trim()) return m[1].trim()
+    }
+    return ''
+  }
+
+  const isValidWindZone = (v: string): boolean => /^[IVX123]{1,3}$/i.test(v.trim())
+
+  // 3-layer fallback: structured → raw_fields → pageText regex
+  const getField = (structuredKey: string, rawKeys: string[], textPatterns: RegExp[]): string => {
+    const structured = tdhcaResult?.[structuredKey]
+    if (typeof structured === 'string' && structured.trim()) return structured.trim()
+    const raw = (tdhcaResult?.raw_fields || {}) as Record<string, any>
+    for (const rk of rawKeys) {
+      const rv = raw[rk]
+      if (rv !== undefined && rv !== null && String(rv).trim()) return String(rv).trim()
+      const lower = rk.toLowerCase()
+      const found = Object.entries(raw).find(([k]) => k.toLowerCase() === lower)
+      if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim()) return String(found[1]).trim()
+    }
+    return extractFromText(tdhcaPageText, ...textPatterns)
   }
 
   const deriveDimensions = () => {
@@ -928,55 +957,58 @@ export default function NewPropertyPage() {
                     transactionType="purchase"
                     initialData={(() => {
                       const mfr = splitManufacturerParts()
+                      // 3-LAYER FALLBACK: structured → raw_fields → page text regex
+                      const serial = cleanSuspiciousValue(
+                        getField('serial_number', ['Serial #', 'Serial', 'Serial Number', 'Complete Serial Number'],
+                          [/Serial\s*#?\s*[:=]?\s*([A-Z0-9]{4,})/i]))
+                      const label = cleanSuspiciousValue(
+                        getField('label_seal', ['Label/Seal#', 'Label/Seal', 'Label/Seal Number', 'Label/Seal #', 'HUD Label'],
+                          [/Label\/Seal\s*#?\s*[:=]?\s*([A-Z]{2,4}\d{5,})/i, /(?:TEX|NTA|RAD|TRA)\d{5,}/i]))
+                      const model = getField('model', ['Model', 'Make'],
+                        [/Model\s*[:=]?\s*([A-Z][A-Z0-9\s\-]+)/i])
+                      const dateManf = getField('date_of_manufacture', ['Date Manf', 'Date of Manufacture', 'Date Manufactured'],
+                        [/Date\s*(?:Manf|of\s*Manufacture|Manufactured|Mfg)\s*[:=]?\s*(\d{1,2}\/\d{4})/i])
+                        || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i])
+                      const sqft = getField('square_feet', ['Square Ftg', 'Square Feet', 'Sq Ftg', 'Total Square Feet'],
+                        [/Square\s*(?:Ftg|Feet|Footage)\s*[:=]?\s*(\d{3,})/i])
+                      const rawWind = getField('wind_zone', ['Wind Zone'],
+                        [/Wind\s*Zone\s*[:=]?\s*([IVX123]{1,3})\b/i])
+                      const windZone = isValidWindZone(rawWind) ? rawWind : ''
+                      const dims = deriveDimensions()
+                      const buyer = getField('buyer', ['Buyer/Transferee', 'Buyer'],
+                        [/Buyer\/Transferee\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i, /Buyer\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i])
+                      const year = dateManf || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i]) || form.year || ''
+
                       return {
-                      // Block 1 defaults
                       applicant_name: 'MANINOS HOMES LLC',
-                      is_new: false,
-                      is_used: true,
-                      // Block 2A — auto-fill from TDHCA title (client-side split as safety net)
+                      is_new: false, is_used: true,
                       manufacturer: mfr.name,
                       manufacturer_address: mfr.address,
                       manufacturer_city_state_zip: mfr.cityStateZip,
-                      make: getTdhcaField('model', 'Model'),
-                      year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || form.year || '',
-                      date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
-                      total_sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || computedSqFt?.toString() || '',
-                      section1_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                      section1_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
-                      section1_width: deriveDimensions().width,
-                      section1_length: deriveDimensions().length,
-                      wind_zone: getTdhcaField('wind_zone', 'Wind Zone'),
-                      // Legacy compat
-                      serial_number: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
-                      label_seal_number: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                      sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || computedSqFt?.toString() || '',
+                      make: model,
+                      year,
+                      date_of_manufacture: dateManf,
+                      total_sqft: sqft || computedSqFt?.toString() || '',
+                      section1_label: label,
+                      section1_serial: serial,
+                      section1_width: dims.width,
+                      section1_length: dims.length,
+                      wind_zone: windZone,
+                      serial_number: serial,
+                      label_seal_number: label,
+                      sqft: sqft || computedSqFt?.toString() || '',
                       bedrooms: form.bedrooms || '',
                       bathrooms: form.bathrooms || '',
-                      // Block 2B — default Yes
-                      has_hud_label: true,
-                      no_hud_label: false,
-                      // Block 3 — always empty, default No ticked
-                      location_address: '',
-                      location_city: '',
-                      location_state: '',
-                      location_zip: '',
-                      location_county: '',
-                      home_moved: false,
-                      home_moved_no: true,
-                      home_installed: false,
-                      home_installed_no: true,
-                      // Block 4A — seller auto-fill from title (current owner = tdhcaResult.buyer)
-                      seller_name: getTdhcaField('buyer', 'Buyer/Transferee', 'Buyer'),
-                      // Block 4B — buyer is always Maninos
+                      has_hud_label: true, no_hud_label: false,
+                      location_address: '', location_city: '', location_state: '', location_zip: '', location_county: '',
+                      home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
+                      seller_name: buyer,
                       buyer_name: 'MANINOS HOMES LLC',
-                      // Block 4C/D
                       sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
                       sale_date: new Date().toISOString().split('T')[0],
                       sale_transfer_date: new Date().toISOString().split('T')[0],
-                      // Page 2 — auto-sync from Block 2A
-                      page2_hud_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
-                      page2_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
-                      // Block 6 — default Inventory
+                      page2_hud_label: label,
+                      page2_serial: serial,
                       election_inventory: true,
                       } })()}
                     onSave={(file, data) => {

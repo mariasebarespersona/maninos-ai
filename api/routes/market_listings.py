@@ -1447,7 +1447,7 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 "success": True,
                 "message": f"Título encontrado para {request.search_type}: {request.search_value}",
                 "data": structured,
-                "page_text": page_text[:3000],
+                "page_text": page_text[:5000],
             }
         
     except Exception as e:
