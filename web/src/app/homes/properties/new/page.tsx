@@ -948,12 +948,16 @@ export default function NewPropertyPage() {
                       // Block 2B — default Yes
                       has_hud_label: true,
                       no_hud_label: false,
-                      // Block 3 — location
-                      location_address: form.address || '',
-                      location_city: form.city || '',
-                      location_state: form.state || 'TX',
-                      location_zip: form.zip_code || '',
-                      location_county: getTdhcaField('county', 'County'),
+                      // Block 3 — always empty, default No ticked
+                      location_address: '',
+                      location_city: '',
+                      location_state: '',
+                      location_zip: '',
+                      location_county: '',
+                      home_moved: false,
+                      home_moved_no: true,
+                      home_installed: false,
+                      home_installed_no: true,
                       // Block 4A — seller auto-fill from title (current owner = tdhcaResult.buyer)
                       seller_name: getTdhcaField('buyer', 'Buyer/Transferee', 'Buyer'),
                       // Block 4B — buyer is always Maninos
