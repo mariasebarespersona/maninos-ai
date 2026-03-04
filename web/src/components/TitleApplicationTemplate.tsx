@@ -292,7 +292,7 @@ export default function TitleApplicationTemplate({
 
   const handleSave = async () => {
     if (!onSave) return; setSaving(true)
-    try { const f = await generatePDF(); onSave(f, data) } catch (e) { console.error(e) } finally { setSaving(false) }
+    try { const f = await generatePDF(); await onSave(f, data) } catch (e) { console.error(e) } finally { setSaving(false) }
   }
 
   // ─── Field helpers ────────────────────────────────────────────────────────

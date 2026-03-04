@@ -724,6 +724,11 @@ export default function MarketDashboard() {
         }
       }
 
+      // Build document_data from filled-in templates
+      const docData: Record<string, any> = {};
+      if (billOfSaleData) docData.bos_purchase = billOfSaleData;
+      if (titleAppData) docData.title_app_purchase = titleAppData;
+
       const response = await fetch('/api/properties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -745,6 +750,7 @@ export default function MarketDashboard() {
           checklist_data: Object.keys(evalChecklist).length > 0 ? evalChecklist : checklist,
           checklist_completed: true,
           notes: detailNotes,
+          document_data: Object.keys(docData).length > 0 ? docData : undefined,
         }),
       });
       

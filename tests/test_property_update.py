@@ -374,6 +374,90 @@ def test_property_update_model_all_optional():
 
 
 # ============================================================================
+# TEST 8: _format_property handles document_data correctly
+# ============================================================================
+
+def test_format_property_document_data():
+    """
+    _format_property should handle document_data:
+    - None → {} (empty dict)
+    - Missing key → {} (empty dict)
+    - Valid dict → preserved as-is
+    """
+    from api.routes.properties import _format_property
+
+    print("\n" + "=" * 60)
+    print("TEST 8: _format_property document_data handling")
+    print("=" * 60)
+
+    base = {
+        "id": "test-doc-data",
+        "address": "100 Doc Ave",
+        "status": "purchased",
+        "is_renovated": False,
+        "photos": [],
+        "checklist_completed": False,
+        "checklist_data": {},
+        "created_at": "2026-03-01T00:00:00+00:00",
+        "updated_at": "2026-03-01T00:00:00+00:00",
+    }
+
+    # Case 1: document_data is None
+    result1 = _format_property({**base, "document_data": None})
+    assert result1.document_data == {}, f"Expected {{}}, got {result1.document_data}"
+
+    # Case 2: document_data key missing entirely (pre-migration)
+    result2 = _format_property(base)
+    assert result2.document_data == {}, f"Expected {{}}, got {result2.document_data}"
+
+    # Case 3: document_data with actual BOS data
+    bos_data = {"bos_purchase": {"seller_name": "John", "buyer_name": "MANINOS HOMES"}}
+    result3 = _format_property({**base, "document_data": bos_data})
+    assert result3.document_data == bos_data, f"Expected BOS data, got {result3.document_data}"
+
+    print("✅ document_data handled correctly")
+    print(f"   None → {result1.document_data}")
+    print(f"   Missing → {result2.document_data}")
+    print(f"   Valid → {result3.document_data}")
+
+
+# ============================================================================
+# TEST 9: PropertyUpdate accepts document_data
+# ============================================================================
+
+def test_property_update_document_data():
+    """PropertyUpdate model should accept document_data as an optional dict."""
+    from api.models.schemas import PropertyUpdate
+
+    print("\n" + "=" * 60)
+    print("TEST 9: PropertyUpdate accepts document_data")
+    print("=" * 60)
+
+    bos_data = {
+        "bos_purchase": {
+            "seller_name": "John Doe",
+            "buyer_name": "MANINOS HOMES",
+            "total_payment": "$30,000",
+        }
+    }
+
+    update = PropertyUpdate(document_data=bos_data)
+    data = update.model_dump(exclude_none=True)
+
+    assert "document_data" in data
+    assert data["document_data"]["bos_purchase"]["seller_name"] == "John Doe"
+
+    # Without document_data
+    update2 = PropertyUpdate(address="New Address")
+    data2 = update2.model_dump(exclude_none=True)
+    assert "document_data" not in data2
+
+    print("✅ PropertyUpdate accepts document_data correctly")
+    print(f"   With data: {list(data.keys())}")
+    print(f"   Without: {list(data2.keys())}")
+
+
+# ============================================================================
 # RUN ALL TESTS
 # ============================================================================
 
@@ -386,6 +470,8 @@ if __name__ == "__main__":
         test_unknown_columns_stripped,
         test_dict_get_none_vs_missing,
         test_property_update_model_all_optional,
+        test_format_property_document_data,
+        test_property_update_document_data,
     ]
 
     passed = 0

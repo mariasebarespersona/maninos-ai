@@ -245,6 +245,11 @@ export default function NewPropertyPage() {
     try {
       const sqFt = computedSqFt || undefined
 
+      // Build document_data from filled-in templates
+      const docData: Record<string, any> = {}
+      if (billOfSaleData) docData.bos_purchase = billOfSaleData
+      if (titleAppData) docData.title_app_purchase = titleAppData
+
       const payload = {
         address: form.address,
         city: form.city || undefined,
@@ -258,6 +263,7 @@ export default function NewPropertyPage() {
         square_feet: sqFt,
         length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
         width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
+        document_data: Object.keys(docData).length > 0 ? docData : undefined,
       }
 
       // 1. Create property

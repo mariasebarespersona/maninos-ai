@@ -253,9 +253,9 @@ export default function BillOfSaleTemplate({
     setSaving(true)
     try {
       const file = await generatePDF()
-      onSave(file, data)
+      await onSave(file, data)
     } catch (err) {
-      console.error('Error generating PDF:', err)
+      console.error('Error generating/saving PDF:', err)
     } finally {
       setSaving(false)
     }

@@ -143,6 +143,7 @@ async def create_property(data: PropertyCreate):
         "photos": request_data.get("photos", []),
         "checklist_completed": request_data.get("checklist_completed", False),
         "checklist_data": request_data.get("checklist_data", {}),
+        "document_data": request_data.get("document_data", {}),
     }
     
     # Convert Decimal to float for JSON serialization
@@ -183,15 +184,24 @@ async def update_property(property_id: str, data: PropertyUpdate):
     
     update_data = data.model_dump(exclude_none=True)
     
-    # Strip out columns that may not exist yet (migration 046)
+    # Strip out columns that may not exist yet (migration 046/047)
     # so the update doesn't fail if the migration hasn't been run.
     db_columns = set(current.data.keys())
     unknown_cols = [k for k in update_data if k not in db_columns]
     if unknown_cols:
         logger.warning(
             f"Stripping unknown columns from update payload for property "
-            f"{property_id}: {unknown_cols}. Run pending migrations."
+            f"{property_id}: {unknown_cols}. Run pending migrations (046 for length_ft/width_ft, 047 for document_data)."
         )
+        # If document_data is being stripped, return a clear error instead of silently losing data
+        if "document_data" in unknown_cols:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot save document_data: column does not exist. "
+                    f"Run migration 047 in Supabase SQL Editor to add the document_data column."
+                ),
+            )
         for col in unknown_cols:
             del update_data[col]
     
@@ -734,6 +744,7 @@ def _format_property(data: dict) -> PropertyResponse:
         property_code=data.get("property_code"),
         length_ft=data.get("length_ft"),
         width_ft=data.get("width_ft"),
+        document_data=data.get("document_data") or {},
         status=PropertyStatus(data["status"]),
         is_renovated=data.get("is_renovated") or False,
         photos=data.get("photos") or [],

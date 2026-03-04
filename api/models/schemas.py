@@ -68,6 +68,7 @@ class PropertyBase(BaseModel):
     property_code: Optional[str] = None
     length_ft: Optional[int] = None
     width_ft: Optional[int] = None
+    document_data: Optional[dict] = None
 
 
 class PropertyCreate(PropertyBase):
@@ -96,6 +97,7 @@ class PropertyUpdate(BaseModel):
     property_code: Optional[str] = None
     length_ft: Optional[int] = None
     width_ft: Optional[int] = None
+    document_data: Optional[dict] = None
     photos: Optional[list[str]] = None
     checklist_completed: Optional[bool] = None
     checklist_data: Optional[dict] = None
@@ -109,6 +111,7 @@ class PropertyResponse(PropertyBase):
     photos: list[str] = []
     checklist_completed: bool
     checklist_data: dict = {}
+    document_data: dict = {}
     created_at: datetime
     updated_at: datetime
     

@@ -39,8 +39,8 @@ import {
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import TitleTransferCard from '@/components/TitleTransferCard'
-import BillOfSaleTemplate from '@/components/BillOfSaleTemplate'
-import TitleApplicationTemplate from '@/components/TitleApplicationTemplate'
+import BillOfSaleTemplate, { type BillOfSaleData } from '@/components/BillOfSaleTemplate'
+import TitleApplicationTemplate, { type TitleApplicationData } from '@/components/TitleApplicationTemplate'
 import DesktopEvaluatorPanel from '@/components/DesktopEvaluatorPanel'
 
 interface Property {
@@ -64,6 +64,7 @@ interface Property {
   photos: string[]
   checklist_completed: boolean
   checklist_data: Record<string, boolean>
+  document_data: Record<string, any>
   // evaluation_report_id is stored on evaluation_reports.property_id, not here
   created_at: string
   updated_at: string
@@ -173,6 +174,44 @@ export default function PropertyDetailPage() {
     recommended_price?: number | null
     warning?: string | null
   } | null>(null)
+
+  // Helper: save document data to property's document_data JSONB
+  // Returns true if save succeeded, false otherwise
+  const saveDocumentData = async (key: string, docFormData: BillOfSaleData | TitleApplicationData): Promise<boolean> => {
+    if (!property) return false
+    try {
+      const existingDocData = property.document_data || {}
+      const updatedDocData = { ...existingDocData, [key]: docFormData }
+      console.log(`[saveDocumentData] Saving key="${key}" to property ${property.id}`, { keys: Object.keys(updatedDocData) })
+      const res = await fetch(`/api/properties/${property.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_data: updatedDocData }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        // Verify the document_data was actually saved
+        if (updated?.document_data?.[key]) {
+          setProperty(updated)
+          console.log(`[saveDocumentData] ✓ Saved successfully. Keys in document_data:`, Object.keys(updated.document_data))
+          return true
+        } else {
+          console.warn(`[saveDocumentData] ⚠ PATCH succeeded but document_data["${key}"] is missing in response. Migration 047 may not have been run.`)
+          toast.error(`Error: Los datos del documento no se guardaron. Ejecuta la migración 047 en Supabase.`)
+          return false
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        console.error(`[saveDocumentData] PATCH failed with status ${res.status}:`, errData)
+        toast.error(errData?.detail || `Error al guardar datos del documento (${res.status})`)
+        return false
+      }
+    } catch (err) {
+      console.error(`[saveDocumentData] Network error saving ${key}:`, err)
+      toast.error('Error de conexión al guardar datos del documento')
+      return false
+    }
+  }
 
   useEffect(() => {
     fetchProperty()
@@ -899,6 +938,7 @@ export default function PropertyDetailPage() {
               <BillOfSaleTemplate
                 transactionType={showBosTemplate}
                 initialData={{
+                  // Default values from property
                   ...(showBosTemplate === 'purchase' ? {
                     seller_name: '',
                     buyer_name: 'MANINOS HOMES',
@@ -921,9 +961,14 @@ export default function PropertyDetailPage() {
                   buyer_date: new Date().toISOString().split('T')[0],
                   is_new: false,
                   is_used: true,
+                  // Override with previously saved data (employee-filled fields)
+                  ...(property.document_data?.[`bos_${showBosTemplate}`] || {}),
                 }}
-                onSave={async (file) => {
-                  // Upload the generated PDF to the transfer
+                onSave={async (file, data) => {
+                  // 1. Save the filled-in form data to property.document_data
+                  const saved = await saveDocumentData(`bos_${showBosTemplate}`, data)
+
+                  // 2. Upload the generated PDF to the transfer
                   const transferId = showBosTemplate === 'purchase' ? transfers.purchase?.id : transfers.sale?.id
                   if (transferId) {
                     const formData = new FormData()
@@ -936,7 +981,9 @@ export default function PropertyDetailPage() {
                       fetchTransfers()
                     } catch (err) { console.error('Upload error:', err) }
                   }
-                  toast.success('✓ Bill of Sale guardado como PDF')
+                  if (saved) {
+                    toast.success('✓ Bill of Sale guardado con datos')
+                  }
                   setShowBosTemplate(null)
                 }}
                 onClose={() => setShowBosTemplate(null)}
@@ -950,6 +997,7 @@ export default function PropertyDetailPage() {
               <TitleApplicationTemplate
                 transactionType={showTitleAppTemplate}
                 initialData={{
+                  // Default values from property
                   ...(showTitleAppTemplate === 'purchase' ? {
                     applicant_name: 'MANINOS HOMES LLC',
                     seller_name: '',
@@ -971,8 +1019,14 @@ export default function PropertyDetailPage() {
                   sale_date: new Date().toISOString().split('T')[0],
                   is_new: false,
                   is_used: true,
+                  // Override with previously saved data (employee-filled fields)
+                  ...(property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}),
                 }}
-                onSave={async (file) => {
+                onSave={async (file, data) => {
+                  // 1. Save the filled-in form data to property.document_data
+                  const saved = await saveDocumentData(`title_app_${showTitleAppTemplate}`, data)
+
+                  // 2. Upload the generated PDF to the transfer
                   const transferId = showTitleAppTemplate === 'purchase' ? transfers.purchase?.id : transfers.sale?.id
                   if (transferId) {
                     const formData = new FormData()
@@ -985,7 +1039,9 @@ export default function PropertyDetailPage() {
                       fetchTransfers()
                     } catch (err) { console.error('Upload error:', err) }
                   }
-                  toast.success('✓ Aplicación de Título guardada como PDF')
+                  if (saved) {
+                    toast.success('✓ Aplicación de Título guardada con datos')
+                  }
                   setShowTitleAppTemplate(null)
                 }}
                 onClose={() => setShowTitleAppTemplate(null)}
@@ -998,30 +1054,46 @@ export default function PropertyDetailPage() {
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 onClick={() => setShowBosTemplate('purchase')}
-                className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                  property.document_data?.bos_purchase
+                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                    : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                }`}
               >
-                <FileText className="w-3.5 h-3.5" />
+                {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Bill of Sale (Compra)
               </button>
               <button
                 onClick={() => setShowBosTemplate('sale')}
-                className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                  property.document_data?.bos_sale
+                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                }`}
               >
-                <FileText className="w-3.5 h-3.5" />
+                {property.document_data?.bos_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Bill of Sale (Venta)
               </button>
               <button
                 onClick={() => setShowTitleAppTemplate('purchase')}
-                className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                  property.document_data?.title_app_purchase
+                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                }`}
               >
-                <FileText className="w-3.5 h-3.5" />
+                {property.document_data?.title_app_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Aplicación Título (Compra)
               </button>
               <button
                 onClick={() => setShowTitleAppTemplate('sale')}
-                className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                  property.document_data?.title_app_sale
+                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                }`}
               >
-                <FileText className="w-3.5 h-3.5" />
+                {property.document_data?.title_app_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Aplicación Título (Venta)
               </button>
             </div>
