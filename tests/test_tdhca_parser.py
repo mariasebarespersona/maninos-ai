@@ -477,3 +477,414 @@ def test_page_with_only_text_no_tables():
     assert structured["square_feet"] == "1200"
     assert structured["buyer"] == "BOB SMITH"
     assert structured["seller"] == "ALICE JONES"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BLOCK 2A + 4A AUTO-FILL: END-TO-END WITH REAL TEXAS TITLE DATA
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# These tests simulate the FULL flow: real TDHCA HTML → parser → structured data
+# → Block 2A / 4A field mapping (matching the frontend's getTdhcaField + splitManufacturerParts logic).
+#
+# Every Block 2A field and Block 4A field must be non-empty after mapping.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Helper: simulate frontend field mapping (same logic as MarketDashboard.tsx) ──
+
+def _map_block_2a_4a(structured: dict) -> dict:
+    """
+    Simulate the frontend's mapping of structured TDHCA data to
+    TitleApplicationTemplate initialData fields (Block 2A + 4A).
+
+    This mirrors exactly what MarketDashboard.tsx and new/page.tsx do.
+    """
+    import re as _re
+
+    # --- getTdhcaField equivalent ---
+    def get(*keys: str) -> str:
+        for k in keys:
+            v = structured.get(k)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+            # Fallback to raw_fields
+            raw = structured.get("raw_fields") or {}
+            exact = raw.get(k)
+            if exact is not None and str(exact).strip():
+                return str(exact).strip()
+            lower = k.lower()
+            for rk, rv in raw.items():
+                if rk.lower() == lower and rv is not None and str(rv).strip():
+                    return str(rv).strip()
+        return ""
+
+    # --- cleanSuspiciousValue equivalent ---
+    BAD = {"weight", "size", "serial", "serial #", "serial#",
+           "label/seal", "label/seal#", "w", "l", "width", "length"}
+    def clean(val: str) -> str:
+        return "" if val.strip().lower() in BAD else val.strip()
+
+    # --- splitManufacturerParts equivalent ---
+    def split_manufacturer():
+        raw_mfr = get("manufacturer", "Manufacturer")
+        backend_addr = get("manufacturer_address", "Address", "Manufacturer Address", "Mfg Address")
+        backend_csz = get("manufacturer_city_state_zip", "City, State, Zip", "City State Zip", "City, State")
+
+        if backend_addr or backend_csz:
+            return {"name": raw_mfr, "address": backend_addr, "cityStateZip": backend_csz}
+
+        # Client-side split (safety net)
+        result = {"name": raw_mfr, "address": "", "cityStateZip": ""}
+        if not raw_mfr:
+            return result
+
+        addr_re = _re.compile(
+            r"((\d{1,6}\s+(?:[A-Za-z0-9\s.\-]+?)(?:ST|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|LN|LANE|PL|PLACE|RD|ROAD|WAY|CIRCLE|CIR|LOOP|PKWY|PARKWAY|HWY|HIGHWAY|TRL|TRAIL|TERRACE|TER|PASS|CROSSING|XING|SQ|SQUARE)\.?)\s*(?:,\s*)?([A-Za-z\s.\-]+?),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?))$",
+            _re.IGNORECASE,
+        )
+        m = addr_re.search(raw_mfr)
+        if m:
+            result["name"] = raw_mfr[:m.start()].strip()
+            result["address"] = m.group(2).strip()
+            result["cityStateZip"] = f"{m.group(3).strip()}, {m.group(4)} {m.group(5)}"
+        return result
+
+    # --- deriveDimensions equivalent ---
+    def derive_dims():
+        w = clean(get("width", "Width"))
+        l = clean(get("length", "Length"))
+        if w and l:
+            return {"width": w, "length": l}
+        size = get("Size", "Size*", "size")
+        m = _re.match(r"(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)", size)
+        return {"width": m.group(1), "length": m.group(2)} if m else {"width": "", "length": ""}
+
+    mfr = split_manufacturer()
+    dims = derive_dims()
+
+    return {
+        # ── Block 2A ──
+        "manufacturer": mfr["name"],
+        "manufacturer_address": mfr["address"],
+        "manufacturer_city_state_zip": mfr["cityStateZip"],
+        "make": get("model", "Model"),
+        "year": get("year", "Year", "Date Manf", "Date of Manufacture"),
+        "date_of_manufacture": get("year", "Date Manf", "Date of Manufacture"),
+        "total_sqft": get("square_feet", "Square Ftg", "Square Feet"),
+        "section1_label": clean(get("label_seal", "Label/Seal#", "Label/Seal", "Label/Seal Number")),
+        "section1_serial": clean(get("serial_number", "Serial #", "Serial", "Serial Number", "Complete Serial Number")),
+        "section1_width": dims["width"],
+        "section1_length": dims["length"],
+        "wind_zone": get("wind_zone", "Wind Zone"),
+        # ── Block 4A ──
+        "seller_name": get("buyer", "Buyer/Transferee", "Buyer"),
+        "buyer_name": "MANINOS HOMES LLC",
+    }
+
+
+# ─── Test 1: Single-wide home (Brigadier / Waco) ─────────────────────────────
+
+TITLE_SINGLE_WIDE_HTML = """
+<html><body>
+<table width="95%" cellpadding="5">
+  <tr><td colspan="2"><b>Title Information</b></td></tr>
+  <tr><td>Certificate #</td><td>01191237</td></tr>
+  <tr><td>Manufacturer</td><td>MHDMAN00000039 BRIGADIER HOMES A U.S. HOME COMPANY 1001 SOUTH LOOP 340 WACO, TX 76710</td></tr>
+  <tr><td>Model</td><td>CENTURION</td></tr>
+  <tr><td>Date Manf</td><td>01/1999</td></tr>
+  <tr><td>Year</td><td>1999</td></tr>
+</table>
+<table width="95%" cellpadding="3" border="1">
+  <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+  <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+  <tr><td>CLW007371TXA</td><td>TEX0342861</td><td>4500</td><td>16 X 76</td></tr>
+</table>
+<table width="95%" cellpadding="5">
+  <tr><td>Square Ftg</td><td>1216</td></tr>
+  <tr><td>Wind Zone</td><td>II</td></tr>
+  <tr><td>Buyer/Transferee</td><td>JUAN GARCIA</td></tr>
+  <tr><td>Seller/Transferor</td><td>FIRST TRUST BANK</td></tr>
+  <tr><td>County</td><td>HARRIS</td></tr>
+  <tr><td>Issue Date</td><td>03/10/2015</td></tr>
+  <tr><td>Transfer/Sale Date</td><td>02/28/2015</td></tr>
+  <tr><td>Election</td><td>Personal Property</td></tr>
+  <tr><td>First Lien</td><td>NONE</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_block2a_4a_single_wide():
+    """
+    End-to-end: realistic single-wide TDHCA title → verify ALL Block 2A + 4A fields populated.
+    """
+    soup = BeautifulSoup(TITLE_SINGLE_WIDE_HTML, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com/detail", None)
+    fields = _map_block_2a_4a(structured)
+
+    # ── Block 2A: every field must be non-empty ──
+    assert fields["manufacturer"], "manufacturer should not be empty"
+    assert "BRIGADIER" in fields["manufacturer"]
+    assert fields["manufacturer_address"], "manufacturer_address should not be empty"
+    assert "1001" in fields["manufacturer_address"]
+    assert fields["manufacturer_city_state_zip"], "manufacturer_city_state_zip should not be empty"
+    assert "WACO" in fields["manufacturer_city_state_zip"]
+    assert "TX" in fields["manufacturer_city_state_zip"]
+    assert "76710" in fields["manufacturer_city_state_zip"]
+
+    assert fields["make"] == "CENTURION", f"make should be CENTURION, got '{fields['make']}'"
+    assert "1999" in fields["year"], f"year should contain 1999, got '{fields['year']}'"
+    assert fields["date_of_manufacture"], "date_of_manufacture should not be empty"
+
+    assert fields["total_sqft"] == "1216", f"total_sqft should be 1216, got '{fields['total_sqft']}'"
+    assert fields["wind_zone"] == "II", f"wind_zone should be II, got '{fields['wind_zone']}'"
+
+    assert fields["section1_serial"] == "CLW007371TXA", f"section1_serial got '{fields['section1_serial']}'"
+    assert fields["section1_label"] == "TEX0342861", f"section1_label got '{fields['section1_label']}'"
+    assert fields["section1_width"] == "16", f"section1_width got '{fields['section1_width']}'"
+    assert fields["section1_length"] == "76", f"section1_length got '{fields['section1_length']}'"
+
+    # ── Block 4A: seller from TDHCA buyer ──
+    assert fields["seller_name"] == "JUAN GARCIA", f"seller_name got '{fields['seller_name']}'"
+    assert fields["buyer_name"] == "MANINOS HOMES LLC"
+
+
+# ─── Test 2: Double-wide home (Champion / Florida manufacturer) ───────────────
+
+TITLE_DOUBLE_WIDE_HTML = """
+<html><body>
+<table width="95%" cellpadding="5">
+  <tr><td colspan="2"><b>Title Information</b></td></tr>
+  <tr><td>Certificate #</td><td>02543891</td></tr>
+  <tr><td>Manufacturer</td><td>MHDMAN00000042 CHAMPION HOME BUILDERS INC 7233 CHURCH ST MIDDLEBURG, FL 32068</td></tr>
+  <tr><td>Model</td><td>BROOKHAVEN</td></tr>
+  <tr><td>Date Manf</td><td>06/2003</td></tr>
+  <tr><td>Year</td><td>2003</td></tr>
+</table>
+<table width="95%" cellpadding="3" border="1">
+  <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+  <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+  <tr><td>047602AB3741A</td><td>NTA1150382</td><td>3800</td><td>14 X 52</td></tr>
+  <tr><td>Section 2</td><td></td><td></td><td></td></tr>
+  <tr><td>047602AB3741B</td><td>NTA1150383</td><td>3900</td><td>14 X 52</td></tr>
+</table>
+<table width="95%" cellpadding="5">
+  <tr><td>Square Ftg</td><td>1456</td></tr>
+  <tr><td>Wind Zone</td><td>I</td></tr>
+  <tr><td>Buyer/Transferee</td><td>MARIA LOPEZ AND CARLOS LOPEZ</td></tr>
+  <tr><td>Seller/Transferor</td><td>CHAMPION HOMES DIRECT</td></tr>
+  <tr><td>County</td><td>DALLAS</td></tr>
+  <tr><td>Issue Date</td><td>09/15/2003</td></tr>
+  <tr><td>Transfer/Sale Date</td><td>08/30/2003</td></tr>
+  <tr><td>Election</td><td>Personal Property</td></tr>
+  <tr><td>First Lien</td><td>WELLS FARGO BANK</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_block2a_4a_double_wide():
+    """
+    End-to-end: double-wide home with 2 sections + Florida manufacturer.
+    Verify ALL Block 2A + 4A fields populated.
+    """
+    soup = BeautifulSoup(TITLE_DOUBLE_WIDE_HTML, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com/detail", None)
+    fields = _map_block_2a_4a(structured)
+
+    # ── Block 2A ──
+    assert fields["manufacturer"], "manufacturer should not be empty"
+    assert "CHAMPION" in fields["manufacturer"]
+    assert fields["manufacturer_address"], "manufacturer_address should not be empty"
+    assert "7233" in fields["manufacturer_address"] or "CHURCH" in fields["manufacturer_address"]
+    assert fields["manufacturer_city_state_zip"], "manufacturer_city_state_zip should not be empty"
+    assert "FL" in fields["manufacturer_city_state_zip"]
+    assert "32068" in fields["manufacturer_city_state_zip"]
+
+    assert fields["make"] == "BROOKHAVEN"
+    assert "2003" in fields["year"]
+    assert fields["date_of_manufacture"]
+
+    assert fields["total_sqft"] == "1456"
+    assert fields["wind_zone"] == "I"
+
+    # Section 1 values (not Section 2)
+    assert fields["section1_serial"] == "047602AB3741A", f"got '{fields['section1_serial']}'"
+    assert fields["section1_label"] == "NTA1150382", f"got '{fields['section1_label']}'"
+    assert fields["section1_width"] == "14"
+    assert fields["section1_length"] == "52"
+
+    # ── Block 4A ──
+    assert fields["seller_name"] == "MARIA LOPEZ AND CARLOS LOPEZ"
+    assert fields["buyer_name"] == "MANINOS HOMES LLC"
+
+
+# ─── Test 3: Title with separate Address / City fields (no embedded address) ──
+
+TITLE_SEPARATE_ADDRESS_HTML = """
+<html><body>
+<table width="95%" cellpadding="5">
+  <tr><td>Certificate #</td><td>03987654</td></tr>
+  <tr><td>Manufacturer</td><td>FLEETWOOD HOMES</td></tr>
+  <tr><td>Address</td><td>5405 INTERSTATE 10 SOUTH</td></tr>
+  <tr><td>City, State, Zip</td><td>WACO, TX 76716</td></tr>
+  <tr><td>Model</td><td>HERITAGE</td></tr>
+  <tr><td>Date Manf</td><td>11/2010</td></tr>
+  <tr><td>Year</td><td>2010</td></tr>
+</table>
+<table width="95%" cellpadding="3" border="1">
+  <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+  <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+  <tr><td>TXFLW86A12345AB</td><td>TEX1456789</td><td>5200</td><td>16 X 80</td></tr>
+</table>
+<table width="95%" cellpadding="5">
+  <tr><td>Square Ftg</td><td>1280</td></tr>
+  <tr><td>Wind Zone</td><td>III</td></tr>
+  <tr><td>Buyer/Transferee</td><td>ROBERTO MARTINEZ</td></tr>
+  <tr><td>Seller/Transferor</td><td>FLEETWOOD HOMES OF TEXAS INC</td></tr>
+  <tr><td>County</td><td>BEXAR</td></tr>
+  <tr><td>Issue Date</td><td>12/01/2010</td></tr>
+  <tr><td>Transfer/Sale Date</td><td>11/15/2010</td></tr>
+  <tr><td>Election</td><td>Personal Property</td></tr>
+  <tr><td>First Lien</td><td>NONE</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_block2a_4a_separate_address_fields():
+    """
+    Title where manufacturer address is in separate Address and City, State, Zip rows.
+    Verify all Block 2A + 4A fields populated via fallback logic.
+    """
+    soup = BeautifulSoup(TITLE_SEPARATE_ADDRESS_HTML, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com/detail", None)
+    fields = _map_block_2a_4a(structured)
+
+    # ── Block 2A ──
+    assert fields["manufacturer"] == "FLEETWOOD HOMES"
+    assert fields["manufacturer_address"], "manufacturer_address should not be empty"
+    assert "5405" in fields["manufacturer_address"]
+    assert fields["manufacturer_city_state_zip"], "manufacturer_city_state_zip should not be empty"
+    assert "WACO" in fields["manufacturer_city_state_zip"]
+    assert "TX" in fields["manufacturer_city_state_zip"]
+
+    assert fields["make"] == "HERITAGE"
+    assert "2010" in fields["year"]
+    assert fields["date_of_manufacture"]
+
+    assert fields["total_sqft"] == "1280"
+    assert fields["wind_zone"] == "III"
+
+    assert fields["section1_serial"] == "TXFLW86A12345AB"
+    assert fields["section1_label"] == "TEX1456789"
+    assert fields["section1_width"] == "16"
+    assert fields["section1_length"] == "80"
+
+    # ── Block 4A ──
+    assert fields["seller_name"] == "ROBERTO MARTINEZ"
+    assert fields["buyer_name"] == "MANINOS HOMES LLC"
+
+
+# ─── Test 4: Compact concatenated manufacturer (no spaces, no comma) ──────────
+
+TITLE_COMPACT_MFR_HTML = """
+<html><body>
+<table width="95%" cellpadding="5">
+  <tr><td>Certificate #</td><td>04112233</td></tr>
+  <tr><td>Manufacturer</td><td>MHDMAN00000050CMH MANUFACTURING INC2521 HWY 90SEGUIN TX 78155</td></tr>
+  <tr><td>Model</td><td>AMERICAN DREAM</td></tr>
+  <tr><td>Date Manf</td><td>03/2018</td></tr>
+  <tr><td>Year</td><td>2018</td></tr>
+</table>
+<table width="95%" cellpadding="3" border="1">
+  <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+  <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+  <tr><td>CSS006789TXA</td><td>TEX2345678</td><td>6100</td><td>16 X 72</td></tr>
+</table>
+<table width="95%" cellpadding="5">
+  <tr><td>Square Ftg</td><td>1152</td></tr>
+  <tr><td>Wind Zone</td><td>II</td></tr>
+  <tr><td>Buyer/Transferee</td><td>ANA PEREZ DE GONZALEZ</td></tr>
+  <tr><td>Seller/Transferor</td><td>CMH HOMES INC</td></tr>
+  <tr><td>County</td><td>GUADALUPE</td></tr>
+  <tr><td>Issue Date</td><td>04/01/2018</td></tr>
+  <tr><td>Transfer/Sale Date</td><td>03/20/2018</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_block2a_4a_compact_manufacturer():
+    """
+    Title with heavily concatenated manufacturer string and no-comma address.
+    Verify all Block 2A + 4A fields populated.
+    """
+    soup = BeautifulSoup(TITLE_COMPACT_MFR_HTML, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com/detail", None)
+    fields = _map_block_2a_4a(structured)
+
+    # ── Block 2A ──
+    assert fields["manufacturer"], "manufacturer should not be empty"
+    assert "CMH" in fields["manufacturer"]
+    assert fields["manufacturer_address"], "manufacturer_address should not be empty"
+    assert "2521" in fields["manufacturer_address"] or "HWY" in fields["manufacturer_address"]
+    assert fields["manufacturer_city_state_zip"], "manufacturer_city_state_zip should not be empty"
+    assert "TX" in fields["manufacturer_city_state_zip"]
+    assert "78155" in fields["manufacturer_city_state_zip"]
+
+    assert fields["make"] == "AMERICAN DREAM"
+    assert "2018" in fields["year"]
+    assert fields["date_of_manufacture"]
+
+    assert fields["total_sqft"] == "1152"
+    assert fields["wind_zone"] == "II"
+
+    assert fields["section1_serial"] == "CSS006789TXA"
+    assert fields["section1_label"] == "TEX2345678"
+    assert fields["section1_width"] == "16"
+    assert fields["section1_length"] == "72"
+
+    # ── Block 4A ──
+    assert fields["seller_name"] == "ANA PEREZ DE GONZALEZ"
+    assert fields["buyer_name"] == "MANINOS HOMES LLC"
+
+
+# ─── Test 5: Verify NO fields are empty across all titles ─────────────────────
+
+ALL_TITLE_HTMLS = [
+    ("single_wide", TITLE_SINGLE_WIDE_HTML),
+    ("double_wide", TITLE_DOUBLE_WIDE_HTML),
+    ("separate_addr", TITLE_SEPARATE_ADDRESS_HTML),
+    ("compact_mfr", TITLE_COMPACT_MFR_HTML),
+]
+
+BLOCK_2A_FIELDS = [
+    "manufacturer", "manufacturer_address", "manufacturer_city_state_zip",
+    "make", "year", "date_of_manufacture", "total_sqft", "wind_zone",
+    "section1_serial", "section1_label", "section1_width", "section1_length",
+]
+BLOCK_4A_FIELDS = ["seller_name", "buyer_name"]
+
+
+@pytest.mark.parametrize("title_name,html", ALL_TITLE_HTMLS)
+def test_no_empty_block2a_4a_fields(title_name, html):
+    """
+    Parametrized test: for each realistic title, verify EVERY Block 2A + 4A field
+    is non-empty after the full parse + mapping pipeline.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com", None)
+    fields = _map_block_2a_4a(structured)
+
+    for field in BLOCK_2A_FIELDS + BLOCK_4A_FIELDS:
+        assert fields.get(field), f"[{title_name}] Block 2A/4A field '{field}' is empty! value='{fields.get(field)}'"
