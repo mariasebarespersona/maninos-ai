@@ -785,9 +785,9 @@ export default function MarketDashboard() {
         titleApplicationUrl = await uploadDocument(property.id, documents.titleApplication, 'title_application_purchase');
       }
       
-      // If TDHCA lookup found a title, use printable URL as preferred fallback
-      if (!titleUrl && (tdhcaResult?.print_url || tdhcaResult?.detail_url)) {
-        titleUrl = tdhcaResult.print_url || tdhcaResult.detail_url;
+      // If TDHCA lookup found a title, prefer detail URL (print/report URL often fails outside session)
+      if (!titleUrl && (tdhcaResult?.detail_url || tdhcaResult?.print_url)) {
+        titleUrl = tdhcaResult.detail_url || tdhcaResult.print_url;
       }
       // If no title application was uploaded, store the official TDHCA template URL
       if (!titleApplicationUrl) {
@@ -2079,9 +2079,9 @@ export default function MarketDashboard() {
                         </div>
                         
                         {/* Link to full TDHCA record */}
-                        {(tdhcaResult.print_url || tdhcaResult.detail_url) && (
+                        {(tdhcaResult.detail_url || tdhcaResult.print_url) && (
                           <a
-                            href={tdhcaResult.print_url || tdhcaResult.detail_url}
+                            href={tdhcaResult.detail_url || tdhcaResult.print_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"

@@ -791,9 +791,9 @@ export default function NewPropertyPage() {
                     )}
                   </div>
                   
-                  {(tdhcaResult.print_url || tdhcaResult.detail_url) && (
+                  {(tdhcaResult.detail_url || tdhcaResult.print_url) && (
                     <a
-                      href={tdhcaResult.print_url || tdhcaResult.detail_url}
+                      href={tdhcaResult.detail_url || tdhcaResult.print_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"

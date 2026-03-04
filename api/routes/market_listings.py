@@ -1408,6 +1408,7 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             #   3. Use separator=' ' to avoid concatenation
             # ═══════════════════════════════════════════════
             title_data = {}
+            header_hints = ("serial", "label", "seal", "weight", "size", "section")
             
             tables = soup.find_all('table')
             for table in tables:
@@ -1422,12 +1423,16 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                     all_th = all(c.name == 'th' for c in cells)
                     all_td = all(c.name == 'td' for c in cells)
                     
-                    # ── Header-only row (all <th>): save for matching ──
-                    if all_th and len(cells) > 1:
-                        pending_headers = [
-                            c.get_text(separator=' ').strip().rstrip(':')
-                            for c in cells
-                        ]
+                    row_texts = [c.get_text(separator=' ').strip().rstrip(':') for c in cells]
+                    is_header_like_td_row = (
+                        all_td
+                        and len(row_texts) > 2
+                        and all(any(h in t.lower() for h in header_hints) for t in row_texts)
+                    )
+
+                    # ── Header-only row (all <th>) OR header-like <td> row ──
+                    if (all_th and len(cells) > 1) or is_header_like_td_row:
+                        pending_headers = row_texts
                         continue
                     
                     # ── Data row matching a previous header row ──
@@ -1445,10 +1450,15 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                     while i < len(cells) - 1:
                         key = cells[i].get_text(separator=' ').strip().rstrip(':')
                         val = cells[i + 1].get_text(separator=' ').strip()
-                        # Only accept label-like keys (not digits, not too long)
+                        key_l = key.lower()
+                        val_l = val.lower()
+                        value_looks_like_header = any(h in val_l for h in header_hints) and len(val) < 30
+                        # Only accept label-like keys (not digits, not too long, and skip header-to-header pairs)
                         if (key and val
                             and 1 < len(key) < 60
-                            and not key.replace(',', '').replace('.', '').replace(' ', '').isdigit()):
+                            and not key.replace(',', '').replace('.', '').replace(' ', '').isdigit()
+                            and not value_looks_like_header
+                            and key_l != val_l):
                             title_data[key] = val
                         i += 2
             
@@ -1474,6 +1484,35 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                     if m:
                         title_data[field_key] = m.group(1).strip()
                         logger.info(f"[TDHCA] Regex fallback: {field_key} = {m.group(1).strip()}")
+
+            # Remove common bogus values picked from header rows, then try line-based recovery.
+            bad_values = {"weight", "size", "label/seal", "label/seal#", "serial", "serial#", "serial #", "n/a", "na"}
+            for k in ("Serial #", "Label/Seal#"):
+                v = (title_data.get(k) or "").strip().lower()
+                if v in bad_values:
+                    title_data.pop(k, None)
+
+            if not title_data.get("Serial #"):
+                for line in page_text.splitlines():
+                    ll = line.lower()
+                    if "serial" in ll and "label" not in ll:
+                        candidates = _re.findall(r'[A-Z0-9-]{6,}', line.upper())
+                        good = [c for c in candidates if c.lower() not in bad_values]
+                        if good:
+                            title_data["Serial #"] = good[0]
+                            logger.info(f"[TDHCA] Line recovery: Serial # = {good[0]}")
+                            break
+
+            if not title_data.get("Label/Seal#"):
+                for line in page_text.splitlines():
+                    ll = line.lower()
+                    if "label" in ll and "seal" in ll:
+                        candidates = _re.findall(r'[A-Z0-9-]{6,}', line.upper())
+                        good = [c for c in candidates if c.lower() not in bad_values]
+                        if good:
+                            title_data["Label/Seal#"] = good[0]
+                            logger.info(f"[TDHCA] Line recovery: Label/Seal# = {good[0]}")
+                            break
             
             # ═══ CLEAN UP MANUFACTURER FIELD ═══
             mfr_raw = title_data.get("Manufacturer", "")
