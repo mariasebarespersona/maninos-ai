@@ -222,6 +222,48 @@ export default function NewPropertyPage() {
     return m ? { width: m[1], length: m[2] } : { width: '', length: '' }
   }
 
+  /**
+   * Client-side safety net: split manufacturer string into name, address, cityStateZip.
+   * Ensures address never stays embedded in the manufacturer name field.
+   */
+  const splitManufacturerParts = () => {
+    const rawMfr = getTdhcaField('manufacturer', 'Manufacturer')
+    const backendAddr = getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address')
+    const backendCsz = getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State')
+    if (backendAddr) return { name: rawMfr, address: backendAddr, cityStateZip: backendCsz }
+
+    let clean = rawMfr.replace(/^MHD\w*\d+\s*/i, '').trim()
+    clean = clean.replace(/([A-Za-z])(\d{3,})/g, '$1 $2')
+    clean = clean.replace(/(\d)([A-Z]{2,}\b)/g, '$1 $2')
+    clean = clean.replace(/([A-Z]{2})(\d{5})/g, '$1 $2')
+
+    const addrMatch = clean.match(/^(.+?)\s+(\d{1,6}\s+.+)$/)
+    if (!addrMatch) return { name: clean || rawMfr, address: '', cityStateZip: '' }
+
+    const name = addrMatch[1].trim()
+    const fullAddr = addrMatch[2].trim()
+    const suffixes = new Set(['st','ave','avenue','blvd','ct','dr','drive','ln','lane','pl','rd','road','way','loop','pkwy','hwy','trail','cir','circle','ter','sq'])
+
+    const splitCityFromStreet = (text: string, state: string, zip: string) => {
+      const words = text.split(/\s+/)
+      let splitIdx = words.length
+      for (let i = words.length - 1; i >= 0; i--) {
+        if (suffixes.has(words[i].toLowerCase()) || /^\d+$/.test(words[i])) { splitIdx = i + 1; break }
+      }
+      const street = words.slice(0, splitIdx).join(' ')
+      const city = words.slice(splitIdx).join(' ')
+      return { address: street || text, cityStateZip: city ? `${city}, ${state} ${zip}` : `${state} ${zip}` }
+    }
+
+    const cszComma = fullAddr.match(/^(.+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/)
+    if (cszComma) return { name, ...splitCityFromStreet(cszComma[1].trim(), cszComma[2], cszComma[3]) }
+
+    const cszNoComma = fullAddr.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/)
+    if (cszNoComma) return { name, ...splitCityFromStreet(cszNoComma[1].trim(), cszNoComma[2], cszNoComma[3]) }
+
+    return { name, address: fullAddr, cityStateZip: '' }
+  }
+
   // Document completeness checks
   const isBosComplete = !!(billOfSaleData || documents.billOfSale)
   const isTitleComplete = !!(tdhcaResult || documents.title)
@@ -877,15 +919,17 @@ export default function NewPropertyPage() {
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <TitleApplicationTemplate
                     transactionType="purchase"
-                    initialData={{
+                    initialData={(() => {
+                      const mfr = splitManufacturerParts()
+                      return {
                       // Block 1 defaults
                       applicant_name: 'MANINOS HOMES LLC',
                       is_new: false,
                       is_used: true,
-                      // Block 2A — auto-fill from TDHCA title
-                      manufacturer: getTdhcaField('manufacturer', 'Manufacturer'),
-                      manufacturer_address: getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address'),
-                      manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State'),
+                      // Block 2A — auto-fill from TDHCA title (client-side split as safety net)
+                      manufacturer: mfr.name,
+                      manufacturer_address: mfr.address,
+                      manufacturer_city_state_zip: mfr.cityStateZip,
                       make: getTdhcaField('model', 'Model'),
                       year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || form.year || '',
                       date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
@@ -923,7 +967,7 @@ export default function NewPropertyPage() {
                       page2_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
                       // Block 6 — default Inventory
                       election_inventory: true,
-                    }}
+                      } })()}
                     onSave={(file, data) => {
                       setTitleAppData(data)
                       handleFileUpload('titleApplication', file)

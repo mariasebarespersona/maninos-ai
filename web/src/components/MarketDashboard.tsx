@@ -690,6 +690,92 @@ export default function MarketDashboard() {
     return m ? { width: m[1], length: m[2] } : { width: '', length: '' };
   };
 
+  /**
+   * Client-side safety net: if the manufacturer string still contains an embedded
+   * street address (e.g. "BRIGADIER HOMES ... 1001 SOUTH LOOP 256 LUFKIN TX 75901"),
+   * split it into { name, address, cityStateZip }.
+   */
+  const splitManufacturerParts = () => {
+    const rawMfr = getTdhcaField('manufacturer', 'Manufacturer');
+    const backendAddr = getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address');
+    const backendCsz = getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State');
+
+    // If backend already split correctly, use those
+    if (backendAddr) {
+      return { name: rawMfr, address: backendAddr, cityStateZip: backendCsz };
+    }
+
+    // Try to split client-side: look for a street number in the manufacturer string
+    // Remove MHDMAN prefix if present
+    let clean = rawMfr.replace(/^MHD\w*\d+\s*/i, '').trim();
+    // Normalize compact patterns: "COMPANY1001" → "COMPANY 1001"
+    clean = clean.replace(/([A-Za-z])(\d{3,})/g, '$1 $2');
+    clean = clean.replace(/(\d)([A-Z]{2,}\b)/g, '$1 $2');
+    clean = clean.replace(/([A-Z]{2})(\d{5})/g, '$1 $2');
+
+    // Find where the street address starts (first group of 1-6 digits followed by space + text)
+    const addrMatch = clean.match(/^(.+?)\s+(\d{1,6}\s+.+)$/);
+    if (!addrMatch) {
+      return { name: clean || rawMfr, address: '', cityStateZip: '' };
+    }
+
+    const name = addrMatch[1].trim();
+    let fullAddr = addrMatch[2].trim();
+
+    // Try to extract state+zip from the end
+    // Strategy 1: comma-delimited "..., TX 75901"
+    const cszComma = fullAddr.match(/^(.+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+    if (cszComma) {
+      const beforeComma = cszComma[1].trim();
+      const state = cszComma[2];
+      const zip = cszComma[3];
+      // Split city from street: find last street suffix or number
+      const words = beforeComma.split(/\s+/);
+      const suffixes = new Set(['st','ave','avenue','blvd','ct','dr','drive','ln','lane','pl','rd','road','way','loop','pkwy','hwy','trail','cir','circle','ter','sq']);
+      let splitIdx = words.length;
+      for (let i = words.length - 1; i >= 0; i--) {
+        if (suffixes.has(words[i].toLowerCase()) || /^\d+$/.test(words[i])) {
+          splitIdx = i + 1;
+          break;
+        }
+      }
+      const street = words.slice(0, splitIdx).join(' ');
+      const city = words.slice(splitIdx).join(' ');
+      return {
+        name,
+        address: street || beforeComma,
+        cityStateZip: city ? `${city}, ${state} ${zip}` : `${state} ${zip}`,
+      };
+    }
+
+    // Strategy 2: no comma — "... TX 75901"
+    const cszNoComma = fullAddr.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+    if (cszNoComma) {
+      const beforeState = cszNoComma[1].trim();
+      const state = cszNoComma[2];
+      const zip = cszNoComma[3];
+      const words = beforeState.split(/\s+/);
+      const suffixes = new Set(['st','ave','avenue','blvd','ct','dr','drive','ln','lane','pl','rd','road','way','loop','pkwy','hwy','trail','cir','circle','ter','sq']);
+      let splitIdx = words.length;
+      for (let i = words.length - 1; i >= 0; i--) {
+        if (suffixes.has(words[i].toLowerCase()) || /^\d+$/.test(words[i])) {
+          splitIdx = i + 1;
+          break;
+        }
+      }
+      const street = words.slice(0, splitIdx).join(' ');
+      const city = words.slice(splitIdx).join(' ');
+      return {
+        name,
+        address: street || beforeState,
+        cityStateZip: city ? `${city}, ${state} ${zip}` : `${state} ${zip}`,
+      };
+    }
+
+    // No state+zip found — address is everything after the name
+    return { name, address: fullAddr, cityStateZip: '' };
+  };
+
 
   // Toggle checklist item
   const toggleChecklistItem = (itemId: string) => {
@@ -2182,15 +2268,17 @@ export default function MarketDashboard() {
                       <div className="border border-gray-200 rounded-xl overflow-hidden">
                         <TitleApplicationTemplate
                           transactionType="purchase"
-                          initialData={selectedListing ? {
+                          initialData={selectedListing ? (() => {
+                            const mfr = splitManufacturerParts();
+                            return {
                             // Block 1 defaults
                             applicant_name: 'MANINOS HOMES LLC',
                             is_new: false,
                             is_used: true,
-                            // Block 2A — auto-fill from TDHCA title
-                            manufacturer: getTdhcaField('manufacturer', 'Manufacturer'),
-                            manufacturer_address: getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address'),
-                            manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State'),
+                            // Block 2A — auto-fill from TDHCA title (client-side split as safety net)
+                            manufacturer: mfr.name,
+                            manufacturer_address: mfr.address,
+                            manufacturer_city_state_zip: mfr.cityStateZip,
                             make: getTdhcaField('model', 'Model'),
                             year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || (selectedListing.year_built?.toString() || ''),
                             date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
@@ -2228,7 +2316,7 @@ export default function MarketDashboard() {
                             page2_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
                             // Block 6 — default Inventory
                             election_inventory: true,
-                          } : undefined}
+                          }; })() : undefined}
                           onSave={(file, data) => {
                             setTitleAppData(data);
                             handleFileUpload('titleApplication', file);
