@@ -188,6 +188,40 @@ export default function NewPropertyPage() {
     }
   }
 
+  // TDHCA field helpers: use normalized fields + raw_fields fallback (case-insensitive)
+  const getTdhcaField = (...keys: string[]): string => {
+    if (!tdhcaResult) return ''
+    for (const key of keys) {
+      const direct = tdhcaResult?.[key]
+      if (direct !== undefined && direct !== null && String(direct).trim()) return String(direct).trim()
+    }
+    const raw = (tdhcaResult?.raw_fields || {}) as Record<string, any>
+    const entries = Object.entries(raw)
+    for (const key of keys) {
+      const exact = raw[key]
+      if (exact !== undefined && exact !== null && String(exact).trim()) return String(exact).trim()
+      const lower = key.toLowerCase()
+      const found = entries.find(([k]) => k.toLowerCase() === lower)
+      if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim()) return String(found[1]).trim()
+    }
+    return ''
+  }
+
+  const cleanSuspiciousValue = (value: string): string => {
+    const bad = new Set(['weight', 'size', 'serial', 'serial #', 'serial#', 'label/seal', 'label/seal#'])
+    const v = (value || '').trim()
+    return bad.has(v.toLowerCase()) ? '' : v
+  }
+
+  const deriveDimensions = () => {
+    const w = getTdhcaField('width', 'Width')
+    const l = getTdhcaField('length', 'Length')
+    if (w && l) return { width: w, length: l }
+    const sizeRaw = getTdhcaField('Size', 'Size*', 'size')
+    const m = sizeRaw.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/)
+    return m ? { width: m[1], length: m[2] } : { width: '', length: '' }
+  }
+
   // Document completeness checks
   const isBosComplete = !!(billOfSaleData || documents.billOfSale)
   const isTitleComplete = !!(tdhcaResult || documents.title)
@@ -274,7 +308,7 @@ export default function NewPropertyPage() {
       })
 
       if (!res.ok) {
-        const data = await res.json()
+      const data = await res.json()
         throw new Error(data.detail || `Error ${res.status}`)
       }
 
@@ -348,7 +382,7 @@ export default function NewPropertyPage() {
                 {purchaseStep === 'confirm' && 'Revisa y confirma la compra'}
               </p>
             </div>
-          </div>
+      </div>
 
           {/* Property summary (shown from step 2 onwards if data entered) */}
           {purchaseStep !== 'documents' && form.address && (
@@ -505,7 +539,7 @@ export default function NewPropertyPage() {
               helperText="Ancho en pies"
             />
           </div>
-              </div>
+          </div>
 
               {/* Auto-calculated square feet display */}
               {computedSqFt && computedSqFt > 0 && (
@@ -849,22 +883,22 @@ export default function NewPropertyPage() {
                       is_new: false,
                       is_used: true,
                       // Block 2A — auto-fill from TDHCA title
-                      manufacturer: tdhcaResult?.manufacturer || '',
-                      manufacturer_address: tdhcaResult?.manufacturer_address || '',
-                      manufacturer_city_state_zip: tdhcaResult?.manufacturer_city_state_zip || '',
-                      make: tdhcaResult?.model || '',
-                      year: tdhcaResult?.year || form.year || '',
-                      date_of_manufacture: tdhcaResult?.year || '',
-                      total_sqft: tdhcaResult?.square_feet || computedSqFt?.toString() || '',
-                      section1_label: tdhcaResult?.label_seal || '',
-                      section1_serial: tdhcaResult?.serial_number || '',
-                      section1_width: tdhcaResult?.width || '',
-                      section1_length: tdhcaResult?.length || '',
-                      wind_zone: tdhcaResult?.wind_zone || '',
+                      manufacturer: getTdhcaField('manufacturer', 'Manufacturer'),
+                      manufacturer_address: getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address'),
+                      manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip'),
+                      make: getTdhcaField('model', 'Model'),
+                      year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || form.year || '',
+                      date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
+                      total_sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || computedSqFt?.toString() || '',
+                      section1_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
+                      section1_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
+                      section1_width: deriveDimensions().width,
+                      section1_length: deriveDimensions().length,
+                      wind_zone: getTdhcaField('wind_zone', 'Wind Zone'),
                       // Legacy compat
-                      serial_number: tdhcaResult?.serial_number || '',
-                      label_seal_number: tdhcaResult?.label_seal || '',
-                      sqft: tdhcaResult?.square_feet || computedSqFt?.toString() || '',
+                      serial_number: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
+                      label_seal_number: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
+                      sqft: getTdhcaField('square_feet', 'Square Ftg', 'Square Feet') || computedSqFt?.toString() || '',
                       bedrooms: form.bedrooms || '',
                       bathrooms: form.bathrooms || '',
                       // Block 2B — default Yes
@@ -875,9 +909,9 @@ export default function NewPropertyPage() {
                       location_city: form.city || '',
                       location_state: form.state || 'TX',
                       location_zip: form.zip_code || '',
-                      location_county: tdhcaResult?.county || '',
+                      location_county: getTdhcaField('county', 'County'),
                       // Block 4A — seller auto-fill from title (current owner = tdhcaResult.buyer)
-                      seller_name: tdhcaResult?.buyer || '',
+                      seller_name: getTdhcaField('buyer', 'Buyer/Transferee', 'Buyer'),
                       // Block 4B — buyer is always Maninos
                       buyer_name: 'MANINOS HOMES LLC',
                       // Block 4C/D
@@ -885,8 +919,8 @@ export default function NewPropertyPage() {
                       sale_date: new Date().toISOString().split('T')[0],
                       sale_transfer_date: new Date().toISOString().split('T')[0],
                       // Page 2 — auto-sync from Block 2A
-                      page2_hud_label: tdhcaResult?.label_seal || '',
-                      page2_serial: tdhcaResult?.serial_number || '',
+                      page2_hud_label: cleanSuspiciousValue(getTdhcaField('label_seal', 'Label/Seal#', 'Label/Seal', 'Label/Seal Number')),
+                      page2_serial: cleanSuspiciousValue(getTdhcaField('serial_number', 'Serial #', 'Serial', 'Serial Number', 'Complete Serial Number')),
                       // Block 6 — default Inventory
                       election_inventory: true,
                     }}
@@ -1245,7 +1279,7 @@ export default function NewPropertyPage() {
           <div className="flex-1" />
           
           {purchaseStep === 'documents' && (
-            <button
+          <button 
               onClick={goToNextStep}
               disabled={!allDocsReady || !isPropertyInfoValid}
               className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
