@@ -1009,10 +1009,16 @@ export default function PropertyDetailPage() {
                   // Block 2B — default Yes
                   has_hud_label: true,
                   no_hud_label: false,
-                  // Block 3 — location
-                  location_address: property.address || '',
-                  location_city: property.city || '',
-                  location_state: property.state || 'TX',
+                  // Block 3 — always empty, default No ticked
+                  location_address: '',
+                  location_city: '',
+                  location_state: '',
+                  location_zip: '',
+                  location_county: '',
+                  home_moved: false,
+                  home_moved_no: true,
+                  home_installed: false,
+                  home_installed_no: true,
                   hud_number: property.hud_number || '',
                   // Block 4 — ownership
                   ...(showTitleAppTemplate === 'purchase' ? {
