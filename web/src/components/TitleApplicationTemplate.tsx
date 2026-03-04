@@ -198,7 +198,7 @@ const EMPTY: TitleApplicationData = {
   section2_label: '', section2_serial: '', section2_weight: '', section2_width: '', section2_length: '',
   section3_label: '', section3_serial: '', section3_weight: '', section3_width: '', section3_length: '',
   section4_label: '', section4_serial: '', section4_weight: '', section4_width: '', section4_length: '',
-  has_hud_label: false, no_hud_label: false,
+  has_hud_label: true, no_hud_label: false,
   seal_section1: false, seal_section2: false, seal_section3: false, seal_section4: false,
   location_address: '', location_city: '', location_state: 'TX', location_zip: '', location_county: '',
   home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
@@ -211,7 +211,7 @@ const EMPTY: TitleApplicationData = {
   page2_hud_label: '', page2_serial: '', page2_gf: '',
   surv_married: false, surv_joint: false, surv_beneficiary: false,
   election_real_property: false, election_own_land: false, election_lease_land: false,
-  election_loan_holder: false, election_gf_number: '', election_inventory: false,
+  election_loan_holder: false, election_gf_number: '', election_inventory: true,
   use_business: false, use_non_residential: false, use_salvage: false,
   has_liens: false, has_liens_no: true,
   lien1_date: '', lien1_name: '', lien1_address: '', lien1_city_state_zip: '', lien1_phone: '',
@@ -229,6 +229,22 @@ const EMPTY: TitleApplicationData = {
   lienholder_state: '', lienholder_zip: '', lien_amount: '',
   location_address_legacy: '', location_city_legacy: '', location_county_legacy: '',
   location_state_legacy: 'TX', location_zip_legacy: '', seller_phone_legacy: '',
+}
+
+// ─── Mutually exclusive boolean pairs (radio behavior) ───────────────────────
+const RADIO_PAIRS: Record<string, string> = {
+  has_hud_label: 'no_hud_label',
+  no_hud_label: 'has_hud_label',
+  home_moved: 'home_moved_no',
+  home_moved_no: 'home_moved',
+  home_installed: 'home_installed_no',
+  home_installed_no: 'home_installed',
+  is_sale: 'is_sale_no',
+  is_sale_no: 'is_sale',
+  has_liens: 'has_liens_no',
+  has_liens_no: 'has_liens',
+  handling_normal: 'handling_expedited',
+  handling_expedited: 'handling_normal',
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -252,17 +268,43 @@ export default function TitleApplicationTemplate({
     if (initialData?.lienholder_name && !initialData?.lien1_name) m.lien1_name = initialData.lienholder_name
     if (initialData?.lienholder_address && !initialData?.lien1_address) m.lien1_address = initialData.lienholder_address
     if (initialData?.seller_phone_legacy && !initialData?.seller_phone) m.seller_phone = initialData.seller_phone_legacy
+    // Auto-sync Page 2 header from Block 2A section 1
+    if (m.section1_label && !m.page2_hud_label) m.page2_hud_label = m.section1_label
+    if (m.section1_serial && !m.page2_serial) m.page2_serial = m.section1_serial
     return m
   })
   const [editing, setEditing] = useState(!readOnly)
   const [saving, setSaving] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { if (initialData) setData(prev => ({ ...prev, ...initialData })) }, [initialData])
+  useEffect(() => {
+    if (initialData) {
+      setData(prev => {
+        const next = { ...prev, ...initialData }
+        // Re-sync page2 from section1 if not explicitly provided
+        if (initialData.section1_label && !initialData.page2_hud_label) next.page2_hud_label = next.section1_label
+        if (initialData.section1_serial && !initialData.page2_serial) next.page2_serial = next.section1_serial
+        return next
+      })
+    }
+  }, [initialData])
 
   const update = (field: keyof TitleApplicationData, value: string | boolean) => {
     if (!editing) return
-    setData(prev => ({ ...prev, [field]: value }))
+    setData(prev => {
+      const next = { ...prev, [field]: value }
+      // Radio behavior: if a boolean is set to true, uncheck its opposite
+      if (typeof value === 'boolean' && value === true) {
+        const opposite = RADIO_PAIRS[field]
+        if (opposite) {
+          ;(next as any)[opposite] = false
+        }
+      }
+      // Auto-sync Page 2 header from Block 2A section 1
+      if (field === 'section1_label') next.page2_hud_label = value as string
+      if (field === 'section1_serial') next.page2_serial = value as string
+      return next
+    })
   }
 
   // ─── PDF ──────────────────────────────────────────────────────────────────
@@ -428,11 +470,10 @@ export default function TitleApplicationTemplate({
             <table className="sec-tbl">
               <thead><tr>
                 <th style={{ width: '12%' }}><em>Sections</em></th>
-                <th style={{ width: '20%' }}><em>Label/Seal Number</em></th>
-                <th style={{ width: '28%' }}><em>Complete Serial Number</em></th>
-                <th style={{ width: '12%' }}><em>Weight</em></th>
-                <th style={{ width: '18%' }}><em>Size*</em></th>
-                <th rowSpan={5} style={{ width: '10%', fontSize: '7.5px', fontStyle: 'italic', fontWeight: 400, textAlign: 'left', verticalAlign: 'top', padding: '3px 4px', lineHeight: 1.3 }}>
+                <th style={{ width: '22%' }}><em>Label/Seal Number</em></th>
+                <th style={{ width: '32%' }}><em>Complete Serial Number</em></th>
+                <th style={{ width: '20%' }}><em>Size*</em></th>
+                <th rowSpan={5} style={{ width: '14%', fontSize: '7.5px', fontStyle: 'italic', fontWeight: 400, textAlign: 'left', verticalAlign: 'top', padding: '3px 4px', lineHeight: 1.3 }}>
                   * <u>NOTE</u>: Size must be reported as the outside dimensions (length and width) of the home as measured to the nearest ½ foot at the base of the home, exclusive of the tongue or other towing device.
                 </th>
               </tr></thead>
@@ -441,28 +482,24 @@ export default function TitleApplicationTemplate({
                   <td className="lb">Section 1:</td>
                   <td>{I('section1_label', '')}</td>
                   <td>{I('section1_serial', '')}</td>
-                  <td>{I('section1_weight', '')}</td>
                   <td><span className="sz">{I('section1_width', "W")} X {I('section1_length', "L")}</span></td>
                 </tr>
                 <tr>
                   <td className="lb">Section 2:</td>
                   <td>{I('section2_label', '')}</td>
                   <td>{I('section2_serial', '')}</td>
-                  <td>{I('section2_weight', '')}</td>
                   <td><span className="sz">{I('section2_width', "W")} X {I('section2_length', "L")}</span></td>
                 </tr>
                 <tr>
                   <td className="lb">Section 3:</td>
                   <td>{I('section3_label', '')}</td>
                   <td>{I('section3_serial', '')}</td>
-                  <td>{I('section3_weight', '')}</td>
                   <td><span className="sz">{I('section3_width', "W")} X {I('section3_length', "L")}</span></td>
                 </tr>
                 <tr>
                   <td className="lb">Section 4:</td>
                   <td>{I('section4_label', '')}</td>
                   <td>{I('section4_serial', '')}</td>
-                  <td>{I('section4_weight', '')}</td>
                   <td><span className="sz">{I('section4_width', "W")} X {I('section4_length', "L")}</span></td>
                 </tr>
               </tbody>

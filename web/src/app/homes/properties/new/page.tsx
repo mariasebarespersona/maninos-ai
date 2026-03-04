@@ -838,25 +838,47 @@ export default function NewPropertyPage() {
                   <TitleApplicationTemplate
                     transactionType="purchase"
                     initialData={{
+                      // Block 1 defaults
                       applicant_name: 'MANINOS HOMES LLC',
-                      seller_name: '',
+                      is_new: false,
+                      is_used: true,
+                      // Block 2A — auto-fill from TDHCA title
                       manufacturer: tdhcaResult?.manufacturer || '',
                       make: tdhcaResult?.model || '',
                       year: tdhcaResult?.year || form.year || '',
+                      date_of_manufacture: tdhcaResult?.year || '',
+                      total_sqft: tdhcaResult?.square_feet || computedSqFt?.toString() || '',
+                      section1_label: tdhcaResult?.label_seal || '',
+                      section1_serial: tdhcaResult?.serial_number || '',
+                      wind_zone: tdhcaResult?.raw_fields?.['Wind Zone'] || '',
+                      // Legacy compat
                       serial_number: tdhcaResult?.serial_number || '',
                       label_seal_number: tdhcaResult?.label_seal || '',
+                      sqft: tdhcaResult?.square_feet || computedSqFt?.toString() || '',
                       bedrooms: form.bedrooms || '',
                       bathrooms: form.bathrooms || '',
-                      sqft: computedSqFt?.toString() || '',
+                      // Block 2B — default Yes
+                      has_hud_label: true,
+                      no_hud_label: false,
+                      // Block 3 — location
                       location_address: form.address || '',
                       location_city: form.city || '',
                       location_state: form.state || 'TX',
                       location_zip: form.zip_code || '',
                       location_county: tdhcaResult?.county || '',
+                      // Block 4A — seller auto-fill from title (current owner = tdhcaResult.buyer)
+                      seller_name: tdhcaResult?.buyer || '',
+                      // Block 4B — buyer is always Maninos
+                      buyer_name: 'MANINOS HOMES LLC',
+                      // Block 4C/D
                       sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
                       sale_date: new Date().toISOString().split('T')[0],
-                      is_new: false,
-                      is_used: true,
+                      sale_transfer_date: new Date().toISOString().split('T')[0],
+                      // Page 2 — auto-sync from Block 2A
+                      page2_hud_label: tdhcaResult?.label_seal || '',
+                      page2_serial: tdhcaResult?.serial_number || '',
+                      // Block 6 — default Inventory
+                      election_inventory: true,
                     }}
                     onSave={(file, data) => {
                       setTitleAppData(data)

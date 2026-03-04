@@ -997,28 +997,40 @@ export default function PropertyDetailPage() {
               <TitleApplicationTemplate
                 transactionType={showTitleAppTemplate}
                 initialData={{
-                  // Default values from property
-                  ...(showTitleAppTemplate === 'purchase' ? {
-                    applicant_name: 'MANINOS HOMES LLC',
-                    seller_name: '',
-                  } : {
-                    seller_name: 'MANINOS HOMES LLC',
-                    applicant_name: '',
-                  }),
+                  // Block 1 defaults
+                  is_new: false,
+                  is_used: true,
+                  // Block 2A — from property data
                   year: property.year?.toString() || '',
+                  total_sqft: property.square_feet?.toString() || '',
+                  sqft: property.square_feet?.toString() || '',
                   bedrooms: property.bedrooms?.toString() || '',
                   bathrooms: property.bathrooms?.toString() || '',
-                  sqft: property.square_feet?.toString() || '',
+                  // Block 2B — default Yes
+                  has_hud_label: true,
+                  no_hud_label: false,
+                  // Block 3 — location
                   location_address: property.address || '',
                   location_city: property.city || '',
                   location_state: property.state || 'TX',
                   hud_number: property.hud_number || '',
+                  // Block 4 — ownership
+                  ...(showTitleAppTemplate === 'purchase' ? {
+                    applicant_name: 'MANINOS HOMES LLC',
+                    buyer_name: 'MANINOS HOMES LLC',
+                    seller_name: '',
+                  } : {
+                    seller_name: 'MANINOS HOMES LLC',
+                    applicant_name: '',
+                    buyer_name: '',
+                  }),
                   sale_price: showTitleAppTemplate === 'purchase'
                     ? `$${property.purchase_price?.toLocaleString() || ''}`
                     : `$${property.sale_price?.toLocaleString() || ''}`,
                   sale_date: new Date().toISOString().split('T')[0],
-                  is_new: false,
-                  is_used: true,
+                  sale_transfer_date: new Date().toISOString().split('T')[0],
+                  // Block 6 — default Inventory
+                  election_inventory: true,
                   // Override with previously saved data (employee-filled fields)
                   ...(property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}),
                 }}
