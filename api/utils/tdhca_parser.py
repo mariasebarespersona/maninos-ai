@@ -32,6 +32,11 @@ _NAV_GARBAGE = {
     "tab", "view", "edit", "delete", "new search",
     "return to search", "return to results", "previous",
     "next", "close", "ok", "cancel", "reset", "clear",
+    # Additional TDHCA-specific nav/chrome terms
+    "title information", "section information",
+    "previous owner", "prev owners", "prev owner",
+    "record", "report view", "print view",
+    "manufactured housing", "mhweb",
 }
 
 # Values that look like section labels (should not be stored as data)
@@ -87,12 +92,18 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     # "Records") that the parser incorrectly captures as field values.
     _strip_nav_elements(soup)
 
-    # ── Strategy 1: Parse HTML tables ──
+    # ── Strategy 1: Parse HTML tables (from CLEANED soup) ──
     _parse_tables(soup, title_data)
     logger.info(f"[TDHCA-parser] After tables: {list(title_data.keys())}")
 
-    # ── Clean page text for strategies 2 & 3: remove nav-only lines ──
-    clean_text = _clean_page_text(page_text)
+    # ── CRITICAL: Regenerate page_text from the CLEANED soup ──
+    # The caller's page_text was extracted BEFORE we stripped nav elements,
+    # so it still contains garbage like "Detail", "Previous Owners", etc.
+    # We must regenerate from the clean soup for strategies 2 & 3.
+    clean_text = soup.get_text('\n', strip=True)
+    # Also strip lines that are just nav terms (belt + suspenders)
+    clean_text = _clean_page_text(clean_text)
+    logger.info(f"[TDHCA-parser] Clean text (first 500): {clean_text[:500]}")
 
     # ── Strategy 2: Regex extraction from cleaned text ──
     _extract_regex_fields(clean_text, title_data)
@@ -104,7 +115,7 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
 
     # ── Cleanup: remove nav garbage that slipped through + serial/label ──
     _cleanup_nav_garbage(title_data)
-    _cleanup_serial_label(page_text, title_data)
+    _cleanup_serial_label(clean_text, title_data)
 
     logger.info(f"[TDHCA-parser] Final fields ({len(title_data)}): "
                 f"{dict((k, v[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in title_data.items())}")
@@ -113,14 +124,30 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
 
 def _strip_nav_elements(soup) -> None:
     """Remove navigation links and non-data elements from the soup BEFORE parsing."""
+    # Remove ALL <a> links that look like navigation (not data links)
     for link in soup.find_all('a'):
         text = link.get_text(strip=True).lower()
+        href = (link.get('href') or '').lower()
+
         # Remove links whose ENTIRE text is a nav term
         if text in _NAV_GARBAGE:
             link.decompose()
+            continue
 
-    # Also remove <script>, <style>, <nav>, <header>, <footer>
-    for tag_name in ('script', 'style', 'nav', 'header', 'footer'):
+        # Remove links that navigate to TDHCA chrome pages (not data)
+        if any(nav in href for nav in (
+            'title_view', 'title_search', 'titleSearch',
+            'previous_owners', 'previousOwners',
+            'report', 'records', 'print',
+            'javascript:', 'logout', 'login',
+        )):
+            # Only decompose if the link text is short (nav, not data)
+            if len(text) < 30:
+                link.decompose()
+                continue
+
+    # Remove <script>, <style>, <nav>, <header>, <footer>, <select>, <input>, <form>
+    for tag_name in ('script', 'style', 'nav', 'header', 'footer', 'select', 'option'):
         for tag in soup.find_all(tag_name):
             tag.decompose()
 
@@ -129,9 +156,26 @@ def _clean_page_text(page_text: str) -> str:
     """Remove lines that consist solely of navigation/chrome terms."""
     clean_lines = []
     for line in page_text.splitlines():
-        stripped = line.strip().lower()
-        if stripped in _NAV_GARBAGE:
+        stripped = line.strip()
+        lower = stripped.lower()
+
+        # Exact match to nav garbage
+        if lower in _NAV_GARBAGE:
             continue
+
+        # Line is only nav terms separated by whitespace/pipes/tabs
+        # e.g. "Detail  Previous Owners  Report  Records"
+        # e.g. "Detail | Previous Owners | Report | Records"
+        tokens = re.split(r'\s*[|/]\s*|\s{2,}|\t+', lower)
+        tokens = [t.strip() for t in tokens if t.strip()]
+        if tokens and all(t in _NAV_GARBAGE for t in tokens):
+            continue
+
+        # Skip single-char lines that are just punctuation or noise
+        # (but keep "II", "I", "III" etc. which are valid wind zone values)
+        if len(stripped) == 1 and not stripped.isalnum():
+            continue
+
         clean_lines.append(line)
     return '\n'.join(clean_lines)
 
@@ -593,6 +637,11 @@ def normalize_title_fields(title_data: Dict[str, str], page_text: str) -> Dict[s
     """
     data = dict(title_data)
 
+    # ── CRITICAL: Clean the page_text before using for regex fallbacks ──
+    # The page_text passed here may still contain navigation garbage
+    # ("Detail", "Previous Owners", "Report", "Records") from the caller.
+    clean_text = _clean_page_text(page_text)
+
     # Extra regex fallbacks for fields that might still be missing
     regex_fallbacks = [
         ("Serial #",    r"Serial\s*#?\s*:?\s*([A-Z0-9-]{5,})"),
@@ -605,9 +654,11 @@ def normalize_title_fields(title_data: Dict[str, str], page_text: str) -> Dict[s
     for field_key, pattern in regex_fallbacks:
         existing = (data.get(field_key) or "").strip()
         if not existing or existing.lower() in _BAD_VALUES or _SECTION_RE.match(existing):
-            m = re.search(pattern, page_text, re.IGNORECASE)
+            m = re.search(pattern, clean_text, re.IGNORECASE)
             if m:
-                data[field_key] = m.group(1).strip()
+                val = m.group(1).strip()
+                if val.lower() not in _NAV_GARBAGE:
+                    data[field_key] = val
 
     # Remove bogus serial/label values
     serial_keys = ("Serial #", "Serial", "Serial Number")
@@ -619,12 +670,12 @@ def normalize_title_fields(title_data: Dict[str, str], page_text: str) -> Dict[s
 
     # Recover from lines if still missing
     if not any(data.get(k) for k in serial_keys):
-        recovered = _recover_from_lines(page_text, for_label=False)
+        recovered = _recover_from_lines(clean_text, for_label=False)
         if recovered:
             data["Serial #"] = recovered
 
     if not any(data.get(k) for k in label_keys):
-        recovered = _recover_from_lines(page_text, for_label=True)
+        recovered = _recover_from_lines(clean_text, for_label=True)
         if recovered:
             data["Label/Seal#"] = recovered
 
@@ -670,7 +721,10 @@ def build_structured_tdhca_data(
     print_url: str | None,
 ) -> Dict:
     """Build the structured response from raw parsed fields."""
-    normalized = normalize_title_fields(title_data, page_text)
+    # Clean the page_text FIRST — the caller may pass in text that still
+    # contains navigation garbage ("Detail", "Previous Owners", etc.)
+    clean_text = _clean_page_text(page_text)
+    normalized = normalize_title_fields(title_data, clean_text)
 
     # Manufacturer splitting
     mfr_raw = normalized.get("Manufacturer") or normalized.get("Manufacturer Name") or ""
@@ -752,12 +806,12 @@ def build_structured_tdhca_data(
         or normalized.get("Date Mfg")
         or normalized.get("Mfg Date")
     )
-    # Also try extracting year from date patterns in page text
+    # Also try extracting year from date patterns in clean text
     if not date_manf:
         # Look for patterns like "Date Manf 01/1999" or "Date of Manufacture: 1999"
         dm = re.search(
             r"(?:Date\s+(?:of\s+)?)?Man[u]?f(?:acture)?d?\s*:?\s*(\d{1,2}/\d{2,4}|\d{4})",
-            page_text, re.IGNORECASE
+            clean_text, re.IGNORECASE
         )
         if dm:
             date_manf = dm.group(1).strip()
@@ -779,9 +833,9 @@ def build_structured_tdhca_data(
         installed_in = normalized.get("Currently Installed in") or normalized.get("Currently Installed In") or ""
         if installed_in:
             county = installed_in.replace("County", "").strip().upper()
-    # Also try regex from page text
+    # Also try regex from clean text
     if not county:
-        cm = re.search(r"Currently\s+Installed\s+in\s+([A-Z][A-Za-z ]+?)(?:\s+County)?\s*(?:\n|$|[,.])", page_text, re.IGNORECASE)
+        cm = re.search(r"Currently\s+Installed\s+in\s+([A-Z][A-Za-z ]+?)(?:\s+County)?\s*(?:\n|$|[,.])", clean_text, re.IGNORECASE)
         if cm:
             county = cm.group(1).strip().upper()
 

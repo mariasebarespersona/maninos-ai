@@ -1128,3 +1128,91 @@ def test_nav_garbage_in_page_text_only():
     assert structured["county"] == "DALLAS"
     assert structured["buyer"] == "JOHN DOE"
     assert structured["seller"] == "JANE DOE"
+
+
+def test_page_text_with_nav_is_cleaned_before_regex_and_linepairs():
+    """
+    ROOT CAUSE TEST: Verify that even when page_text (passed by caller)
+    still contains navigation garbage, the parser regenerates clean text
+    from the soup and doesn't use the dirty page_text for regex/line-pairs.
+    
+    This reproduces the real-world bug where:
+    1. market_listings.py extracts page_text from soup BEFORE nav stripping
+    2. parse_tdhca_detail_page receives dirty page_text
+    3. Strategies 2 & 3 used dirty text and captured nav as field values
+    """
+    html = """
+    <html><body>
+    <table>
+      <tr>
+        <td><a href="title_detail.jsp?id=123">Detail</a></td>
+        <td><a href="previous_owners.jsp?id=123">Previous Owners</a></td>
+        <td><a href="report.jsp?id=123">Report</a></td>
+        <td><a href="records.jsp?id=123">Records</a></td>
+      </tr>
+    </table>
+    <table width="95%" cellpadding="5">
+      <tr><td>Certificate #</td><td>07771234</td></tr>
+      <tr><td>Manufacturer</td><td>PALM HARBOR HOMES</td></tr>
+      <tr><td>Model</td><td>DESERT ROSE</td></tr>
+      <tr><td>Year</td><td>2010</td></tr>
+    </table>
+    <table width="95%" cellpadding="3" border="1">
+      <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+      <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+      <tr><td>PH0612345TX</td><td>TEX5551234</td><td>5000</td><td>16 X 76</td></tr>
+    </table>
+    <table width="95%" cellpadding="5">
+      <tr><td>Square Ftg</td><td>1216</td></tr>
+      <tr><td>Wind Zone</td><td>II</td></tr>
+      <tr><td>Buyer/Transferee</td><td>CARLOS RAMIREZ</td></tr>
+      <tr><td>Seller/Transferor</td><td>PALM HARBOR VILLAGE</td></tr>
+      <tr><td>County</td><td>TRAVIS</td></tr>
+      <tr><td>Issue Date</td><td>05/15/2010</td></tr>
+      <tr><td>Transfer/Sale Date</td><td>05/01/2010</td></tr>
+      <tr><td>First Lien</td><td>BANK OF AMERICA</td></tr>
+      <tr><td>Election</td><td>Personal Property</td></tr>
+    </table>
+    </body></html>
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    # Simulate what market_listings.py does: extract page_text BEFORE stripping
+    dirty_page_text = soup.get_text('\n', strip=True)
+    
+    # Verify the dirty text actually contains nav garbage
+    assert "Detail" in dirty_page_text
+    assert "Previous Owners" in dirty_page_text
+    assert "Report" in dirty_page_text
+    assert "Records" in dirty_page_text
+    
+    # Parse — the parser should clean internally
+    title_data = parse_tdhca_detail_page(soup, dirty_page_text)
+    structured = build_structured_tdhca_data(title_data, dirty_page_text, "https://test.com", None)
+    
+    # CRITICAL: No field should have navigation garbage as its value
+    nav_garbage = {"detail", "details", "previous owners", "report", "records", "print", "search", "back"}
+    for key, val in structured.items():
+        if key == "raw_fields" or val is None:
+            continue
+        assert str(val).lower() not in nav_garbage, \
+            f"Field '{key}' has nav garbage value: '{val}'"
+    
+    # Also check raw_fields
+    for key, val in structured["raw_fields"].items():
+        if val is None:
+            continue
+        assert str(val).lower() not in nav_garbage, \
+            f"Raw field '{key}' has nav garbage value: '{val}'"
+    
+    # Verify correct data was extracted
+    assert structured["certificate_number"] == "07771234"
+    assert structured["manufacturer"] == "PALM HARBOR HOMES"
+    assert structured["model"] == "DESERT ROSE"
+    assert structured["serial_number"] == "PH0612345TX"
+    assert structured["label_seal"] == "TEX5551234"
+    assert structured["county"] == "TRAVIS"
+    assert structured["buyer"] == "CARLOS RAMIREZ"
+    assert structured["seller"] == "PALM HARBOR VILLAGE"
+    assert structured["lien_info"] == "BANK OF AMERICA"
+    assert structured["wind_zone"] == "II"
+    assert structured["square_feet"] == "1216"
