@@ -1374,9 +1374,23 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             # Check if we got results
             content = await page.content()
             
-            # Try to find and click on the first result link (label/seal link)
-            result_links = page.locator('a[href*="title_detail"]')
-            has_result = await result_links.count() > 0
+            # Try multiple selectors to find and click to the detail page
+            # TDHCA uses various link patterns depending on the page version
+            detail_selectors = [
+                'a[href*="title_detail"]',
+                'a[href*="titleDetail"]',
+                'a[href*="detail"]',
+                'a:has-text("Detail")',
+            ]
+            
+            has_result = False
+            for selector in detail_selectors:
+                result_links = page.locator(selector)
+                count = await result_links.count()
+                if count > 0:
+                    logger.info(f"[TDHCA] Found {count} links with selector: {selector}")
+                    has_result = True
+                    break
             
             if not has_result:
                 # Check for "no records found" or empty results
@@ -1387,12 +1401,16 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                         "message": f"No se encontraron registros para {request.search_type}: {request.search_value}",
                         "data": None
                     }
+                # If we're already on the detail page (no search results intermediate)
+                logger.info(f"[TDHCA] No detail links found — may already be on detail page")
             
             if has_result:
+                logger.info(f"[TDHCA] Clicking detail link to navigate to detail page")
                 await result_links.first.click()
                 await page.wait_for_load_state('domcontentloaded', timeout=15000)
                 await asyncio.sleep(2)
                 content = await page.content()
+                logger.info(f"[TDHCA] After click — page URL: {page.url}")
             
             # ═══════════════════════════════════════════════
             # PARSE THE DETAIL PAGE
@@ -1404,9 +1422,11 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             from bs4 import BeautifulSoup
             import re as _re
             soup = BeautifulSoup(content, 'html.parser')
-            page_text = soup.get_text('\n', strip=True)
             
-            logger.info(f"[TDHCA] Page text (first 500 chars): {page_text[:500]}")
+            # Get full page text for logging
+            page_text = soup.get_text('\n', strip=True)
+            logger.info(f"[TDHCA] Page URL: {page.url}")
+            logger.info(f"[TDHCA] Page text (first 800 chars): {page_text[:800]}")
             
             # Parse using centralized parser (tables + regex + line-pairs)
             title_data = parse_tdhca_detail_page(soup, page_text)

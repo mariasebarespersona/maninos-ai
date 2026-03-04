@@ -997,3 +997,134 @@ def test_no_empty_block2a_4a_fields(title_name, html):
 
     for field in BLOCK_2A_FIELDS + BLOCK_4A_FIELDS:
         assert fields.get(field), f"[{title_name}] Block 2A/4A field '{field}' is empty! value='{fields.get(field)}'"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NAVIGATION GARBAGE TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_nav_garbage_not_captured_as_field_values():
+    """
+    Real TDHCA detail pages have navigation links like "Detail", "Previous Owners",
+    "Report", "Records" that must NEVER be captured as data values.
+    
+    This test reproduces the exact structure seen in production where:
+    - Certificate # → "Detail" (from nav link)
+    - Seller → "Previous Owners" (from nav link)
+    - County → "Report" (from nav link)
+    - Lien → "Records" (from nav link)
+    """
+    html = """
+    <html><body>
+    <!-- Navigation tabs (like on real TDHCA page) -->
+    <table width="100%">
+      <tr>
+        <td><a href="title_detail.jsp?id=123">Detail</a></td>
+        <td><a href="previous_owners.jsp?id=123">Previous Owners</a></td>
+        <td><a href="report.jsp?id=123">Report</a></td>
+        <td><a href="records.jsp?id=123">Records</a></td>
+      </tr>
+    </table>
+    
+    <!-- Actual title data -->
+    <table width="95%" cellpadding="5">
+      <tr><td colspan="2"><b>Title Information</b></td></tr>
+      <tr><td>Certificate #</td><td>01191237</td></tr>
+      <tr><td>Manufacturer</td><td>MHDMAN00000039 BRIGADIER HOMES A U.S. HOME COMPANY 1001 SOUTH LOOP 340 WACO, TX 76710</td></tr>
+      <tr><td>Model</td><td>CENTURION</td></tr>
+      <tr><td>Date Manf</td><td>01/1999</td></tr>
+      <tr><td>Year</td><td>1999</td></tr>
+    </table>
+    <table width="95%" cellpadding="3" border="1">
+      <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+      <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+      <tr><td>CLW007371TXA</td><td>TEX0342861</td><td>4500</td><td>16 X 76</td></tr>
+    </table>
+    <table width="95%" cellpadding="5">
+      <tr><td>Square Ftg</td><td>1216</td></tr>
+      <tr><td>Wind Zone</td><td>Currently Installed in SMITH County</td></tr>
+      <tr><td>Buyer/Transferee</td><td>JUAN GARCIA</td></tr>
+      <tr><td>Seller/Transferor</td><td>FIRST TRUST BANK</td></tr>
+      <tr><td>County</td><td>HARRIS</td></tr>
+      <tr><td>First Lien</td><td>NONE</td></tr>
+    </table>
+    </body></html>
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    page_text = soup.get_text('\n', strip=True)
+    title_data = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(title_data, page_text, "https://test.com", None)
+    
+    # Certificate must be the actual number, NOT "Detail"
+    assert structured["certificate_number"] == "01191237", \
+        f"Certificate should be '01191237', got '{structured['certificate_number']}'"
+    
+    # Seller must be actual name, NOT "Previous Owners"
+    assert structured["seller"] == "FIRST TRUST BANK", \
+        f"Seller should be 'FIRST TRUST BANK', got '{structured['seller']}'"
+    
+    # Buyer must be actual name
+    assert structured["buyer"] == "JUAN GARCIA", \
+        f"Buyer should be 'JUAN GARCIA', got '{structured['buyer']}'"
+    
+    # County must be actual county, NOT "Report"
+    assert structured["county"] == "HARRIS", \
+        f"County should be 'HARRIS', got '{structured['county']}'"
+    
+    # Lien must be actual value, NOT "Records"
+    assert structured["lien_info"] == "NONE", \
+        f"Lien should be 'NONE', got '{structured['lien_info']}'"
+    
+    # Wind Zone should be empty (not valid) — "Currently Installed in..." is not a wind zone
+    assert structured["wind_zone"] == "", \
+        f"Wind Zone should be empty, got '{structured['wind_zone']}'"
+    
+    # Model and year should be correct
+    assert structured["model"] == "CENTURION"
+    assert structured["year"] == "01/1999"
+
+
+def test_nav_garbage_in_page_text_only():
+    """
+    Test that navigation terms appearing in page text (but not in tables)
+    are not captured as field values by regex or line-pair strategies.
+    """
+    html = """
+    <html><body>
+    <div class="nav">Detail | Previous Owners | Report | Records</div>
+    <table width="95%" cellpadding="5">
+      <tr><td>Certificate #</td><td>05551234</td></tr>
+      <tr><td>Manufacturer</td><td>FLEETWOOD HOMES</td></tr>
+      <tr><td>Model</td><td>DISCOVERY</td></tr>
+      <tr><td>Year</td><td>2005</td></tr>
+    </table>
+    <table width="95%" cellpadding="3" border="1">
+      <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+      <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+      <tr><td>FLW12345AB</td><td>TEX9999999</td><td>4000</td><td>14 X 60</td></tr>
+    </table>
+    <table width="95%" cellpadding="5">
+      <tr><td>County</td><td>DALLAS</td></tr>
+      <tr><td>Buyer/Transferee</td><td>JOHN DOE</td></tr>
+      <tr><td>Seller/Transferor</td><td>JANE DOE</td></tr>
+    </table>
+    </body></html>
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    page_text = soup.get_text('\n', strip=True)
+    title_data = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(title_data, page_text, "https://test.com", None)
+    
+    # None of the structured values should be navigation garbage
+    nav_garbage = {"detail", "previous owners", "report", "records"}
+    for key, val in structured.items():
+        if key == "raw_fields" or val is None:
+            continue
+        assert str(val).lower() not in nav_garbage, \
+            f"Field '{key}' has nav garbage value: '{val}'"
+    
+    # Verify correct values
+    assert structured["certificate_number"] == "05551234"
+    assert structured["county"] == "DALLAS"
+    assert structured["buyer"] == "JOHN DOE"
+    assert structured["seller"] == "JANE DOE"

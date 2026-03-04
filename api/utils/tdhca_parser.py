@@ -23,6 +23,17 @@ _BAD_VALUES = {
     "w", "l", "width", "length",
 }
 
+# TDHCA navigation / chrome text that should NEVER be captured as field values.
+# These appear as link text or tab labels on the page.
+_NAV_GARBAGE = {
+    "detail", "details", "previous owners", "report", "records",
+    "print", "search", "back", "home", "help", "submit",
+    "title search", "title view", "log out", "logout", "login",
+    "tab", "view", "edit", "delete", "new search",
+    "return to search", "return to results", "previous",
+    "next", "close", "ok", "cancel", "reset", "clear",
+}
+
 # Values that look like section labels (should not be stored as data)
 _SECTION_RE = re.compile(r"^section\s*\d+$", re.IGNORECASE)
 
@@ -71,24 +82,67 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     """
     title_data: Dict[str, str] = {}
 
-    # Strategy 1: Parse HTML tables
+    # ── Pre-processing: strip navigation links from soup before table parsing ──
+    # TDHCA pages have navigation tabs ("Detail", "Previous Owners", "Report",
+    # "Records") that the parser incorrectly captures as field values.
+    _strip_nav_elements(soup)
+
+    # ── Strategy 1: Parse HTML tables ──
     _parse_tables(soup, title_data)
     logger.info(f"[TDHCA-parser] After tables: {list(title_data.keys())}")
 
-    # Strategy 2: Regex extraction from full page text
-    _extract_regex_fields(page_text, title_data)
+    # ── Clean page text for strategies 2 & 3: remove nav-only lines ──
+    clean_text = _clean_page_text(page_text)
+
+    # ── Strategy 2: Regex extraction from cleaned text ──
+    _extract_regex_fields(clean_text, title_data)
     logger.info(f"[TDHCA-parser] After regex: {list(title_data.keys())}")
 
-    # Strategy 3: Label\nValue line pairs
-    _extract_label_value_pairs(page_text, title_data)
+    # ── Strategy 3: Label\nValue line pairs from cleaned text ──
+    _extract_label_value_pairs(clean_text, title_data)
     logger.info(f"[TDHCA-parser] After line-pairs: {list(title_data.keys())}")
 
-    # Cleanup: remove bad values for serial/label
+    # ── Cleanup: remove nav garbage that slipped through + serial/label ──
+    _cleanup_nav_garbage(title_data)
     _cleanup_serial_label(page_text, title_data)
 
     logger.info(f"[TDHCA-parser] Final fields ({len(title_data)}): "
                 f"{dict((k, v[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in title_data.items())}")
     return title_data
+
+
+def _strip_nav_elements(soup) -> None:
+    """Remove navigation links and non-data elements from the soup BEFORE parsing."""
+    for link in soup.find_all('a'):
+        text = link.get_text(strip=True).lower()
+        # Remove links whose ENTIRE text is a nav term
+        if text in _NAV_GARBAGE:
+            link.decompose()
+
+    # Also remove <script>, <style>, <nav>, <header>, <footer>
+    for tag_name in ('script', 'style', 'nav', 'header', 'footer'):
+        for tag in soup.find_all(tag_name):
+            tag.decompose()
+
+
+def _clean_page_text(page_text: str) -> str:
+    """Remove lines that consist solely of navigation/chrome terms."""
+    clean_lines = []
+    for line in page_text.splitlines():
+        stripped = line.strip().lower()
+        if stripped in _NAV_GARBAGE:
+            continue
+        clean_lines.append(line)
+    return '\n'.join(clean_lines)
+
+
+def _cleanup_nav_garbage(title_data: Dict[str, str]) -> None:
+    """Remove any field values that are actually navigation text."""
+    for key in list(title_data.keys()):
+        val = (title_data.get(key) or "").strip()
+        if val.lower() in _NAV_GARBAGE:
+            logger.info(f"[TDHCA-parser] Removing nav garbage: {key} = '{val}'")
+            del title_data[key]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -198,6 +252,7 @@ def _parse_kv_cells(cells, title_data: Dict[str, str]) -> None:
                 and not value_looks_like_header
                 and key_l != val_l
                 and val_l not in _BAD_VALUES
+                and val_l not in _NAV_GARBAGE
                 and not _SECTION_RE.match(val)):
 
             existing = title_data.get(key, "").strip()
@@ -244,7 +299,10 @@ def _extract_regex_fields(page_text: str, title_data: Dict[str, str]) -> None:
         m = re.search(pattern, page_text, flags)
         if m:
             val = m.group(1).strip()
-            if val.lower() not in _BAD_VALUES and len(val) > 0 and not _SECTION_RE.match(val):
+            if (val.lower() not in _BAD_VALUES
+                    and val.lower() not in _NAV_GARBAGE
+                    and len(val) > 0
+                    and not _SECTION_RE.match(val)):
                 title_data[key] = val
                 logger.debug(f"[TDHCA-parser] Regex match: {key} = {val}")
 
@@ -352,8 +410,8 @@ def _extract_label_value_pairs(page_text: str, title_data: Dict[str, str]) -> No
         if val_as_label in _LABEL_TO_KEY:
             continue
 
-        # Skip bad values and section labels
-        if val.lower() in _BAD_VALUES or _SECTION_RE.match(val):
+        # Skip bad values, section labels, and navigation garbage
+        if val.lower() in _BAD_VALUES or val.lower() in _NAV_GARBAGE or _SECTION_RE.match(val):
             continue
 
         title_data[canonical] = val
@@ -739,24 +797,44 @@ def build_structured_tdhca_data(
     if mfr_city_state_zip:
         normalized["Manufacturer CSZ (parsed)"] = mfr_city_state_zip
 
+    # ── Final safety: scrub any remaining nav garbage from all values ──
+    def _scrub(val: str | None) -> str | None:
+        if val is None:
+            return None
+        v = val.strip()
+        if v.lower() in _NAV_GARBAGE:
+            return None
+        return v or None
+
+    # ── Certificate validation: must contain at least one digit ──
+    cert_raw = (
+        normalized.get("Certificate #")
+        or normalized.get("Certificate")
+        or normalized.get("Certificate Number")
+    )
+    cert = _scrub(cert_raw)
+    if cert and not re.search(r"\d", cert):
+        logger.info(f"[TDHCA-struct] Rejecting certificate '{cert}' (no digits)")
+        cert = None
+
+    # ── County validation: must not be a generic word ──
+    if county and county.lower() in _NAV_GARBAGE:
+        county = ""
+
     return {
         "raw_fields": normalized,
         "detail_url": sanitize_tdhca_url(detail_url),
         "print_url": sanitize_tdhca_url(print_url),
-        "certificate_number": (
-            normalized.get("Certificate #")
-            or normalized.get("Certificate")
-            or normalized.get("Certificate Number")
-        ),
+        "certificate_number": cert,
         "manufacturer": mfr_name or mfr_raw,
         "manufacturer_address": mfr_address,
         "manufacturer_city_state_zip": mfr_city_state_zip,
-        "model": normalized.get("Model") or normalized.get("Make"),
-        "year": date_manf or normalized.get("Year"),
-        "date_of_manufacture": date_manf,
-        "serial_number": section1_serial,
-        "label_seal": section1_label,
-        "square_feet": (
+        "model": _scrub(normalized.get("Model") or normalized.get("Make")),
+        "year": _scrub(date_manf or normalized.get("Year")),
+        "date_of_manufacture": _scrub(date_manf),
+        "serial_number": _scrub(section1_serial),
+        "label_seal": _scrub(section1_label),
+        "square_feet": _scrub(
             normalized.get("Square Ftg")
             or normalized.get("Square Feet")
             or normalized.get("Sq Ftg")
@@ -765,15 +843,15 @@ def build_structured_tdhca_data(
         "wind_zone": wind_zone,
         "width": home_width,
         "length": home_length,
-        "seller": normalized.get("Seller/Transferor") or normalized.get("Seller"),
-        "buyer": normalized.get("Buyer/Transferee") or normalized.get("Buyer"),
+        "seller": _scrub(normalized.get("Seller/Transferor") or normalized.get("Seller")),
+        "buyer": _scrub(normalized.get("Buyer/Transferee") or normalized.get("Buyer")),
         "county": county,
-        "issue_date": normalized.get("Issue Date"),
-        "transfer_date": (
+        "issue_date": _scrub(normalized.get("Issue Date")),
+        "transfer_date": _scrub(
             normalized.get("Transfer/Sale Date")
             or normalized.get("Transfer Date")
             or normalized.get("Sale Date")
         ),
-        "lien_info": normalized.get("First Lien") or normalized.get("Lien"),
-        "election": normalized.get("Election"),
+        "lien_info": _scrub(normalized.get("First Lien") or normalized.get("Lien")),
+        "election": _scrub(normalized.get("Election")),
     }
