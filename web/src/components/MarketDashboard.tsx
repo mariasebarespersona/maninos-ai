@@ -1115,6 +1115,27 @@ export default function MarketDashboard() {
           Agregar Manual
         </button>
         <button
+          onClick={async () => {
+            if (!window.confirm(`¿Eliminar TODAS las ${listings.length} propiedades del mercado? Esta acción no se puede deshacer.`)) return;
+            try {
+              const res = await fetch('/api/market-listings/delete-all', { method: 'DELETE' });
+              const data = await res.json();
+              if (res.ok) {
+                toast.success(`✓ ${data.deleted || 0} propiedades eliminadas`);
+                fetchListings();
+              } else {
+                toast.error(data.detail || 'Error al eliminar');
+              }
+            } catch (err) {
+              toast.error('Error de conexión');
+            }
+          }}
+          className="btn-secondary flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50"
+        >
+          <Trash2 className="w-4 h-4" />
+          Borrar Todo
+        </button>
+        <button
           onClick={triggerSearch}
           disabled={searching}
           className="btn-gold flex items-center gap-2"
@@ -1178,6 +1199,15 @@ export default function MarketDashboard() {
                     src={listing.thumbnail_url || listing.photos![0]}
                     alt={listing.address}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Replace broken image with placeholder icon
+                      const target = e.currentTarget;
+                      target.style.display = 'none';
+                      const placeholder = document.createElement('div');
+                      placeholder.className = 'w-full h-full flex items-center justify-center';
+                      placeholder.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-gray-300"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
+                      target.parentElement?.appendChild(placeholder);
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

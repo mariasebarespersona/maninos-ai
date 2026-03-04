@@ -309,6 +309,52 @@ async def cleanup_unqualified_listings():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/all")
+async def delete_all_listings():
+    """
+    Delete ALL market listings from the database.
+    Used for full reset before re-scraping with image persistence.
+    Also cleans up any stored images in Supabase Storage.
+    """
+    try:
+        # First get count
+        count_resp = supabase.table("market_listings")\
+            .select("id", count="exact")\
+            .execute()
+        total = count_resp.count if hasattr(count_resp, 'count') and count_resp.count else len(count_resp.data or [])
+        
+        # Delete all listings (Supabase requires a filter, so use neq on a non-null column)
+        response = supabase.table("market_listings")\
+            .delete()\
+            .neq("id", "00000000-0000-0000-0000-000000000000")\
+            .execute()
+        
+        deleted_count = len(response.data) if response.data else total
+        
+        # Clean up stored images in Supabase Storage
+        try:
+            files = supabase.storage.from_("listing-photos").list()
+            if files:
+                paths = [f["name"] for f in files if f.get("name")]
+                if paths:
+                    supabase.storage.from_("listing-photos").remove(paths)
+                    logger.info(f"[DeleteAll] Cleaned up {len(paths)} stored images")
+        except Exception as storage_err:
+            logger.warning(f"[DeleteAll] Could not clean storage (bucket may not exist yet): {storage_err}")
+        
+        logger.info(f"[DeleteAll] Deleted {deleted_count} market listings")
+        
+        return {
+            "success": True,
+            "deleted": deleted_count,
+            "message": f"Deleted {deleted_count} market listings",
+        }
+        
+    except Exception as e:
+        logger.error(f"Error deleting all listings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/stats")
 async def get_listings_stats():
     """
@@ -590,7 +636,34 @@ async def create_listing(listing: MarketListingCreate):
             .insert(data)\
             .execute()
         
-        return response.data[0] if response.data else None
+        created = response.data[0] if response.data else None
+        
+        # Persist images to Supabase Storage (replaces expiring CDN URLs)
+        if created and (data.get("thumbnail_url") or data.get("photos")):
+            try:
+                from api.utils.image_storage import persist_listing_images
+                new_thumb, new_photos = await persist_listing_images(
+                    thumbnail_url=data.get("thumbnail_url"),
+                    photos=data.get("photos"),
+                    listing_id=created["id"],
+                )
+                if new_thumb or new_photos:
+                    update_img = {}
+                    if new_thumb:
+                        update_img["thumbnail_url"] = new_thumb
+                    if new_photos:
+                        update_img["photos"] = new_photos
+                    img_resp = supabase.table("market_listings")\
+                        .update(update_img)\
+                        .eq("id", created["id"])\
+                        .execute()
+                    if img_resp.data:
+                        created = img_resp.data[0]
+                    logger.info(f"[Create] 📸 Images persisted for listing {created['id']}")
+            except Exception as img_err:
+                logger.warning(f"[Create] 📸 Image persistence failed: {img_err}")
+        
+        return created
         
     except HTTPException:
         raise
@@ -653,10 +726,45 @@ async def create_listings_bulk(listings: List[MarketListingCreate]):
             .upsert(filtered, on_conflict="source_url")\
             .execute()
         
+        created_count = len(response.data) if response.data else 0
+        
+        # Persist images to Supabase Storage for all created listings
+        images_persisted = 0
+        if response.data:
+            try:
+                from api.utils.image_storage import persist_listing_images
+                
+                for saved in response.data:
+                    if saved.get("thumbnail_url") or saved.get("photos"):
+                        try:
+                            new_thumb, new_photos = await persist_listing_images(
+                                thumbnail_url=saved.get("thumbnail_url"),
+                                photos=saved.get("photos"),
+                                listing_id=saved["id"],
+                            )
+                            if new_thumb or new_photos:
+                                update_img = {}
+                                if new_thumb:
+                                    update_img["thumbnail_url"] = new_thumb
+                                if new_photos:
+                                    update_img["photos"] = new_photos
+                                supabase.table("market_listings")\
+                                    .update(update_img)\
+                                    .eq("id", saved["id"])\
+                                    .execute()
+                                images_persisted += 1
+                        except Exception as img_err:
+                            logger.warning(f"[Bulk] 📸 Image persistence failed for {saved.get('address', 'unknown')}: {img_err}")
+                
+                logger.info(f"[Bulk] 📸 Images persisted: {images_persisted}/{created_count}")
+            except Exception as img_err:
+                logger.warning(f"[Bulk] 📸 Image module error: {img_err}")
+        
         return {
-            "created": len(response.data) if response.data else 0,
+            "created": created_count,
             "skipped": skipped,
-            "message": f"Processed {len(filtered)} listings, skipped {skipped}",
+            "images_persisted": images_persisted,
+            "message": f"Processed {len(filtered)} listings, skipped {skipped}, images persisted: {images_persisted}",
         }
         
     except Exception as e:
@@ -1026,6 +1134,7 @@ async def scrape_and_save(
         
         saved_count = 0
         results = []
+        listings_to_persist_images = []
         
         from api.utils.qualification import qualify_listing, qualification_to_db_fields
         
@@ -1126,10 +1235,57 @@ async def scrape_and_save(
                 
                 if response.data:
                     saved_count += 1
+                    saved_listing_id = response.data[0].get("id")
                     logger.info(f"[Scrape] ✓ Saved: {listing.address} (${listing.listing_price:,.0f})")
+                    
+                    # Persist images to Supabase Storage (replaces expiring CDN URLs)
+                    if saved_listing_id and (listing.thumbnail_url or listing.photos):
+                        listings_to_persist_images.append({
+                            "id": saved_listing_id,
+                            "thumbnail_url": listing.thumbnail_url,
+                            "photos": listing.photos,
+                            "address": listing.address,
+                        })
             except Exception as e:
                 logger.warning(f"[Scrape] Error saving listing: {e}")
                 continue
+        
+        # ============================================
+        # PASO 6: Persist images to Supabase Storage
+        # ============================================
+        
+        images_persisted = 0
+        if listings_to_persist_images:
+            from api.utils.image_storage import persist_listing_images
+            
+            logger.info(f"[Scrape] 📸 Persisting images for {len(listings_to_persist_images)} listings...")
+            
+            for item in listings_to_persist_images:
+                try:
+                    new_thumb, new_photos = await persist_listing_images(
+                        thumbnail_url=item["thumbnail_url"],
+                        photos=item["photos"],
+                        listing_id=item["id"],
+                    )
+                    
+                    if new_thumb or new_photos:
+                        update_data = {}
+                        if new_thumb:
+                            update_data["thumbnail_url"] = new_thumb
+                        if new_photos:
+                            update_data["photos"] = new_photos
+                        
+                        supabase.table("market_listings")\
+                            .update(update_data)\
+                            .eq("id", item["id"])\
+                            .execute()
+                        
+                        images_persisted += 1
+                        logger.info(f"[Scrape] 📸 Images persisted for: {item['address']}")
+                except Exception as img_err:
+                    logger.warning(f"[Scrape] 📸 Image persistence failed for {item['address']}: {img_err}")
+            
+            logger.info(f"[Scrape] 📸 Image persistence complete: {images_persisted}/{len(listings_to_persist_images)} listings")
         
         # ============================================
         # RESPUESTA FINAL
@@ -1152,6 +1308,7 @@ async def scrape_and_save(
             },
             "qualified": qualified_count,
             "saved_to_db": saved_count,
+            "images_persisted": images_persisted,
             "results": sorted(results, key=lambda x: x["percent_of_market"])[:15],
         }
         
