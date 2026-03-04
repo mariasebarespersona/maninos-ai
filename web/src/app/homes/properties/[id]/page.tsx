@@ -805,13 +805,19 @@ export default function PropertyDetailPage() {
                 <DetailItem label="Habitaciones" value={property.bedrooms?.toString()} />
                 <DetailItem label="Baños" value={property.bathrooms?.toString()} />
                 <div>
-                  <p className="text-sm text-navy-500">Pies²</p>
+                  <p className="text-sm text-navy-500">Medida</p>
                   <p className="font-medium text-navy-900">
-                    {property.square_feet ? property.square_feet.toLocaleString() : '—'}
-                    {property.length_ft && property.width_ft && (
-                      <span className="text-sm font-normal text-navy-400 ml-1">
-                        ({property.length_ft} × {property.width_ft})
-                      </span>
+                    {property.length_ft && property.width_ft ? (
+                      <>
+                        {property.length_ft} × {property.width_ft}
+                        <span className="text-sm font-normal text-navy-400 ml-1">
+                          ({(property.length_ft * property.width_ft).toLocaleString()} ft²)
+                        </span>
+                      </>
+                    ) : property.square_feet ? (
+                      <>{property.square_feet.toLocaleString()} ft²</>
+                    ) : (
+                      '—'
                     )}
                   </p>
                 </div>
@@ -903,7 +909,9 @@ export default function PropertyDetailPage() {
                   manufacturer: '',
                   bedrooms: property.bedrooms?.toString() || '',
                   baths: property.bathrooms?.toString() || '',
-                  dimensions: property.square_feet ? `${property.square_feet} sqft` : '',
+                  dimensions: property.length_ft && property.width_ft
+                    ? `${property.length_ft} x ${property.width_ft} (${(property.length_ft * property.width_ft).toLocaleString()} sqft)`
+                    : property.square_feet ? `${property.square_feet} sqft` : '',
                   location_of_home: `${property.address}, ${property.city || ''}, ${property.state || 'TX'}`,
                   hud_label_number: property.hud_number || '',
                   total_payment: showBosTemplate === 'purchase' 

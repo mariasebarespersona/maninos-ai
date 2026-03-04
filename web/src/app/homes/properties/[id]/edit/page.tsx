@@ -124,6 +124,10 @@ export default function EditPropertyPage() {
     setError('')
 
     try {
+      const lengthVal = form.length_ft ? parseInt(form.length_ft) : undefined
+      const widthVal = form.width_ft ? parseInt(form.width_ft) : undefined
+      const autoSqFt = lengthVal && widthVal ? lengthVal * widthVal : (form.square_feet ? parseInt(form.square_feet) : undefined)
+
       const payload = {
         address: form.address || undefined,
         city: form.city || undefined,
@@ -135,10 +139,10 @@ export default function EditPropertyPage() {
         sale_price: form.sale_price ? parseFloat(form.sale_price) : undefined,
         bedrooms: form.bedrooms ? parseInt(form.bedrooms) : undefined,
         bathrooms: form.bathrooms ? parseFloat(form.bathrooms) : undefined,
-        square_feet: form.square_feet ? parseInt(form.square_feet) : undefined,
+        square_feet: autoSqFt,
         property_code: form.property_code?.trim().toUpperCase() || undefined,
-        length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
-        width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
+        length_ft: lengthVal,
+        width_ft: widthVal,
       }
 
       const res = await fetch(`/api/properties/${propertyId}`, {
@@ -273,7 +277,7 @@ export default function EditPropertyPage() {
             helperText="Identificador corto (ej: A1, A2, B1)"
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <FormInput
               type="number"
               label="Año"
@@ -286,18 +290,6 @@ export default function EditPropertyPage() {
               max={2030}
               error={getFieldError('year')}
             />
-            <FormInput
-              type="number"
-              label="Pies Cuadrados"
-              name="square_feet"
-              value={form.square_feet}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="1200"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <FormInput
               type="number"
               label="Largo (ft)"
@@ -321,6 +313,13 @@ export default function EditPropertyPage() {
               helperText="Ancho en pies"
             />
           </div>
+
+          {/* Auto-calculated square feet display */}
+          {form.length_ft && form.width_ft && parseInt(form.length_ft) > 0 && parseInt(form.width_ft) > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">
+              <span className="font-medium">Medida:</span> {form.length_ft} × {form.width_ft} ({(parseInt(form.length_ft) * parseInt(form.width_ft)).toLocaleString()} ft²)
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <FormInput
