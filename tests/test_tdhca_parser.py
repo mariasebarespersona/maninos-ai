@@ -49,3 +49,23 @@ def test_manufacturer_split_concatenated_address():
     assert out["manufacturer_city_state_zip"] == "WACO, TX 76710"
 
 
+def test_section_1_fields_preferred_for_serial_label_size():
+    title_data = {
+        "Serial #": "BADSERIAL",
+        "Label/Seal#": "",
+        "Section 1 Serial": "C3208",
+        "Section 1 Label/Seal": "TEX0012345",
+        "Section 1 Size": "14 x 50",
+    }
+    out = build_structured_tdhca_data(
+        title_data=title_data,
+        page_text="",
+        detail_url="https://mhweb.tdhca.state.tx.us/mhweb/title_detail.jsp?homeid=1&db=TTL",
+        print_url=None,
+    )
+    assert out["serial_number"] == "C3208"
+    assert out["label_seal"] == "TEX0012345"
+    assert out["width"] == "14"
+    assert out["length"] == "50"
+
+

@@ -1438,10 +1438,32 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                     
                     # ── Data row matching a previous header row ──
                     if pending_headers and all_td:
+                        section_idx = None
+                        if cells:
+                            section_txt = cells[0].get_text(separator=' ').strip().lower()
+                            m_sec = _re.search(r"section\s*(\d+)", section_txt)
+                            if m_sec:
+                                section_idx = m_sec.group(1)
                         for header, cell in zip(pending_headers, cells):
                             val = cell.get_text(separator=' ').strip()
-                            if header and val and len(header) < 60:
+                            if not header or not val or len(header) >= 60:
+                                continue
+                            existing = (title_data.get(header) or "").strip()
+                            # Preserve first non-empty useful value to avoid being overwritten by empty rows
+                            if not existing:
                                 title_data[header] = val
+                            elif len(existing) < len(val):
+                                title_data[header] = val
+
+                            # Capture per-section values when table is sectioned
+                            if section_idx:
+                                h = header.lower()
+                                if "label" in h and "seal" in h:
+                                    title_data[f"Section {section_idx} Label/Seal"] = val
+                                elif "serial" in h:
+                                    title_data[f"Section {section_idx} Serial"] = val
+                                elif "size" in h:
+                                    title_data[f"Section {section_idx} Size"] = val
                         pending_headers = None
                         continue
                     

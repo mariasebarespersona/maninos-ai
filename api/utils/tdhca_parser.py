@@ -145,6 +145,28 @@ def build_structured_tdhca_data(
             home_width = sm.group(1)
             home_length = sm.group(2)
 
+    # Prefer section-specific values when available.
+    section1_serial = (
+        normalized.get("Section 1 Serial")
+        or normalized.get("Complete Serial Number")
+        or normalized.get("Serial #")
+        or normalized.get("Serial")
+        or normalized.get("Serial Number")
+    )
+    section1_label = (
+        normalized.get("Section 1 Label/Seal")
+        or normalized.get("Label/Seal#")
+        or normalized.get("Label/Seal")
+        or normalized.get("Label/Seal #")
+        or normalized.get("Label/Seal Number")
+    )
+    section1_size = normalized.get("Section 1 Size") or size_raw
+    if section1_size:
+        sm = re.match(r"(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)", section1_size)
+        if sm:
+            home_width = sm.group(1)
+            home_length = sm.group(2)
+
     return {
         "raw_fields": normalized,
         "detail_url": sanitize_tdhca_url(detail_url),
@@ -159,13 +181,8 @@ def build_structured_tdhca_data(
         "year": normalized.get("Date Manf")
         or normalized.get("Year")
         or normalized.get("Date of Manufacture"),
-        "serial_number": normalized.get("Serial #")
-        or normalized.get("Serial")
-        or normalized.get("Serial Number"),
-        "label_seal": normalized.get("Label/Seal#")
-        or normalized.get("Label/Seal")
-        or normalized.get("Label/Seal #")
-        or normalized.get("Label/Seal Number"),
+        "serial_number": section1_serial,
+        "label_seal": section1_label,
         "square_feet": normalized.get("Square Ftg")
         or normalized.get("Square Feet")
         or normalized.get("Sq Ftg"),
