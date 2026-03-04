@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Printer, Save, X, Edit3, Eye, Loader2 } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import { getMissingBlock2AFields } from '@/lib/titleApplicationValidation'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -288,6 +289,7 @@ export default function TitleApplicationTemplate({
   })
   const [editing, setEditing] = useState(!readOnly)
   const [saving, setSaving] = useState(false)
+  const [missingBlock2A, setMissingBlock2A] = useState<string[]>([])
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -346,8 +348,22 @@ export default function TitleApplicationTemplate({
   }
 
   const handleSave = async () => {
-    if (!onSave) return; setSaving(true)
-    try { const f = await generatePDF(); await onSave(f, data) } catch (e) { console.error(e) } finally { setSaving(false) }
+    if (!onSave) return
+    const missing = getMissingBlock2AFields(data)
+    if (missing.length > 0) {
+      setMissingBlock2A(missing)
+      return
+    }
+    setMissingBlock2A([])
+    setSaving(true)
+    try {
+      const f = await generatePDF()
+      await onSave(f, data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ─── Field helpers ────────────────────────────────────────────────────────
@@ -392,6 +408,11 @@ export default function TitleApplicationTemplate({
           {onClose && <button onClick={onClose} className="tbtn tgho"><X className="w-4 h-4" /></button>}
         </div>
       </div>
+      {missingBlock2A.length > 0 && (
+        <div className="no-print" style={{ margin: '10px 0', padding: '10px 12px', border: '1px solid #f59e0b', background: '#fffbeb', color: '#92400e', borderRadius: 8, fontSize: 13 }}>
+          <strong>Completa BLOCK 2(a) usando el título como fuente de verdad antes de guardar:</strong> {missingBlock2A.join(', ')}
+        </div>
+      )}
 
       {/* ═══════════ FORM DOCUMENT ═══════════ */}
       <div ref={printRef} className="doc">
