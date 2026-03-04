@@ -13,7 +13,7 @@ import logging
 import os
 import uuid
 from supabase import create_client, Client
-from api.utils.tdhca_parser import build_structured_tdhca_data
+from api.utils.tdhca_parser import parse_tdhca_detail_page, build_structured_tdhca_data, sanitize_tdhca_url
 
 logger = logging.getLogger(__name__)
 
@@ -1394,214 +1394,39 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 await asyncio.sleep(2)
                 content = await page.content()
             
-            # Parse the detail page
+            # ═══════════════════════════════════════════════
+            # PARSE THE DETAIL PAGE
+            # All parsing logic lives in tdhca_parser.py:
+            #   1. Table parsing (header+data rows, kv pairs)
+            #   2. Comprehensive regex from page text (17+ fields)
+            #   3. Label\nValue line-pair extraction
+            # ═══════════════════════════════════════════════
             from bs4 import BeautifulSoup
             import re as _re
             soup = BeautifulSoup(content, 'html.parser')
-            
-            # ═══════════════════════════════════════════════
-            # IMPROVED TABLE PARSING
-            # Previous approach used a sliding window (step=1)
-            # which created garbage entries like Serial#→Weight.
-            # New approach:
-            #   1. Detect grid tables (header row + data rows)
-            #   2. For mixed/kv rows, step through cells in pairs
-            #   3. Use separator=' ' to avoid concatenation
-            # ═══════════════════════════════════════════════
-            title_data = {}
-            header_hints = ("serial", "label", "seal", "weight", "size", "section")
-            
-            tables = soup.find_all('table')
-            for table in tables:
-                rows = table.find_all('tr')
-                pending_headers = None  # headers from a header-only row
-                
-                for row in rows:
-                    cells = row.find_all(['td', 'th'])
-                    if not cells:
-                        continue
-                    
-                    all_th = all(c.name == 'th' for c in cells)
-                    all_td = all(c.name == 'td' for c in cells)
-                    
-                    row_texts = [c.get_text(separator=' ').strip().rstrip(':') for c in cells]
-                    is_header_like_td_row = (
-                        all_td
-                        and len(row_texts) > 2
-                        and all(any(h in t.lower() for h in header_hints) for t in row_texts)
-                    )
-
-                    # ── Header-only row (all <th>) OR header-like <td> row ──
-                    if (all_th and len(cells) > 1) or is_header_like_td_row:
-                        pending_headers = row_texts
-                        continue
-                    
-                    # ── Data row matching a previous header row ──
-                    if pending_headers and all_td:
-                        section_idx = None
-                        if cells:
-                            section_txt = cells[0].get_text(separator=' ').strip().lower()
-                            m_sec = _re.search(r"section\s*(\d+)", section_txt)
-                            if m_sec:
-                                section_idx = m_sec.group(1)
-                        for header, cell in zip(pending_headers, cells):
-                            val = cell.get_text(separator=' ').strip()
-                            if not header or not val or len(header) >= 60:
-                                continue
-                            existing = (title_data.get(header) or "").strip()
-                            # Preserve first non-empty useful value to avoid being overwritten by empty rows
-                            if not existing:
-                                title_data[header] = val
-                            elif len(existing) < len(val):
-                                title_data[header] = val
-
-                            # Capture per-section values when table is sectioned
-                            if section_idx:
-                                h = header.lower()
-                                if "label" in h and "seal" in h:
-                                    title_data[f"Section {section_idx} Label/Seal"] = val
-                                elif "serial" in h:
-                                    title_data[f"Section {section_idx} Serial"] = val
-                                elif "size" in h:
-                                    title_data[f"Section {section_idx} Size"] = val
-                        pending_headers = None
-                        continue
-                    
-                    # ── Mixed / key-value rows: step=2 pairing ──
-                    pending_headers = None
-                    i = 0
-                    while i < len(cells) - 1:
-                        key = cells[i].get_text(separator=' ').strip().rstrip(':')
-                        val = cells[i + 1].get_text(separator=' ').strip()
-                        key_l = key.lower()
-                        val_l = val.lower()
-                        value_looks_like_header = any(h in val_l for h in header_hints) and len(val) < 30
-                        # Only accept label-like keys (not digits, not too long, and skip header-to-header pairs)
-                        if (key and val
-                            and 1 < len(key) < 60
-                            and not key.replace(',', '').replace('.', '').replace(' ', '').isdigit()
-                            and not value_looks_like_header
-                            and key_l != val_l):
-                            title_data[key] = val
-                        i += 2
-            
-            # ═══ FULL PAGE TEXT ═══
             page_text = soup.get_text('\n', strip=True)
             
-            logger.info(f"[TDHCA] Raw fields extracted: {list(title_data.keys())}")
             logger.info(f"[TDHCA] Page text (first 500 chars): {page_text[:500]}")
             
-            # ═══ REGEX FALLBACK from page text ═══
-            # For fields the table parser may have missed
-            regex_fallbacks = [
-                ("Serial #",    r'Serial\s*#?\s*:?\s*([A-Z0-9]{5,})'),
-                ("Label/Seal#", r'Label/?Seal\s*#?\s*:?\s*([A-Z0-9]{5,})'),
-                ("Square Ftg",  r'(?:Square|Sq\.?)\s*(?:Ft(?:g|age)?|Feet)\s*:?\s*([\d,]+)'),
-                ("Date Manf",   r'(?:Date\s+(?:of\s+)?)?Manf(?:acture)?\s*:?\s*(\d{1,2}/\d{4}|\d{4})'),
-                ("Wind Zone",   r'Wind\s*Zone\s*:?\s*([IVX123]+)'),
-                ("Year",        r'\bYear\s*:?\s*(\d{4})\b'),
-            ]
-            for field_key, pattern in regex_fallbacks:
-                if field_key not in title_data or not title_data.get(field_key):
-                    m = _re.search(pattern, page_text, _re.IGNORECASE)
-                    if m:
-                        title_data[field_key] = m.group(1).strip()
-                        logger.info(f"[TDHCA] Regex fallback: {field_key} = {m.group(1).strip()}")
-
-            # Remove common bogus values picked from header rows, then try line-based recovery.
-            bad_values = {"weight", "size", "label/seal", "label/seal#", "serial", "serial#", "serial #", "n/a", "na"}
-            for k in ("Serial #", "Label/Seal#"):
-                v = (title_data.get(k) or "").strip().lower()
-                if v in bad_values:
-                    title_data.pop(k, None)
-
-            if not title_data.get("Serial #"):
-                for line in page_text.splitlines():
-                    ll = line.lower()
-                    if "serial" in ll and "label" not in ll:
-                        candidates = _re.findall(r'[A-Z0-9-]{6,}', line.upper())
-                        good = [c for c in candidates if c.lower() not in bad_values]
-                        if good:
-                            title_data["Serial #"] = good[0]
-                            logger.info(f"[TDHCA] Line recovery: Serial # = {good[0]}")
-                            break
-
-            if not title_data.get("Label/Seal#"):
-                for line in page_text.splitlines():
-                    ll = line.lower()
-                    if "label" in ll and "seal" in ll:
-                        candidates = _re.findall(r'[A-Z0-9-]{6,}', line.upper())
-                        good = [c for c in candidates if c.lower() not in bad_values]
-                        if good:
-                            title_data["Label/Seal#"] = good[0]
-                            logger.info(f"[TDHCA] Line recovery: Label/Seal# = {good[0]}")
-                            break
+            # Parse using centralized parser (tables + regex + line-pairs)
+            title_data = parse_tdhca_detail_page(soup, page_text)
             
-            # ═══ CLEAN UP MANUFACTURER FIELD ═══
-            mfr_raw = title_data.get("Manufacturer", "")
-            mfr_name = mfr_raw
-            mfr_address = ""
-            mfr_city_state_zip = ""
+            logger.info(f"[TDHCA] Parsed fields ({len(title_data)}): {list(title_data.keys())}")
             
-            if mfr_raw:
-                # Remove TDHCA manufacturer ID prefix (e.g. "MHDMAN00000039")
-                mfr_clean = _re.sub(r'^MHD\w*\d+\s*', '', mfr_raw).strip()
-                if mfr_clean:
-                    # Try to split name from address (address starts with 3+ digit street number)
-                    addr_match = _re.search(r'(\d{3,}.+)$', mfr_clean)
-                    if addr_match:
-                        mfr_name = mfr_clean[:addr_match.start()].strip()
-                        full_addr = addr_match.group(1).strip()
-                        # Extract state abbreviation + ZIP from end
-                        state_zip = _re.search(r'([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$', full_addr)
-                        if state_zip:
-                            before_state = full_addr[:state_zip.start()].strip().rstrip(',').strip()
-                            state = state_zip.group(1)
-                            zipcode = state_zip.group(2)
-                            # Find city name (uppercase word(s) at end of remaining text)
-                            city_match = _re.search(r'[^A-Za-z]([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s*$', before_state)
-                            if city_match:
-                                city = city_match.group(1).strip()
-                                mfr_address = before_state[:city_match.start() + 1].strip()
-                                mfr_city_state_zip = f"{city}, {state} {zipcode}"
-                            else:
-                                mfr_address = before_state
-                                mfr_city_state_zip = f"{state} {zipcode}"
-                        else:
-                            mfr_address = full_addr
-                    else:
-                        mfr_name = mfr_clean
-                logger.info(f"[TDHCA] Manufacturer cleanup: '{mfr_raw}' → name='{mfr_name}', addr='{mfr_address}', csz='{mfr_city_state_zip}'")
+            # Get URLs for reference
+            detail_url = sanitize_tdhca_url(page.url)
             
-            # ═══ EXTRACT DIMENSIONS from Size field ═══
-            size_raw = title_data.get("Size") or title_data.get("Size*") or ""
-            home_width = ""
-            home_length = ""
-            if size_raw:
-                sm = _re.match(r'(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)', size_raw)
-                if sm:
-                    home_width = sm.group(1)
-                    home_length = sm.group(2)
-            
-            # Get the current URL (detail page) for reference
-            detail_url = page.url
-            # TDHCA sometimes includes a session token in URL path (e.g. ;jsessionid=...).
-            # That session belongs to Playwright and fails when opened by end-users.
-            detail_url = _re.sub(r';jsessionid=[^?]*', '', detail_url, flags=_re.IGNORECASE)
-            
-            # Try to get the printable version URL
             print_link = page.locator('a:has-text("Print"), a[href*="print"]')
             print_url = None
             if await print_link.count() > 0:
                 print_url = await print_link.first.get_attribute('href')
                 if print_url and not print_url.startswith('http'):
                     print_url = f"https://mhweb.tdhca.state.tx.us/mhweb/{print_url}"
-            if print_url:
-                print_url = _re.sub(r';jsessionid=[^?]*', '', print_url, flags=_re.IGNORECASE)
+                print_url = sanitize_tdhca_url(print_url)
             
             await browser.close()
             
-            # ═══ STRUCTURED RESPONSE ═══
+            # Build structured response
             structured = build_structured_tdhca_data(
                 title_data=title_data,
                 page_text=page_text,
@@ -1609,10 +1434,14 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 print_url=print_url,
             )
             
-            logger.info(f"[TDHCA] ✅ Structured result: manufacturer='{structured['manufacturer']}', "
-                        f"serial='{structured['serial_number']}', label='{structured['label_seal']}', "
-                        f"year='{structured['year']}', sqft='{structured['square_feet']}', "
-                        f"buyer='{structured['buyer']}', seller='{structured['seller']}'")
+            logger.info(f"[TDHCA] ✅ Structured: mfr='{structured['manufacturer']}', "
+                        f"mfr_addr='{structured['manufacturer_address']}', "
+                        f"mfr_csz='{structured['manufacturer_city_state_zip']}', "
+                        f"model='{structured['model']}', serial='{structured['serial_number']}', "
+                        f"label='{structured['label_seal']}', year='{structured['year']}', "
+                        f"sqft='{structured['square_feet']}', wind='{structured['wind_zone']}', "
+                        f"buyer='{structured['buyer']}', seller='{structured['seller']}', "
+                        f"county='{structured['county']}', dims={structured['width']}x{structured['length']}")
             
             return {
                 "success": True,
