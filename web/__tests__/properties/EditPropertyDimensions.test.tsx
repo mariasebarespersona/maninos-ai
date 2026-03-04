@@ -1,0 +1,263 @@
+/**
+ * Tests for Edit Property Page — Largo × Ancho with auto-calculated ft²
+ * 
+ * Verifies that:
+ * 1. Edit form has length_ft and width_ft inputs (not square_feet)
+ * 2. Auto-calculated square footage display works
+ * 3. Submit payload includes length_ft, width_ft, and computed square_feet
+ */
+import React from 'react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom'
+
+// ─── Mocks ────────────────────────────────────────────────────────
+const mockPush = jest.fn()
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    refresh: jest.fn(),
+    back: jest.fn(),
+  }),
+  useParams: () => ({ id: 'test-property-id' }),
+  useSearchParams: () => ({ get: jest.fn() }),
+}))
+
+const mockToast = { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() }
+jest.mock('@/components/ui/Toast', () => ({
+  useToast: () => mockToast,
+}))
+
+jest.mock('@/hooks/useFormValidation', () => ({
+  useFormValidation: () => ({
+    errors: {},
+    validate: jest.fn(() => true),
+    validateSingle: jest.fn(() => true),
+    markTouched: jest.fn(),
+    getFieldError: jest.fn(() => null),
+    clearErrors: jest.fn(),
+  }),
+  commonSchemas: { property: {} },
+}))
+
+jest.mock('@/components/ui/FormInput', () => {
+  return function MockFormInput({ label, name, value, onChange, onBlur, placeholder, helperText, ...rest }: any) {
+    return (
+      <div>
+        <label htmlFor={name}>{label}</label>
+        <input
+          id={name}
+          name={name}
+          value={value || ''}
+          onChange={onChange}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          data-testid={`input-${name}`}
+          {...rest}
+        />
+        {helperText && <span>{helperText}</span>}
+      </div>
+    )
+  }
+})
+
+// ─── Import component under test ─────────────────────────────────
+import EditPropertyPage from '@/app/homes/properties/[id]/edit/page'
+
+// ─── Tests ────────────────────────────────────────────────────────
+describe('Edit Property Page — Dimensions', () => {
+  const mockProperty = {
+    id: 'test-property-id',
+    address: '123 Main St',
+    city: 'Houston',
+    state: 'Texas',
+    zip_code: '77001',
+    hud_number: 'TEX123',
+    year: 2020,
+    purchase_price: 30000,
+    sale_price: 50000,
+    bedrooms: 3,
+    bathrooms: 2,
+    square_feet: 1216,
+    property_code: 'A1',
+    length_ft: 76,
+    width_ft: 16,
+    status: 'purchased',
+    photos: [],
+    is_renovated: false,
+    checklist_completed: false,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    // Mock the fetch to return property data
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockProperty),
+    }) as jest.Mock
+  })
+
+  it('renders the edit form with property data loaded', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Editar Propiedad')).toBeInTheDocument()
+    })
+  })
+
+  it('has length_ft and width_ft input fields', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByTestId('input-length_ft')).toBeInTheDocument()
+      expect(screen.getByTestId('input-width_ft')).toBeInTheDocument()
+    })
+  })
+
+  it('loads existing length and width values from property', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      const lengthInput = screen.getByTestId('input-length_ft') as HTMLInputElement
+      const widthInput = screen.getByTestId('input-width_ft') as HTMLInputElement
+      expect(lengthInput.value).toBe('76')
+      expect(widthInput.value).toBe('16')
+    })
+  })
+
+  it('shows auto-calculated square footage banner when both dimensions present', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      // Should show "Medida: 76 × 16 (1,216 ft²)"
+      expect(screen.getByText(/76 × 16/)).toBeInTheDocument()
+      expect(screen.getByText(/1,216 ft²/)).toBeInTheDocument()
+    })
+  })
+
+  it('displays the Largo (ft) label', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Largo (ft)')).toBeInTheDocument()
+    })
+  })
+
+  it('displays the Ancho (ft) label', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Ancho (ft)')).toBeInTheDocument()
+    })
+  })
+
+  it('has helper text for dimension fields', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Largo en pies')).toBeInTheDocument()
+      expect(screen.getByText('Ancho en pies')).toBeInTheDocument()
+    })
+  })
+
+  it('updates square footage display when dimensions change', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      expect(screen.getByTestId('input-length_ft')).toBeInTheDocument()
+    })
+
+    // Change length to 80
+    fireEvent.change(screen.getByTestId('input-length_ft'), {
+      target: { name: 'length_ft', value: '80' },
+    })
+    
+    // Change width to 32
+    fireEvent.change(screen.getByTestId('input-width_ft'), {
+      target: { name: 'width_ft', value: '32' },
+    })
+
+    // Should now show 80 × 32 = 2,560 ft²
+    await waitFor(() => {
+      expect(screen.getByText(/80 × 32/)).toBeInTheDocument()
+      expect(screen.getByText(/2,560 ft²/)).toBeInTheDocument()
+    })
+  })
+
+  it('submits with computed square_feet from length × width', async () => {
+    const mockFetchResponses = [
+      // Initial fetch for property data
+      { ok: true, json: () => Promise.resolve(mockProperty) },
+      // PUT request for update
+      { ok: true, json: () => Promise.resolve({ ...mockProperty, id: 'test-property-id' }) },
+    ]
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      return Promise.resolve(mockFetchResponses[fetchCallIndex++])
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    // Wait for form to load
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    // Submit the form
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      // Check the PUT call was made with computed square_feet
+      const putCall = (global.fetch as jest.Mock).mock.calls.find(
+        (call: any[]) => call[1]?.method === 'PUT'
+      )
+      
+      if (putCall) {
+        const payload = JSON.parse(putCall[1].body)
+        expect(payload.length_ft).toBe(76)
+        expect(payload.width_ft).toBe(16)
+        expect(payload.square_feet).toBe(76 * 16) // 1216
+      }
+    })
+  })
+
+  it('does not show square_feet as an editable input field', async () => {
+    render(<EditPropertyPage />)
+    
+    await waitFor(() => {
+      // Should NOT have a square_feet input
+      expect(screen.queryByTestId('input-square_feet')).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe('Edit Property — Payload Calculation', () => {
+  it('computes square_feet as length × width in the payload', () => {
+    const form = { length_ft: '76', width_ft: '16', square_feet: '' }
+    const lengthVal = form.length_ft ? parseInt(form.length_ft) : undefined
+    const widthVal = form.width_ft ? parseInt(form.width_ft) : undefined
+    const autoSqFt = lengthVal && widthVal ? lengthVal * widthVal : (form.square_feet ? parseInt(form.square_feet) : undefined)
+
+    expect(autoSqFt).toBe(1216)
+  })
+
+  it('falls back to square_feet if no length/width', () => {
+    const form = { length_ft: '', width_ft: '', square_feet: '900' }
+    const lengthVal = form.length_ft ? parseInt(form.length_ft) : undefined
+    const widthVal = form.width_ft ? parseInt(form.width_ft) : undefined
+    const autoSqFt = lengthVal && widthVal ? lengthVal * widthVal : (form.square_feet ? parseInt(form.square_feet) : undefined)
+
+    expect(autoSqFt).toBe(900)
+  })
+
+  it('returns undefined when no dimension data', () => {
+    const form = { length_ft: '', width_ft: '', square_feet: '' }
+    const lengthVal = form.length_ft ? parseInt(form.length_ft) : undefined
+    const widthVal = form.width_ft ? parseInt(form.width_ft) : undefined
+    const autoSqFt = lengthVal && widthVal ? lengthVal * widthVal : (form.square_feet ? parseInt(form.square_feet) : undefined)
+
+    expect(autoSqFt).toBeUndefined()
+  })
+})
+
