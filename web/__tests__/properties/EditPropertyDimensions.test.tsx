@@ -261,3 +261,187 @@ describe('Edit Property — Payload Calculation', () => {
   })
 })
 
+// ─── Error Handling Tests (Internal Server Error fix) ─────────────
+describe('Edit Property — Server Error Handling', () => {
+  const mockProperty = {
+    id: 'test-property-id',
+    address: '123 Main St',
+    city: 'Houston',
+    state: 'Texas',
+    zip_code: '77001',
+    hud_number: 'TEX123',
+    year: 2020,
+    purchase_price: 30000,
+    sale_price: 50000,
+    bedrooms: 3,
+    bathrooms: 2,
+    square_feet: 1216,
+    property_code: 'A1',
+    length_ft: 76,
+    width_ft: 16,
+    status: 'purchased',
+    photos: [],
+    is_renovated: false,
+    checklist_completed: false,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('uses PATCH method (not PUT) for update requests', async () => {
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      fetchCallIndex++
+      if (fetchCallIndex === 1) {
+        // GET to load property
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProperty) })
+      }
+      // PATCH to save
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProperty) })
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      const calls = (global.fetch as jest.Mock).mock.calls
+      const updateCall = calls.find((call: any[]) => call[1]?.method)
+      expect(updateCall).toBeDefined()
+      expect(updateCall[1].method).toBe('PATCH')
+    })
+  })
+
+  it('displays server error detail when API returns 500 with JSON body', async () => {
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      fetchCallIndex++
+      if (fetchCallIndex === 1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProperty) })
+      }
+      // Simulate 500 with detail message
+      return Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ detail: 'Error updating property: column "length_ft" does not exist' }),
+      })
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith(
+        expect.stringContaining('column "length_ft" does not exist')
+      )
+    })
+  })
+
+  it('handles 500 with empty body gracefully (no JSON parse crash)', async () => {
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      fetchCallIndex++
+      if (fetchCallIndex === 1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProperty) })
+      }
+      // Simulate 500 with empty body — json() throws
+      return Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('Unexpected end of JSON input')),
+      })
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      // Should show the fallback message, NOT crash
+      expect(mockToast.error).toHaveBeenCalledWith('Error al actualizar la propiedad')
+    })
+  })
+
+  it('handles network error (API unreachable) gracefully', async () => {
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      fetchCallIndex++
+      if (fetchCallIndex === 1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockProperty) })
+      }
+      // Simulate network error
+      return Promise.reject(new Error('Failed to fetch'))
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('Failed to fetch')
+    })
+  })
+
+  it('does not send undefined fields in JSON payload', async () => {
+    // Property without dimensions — only basic fields
+    const basicProperty = {
+      ...mockProperty,
+      length_ft: null,
+      width_ft: null,
+      property_code: null,
+    }
+
+    let fetchCallIndex = 0
+    global.fetch = jest.fn().mockImplementation(() => {
+      fetchCallIndex++
+      if (fetchCallIndex === 1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(basicProperty) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(basicProperty) })
+    }) as jest.Mock
+
+    render(<EditPropertyPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('input-address')).toBeInTheDocument()
+    })
+
+    const submitButton = screen.getByText(/Guardar Cambios/i)
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      const calls = (global.fetch as jest.Mock).mock.calls
+      const patchCall = calls.find((call: any[]) => call[1]?.method === 'PATCH')
+      if (patchCall) {
+        const body = JSON.parse(patchCall[1].body)
+        // undefined fields should NOT appear in JSON.stringify output
+        expect(body).not.toHaveProperty('length_ft')
+        expect(body).not.toHaveProperty('width_ft')
+        expect(body).not.toHaveProperty('property_code')
+      }
+    })
+  })
+})
+

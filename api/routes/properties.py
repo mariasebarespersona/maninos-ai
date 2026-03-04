@@ -153,7 +153,14 @@ async def create_property(data: PropertyCreate):
         if key in insert_data and insert_data[key] is not None:
             insert_data[key] = int(insert_data[key])
     
-    result = sb.table("properties").insert(insert_data).execute()
+    try:
+        result = sb.table("properties").insert(insert_data).execute()
+    except Exception as e:
+        logger.error(f"Supabase insert error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creating property: {e}",
+        )
     
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create property")
@@ -165,11 +172,28 @@ async def create_property(data: PropertyCreate):
 async def update_property(property_id: str, data: PropertyUpdate):
     """Update property details."""
     # Get current property
-    current = sb.table("properties").select("*").eq("id", property_id).single().execute()
+    try:
+        current = sb.table("properties").select("*").eq("id", property_id).single().execute()
+    except Exception as e:
+        logger.error(f"Error fetching property {property_id}: {e}")
+        raise HTTPException(status_code=404, detail=f"Property not found: {e}")
+    
     if not current.data:
         raise HTTPException(status_code=404, detail="Property not found")
     
     update_data = data.model_dump(exclude_none=True)
+    
+    # Strip out columns that may not exist yet (migration 046)
+    # so the update doesn't fail if the migration hasn't been run.
+    db_columns = set(current.data.keys())
+    unknown_cols = [k for k in update_data if k not in db_columns]
+    if unknown_cols:
+        logger.warning(
+            f"Stripping unknown columns from update payload for property "
+            f"{property_id}: {unknown_cols}. Run pending migrations."
+        )
+        for col in unknown_cols:
+            del update_data[col]
     
     # Convert Decimal to float for JSON serialization
     for key in ["purchase_price", "sale_price", "bathrooms"]:
@@ -182,7 +206,14 @@ async def update_property(property_id: str, data: PropertyUpdate):
     if not update_data:
         return _format_property(current.data)
     
-    result = sb.table("properties").update(update_data).eq("id", property_id).execute()
+    try:
+        result = sb.table("properties").update(update_data).eq("id", property_id).execute()
+    except Exception as e:
+        logger.error(f"Supabase update error for property {property_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating property: {e}",
+        )
     
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to update property")
@@ -681,12 +712,17 @@ def _generate_next_property_code() -> str:
 
 
 def _format_property(data: dict) -> PropertyResponse:
-    """Format database row to PropertyResponse."""
+    """Format database row to PropertyResponse.
+    
+    Uses `or` instead of dict.get(key, default) for boolean/collection fields
+    because dict.get returns None (not the default) when the key exists with
+    value None — and Pydantic rejects None for non-Optional bool fields.
+    """
     return PropertyResponse(
         id=data["id"],
         address=data["address"],
         city=data.get("city"),
-        state=data.get("state", "Texas"),
+        state=data.get("state") or "Texas",
         zip_code=data.get("zip_code"),
         hud_number=data.get("hud_number"),
         year=data.get("year"),
@@ -699,10 +735,10 @@ def _format_property(data: dict) -> PropertyResponse:
         length_ft=data.get("length_ft"),
         width_ft=data.get("width_ft"),
         status=PropertyStatus(data["status"]),
-        is_renovated=data.get("is_renovated", False),
-        photos=data.get("photos", []) or [],
-        checklist_completed=data.get("checklist_completed", False),
-        checklist_data=data.get("checklist_data", {}) or {},
+        is_renovated=data.get("is_renovated") or False,
+        photos=data.get("photos") or [],
+        checklist_completed=data.get("checklist_completed") or False,
+        checklist_data=data.get("checklist_data") or {},
         created_at=data["created_at"],
         updated_at=data["updated_at"],
     )
