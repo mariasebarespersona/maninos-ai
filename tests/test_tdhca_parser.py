@@ -874,6 +874,115 @@ BLOCK_2A_FIELDS = [
 BLOCK_4A_FIELDS = ["seller_name", "buyer_name"]
 
 
+# ─── Test 6: Wind Zone "Currently Installed in..." must be cleaned ─────────────
+
+TITLE_WIND_ZONE_INSTALLED_HTML = """
+<html><body>
+<table width="95%" cellpadding="5">
+  <tr><td>Certificate #</td><td>01191237</td></tr>
+  <tr><td>Manufacturer</td><td>MHDMAN00000039 BRIGADIER HOMES A U.S. HOME COMPANY 1001 SOUTH LOOP 340 WACO, TX 76710</td></tr>
+  <tr><td>Model</td><td>CENTURION</td></tr>
+  <tr><td>Date Manf</td><td>01/1999</td></tr>
+  <tr><td>Year</td><td>1999</td></tr>
+</table>
+<table width="95%" cellpadding="3" border="1">
+  <tr><td><b>Serial #</b></td><td><b>Label/Seal#</b></td><td><b>Weight</b></td><td><b>Size*</b></td></tr>
+  <tr><td>Section 1</td><td></td><td></td><td></td></tr>
+  <tr><td>C3208</td><td>TEX0012345</td><td>5000</td><td>14 X 50</td></tr>
+</table>
+<table width="95%" cellpadding="5">
+  <tr><td>Square Ftg</td><td>700</td></tr>
+  <tr><td>Wind Zone</td><td>Currently Installed in SMITH County</td></tr>
+  <tr><td>Buyer/Transferee</td><td>JOHN DOE</td></tr>
+  <tr><td>Seller/Transferor</td><td>JANE DOE</td></tr>
+  <tr><td>County</td><td>HARRIS</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_block2a_wind_zone_cleaned_and_raw_fields_safe():
+    """
+    Critical bug fix: when Wind Zone contains 'Currently Installed in SMITH County',
+    the backend validates it to '' AND cleans raw_fields['Wind Zone'] to ''.
+
+    This prevents the frontend's getTdhcaField fallback from picking up
+    the unvalidated raw_fields value.
+    """
+    soup = BeautifulSoup(TITLE_WIND_ZONE_INSTALLED_HTML, "html.parser")
+    page_text = soup.get_text("\n", strip=True)
+    raw = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(raw, page_text, "https://test.com", None)
+
+    # Structured wind_zone must be empty (validated)
+    assert structured["wind_zone"] == "", f"wind_zone should be empty, got '{structured['wind_zone']}'"
+
+    # CRITICAL: raw_fields['Wind Zone'] must ALSO be empty
+    # (prevents frontend getTdhcaField from falling back to the invalid value)
+    assert structured["raw_fields"].get("Wind Zone", "") == "", \
+        f"raw_fields['Wind Zone'] should be empty, got '{structured['raw_fields'].get('Wind Zone')}'"
+
+    # County comes from explicit County field (HARRIS) — takes precedence over "Currently Installed"
+    assert structured["county"] == "HARRIS"
+
+    # Other fields should still work
+    assert structured["manufacturer"] == "BRIGADIER HOMES A U.S. HOME COMPANY"
+    assert structured["manufacturer_address"] == "1001 SOUTH LOOP 340"
+    assert "WACO" in structured["manufacturer_city_state_zip"]
+    assert structured["buyer"] == "JOHN DOE"
+    assert structured["seller"] == "JANE DOE"
+
+
+# ─── Test 7: getTdhcaField simulation — structured "" should NOT be overridden ─
+
+def test_frontend_get_tdhca_field_respects_backend_empty_string():
+    """
+    Simulate the frontend's getTdhcaField logic:
+    When tdhcaResult.wind_zone is '' (typeof string), it should return ''
+    WITHOUT falling back to raw_fields['Wind Zone'].
+    """
+    # Simulate what the backend returns
+    tdhca_result = {
+        "wind_zone": "",  # Backend validated this to empty
+        "manufacturer": "BRIGADIER HOMES",
+        "manufacturer_address": "1001 SOUTH LOOP 340",
+        "buyer": None,  # Backend couldn't find buyer
+        "raw_fields": {
+            "Wind Zone": "Currently Installed in SMITH County",  # Bad value
+            "Buyer/Transferee": "JOHN DOE",  # Value exists in raw
+        },
+    }
+
+    # Simulate frontend getTdhcaField logic (matching the fixed version)
+    def getTdhcaField(*keys: str) -> str:
+        # Pass 1: structured fields — typeof string check
+        for key in keys:
+            val = tdhca_result.get(key)
+            if isinstance(val, str):  # Python equivalent of typeof === 'string'
+                return val.strip()
+
+        # Pass 2: raw_fields fallback for non-structured keys only
+        raw = tdhca_result.get("raw_fields", {})
+        for key in keys:
+            if key in tdhca_result:
+                continue  # Skip structured keys
+            exact = raw.get(key)
+            if exact is not None and str(exact).strip():
+                return str(exact).strip()
+        return ""
+
+    # wind_zone: backend returned "" → must stay "" (not "Currently Installed...")
+    assert getTdhcaField("wind_zone", "Wind Zone") == "", \
+        "wind_zone should be '' even though raw_fields has 'Currently Installed...'"
+
+    # manufacturer: backend returned a string → use it
+    assert getTdhcaField("manufacturer", "Manufacturer") == "BRIGADIER HOMES"
+
+    # buyer: backend returned None → skip, then check raw_fields for 'Buyer/Transferee'
+    assert getTdhcaField("buyer", "Buyer/Transferee") == "JOHN DOE", \
+        "buyer=None should fall through to raw_fields['Buyer/Transferee']"
+
+
 @pytest.mark.parametrize("title_name,html", ALL_TITLE_HTMLS)
 def test_no_empty_block2a_4a_fields(title_name, html):
     """

@@ -727,6 +727,18 @@ def build_structured_tdhca_data(
         if cm:
             county = cm.group(1).strip().upper()
 
+    # ── Ensure validated fields are also cleaned in raw_fields ──
+    # This prevents the frontend from falling back to raw_fields and
+    # undoing the backend's validation (e.g. Wind Zone).
+    if not wind_zone and "Wind Zone" in normalized:
+        # Backend validated wind_zone to "" → clean raw_fields too
+        normalized["Wind Zone"] = ""
+    # Ensure manufacturer_address is clean in raw_fields
+    if mfr_address:
+        normalized["Manufacturer Address (parsed)"] = mfr_address
+    if mfr_city_state_zip:
+        normalized["Manufacturer CSZ (parsed)"] = mfr_city_state_zip
+
     return {
         "raw_fields": normalized,
         "detail_url": sanitize_tdhca_url(detail_url),

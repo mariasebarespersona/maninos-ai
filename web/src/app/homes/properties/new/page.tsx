@@ -188,16 +188,23 @@ export default function NewPropertyPage() {
     }
   }
 
-  // TDHCA field helpers: use normalized fields + raw_fields fallback (case-insensitive)
+  // TDHCA field helpers.
+  // IMPORTANT: The backend validates/cleans fields. If it returns "" (e.g. wind_zone),
+  // we must respect it and NOT fall back to unvalidated raw_fields.
   const getTdhcaField = (...keys: string[]): string => {
     if (!tdhcaResult) return ''
+
+    // Pass 1: structured (top-level) fields — respect backend validation (even "")
     for (const key of keys) {
-      const direct = tdhcaResult?.[key]
-      if (direct !== undefined && direct !== null && String(direct).trim()) return String(direct).trim()
+      const val = tdhcaResult?.[key]
+      if (typeof val === 'string') return val.trim()
     }
+
+    // Pass 2: raw_fields fallback — only for keys NOT in structured output
     const raw = (tdhcaResult?.raw_fields || {}) as Record<string, any>
     const entries = Object.entries(raw)
     for (const key of keys) {
+      if (key in tdhcaResult) continue // backend already handled this key
       const exact = raw[key]
       if (exact !== undefined && exact !== null && String(exact).trim()) return String(exact).trim()
       const lower = key.toLowerCase()

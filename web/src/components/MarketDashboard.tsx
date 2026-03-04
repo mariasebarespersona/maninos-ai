@@ -650,18 +650,28 @@ export default function MarketDashboard() {
     }
   };
 
-  // TDHCA field helpers: use normalized fields + raw_fields fallback (case-insensitive)
+  // TDHCA field helpers.
+  // IMPORTANT: The backend (build_structured_tdhca_data) validates and cleans fields.
+  // If it returns "" for wind_zone, that means the raw value was invalid — we must respect it.
+  // raw_fields should ONLY be used for keys NOT present in the structured output.
   const getTdhcaField = (...keys: string[]): string => {
     if (!tdhcaResult) return '';
+
+    // Pass 1: check structured (top-level) fields.
+    // If a structured key exists as a string (even ""), the backend validated it — return as-is.
+    // Only skip if the value is null/undefined (backend didn't populate it).
     for (const key of keys) {
-      const direct = tdhcaResult?.[key];
-      if (direct !== undefined && direct !== null && String(direct).trim()) {
-        return String(direct).trim();
-      }
+      const val = tdhcaResult?.[key];
+      if (typeof val === 'string') return val.trim(); // Respect backend's "" too
     }
+
+    // Pass 2: raw_fields fallback — only for keys that are NOT structured (top-level) fields.
     const raw = (tdhcaResult?.raw_fields || {}) as Record<string, any>;
     const entries = Object.entries(raw);
     for (const key of keys) {
+      // Skip keys that exist in tdhcaResult (even as null) — backend already handled them
+      if (key in tdhcaResult) continue;
+
       const exact = raw[key];
       if (exact !== undefined && exact !== null && String(exact).trim()) {
         return String(exact).trim();
