@@ -615,6 +615,18 @@ export default function MarketDashboard() {
       });
       const data = await res.json();
       if (data.success) {
+        console.log('[MarketDashboard] ✅ TDHCA result:', {
+          manufacturer: data.data?.manufacturer,
+          model: data.data?.model,
+          serial_number: data.data?.serial_number,
+          label_seal: data.data?.label_seal,
+          buyer: data.data?.buyer,
+          seller: data.data?.seller,
+          square_feet: data.data?.square_feet,
+          year: data.data?.year,
+          county: data.data?.county,
+          raw_fields_keys: data.data?.raw_fields ? Object.keys(data.data.raw_fields) : [],
+        });
         setTdhcaResult(data.data);
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {

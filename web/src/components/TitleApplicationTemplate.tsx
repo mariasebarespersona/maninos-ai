@@ -271,6 +271,19 @@ export default function TitleApplicationTemplate({
     // Auto-sync Page 2 header from Block 2A section 1
     if (m.section1_label && !m.page2_hud_label) m.page2_hud_label = m.section1_label
     if (m.section1_serial && !m.page2_serial) m.page2_serial = m.section1_serial
+
+    console.log('[TitleApp] ✅ v2 — initialData received:', {
+      initialDataKeys: initialData ? Object.keys(initialData).filter(k => (initialData as any)[k]) : 'none',
+      manufacturer: m.manufacturer,
+      section1_serial: m.section1_serial,
+      section1_label: m.section1_label,
+      seller_name: m.seller_name,
+      buyer_name: m.buyer_name,
+      has_hud_label: m.has_hud_label,
+      election_inventory: m.election_inventory,
+      page2_hud_label: m.page2_hud_label,
+      page2_serial: m.page2_serial,
+    })
     return m
   })
   const [editing, setEditing] = useState(!readOnly)
