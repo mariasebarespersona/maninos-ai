@@ -617,6 +617,8 @@ export default function MarketDashboard() {
       if (data.success) {
         console.log('[MarketDashboard] ✅ TDHCA result:', {
           manufacturer: data.data?.manufacturer,
+          manufacturer_address: data.data?.manufacturer_address,
+          manufacturer_city_state_zip: data.data?.manufacturer_city_state_zip,
           model: data.data?.model,
           serial_number: data.data?.serial_number,
           label_seal: data.data?.label_seal,
@@ -624,9 +626,18 @@ export default function MarketDashboard() {
           seller: data.data?.seller,
           square_feet: data.data?.square_feet,
           year: data.data?.year,
+          date_of_manufacture: data.data?.date_of_manufacture,
+          wind_zone: data.data?.wind_zone,
           county: data.data?.county,
+          width: data.data?.width,
+          length: data.data?.length,
           raw_fields_keys: data.data?.raw_fields ? Object.keys(data.data.raw_fields) : [],
+          raw_fields: data.data?.raw_fields,
         });
+        // Also log the page_text for debugging TDHCA parsing issues
+        if (data.page_text) {
+          console.log('[MarketDashboard] TDHCA page_text (first 1000):', data.page_text?.substring(0, 1000));
+        }
         setTdhcaResult(data.data);
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
@@ -2178,8 +2189,8 @@ export default function MarketDashboard() {
                             is_used: true,
                             // Block 2A — auto-fill from TDHCA title
                             manufacturer: getTdhcaField('manufacturer', 'Manufacturer'),
-                            manufacturer_address: getTdhcaField('manufacturer_address', 'Manufacturer Address'),
-                            manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip'),
+                            manufacturer_address: getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address'),
+                            manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State'),
                             make: getTdhcaField('model', 'Model'),
                             year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || (selectedListing.year_built?.toString() || ''),
                             date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),

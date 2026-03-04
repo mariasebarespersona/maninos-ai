@@ -230,6 +230,8 @@ _TEXT_PATTERNS: List[Tuple[str, str, int]] = [
     ("Transfer/Sale Date",  r"(?:Transfer|Sale)\s*/?(?:Sale)?\s*Date\s*:?\s*([\d/.-]+)",                        re.IGNORECASE),
     ("First Lien",          rf"(?:First\s+)?Lien(?:holder)?\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)", re.IGNORECASE),
     ("Election",            rf"Election\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)",                     re.IGNORECASE),
+    ("Currently Installed in", r"Currently\s+Installed\s+in\s+([A-Z][A-Za-z ]+?)(?:\s+County)?\s*(?:\n|$|[,.])",  re.IGNORECASE),
+    ("Address",             r"(?:Mfg\.?\s+)?Address\s*:?\s*(.+?)(?:\n|$)",                                        re.IGNORECASE),
 ]
 
 
@@ -295,6 +297,18 @@ _LABEL_TO_KEY: Dict[str, str] = {
     "lien": "First Lien",
     "lienholder": "First Lien",
     "election": "Election",
+    "currently installed in": "Currently Installed in",
+    "address": "Address",
+    "mfg address": "Address",
+    "manufacturer address": "Address",
+    "city, state, zip": "City, State, Zip",
+    "city state zip": "City, State, Zip",
+    "city": "City",
+    "state": "State",
+    "zip": "Zip",
+    "zip code": "Zip",
+    "date mfg": "Date Manf",
+    "mfg date": "Date Manf",
 }
 
 
@@ -559,6 +573,38 @@ def normalize_title_fields(title_data: Dict[str, str], page_text: str) -> Dict[s
     return data
 
 
+def _validate_wind_zone(raw_value: str) -> str:
+    """
+    Validate that a wind zone value is actually a wind zone (I, II, III, 1, 2, 3).
+    TDHCA pages sometimes put 'Currently Installed in SMITH COUNTY' in the Wind Zone cell.
+    Returns cleaned wind zone or empty string if invalid.
+    """
+    if not raw_value:
+        return ""
+    v = raw_value.strip()
+    # Valid wind zones: I, II, III, 1, 2, 3
+    if re.fullmatch(r"[IVX123]+", v, re.IGNORECASE):
+        return v.upper()
+    # Maybe "Zone II" or "Wind Zone II"
+    m = re.search(r"\b([IVX123]{1,3})\b", v)
+    if m and len(m.group(1)) <= 3 and m.group(1).upper() in ("I", "II", "III", "1", "2", "3"):
+        return m.group(1).upper()
+    return ""
+
+
+def _extract_county_from_installed(text: str) -> str:
+    """
+    Extract county name from 'Currently Installed in XXXX County' text.
+    """
+    m = re.search(r"Currently\s+Installed\s+in\s+(.+?)(?:\s+County)?\s*$", text, re.IGNORECASE)
+    if m:
+        county = m.group(1).strip().rstrip(",").strip()
+        # Remove trailing "County" if still present
+        county = re.sub(r"\s+County\s*$", "", county, flags=re.IGNORECASE).strip()
+        return county.upper() if county else ""
+    return ""
+
+
 def build_structured_tdhca_data(
     title_data: Dict[str, str],
     page_text: str,
@@ -571,6 +617,42 @@ def build_structured_tdhca_data(
     # Manufacturer splitting
     mfr_raw = normalized.get("Manufacturer") or normalized.get("Manufacturer Name") or ""
     mfr_name, mfr_address, mfr_city_state_zip = _extract_manufacturer_parts(mfr_raw)
+
+    logger.info(f"[TDHCA-struct] Manufacturer split: raw='{mfr_raw[:80]}', "
+                f"name='{mfr_name}', addr='{mfr_address}', csz='{mfr_city_state_zip}'")
+
+    # ── Fallback: if mfr_address is empty, check for standalone Address fields ──
+    if not mfr_address:
+        mfr_address = (
+            normalized.get("Address")
+            or normalized.get("Mfg Address")
+            or normalized.get("Manufacturer Address")
+            or ""
+        )
+        logger.info(f"[TDHCA-struct] Address fallback from raw fields: '{mfr_address}'")
+
+    if not mfr_city_state_zip:
+        mfr_city_state_zip = (
+            normalized.get("City, State, Zip")
+            or normalized.get("City State Zip")
+            or normalized.get("City, State")
+            or ""
+        )
+        # Also try composing from separate City + State + Zip fields
+        if not mfr_city_state_zip:
+            city = normalized.get("City") or ""
+            state = normalized.get("State") or ""
+            zipcode = normalized.get("Zip") or normalized.get("Zip Code") or ""
+            if city or state or zipcode:
+                parts = []
+                if city:
+                    parts.append(city)
+                if state:
+                    parts.append(f", {state}" if parts else state)
+                if zipcode:
+                    parts.append(f" {zipcode}" if parts else zipcode)
+                mfr_city_state_zip = "".join(parts)
+        logger.info(f"[TDHCA-struct] City/State/Zip fallback: '{mfr_city_state_zip}'")
 
     # Size / dimensions
     size_raw = normalized.get("Size") or normalized.get("Size*") or ""
@@ -609,7 +691,41 @@ def build_structured_tdhca_data(
         normalized.get("Date Manf")
         or normalized.get("Date of Manufacture")
         or normalized.get("Date Manufactured")
+        or normalized.get("Date Mfg")
+        or normalized.get("Mfg Date")
     )
+    # Also try extracting year from date patterns in page text
+    if not date_manf:
+        # Look for patterns like "Date Manf 01/1999" or "Date of Manufacture: 1999"
+        dm = re.search(
+            r"(?:Date\s+(?:of\s+)?)?Man[u]?f(?:acture)?d?\s*:?\s*(\d{1,2}/\d{2,4}|\d{4})",
+            page_text, re.IGNORECASE
+        )
+        if dm:
+            date_manf = dm.group(1).strip()
+
+    # ── Wind Zone: validate it's an actual wind zone value ──
+    raw_wind = normalized.get("Wind Zone") or ""
+    wind_zone = _validate_wind_zone(raw_wind)
+
+    # ── County: try multiple sources including "Currently Installed in..." text ──
+    county = normalized.get("County") or ""
+    if not county:
+        # Check if Wind Zone field contained county info
+        county_from_wind = _extract_county_from_installed(raw_wind)
+        if county_from_wind:
+            county = county_from_wind
+            logger.info(f"[TDHCA-struct] County extracted from Wind Zone text: '{county}'")
+    if not county:
+        # Check for "Currently Installed in" as a standalone field
+        installed_in = normalized.get("Currently Installed in") or normalized.get("Currently Installed In") or ""
+        if installed_in:
+            county = installed_in.replace("County", "").strip().upper()
+    # Also try regex from page text
+    if not county:
+        cm = re.search(r"Currently\s+Installed\s+in\s+([A-Z][A-Za-z ]+?)(?:\s+County)?\s*(?:\n|$|[,.])", page_text, re.IGNORECASE)
+        if cm:
+            county = cm.group(1).strip().upper()
 
     return {
         "raw_fields": normalized,
@@ -634,12 +750,12 @@ def build_structured_tdhca_data(
             or normalized.get("Sq Ftg")
             or normalized.get("Total Square Feet")
         ),
-        "wind_zone": normalized.get("Wind Zone"),
+        "wind_zone": wind_zone,
         "width": home_width,
         "length": home_length,
         "seller": normalized.get("Seller/Transferor") or normalized.get("Seller"),
         "buyer": normalized.get("Buyer/Transferee") or normalized.get("Buyer"),
-        "county": normalized.get("County"),
+        "county": county,
         "issue_date": normalized.get("Issue Date"),
         "transfer_date": (
             normalized.get("Transfer/Sale Date")

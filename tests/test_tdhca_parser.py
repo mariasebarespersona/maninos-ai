@@ -401,6 +401,60 @@ def test_empty_page():
     assert len(data) == 0
 
 
+def test_wind_zone_currently_installed_filtered():
+    """Wind Zone 'Currently Installed in SMITH COUNTY' should NOT be used as wind zone."""
+    html = """<html><body>
+    <table>
+      <tr><td>Wind Zone</td><td>Currently Installed in SMITH COUNTY</td></tr>
+      <tr><td>Square Ftg</td><td>700</td></tr>
+    </table>
+    </body></html>"""
+    soup = BeautifulSoup(html, 'html.parser')
+    page_text = soup.get_text('\n', strip=True)
+    title_data = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(title_data, page_text, None, None)
+
+    # Wind zone should be empty (not "Currently Installed in SMITH COUNTY")
+    assert structured["wind_zone"] == ""
+    # County should be extracted from the "Currently Installed" text
+    assert "SMITH" in structured["county"]
+
+
+def test_wind_zone_valid_value_kept():
+    """Valid wind zone values like 'II' should be preserved."""
+    html = """<html><body>
+    <table>
+      <tr><td>Wind Zone</td><td>II</td></tr>
+    </table>
+    </body></html>"""
+    soup = BeautifulSoup(html, 'html.parser')
+    page_text = soup.get_text('\n', strip=True)
+    title_data = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(title_data, page_text, None, None)
+    assert structured["wind_zone"] == "II"
+
+
+def test_address_from_separate_fields():
+    """Address/City/State/Zip in separate table rows should be used as fallback."""
+    html = """<html><body>
+    <table>
+      <tr><td>Manufacturer</td><td>CHAMPION HOME BUILDERS</td></tr>
+      <tr><td>Address</td><td>1001 SOUTH LOOP 256</td></tr>
+      <tr><td>City, State, Zip</td><td>LUFKIN, TX 75901</td></tr>
+      <tr><td>Model</td><td>CENTURION</td></tr>
+    </table>
+    </body></html>"""
+    soup = BeautifulSoup(html, 'html.parser')
+    page_text = soup.get_text('\n', strip=True)
+    title_data = parse_tdhca_detail_page(soup, page_text)
+    structured = build_structured_tdhca_data(title_data, page_text, None, None)
+
+    assert structured["manufacturer"] == "CHAMPION HOME BUILDERS"
+    assert structured["manufacturer_address"] == "1001 SOUTH LOOP 256"
+    assert "LUFKIN" in structured["manufacturer_city_state_zip"]
+    assert "TX" in structured["manufacturer_city_state_zip"]
+
+
 def test_page_with_only_text_no_tables():
     """Test extraction from a page with no HTML tables, only text."""
     html = """<html><body>

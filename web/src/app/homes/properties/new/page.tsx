@@ -884,8 +884,8 @@ export default function NewPropertyPage() {
                       is_used: true,
                       // Block 2A — auto-fill from TDHCA title
                       manufacturer: getTdhcaField('manufacturer', 'Manufacturer'),
-                      manufacturer_address: getTdhcaField('manufacturer_address', 'Manufacturer Address'),
-                      manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip'),
+                      manufacturer_address: getTdhcaField('manufacturer_address', 'Address', 'Manufacturer Address', 'Mfg Address'),
+                      manufacturer_city_state_zip: getTdhcaField('manufacturer_city_state_zip', 'City, State, Zip', 'City State Zip', 'City, State'),
                       make: getTdhcaField('model', 'Model'),
                       year: getTdhcaField('year', 'Year', 'Date Manf', 'Date of Manufacture') || form.year || '',
                       date_of_manufacture: getTdhcaField('year', 'Date Manf', 'Date of Manufacture'),
