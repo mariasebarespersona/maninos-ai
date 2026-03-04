@@ -37,6 +37,20 @@ _NAV_GARBAGE = {
     "previous owner", "prev owners", "prev owner",
     "record", "report view", "print view",
     "manufactured housing", "mhweb",
+    # Real TDHCA page navigation items
+    "search again", "print home detail", "skip to content",
+    "contact", "about", "calendar", "press", "employment",
+    "manufactured housing division", "site search:",
+    "manufactured housing report options",
+    "view ownership records", "download ownership records",
+    "monthly titling report", "download selling retailer records",
+    "view tax lien records", "download tax lien records",
+    "view central tax collectors", "view license records",
+    "download license records", "view installation records",
+    "download installation records", "ownership records by county report",
+    "check tax lien status", "tax lien history",
+    "privacy & security policy", "web accessibility policy",
+    "link policy", "top of page",
 }
 
 # Values that look like section labels (should not be stored as data)
@@ -52,7 +66,7 @@ _STREET_SUFFIXES = {
 }
 
 # Header hints for detecting header rows in TDHCA tables
-_HEADER_HINTS = ("serial", "label", "seal", "weight", "size", "section")
+_HEADER_HINTS = ("serial", "label", "seal", "weight", "size", "section", "lien", "current owner", "seller")
 
 # Known field names (used as boundary in regex to avoid over-matching)
 _FIELD_BOUNDARY = (
@@ -94,9 +108,26 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
 
     # ── Strategy 0: Check if this is a SEARCH RESULTS page (not detail) ──
     # If yes, extract data from the results table as fallback.
-    _parse_search_results_table(soup, title_data)
+    # CRITICAL: Only run this on search results pages, NOT on detail pages.
+    # The detail page has tables (like "Sections") that look like result tables
+    # but aren't. Detect detail page by <h1> or <title> containing "Certificate Detail".
+    is_detail_page = bool(
+        soup.find('h1', string=re.compile(r'Certificate\s+Detail', re.IGNORECASE))
+        or soup.find('title', string=re.compile(r'Certificate\s+Detail', re.IGNORECASE))
+    )
+    if not is_detail_page:
+        _parse_search_results_table(soup, title_data)
+        if title_data:
+            logger.info(f"[TDHCA-parser] Found search results table data: {list(title_data.keys())}")
+    else:
+        logger.info("[TDHCA-parser] Detected detail page — skipping search results parser")
+
+    # ── Strategy 0b: Parse heading + table pairs ──
+    # TDHCA uses <h2>Label</h2> followed by a <table> with single-cell data.
+    # e.g., <h2>Manufacturer</h2><table><tr><td>MHDMAN00000039<br>BRIGADIER...</td></tr></table>
+    _parse_heading_table_pairs(soup, title_data)
     if title_data:
-        logger.info(f"[TDHCA-parser] Found search results table data: {list(title_data.keys())}")
+        logger.info(f"[TDHCA-parser] After heading+table pairs: {list(title_data.keys())}")
 
     # ── Strategy 1: Parse HTML tables (from CLEANED soup) ──
     _parse_tables(soup, title_data)
@@ -128,6 +159,57 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     logger.info(f"[TDHCA-parser] Final fields ({len(title_data)}): "
                 f"{dict((k, v[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in title_data.items())}")
     return title_data
+
+
+def _parse_heading_table_pairs(soup, title_data: Dict[str, str]) -> None:
+    """
+    Parse TDHCA's heading + single-cell table pattern.
+
+    The REAL TDHCA detail page puts some data in this format:
+        <h2>Manufacturer</h2>
+        <table>
+          <tr>
+            <td>MHDMAN00000039<br>
+              BRIGADIER HOMES A U.S. HOME COMPANY<br>
+              1001 SOUTH LOOP 340<br>
+              WACO, TX 76710
+            </td>
+          </tr>
+        </table>
+
+    For these, we use the heading text as the key and the cell content as the value.
+    """
+    for heading in soup.find_all(['h1', 'h2', 'h3']):
+        text = heading.get_text(strip=True).lower().rstrip(':').strip()
+        canonical = _LABEL_TO_KEY.get(text)
+        if not canonical:
+            continue
+
+        # Already have a good value?
+        existing = (title_data.get(canonical) or "").strip()
+        if existing and existing.lower() not in _BAD_VALUES and not _SECTION_RE.match(existing):
+            continue
+
+        # Find the next table sibling
+        next_table = heading.find_next_sibling('table')
+        if not next_table:
+            # Try through parent (heading might be wrapped in a div)
+            next_el = heading.find_next('table')
+            if next_el:
+                next_table = next_el
+
+        if not next_table:
+            continue
+
+        # Get ALL text from the table (join with spaces to collapse <br> tags)
+        full_text = _normalize_whitespace(next_table.get_text(separator=' ', strip=True))
+        # Also collapse newlines
+        full_text = re.sub(r'\s*\n\s*', ' ', full_text).strip()
+        full_text = re.sub(r'\s{2,}', ' ', full_text).strip()
+
+        if full_text and len(full_text) < 300:
+            title_data[canonical] = full_text
+            logger.debug(f"[TDHCA-parser] Heading+table: {canonical} = {full_text[:80]}")
 
 
 def _parse_search_results_table(soup, title_data: Dict[str, str]) -> None:
@@ -228,6 +310,35 @@ def _parse_search_results_table(soup, title_data: Dict[str, str]) -> None:
 
 def _strip_nav_elements(soup) -> None:
     """Remove navigation links and non-data elements from the soup BEFORE parsing."""
+
+    # ═══ CRITICAL: Remove the TDHCA sidebar navigation ═══
+    # The TDHCA detail page uses a layout table with a <td class="menuBG">
+    # that contains the entire sidebar menu. This sidebar has nested tables
+    # with links like "View Ownership Records", "Download Tax Lien Records", etc.
+    # If not removed, our table parser captures the sidebar text as data values
+    # (e.g., "County" gets the entire sidebar text as its value).
+    for sidebar in soup.find_all('td', class_='menuBG'):
+        logger.debug("[TDHCA-parser] Stripping sidebar <td class='menuBG'>")
+        sidebar.decompose()
+
+    # Also remove nav boxes (TDHCA uses class="bgNavBox" for the sidebar menu)
+    for nav_box in soup.find_all('table', class_='bgNavBox'):
+        logger.debug("[TDHCA-parser] Stripping <table class='bgNavBox'>")
+        nav_box.decompose()
+    for nav_box in soup.find_all('table', class_='bgTable'):
+        logger.debug("[TDHCA-parser] Stripping <table class='bgTable'>")
+        nav_box.decompose()
+
+    # Remove the top navigation bar (id="topnav")
+    for topnav in soup.find_all(id='topnav'):
+        topnav.decompose()
+    # Remove the search form
+    for search_div in soup.find_all(id='search'):
+        search_div.decompose()
+    # Remove the logo div
+    for logo in soup.find_all(id='logo'):
+        logo.decompose()
+
     # Remove ALL <a> links that look like navigation (not data links)
     for link in soup.find_all('a'):
         text = link.get_text(strip=True).lower()
@@ -242,8 +353,13 @@ def _strip_nav_elements(soup) -> None:
         if any(nav in href for nav in (
             'title_view', 'title_search', 'titleSearch',
             'previous_owners', 'previousOwners',
-            'report', 'records', 'print',
+            'main.jsp', 'download', 'taxlien', 'license',
+            'install', 'ctc_view', 'tdlr_title', 'rai_search',
+            'title_by_county', 'title_download', 'seller_download',
             'javascript:', 'logout', 'login',
+            'tdhca.state.tx.us/au', 'tdhca.state.tx.us/hr',
+            'tdhca.state.tx.us/events', 'tdhca.state.tx.us/ppa',
+            'tdhca.state.tx.us/mh/',
         )):
             # Only decompose if the link text is short (nav, not data)
             if len(text) < 30:
@@ -254,6 +370,10 @@ def _strip_nav_elements(soup) -> None:
     for tag_name in ('script', 'style', 'nav', 'header', 'footer', 'select', 'option'):
         for tag in soup.find_all(tag_name):
             tag.decompose()
+
+    # Remove hidden text divs (TDHCA has <div class="hiddentext">)
+    for hidden in soup.find_all('div', class_='hiddentext'):
+        hidden.decompose()
 
 
 def _clean_page_text(page_text: str) -> str:
@@ -319,7 +439,7 @@ def _parse_tables(soup, title_data: Dict[str, str]) -> None:
             header_cell_count = sum(1 for t in row_texts if any(h in t.lower() for h in _HEADER_HINTS))
             is_header_like_td_row = (
                 all_td
-                and len(row_texts) > 2
+                and len(row_texts) >= 2  # Changed from >2 to >=2 for 2-column tables (Liens, Owners)
                 and header_cell_count >= max(2, int(len(row_texts) * 0.5))
             )
 
@@ -352,6 +472,23 @@ def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> N
         if not has_real_data:
             return  # Empty section label row — skip
 
+    # TDHCA Sections table uses bare numbers as section indicators:
+    #   Row: [1] [&nbsp;] [&nbsp;] [&nbsp;] [&nbsp;]  ← section number, rest "empty" (but contain &nbsp;)
+    #   Row: [TEX0012345] [C3208] [12000] [14] [50]  ← actual data
+    # Detect this pattern: first cell is a small integer, remaining cells empty.
+    # CRITICAL: TDHCA uses &nbsp; in "empty" cells, which becomes \xa0.
+    # Regular str.strip() does NOT strip \xa0, so we must normalize first.
+    if re.fullmatch(r"\d{1,2}", first_text):
+        has_real_data = any(
+            _normalize_whitespace(c.get_text(separator=' ')).strip()
+            for c in cells[1:]
+        )
+        if not has_real_data:
+            # This is a section number row — record the section index
+            section_idx = first_text
+            logger.debug(f"[TDHCA-parser] Skipping bare section number row: {first_text}")
+            return
+
     for header, cell in zip(headers, cells):
         val = _normalize_whitespace(cell.get_text(separator=' ').strip())
         if not header or not val or len(header) >= 60:
@@ -361,9 +498,17 @@ def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> N
         if _SECTION_RE.match(val) or val.lower() in _BAD_VALUES:
             continue
 
+        # Skip bare section numbers (e.g., "1", "2") as values
+        # These appear in TDHCA Sections table when section number is in the first column
+        if re.fullmatch(r"\d{1,2}", val) and header.lower() in ("label", "serial", "label/seal", "serial #"):
+            logger.debug(f"[TDHCA-parser] Skipping bare number '{val}' for header '{header}'")
+            continue
+
         existing = (title_data.get(header) or "").strip()
-        # Overwrite if empty, bad, or a section label
-        if not existing or existing.lower() in _BAD_VALUES or _SECTION_RE.match(existing):
+        # Overwrite if empty, bad, a section label, or a bare section number
+        if (not existing or existing.lower() in _BAD_VALUES
+                or _SECTION_RE.match(existing)
+                or re.fullmatch(r"\d{1,2}", existing)):
             title_data[header] = val
 
         # Capture per-section values
@@ -428,10 +573,13 @@ _TEXT_PATTERNS: List[Tuple[str, str, int]] = [
     ("Size",                r"\bSize\s*\*?\s*:?\s*(\d+(?:\.\d+)?\s*[xX×]\s*\d+(?:\.\d+)?)",                   re.IGNORECASE),
     ("Buyer/Transferee",    rf"(?:Buyer|Purchaser)\s*/?\s*(?:Transferee)?\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)", 0),
     ("Seller/Transferor",   rf"(?:Seller)\s*/?\s*(?:Transferor)?\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)",          0),
-    ("County",              rf"\bCounty\s*:?\s*([A-Z][A-Za-z ]+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*[,\n]|\s*$|\d)",  0),
+    # County regex: Must start at beginning of field/line, NOT match "SMITH County"
+    # The word "County" preceded by [A-Z] (like "SMITH County") is NOT a county label.
+    ("County",              rf"(?<![A-Za-z] )County\s*:+\s*([A-Z][A-Za-z ]+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*[,\n]|\s*$|\d)",  0),
     ("Issue Date",          r"Issue\s+Date\s*:?\s*([\d/.-]+)",                                                  re.IGNORECASE),
     ("Transfer/Sale Date",  r"(?:Transfer|Sale)\s*/?(?:Sale)?\s*Date\s*:?\s*([\d/.-]+)",                        re.IGNORECASE),
-    ("First Lien",          rf"(?:First\s+)?Lien(?:holder)?\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)", re.IGNORECASE),
+    # Use word boundary on "Lien" to avoid matching "s" from "Active Mortgage Liens"
+    ("First Lien",          rf"(?:First\s+)?Lien\b(?:holder)?\s*:\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)", re.IGNORECASE),
     ("Election",            rf"Election\s*:?\s*(.+?)(?=\s+{_FIELD_BOUNDARY}\b|\s*\n|\s*$)",                     re.IGNORECASE),
     ("Currently Installed in", r"Currently\s+Installed\s+in\s+([A-Z][A-Za-z ]+?)(?:\s+County)?\s*(?:\n|$|[,.])",  re.IGNORECASE),
     ("Address",             r"(?:Mfg\.?\s+)?Address\s*:?\s*(.+?)(?:\n|$)",                                        re.IGNORECASE),
@@ -515,6 +663,17 @@ _LABEL_TO_KEY: Dict[str, str] = {
     "zip code": "Zip",
     "date mfg": "Date Manf",
     "mfg date": "Date Manf",
+    # Real TDHCA field names (from the actual website)
+    "manufacture date": "Date Manf",
+    "certificate number": "Certificate #",
+    "new/used": "New/Used",
+    "number of sections": "Number of Sections",
+    "date of sale": "Date of Sale",
+    "date of certificate": "Date of Certificate",
+    "right of survivorship": "Right of Survivorship",
+    "current owner": "Current Owner",
+    "lien holder": "Lien Holder",
+    "lien date": "Lien Date",
 }
 
 
@@ -677,8 +836,14 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     if not mfr_raw:
         return "", "", ""
 
-    # Normalize whitespace (TDHCA pages use &nbsp; extensively)
+    # Normalize whitespace: TDHCA pages use &nbsp; extensively AND the manufacturer
+    # value often contains newlines with excessive whitespace:
+    #   "MHDMAN00000039\n         BRIGADIER HOMES A U.S. HOME COMPANY\n         1001 SOUTH LOOP 340\n        \n         WACO, \n        TX\n         76710"
     mfr_raw = _normalize_whitespace(mfr_raw)
+    # Collapse newlines + surrounding whitespace into single spaces
+    mfr_raw = re.sub(r'\s*\n\s*', ' ', mfr_raw).strip()
+    # Collapse multiple spaces
+    mfr_raw = re.sub(r'\s{2,}', ' ', mfr_raw).strip()
 
     # Remove TDHCA manufacturer code prefix (e.g. "MHDMAN00000039")
     mfr_clean = re.sub(r"^MHD\w*\d+\s*", "", mfr_raw).strip()
@@ -889,6 +1054,14 @@ def build_structured_tdhca_data(
             home_width = sm.group(1)
             home_length = sm.group(2)
 
+    # ── Dimensions: try separate Width/Length first (real TDHCA uses these) ──
+    # The real TDHCA page has "Width": "14", "Length": "50" as SEPARATE fields
+    # from the Sections table, not combined as "Size: 14 X 50".
+    if not home_width:
+        home_width = normalized.get("Width") or ""
+    if not home_length:
+        home_length = normalized.get("Length") or ""
+
     # Prefer section-specific values
     section1_serial = (
         normalized.get("Section 1 Serial")
@@ -903,6 +1076,7 @@ def build_structured_tdhca_data(
         or normalized.get("Label/Seal")
         or normalized.get("Label/Seal #")
         or normalized.get("Label/Seal Number")
+        or normalized.get("Label")  # Real TDHCA uses just "Label" as header
     )
     section1_size = normalized.get("Section 1 Size") or size_raw
     if section1_size:
@@ -912,29 +1086,42 @@ def build_structured_tdhca_data(
             home_length = sm.group(2)
 
     # Date of manufacture — try multiple sources
+    # The REAL TDHCA page uses "Manufacture Date", "Date of Sale", "Date of Certificate"
     date_manf = (
         normalized.get("Date Manf")
         or normalized.get("Date of Manufacture")
         or normalized.get("Date Manufactured")
         or normalized.get("Date Mfg")
         or normalized.get("Mfg Date")
+        or normalized.get("Manufacture Date")  # Real TDHCA field name
     )
     # Also try extracting year from date patterns in clean text
     if not date_manf:
-        # Look for patterns like "Date Manf 01/1999" or "Date of Manufacture: 1999"
         dm = re.search(
             r"(?:Date\s+(?:of\s+)?)?Man[u]?f(?:acture)?d?\s*:?\s*(\d{1,2}/\d{2,4}|\d{4})",
             clean_text, re.IGNORECASE
         )
         if dm:
             date_manf = dm.group(1).strip()
+    # Fallback: try "Date of Sale" for the year (real TDHCA has this)
+    if not date_manf:
+        date_manf = normalized.get("Date of Sale") or ""
 
     # ── Wind Zone: validate it's an actual wind zone value ──
     raw_wind = normalized.get("Wind Zone") or ""
     wind_zone = _validate_wind_zone(raw_wind)
 
     # ── County: try multiple sources including "Currently Installed in..." text ──
-    county = normalized.get("County") or ""
+    # CRITICAL: The raw "County" field from table parsing is often GARBAGE because
+    # the TDHCA sidebar navigation gets captured as the County value.
+    # We validate: a real county name should be < 30 chars and only letters/spaces.
+    county_raw = normalized.get("County") or ""
+    county = ""
+    if county_raw and len(county_raw) < 40 and re.fullmatch(r"[A-Za-z ]+", county_raw.strip()):
+        county = county_raw.strip().upper()
+    else:
+        if county_raw:
+            logger.info(f"[TDHCA-struct] Rejecting County value (too long or invalid): '{county_raw[:60]}...'")
     if not county:
         # Check if Wind Zone field contained county info
         county_from_wind = _extract_county_from_installed(raw_wind)
@@ -964,12 +1151,72 @@ def build_structured_tdhca_data(
     if mfr_city_state_zip:
         normalized["Manufacturer CSZ (parsed)"] = mfr_city_state_zip
 
+    # ── Extract year from date fields ──
+    # The real TDHCA page often doesn't have a "Year" field, but has dates.
+    year_value = normalized.get("Year") or ""
+    if not year_value and date_manf:
+        # Extract year from date like "03/01/2001" or "2001"
+        ym = re.search(r"(\d{4})", date_manf)
+        if ym:
+            year_value = ym.group(1)
+    if not year_value:
+        # Try "Date of Sale" or "Date of Certificate"
+        for date_field in ("Date of Sale", "Date of Certificate", "Issue Date"):
+            date_val = normalized.get(date_field) or ""
+            ym = re.search(r"(\d{4})", date_val)
+            if ym:
+                year_value = ym.group(1)
+                break
+
+    # ── Buyer: real TDHCA uses "Current Owner" section, not "Buyer/Transferee" ──
+    buyer_raw = (
+        normalized.get("Buyer/Transferee")
+        or normalized.get("Buyer")
+        or normalized.get("Current Owner")
+        or ""
+    )
+    # Clean multi-line buyer values (address lines often appended)
+    if buyer_raw and '\n' in buyer_raw:
+        # Take just the first line (the name), skip the address
+        buyer_raw = buyer_raw.split('\n')[0].strip()
+
+    # ── Seller: also clean multi-line values ──
+    seller_raw = normalized.get("Seller/Transferor") or normalized.get("Seller") or ""
+    if seller_raw and '\n' in seller_raw:
+        seller_raw = seller_raw.split('\n')[0].strip()
+
+    # ── Lien info: real TDHCA has "Lien Holder" ──
+    lien_raw = (
+        normalized.get("First Lien")
+        or normalized.get("Lien")
+        or normalized.get("Lien Holder")
+        or ""
+    )
+    if lien_raw and '\n' in lien_raw:
+        lien_raw = lien_raw.split('\n')[0].strip()
+    # Reject if lien_raw looks like a date or is too short (e.g., "s" from "Liens")
+    if lien_raw and (re.fullmatch(r"[\d/.-]+", lien_raw) or len(lien_raw) < 3):
+        logger.info(f"[TDHCA-struct] Rejecting lien value (date or too short): '{lien_raw}'")
+        lien_raw = ""
+
+    # ── Election: real TDHCA shows "Home elected as Personal Property" in page text ──
+    election = normalized.get("Election") or ""
+    if not election:
+        if "personal property" in clean_text.lower():
+            election = "Personal Property"
+        elif "real property" in clean_text.lower():
+            election = "Real Property"
+
     # ── Final safety: scrub any remaining nav garbage from all values ──
     def _scrub(val: str | None) -> str | None:
         if val is None:
             return None
         v = val.strip()
         if v.lower() in _NAV_GARBAGE:
+            return None
+        # Also reject values that are too long (likely captured nav text)
+        if len(v) > 200:
+            logger.info(f"[TDHCA-struct] Rejecting value (too long, {len(v)} chars): '{v[:60]}...'")
             return None
         return v or None
 
@@ -997,7 +1244,7 @@ def build_structured_tdhca_data(
         "manufacturer_address": mfr_address,
         "manufacturer_city_state_zip": mfr_city_state_zip,
         "model": _scrub(normalized.get("Model") or normalized.get("Make")),
-        "year": _scrub(date_manf or normalized.get("Year")),
+        "year": _scrub(year_value or date_manf),
         "date_of_manufacture": _scrub(date_manf),
         "serial_number": _scrub(section1_serial),
         "label_seal": _scrub(section1_label),
@@ -1010,15 +1257,16 @@ def build_structured_tdhca_data(
         "wind_zone": wind_zone,
         "width": home_width,
         "length": home_length,
-        "seller": _scrub(normalized.get("Seller/Transferor") or normalized.get("Seller")),
-        "buyer": _scrub(normalized.get("Buyer/Transferee") or normalized.get("Buyer")),
+        "seller": _scrub(seller_raw),
+        "buyer": _scrub(buyer_raw),
         "county": county,
         "issue_date": _scrub(normalized.get("Issue Date")),
         "transfer_date": _scrub(
             normalized.get("Transfer/Sale Date")
             or normalized.get("Transfer Date")
             or normalized.get("Sale Date")
+            or normalized.get("Date of Sale")  # Real TDHCA field name
         ),
-        "lien_info": _scrub(normalized.get("First Lien") or normalized.get("Lien")),
-        "election": _scrub(normalized.get("Election")),
+        "lien_info": _scrub(lien_raw),
+        "election": _scrub(election),
     }
