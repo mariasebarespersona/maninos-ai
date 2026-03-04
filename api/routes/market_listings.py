@@ -13,6 +13,7 @@ import logging
 import os
 import uuid
 from supabase import create_client, Client
+from api.utils.tdhca_parser import build_structured_tdhca_data
 
 logger = logging.getLogger(__name__)
 
@@ -1579,37 +1580,12 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             await browser.close()
             
             # ═══ STRUCTURED RESPONSE ═══
-            structured = {
-                "raw_fields": title_data,
-                "detail_url": detail_url,
-                "print_url": print_url,
-                # Identification
-                "certificate_number": title_data.get("Certificate #") or title_data.get("Certificate") or title_data.get("Certificate Number"),
-                # Manufacturer (cleaned up)
-                "manufacturer": mfr_name,
-                "manufacturer_address": mfr_address,
-                "manufacturer_city_state_zip": mfr_city_state_zip,
-                # Home info
-                "model": title_data.get("Model"),
-                "year": title_data.get("Date Manf") or title_data.get("Year") or title_data.get("Date of Manufacture"),
-                "serial_number": title_data.get("Serial #") or title_data.get("Serial") or title_data.get("Serial Number"),
-                "label_seal": (
-                    title_data.get("Label/Seal#") or title_data.get("Label/Seal")
-                    or title_data.get("Label/Seal #") or title_data.get("Label/Seal Number")
-                ),
-                "square_feet": title_data.get("Square Ftg") or title_data.get("Square Feet") or title_data.get("Sq Ftg"),
-                "wind_zone": title_data.get("Wind Zone"),
-                "width": home_width,
-                "length": home_length,
-                # Ownership
-                "seller": title_data.get("Seller/Transferor") or title_data.get("Seller"),
-                "buyer": title_data.get("Buyer/Transferee") or title_data.get("Buyer"),
-                "county": title_data.get("County"),
-                "issue_date": title_data.get("Issue Date"),
-                "transfer_date": title_data.get("Transfer/Sale Date") or title_data.get("Transfer Date"),
-                "lien_info": title_data.get("First Lien") or title_data.get("Lien"),
-                "election": title_data.get("Election"),
-            }
+            structured = build_structured_tdhca_data(
+                title_data=title_data,
+                page_text=page_text,
+                detail_url=detail_url,
+                print_url=print_url,
+            )
             
             logger.info(f"[TDHCA] ✅ Structured result: manufacturer='{structured['manufacturer']}', "
                         f"serial='{structured['serial_number']}', label='{structured['label_seal']}', "
