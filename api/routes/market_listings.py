@@ -1523,6 +1523,9 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             
             # Get the current URL (detail page) for reference
             detail_url = page.url
+            # TDHCA sometimes includes a session token in URL path (e.g. ;jsessionid=...).
+            # That session belongs to Playwright and fails when opened by end-users.
+            detail_url = _re.sub(r';jsessionid=[^?]*', '', detail_url, flags=_re.IGNORECASE)
             
             # Try to get the printable version URL
             print_link = page.locator('a:has-text("Print"), a[href*="print"]')
@@ -1531,6 +1534,8 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 print_url = await print_link.first.get_attribute('href')
                 if print_url and not print_url.startswith('http'):
                     print_url = f"https://mhweb.tdhca.state.tx.us/mhweb/{print_url}"
+            if print_url:
+                print_url = _re.sub(r';jsessionid=[^?]*', '', print_url, flags=_re.IGNORECASE)
             
             await browser.close()
             
