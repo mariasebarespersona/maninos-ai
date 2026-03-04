@@ -35,8 +35,14 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     address = ""
     city_state_zip = ""
 
+    # Normalize compact strings:
+    # - "COMPANY1001" -> "COMPANY 1001"
+    # - "340WACO" -> "340 WACO"
+    mfr_clean = re.sub(r"([A-Za-z])(\d{3,})", r"\1 \2", mfr_clean)
+    mfr_clean = re.sub(r"(\d)([A-Z]{2,}\b)", r"\1 \2", mfr_clean)
+
     # Split "NAME ... 1001 SOUTH LOOP 340 WACO, TX 76710"
-    addr_match = re.search(r"(\d{3,}.+)$", mfr_clean)
+    addr_match = re.search(r"(\d{1,6}\s+.+)$", mfr_clean)
     if not addr_match:
         return name, "", ""
 
@@ -45,6 +51,7 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
 
     # Normalize no-space cases like "...340WACO, TX 76710"
     full_addr = re.sub(r"(\d)([A-Z][a-z]{2,})", r"\1 \2", full_addr)
+    full_addr = re.sub(r"(\d)([A-Z]{2,}\b)", r"\1 \2", full_addr)
 
     state_zip = re.search(r"([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$", full_addr)
     if not state_zip:
@@ -54,7 +61,7 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     state = state_zip.group(1)
     zipcode = state_zip.group(2)
 
-    # City at the tail of "before_state"
+    # City at the tail of "before_state" (often uppercase in TDHCA exports)
     city_match = re.search(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s*$", before_state)
     if city_match:
         city = city_match.group(1).strip()
@@ -63,6 +70,12 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     else:
         address = before_state
         city_state_zip = f"{state} {zipcode}"
+
+    # Guardrail: avoid obviously broken address values like just ZIP or placeholders.
+    if re.fullmatch(r"\d{5}(?:-\d{4})?", address or ""):
+        address = ""
+    if address.lower() in _BAD_VALUES:
+        address = ""
 
     return name, address, city_state_zip
 

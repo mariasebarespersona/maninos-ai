@@ -665,14 +665,14 @@ export default function MarketDashboard() {
   };
 
   const cleanSuspiciousValue = (value: string): string => {
-    const bad = new Set(['weight', 'size', 'serial', 'serial #', 'serial#', 'label/seal', 'label/seal#']);
+    const bad = new Set(['weight', 'size', 'serial', 'serial #', 'serial#', 'label/seal', 'label/seal#', 'w', 'l', 'width', 'length']);
     const v = (value || '').trim();
     return bad.has(v.toLowerCase()) ? '' : v;
   };
 
   const deriveDimensions = () => {
-    const w = getTdhcaField('width', 'Width');
-    const l = getTdhcaField('length', 'Length');
+    const w = cleanSuspiciousValue(getTdhcaField('width', 'Width'));
+    const l = cleanSuspiciousValue(getTdhcaField('length', 'Length'));
     if (w && l) return { width: w, length: l };
     const sizeRaw = getTdhcaField('Size', 'Size*', 'size');
     const m = sizeRaw.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/);

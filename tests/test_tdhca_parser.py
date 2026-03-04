@@ -69,3 +69,18 @@ def test_section_1_fields_preferred_for_serial_label_size():
     assert out["length"] == "50"
 
 
+def test_manufacturer_split_compact_city_format():
+    title_data = {
+        "Manufacturer": "MHDMAN00000039BRIGADIER HOMES A U.S. HOME COMPANY1001 SOUTH LOOP 340WACO,TX76710",
+    }
+    out = build_structured_tdhca_data(
+        title_data=title_data,
+        page_text="",
+        detail_url="https://mhweb.tdhca.state.tx.us/mhweb/title_detail.jsp?homeid=1&db=TTL",
+        print_url=None,
+    )
+    assert out["manufacturer"] == "BRIGADIER HOMES A U.S. HOME COMPANY"
+    assert out["manufacturer_address"] == "1001 SOUTH LOOP 340"
+    assert out["manufacturer_city_state_zip"] == "WACO, TX 76710"
+
+
