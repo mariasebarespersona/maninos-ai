@@ -751,7 +751,7 @@ export default function NewPropertyPage() {
                       <div><span className="font-semibold text-gray-600">Certificado:</span> <span className="text-gray-900">{tdhcaResult.certificate_number}</span></div>
                     )}
                     {tdhcaResult.manufacturer && (
-                      <div><span className="font-semibold text-gray-600">Fabricante:</span> <span className="text-gray-900">{tdhcaResult.manufacturer}</span></div>
+                      <div className="col-span-2"><span className="font-semibold text-gray-600">Fabricante:</span> <span className="text-gray-900">{tdhcaResult.manufacturer}</span></div>
                     )}
                     {tdhcaResult.model && (
                       <div><span className="font-semibold text-gray-600">Modelo:</span> <span className="text-gray-900">{tdhcaResult.model}</span></div>
@@ -760,19 +760,25 @@ export default function NewPropertyPage() {
                       <div><span className="font-semibold text-gray-600">Año:</span> <span className="text-gray-900">{tdhcaResult.year}</span></div>
                     )}
                     {tdhcaResult.serial_number && (
-                      <div><span className="font-semibold text-gray-600">Serial:</span> <span className="text-gray-900">{tdhcaResult.serial_number}</span></div>
+                      <div><span className="font-semibold text-gray-600">Serial #:</span> <span className="text-gray-900">{tdhcaResult.serial_number}</span></div>
                     )}
                     {tdhcaResult.label_seal && (
-                      <div><span className="font-semibold text-gray-600">Label/Seal:</span> <span className="text-gray-900">{tdhcaResult.label_seal}</span></div>
+                      <div><span className="font-semibold text-gray-600">Label/Seal #:</span> <span className="text-gray-900">{tdhcaResult.label_seal}</span></div>
                     )}
                     {tdhcaResult.square_feet && (
                       <div><span className="font-semibold text-gray-600">Sq Ft:</span> <span className="text-gray-900">{tdhcaResult.square_feet}</span></div>
                     )}
-                    {tdhcaResult.seller && (
-                      <div><span className="font-semibold text-gray-600">Vendedor:</span> <span className="text-gray-900">{tdhcaResult.seller}</span></div>
+                    {tdhcaResult.wind_zone && (
+                      <div><span className="font-semibold text-gray-600">Wind Zone:</span> <span className="text-gray-900">{tdhcaResult.wind_zone}</span></div>
+                    )}
+                    {(tdhcaResult.width && tdhcaResult.length) && (
+                      <div><span className="font-semibold text-gray-600">Tamaño:</span> <span className="text-gray-900">{tdhcaResult.width} × {tdhcaResult.length}</span></div>
                     )}
                     {tdhcaResult.buyer && (
-                      <div><span className="font-semibold text-gray-600">Comprador:</span> <span className="text-gray-900">{tdhcaResult.buyer}</span></div>
+                      <div className="col-span-2"><span className="font-semibold text-gray-600">Dueño actual (vendedor):</span> <span className="text-gray-900">{tdhcaResult.buyer}</span></div>
+                    )}
+                    {tdhcaResult.seller && (
+                      <div><span className="font-semibold text-gray-600">Dueño anterior:</span> <span className="text-gray-900">{tdhcaResult.seller}</span></div>
                     )}
                     {tdhcaResult.county && (
                       <div><span className="font-semibold text-gray-600">Condado:</span> <span className="text-gray-900">{tdhcaResult.county}</span></div>
@@ -844,13 +850,17 @@ export default function NewPropertyPage() {
                       is_used: true,
                       // Block 2A — auto-fill from TDHCA title
                       manufacturer: tdhcaResult?.manufacturer || '',
+                      manufacturer_address: tdhcaResult?.manufacturer_address || '',
+                      manufacturer_city_state_zip: tdhcaResult?.manufacturer_city_state_zip || '',
                       make: tdhcaResult?.model || '',
                       year: tdhcaResult?.year || form.year || '',
                       date_of_manufacture: tdhcaResult?.year || '',
                       total_sqft: tdhcaResult?.square_feet || computedSqFt?.toString() || '',
                       section1_label: tdhcaResult?.label_seal || '',
                       section1_serial: tdhcaResult?.serial_number || '',
-                      wind_zone: tdhcaResult?.raw_fields?.['Wind Zone'] || '',
+                      section1_width: tdhcaResult?.width || '',
+                      section1_length: tdhcaResult?.length || '',
+                      wind_zone: tdhcaResult?.wind_zone || '',
                       // Legacy compat
                       serial_number: tdhcaResult?.serial_number || '',
                       label_seal_number: tdhcaResult?.label_seal || '',

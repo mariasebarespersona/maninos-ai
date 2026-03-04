@@ -1395,25 +1395,131 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             
             # Parse the detail page
             from bs4 import BeautifulSoup
+            import re as _re
             soup = BeautifulSoup(content, 'html.parser')
             
-            # Extract all table data
+            # ═══════════════════════════════════════════════
+            # IMPROVED TABLE PARSING
+            # Previous approach used a sliding window (step=1)
+            # which created garbage entries like Serial#→Weight.
+            # New approach:
+            #   1. Detect grid tables (header row + data rows)
+            #   2. For mixed/kv rows, step through cells in pairs
+            #   3. Use separator=' ' to avoid concatenation
+            # ═══════════════════════════════════════════════
             title_data = {}
             
-            # Get all text from tables
             tables = soup.find_all('table')
             for table in tables:
                 rows = table.find_all('tr')
+                pending_headers = None  # headers from a header-only row
+                
                 for row in rows:
                     cells = row.find_all(['td', 'th'])
-                    for i in range(len(cells) - 1):
-                        key = cells[i].get_text(strip=True).rstrip(':')
-                        val = cells[i + 1].get_text(strip=True)
-                        if key and val and len(key) < 50:
+                    if not cells:
+                        continue
+                    
+                    all_th = all(c.name == 'th' for c in cells)
+                    all_td = all(c.name == 'td' for c in cells)
+                    
+                    # ── Header-only row (all <th>): save for matching ──
+                    if all_th and len(cells) > 1:
+                        pending_headers = [
+                            c.get_text(separator=' ').strip().rstrip(':')
+                            for c in cells
+                        ]
+                        continue
+                    
+                    # ── Data row matching a previous header row ──
+                    if pending_headers and all_td:
+                        for header, cell in zip(pending_headers, cells):
+                            val = cell.get_text(separator=' ').strip()
+                            if header and val and len(header) < 60:
+                                title_data[header] = val
+                        pending_headers = None
+                        continue
+                    
+                    # ── Mixed / key-value rows: step=2 pairing ──
+                    pending_headers = None
+                    i = 0
+                    while i < len(cells) - 1:
+                        key = cells[i].get_text(separator=' ').strip().rstrip(':')
+                        val = cells[i + 1].get_text(separator=' ').strip()
+                        # Only accept label-like keys (not digits, not too long)
+                        if (key and val
+                            and 1 < len(key) < 60
+                            and not key.replace(',', '').replace('.', '').replace(' ', '').isdigit()):
                             title_data[key] = val
+                        i += 2
             
-            # Also try to get the full page text for the printable version
+            # ═══ FULL PAGE TEXT ═══
             page_text = soup.get_text('\n', strip=True)
+            
+            logger.info(f"[TDHCA] Raw fields extracted: {list(title_data.keys())}")
+            logger.info(f"[TDHCA] Page text (first 500 chars): {page_text[:500]}")
+            
+            # ═══ REGEX FALLBACK from page text ═══
+            # For fields the table parser may have missed
+            regex_fallbacks = [
+                ("Serial #",    r'Serial\s*#?\s*:?\s*([A-Z0-9]{5,})'),
+                ("Label/Seal#", r'Label/?Seal\s*#?\s*:?\s*([A-Z0-9]{5,})'),
+                ("Square Ftg",  r'(?:Square|Sq\.?)\s*(?:Ft(?:g|age)?|Feet)\s*:?\s*([\d,]+)'),
+                ("Date Manf",   r'(?:Date\s+(?:of\s+)?)?Manf(?:acture)?\s*:?\s*(\d{1,2}/\d{4}|\d{4})'),
+                ("Wind Zone",   r'Wind\s*Zone\s*:?\s*([IVX123]+)'),
+                ("Year",        r'\bYear\s*:?\s*(\d{4})\b'),
+            ]
+            for field_key, pattern in regex_fallbacks:
+                if field_key not in title_data or not title_data.get(field_key):
+                    m = _re.search(pattern, page_text, _re.IGNORECASE)
+                    if m:
+                        title_data[field_key] = m.group(1).strip()
+                        logger.info(f"[TDHCA] Regex fallback: {field_key} = {m.group(1).strip()}")
+            
+            # ═══ CLEAN UP MANUFACTURER FIELD ═══
+            mfr_raw = title_data.get("Manufacturer", "")
+            mfr_name = mfr_raw
+            mfr_address = ""
+            mfr_city_state_zip = ""
+            
+            if mfr_raw:
+                # Remove TDHCA manufacturer ID prefix (e.g. "MHDMAN00000039")
+                mfr_clean = _re.sub(r'^MHD\w*\d+\s*', '', mfr_raw).strip()
+                if mfr_clean:
+                    # Try to split name from address (address starts with 3+ digit street number)
+                    addr_match = _re.search(r'(\d{3,}.+)$', mfr_clean)
+                    if addr_match:
+                        mfr_name = mfr_clean[:addr_match.start()].strip()
+                        full_addr = addr_match.group(1).strip()
+                        # Extract state abbreviation + ZIP from end
+                        state_zip = _re.search(r'([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$', full_addr)
+                        if state_zip:
+                            before_state = full_addr[:state_zip.start()].strip().rstrip(',').strip()
+                            state = state_zip.group(1)
+                            zipcode = state_zip.group(2)
+                            # Find city name (uppercase word(s) at end of remaining text)
+                            city_match = _re.search(r'[^A-Za-z]([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s*$', before_state)
+                            if city_match:
+                                city = city_match.group(1).strip()
+                                mfr_address = before_state[:city_match.start() + 1].strip()
+                                mfr_city_state_zip = f"{city}, {state} {zipcode}"
+                            else:
+                                mfr_address = before_state
+                                mfr_city_state_zip = f"{state} {zipcode}"
+                        else:
+                            mfr_address = full_addr
+                    else:
+                        mfr_name = mfr_clean
+                logger.info(f"[TDHCA] Manufacturer cleanup: '{mfr_raw}' → name='{mfr_name}', addr='{mfr_address}', csz='{mfr_city_state_zip}'")
+            
+            # ═══ EXTRACT DIMENSIONS from Size field ═══
+            size_raw = title_data.get("Size") or title_data.get("Size*") or ""
+            home_width = ""
+            home_length = ""
+            if size_raw:
+                sm = _re.match(r'(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)', size_raw)
+                if sm:
+                    home_width = sm.group(1)
+                    home_length = sm.group(2)
             
             # Get the current URL (detail page) for reference
             detail_url = page.url
@@ -1428,30 +1534,49 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             
             await browser.close()
             
-            # Structure the response
+            # ═══ STRUCTURED RESPONSE ═══
+            structured = {
+                "raw_fields": title_data,
+                "detail_url": detail_url,
+                "print_url": print_url,
+                # Identification
+                "certificate_number": title_data.get("Certificate #") or title_data.get("Certificate") or title_data.get("Certificate Number"),
+                # Manufacturer (cleaned up)
+                "manufacturer": mfr_name,
+                "manufacturer_address": mfr_address,
+                "manufacturer_city_state_zip": mfr_city_state_zip,
+                # Home info
+                "model": title_data.get("Model"),
+                "year": title_data.get("Date Manf") or title_data.get("Year") or title_data.get("Date of Manufacture"),
+                "serial_number": title_data.get("Serial #") or title_data.get("Serial") or title_data.get("Serial Number"),
+                "label_seal": (
+                    title_data.get("Label/Seal#") or title_data.get("Label/Seal")
+                    or title_data.get("Label/Seal #") or title_data.get("Label/Seal Number")
+                ),
+                "square_feet": title_data.get("Square Ftg") or title_data.get("Square Feet") or title_data.get("Sq Ftg"),
+                "wind_zone": title_data.get("Wind Zone"),
+                "width": home_width,
+                "length": home_length,
+                # Ownership
+                "seller": title_data.get("Seller/Transferor") or title_data.get("Seller"),
+                "buyer": title_data.get("Buyer/Transferee") or title_data.get("Buyer"),
+                "county": title_data.get("County"),
+                "issue_date": title_data.get("Issue Date"),
+                "transfer_date": title_data.get("Transfer/Sale Date") or title_data.get("Transfer Date"),
+                "lien_info": title_data.get("First Lien") or title_data.get("Lien"),
+                "election": title_data.get("Election"),
+            }
+            
+            logger.info(f"[TDHCA] ✅ Structured result: manufacturer='{structured['manufacturer']}', "
+                        f"serial='{structured['serial_number']}', label='{structured['label_seal']}', "
+                        f"year='{structured['year']}', sqft='{structured['square_feet']}', "
+                        f"buyer='{structured['buyer']}', seller='{structured['seller']}'")
+            
             return {
                 "success": True,
                 "message": f"Título encontrado para {request.search_type}: {request.search_value}",
-                "data": {
-                    "raw_fields": title_data,
-                    "detail_url": detail_url,
-                    "print_url": print_url,
-                    "certificate_number": title_data.get("Certificate #") or title_data.get("Certificate"),
-                    "manufacturer": title_data.get("Manufacturer"),
-                    "model": title_data.get("Model"),
-                    "year": title_data.get("Date Manf") or title_data.get("Year"),
-                    "serial_number": title_data.get("Serial #") or title_data.get("Serial"),
-                    "label_seal": title_data.get("Label/Seal#") or title_data.get("Label/Seal"),
-                    "square_feet": title_data.get("Square Ftg"),
-                    "seller": title_data.get("Seller/Transferor"),
-                    "buyer": title_data.get("Buyer/Transferee"),
-                    "county": title_data.get("County"),
-                    "issue_date": title_data.get("Issue Date"),
-                    "transfer_date": title_data.get("Transfer/Sale Date"),
-                    "lien_info": title_data.get("First Lien") or title_data.get("Lien"),
-                    "election": title_data.get("Election"),
-                },
-                "page_text": page_text[:3000],  # First 3000 chars of the page
+                "data": structured,
+                "page_text": page_text[:3000],
             }
         
     except Exception as e:
