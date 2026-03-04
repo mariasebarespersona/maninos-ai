@@ -92,6 +92,12 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     # "Records") that the parser incorrectly captures as field values.
     _strip_nav_elements(soup)
 
+    # ── Strategy 0: Check if this is a SEARCH RESULTS page (not detail) ──
+    # If yes, extract data from the results table as fallback.
+    _parse_search_results_table(soup, title_data)
+    if title_data:
+        logger.info(f"[TDHCA-parser] Found search results table data: {list(title_data.keys())}")
+
     # ── Strategy 1: Parse HTML tables (from CLEANED soup) ──
     _parse_tables(soup, title_data)
     logger.info(f"[TDHCA-parser] After tables: {list(title_data.keys())}")
@@ -101,9 +107,11 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     # so it still contains garbage like "Detail", "Previous Owners", etc.
     # We must regenerate from the clean soup for strategies 2 & 3.
     clean_text = soup.get_text('\n', strip=True)
+    # Normalize non-breaking spaces (&nbsp;) — TDHCA pages use these extensively
+    clean_text = _normalize_whitespace(clean_text)
     # Also strip lines that are just nav terms (belt + suspenders)
     clean_text = _clean_page_text(clean_text)
-    logger.info(f"[TDHCA-parser] Clean text (first 500): {clean_text[:500]}")
+    logger.info(f"[TDHCA-parser] Clean text (first 1500): {clean_text[:1500]}")
 
     # ── Strategy 2: Regex extraction from cleaned text ──
     _extract_regex_fields(clean_text, title_data)
@@ -120,6 +128,102 @@ def parse_tdhca_detail_page(soup, page_text: str) -> Dict[str, str]:
     logger.info(f"[TDHCA-parser] Final fields ({len(title_data)}): "
                 f"{dict((k, v[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in title_data.items())}")
     return title_data
+
+
+def _parse_search_results_table(soup, title_data: Dict[str, str]) -> None:
+    """
+    Parse TDHCA search results table.
+
+    The search results page has a table with columns like:
+      Certificate | Serial/Label | Manufacturer | Model | Year | ...
+    And data rows below. We extract the FIRST result row's data.
+
+    This is a FALLBACK for when we can't navigate to the detail page.
+    """
+    # Look for tables that have header cells containing result column names
+    _RESULT_HEADERS = {
+        "certificate", "serial", "label", "manufacturer",
+        "model", "year", "county",
+    }
+    # Map result column headers to canonical field names
+    _RESULT_HEADER_MAP = {
+        "certificate": "Certificate #",
+        "certificate #": "Certificate #",
+        "cert #": "Certificate #",
+        "cert": "Certificate #",
+        "serial": "Serial #",
+        "serial #": "Serial #",
+        "serial/label": "Serial #",
+        "label": "Label/Seal#",
+        "label/seal": "Label/Seal#",
+        "label/seal#": "Label/Seal#",
+        "manufacturer": "Manufacturer",
+        "model": "Model",
+        "make": "Model",
+        "year": "Year",
+        "county": "County",
+        "sq ft": "Square Ftg",
+        "sqft": "Square Ftg",
+        "square ft": "Square Ftg",
+        "size": "Size",
+        "buyer": "Buyer/Transferee",
+        "seller": "Seller/Transferor",
+        "wind zone": "Wind Zone",
+    }
+
+    for table in soup.find_all('table'):
+        rows = table.find_all('tr')
+        if len(rows) < 2:
+            continue
+
+        # Check first row for result-like headers
+        first_row_cells = rows[0].find_all(['td', 'th'])
+        headers = [c.get_text(strip=True).lower() for c in first_row_cells]
+
+        # Count how many headers match known result columns
+        hits = sum(1 for h in headers if any(rh in h for rh in _RESULT_HEADERS))
+        if hits < 2:
+            continue
+
+        logger.info(f"[TDHCA-parser] Found results table with headers: {headers}")
+
+        # Map headers to canonical keys
+        canonical_headers = []
+        for h in headers:
+            matched = None
+            for key, canon in _RESULT_HEADER_MAP.items():
+                if key in h:
+                    matched = canon
+                    break
+            canonical_headers.append(matched)
+
+        # Parse data rows (skip header row)
+        for row in rows[1:]:
+            cells = row.find_all(['td', 'th'])
+            if len(cells) < 2:
+                continue
+
+            # Skip rows that look like more headers
+            cell_texts = [c.get_text(strip=True) for c in cells]
+            if all(t.lower() in _RESULT_HEADERS or not t for t in cell_texts):
+                continue
+
+            # Extract data from this row
+            for i, (canon, cell) in enumerate(zip(canonical_headers, cells)):
+                if not canon:
+                    continue
+                val = cell.get_text(separator=' ', strip=True)
+                if not val or val.lower() in _BAD_VALUES or val.lower() in _NAV_GARBAGE:
+                    continue
+                # Don't overwrite existing good values
+                existing = title_data.get(canon, "").strip()
+                if not existing or existing.lower() in _BAD_VALUES:
+                    title_data[canon] = val
+
+            # Only take the first data row
+            logger.info(f"[TDHCA-parser] Extracted from results table: "
+                        f"{dict((k,v[:50]) for k,v in title_data.items())}")
+            return
 
 
 def _strip_nav_elements(soup) -> None:
@@ -209,7 +313,7 @@ def _parse_tables(soup, title_data: Dict[str, str]) -> None:
             all_th = all(c.name == 'th' for c in cells)
             all_td = all(c.name == 'td' for c in cells)
 
-            row_texts = [c.get_text(separator=' ').strip().rstrip(':') for c in cells]
+            row_texts = [_normalize_whitespace(c.get_text(separator=' ').strip().rstrip(':')) for c in cells]
 
             # Detect header-like <td> rows (≥50% of cells contain header keywords)
             header_cell_count = sum(1 for t in row_texts if any(h in t.lower() for h in _HEADER_HINTS))
@@ -238,7 +342,7 @@ def _parse_tables(soup, title_data: Dict[str, str]) -> None:
 def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> None:
     """Map header labels to corresponding data cells."""
     # Detect section index from first cell
-    first_text = cells[0].get_text(separator=' ').strip() if cells else ""
+    first_text = _normalize_whitespace(cells[0].get_text(separator=' ').strip()) if cells else ""
     m_sec = re.search(r"section\s*(\d+)", first_text, re.IGNORECASE)
     section_idx = m_sec.group(1) if m_sec else None
 
@@ -249,7 +353,7 @@ def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> N
             return  # Empty section label row — skip
 
     for header, cell in zip(headers, cells):
-        val = cell.get_text(separator=' ').strip()
+        val = _normalize_whitespace(cell.get_text(separator=' ').strip())
         if not header or not val or len(header) >= 60:
             continue
 
@@ -283,8 +387,8 @@ def _parse_kv_cells(cells, title_data: Dict[str, str]) -> None:
     """Parse key-value pairs from table cells (step-2 pairing)."""
     i = 0
     while i < len(cells) - 1:
-        key = cells[i].get_text(separator=' ').strip().rstrip(':')
-        val = cells[i + 1].get_text(separator=' ').strip()
+        key = _normalize_whitespace(cells[i].get_text(separator=' ').strip().rstrip(':'))
+        val = _normalize_whitespace(cells[i + 1].get_text(separator=' ').strip())
         key_l = key.lower()
         val_l = val.lower()
 
@@ -554,6 +658,12 @@ def _split_city_from_street(text: str) -> Tuple[str, str]:
     return city, address
 
 
+def _normalize_whitespace(text: str) -> str:
+    """Replace non-breaking spaces and other Unicode whitespace with regular spaces."""
+    # \xa0 = &nbsp;, also handle other Unicode spaces
+    return re.sub(r'[\xa0\u2000-\u200a\u202f\u205f\u3000]+', ' ', text).strip()
+
+
 def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     """
     Split a TDHCA manufacturer string into (name, address, city_state_zip).
@@ -566,6 +676,9 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     """
     if not mfr_raw:
         return "", "", ""
+
+    # Normalize whitespace (TDHCA pages use &nbsp; extensively)
+    mfr_raw = _normalize_whitespace(mfr_raw)
 
     # Remove TDHCA manufacturer code prefix (e.g. "MHDMAN00000039")
     mfr_clean = re.sub(r"^MHD\w*\d+\s*", "", mfr_raw).strip()

@@ -1339,7 +1339,8 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
     1. Navigate to https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp
     2. Enter the serial/label number
     3. Submit the form
-    4. Parse the results and return the ownership record
+    4. Navigate to the detail page (from search results)
+    5. Parse the detail page and return structured data
     
     Returns the title information as structured data.
     """
@@ -1347,90 +1348,152 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
     from playwright.async_api import async_playwright
     
     logger.info(f"[TDHCA] Looking up {request.search_type}: {request.search_value}")
+    debug_log: list[str] = []  # Collect debug info for response
     
     try:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             page = await browser.new_page()
             
-            # Navigate to TDHCA search page
+            # ═══ Step 1: Navigate to TDHCA search page ═══
             await page.goto(
                 "https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp",
                 wait_until='domcontentloaded',
                 timeout=30000
             )
+            debug_log.append(f"Step1: Loaded search page: {page.url}")
             
-            # Fill in the search field
+            # ═══ Step 2: Fill in the search field and submit ═══
             if request.search_type == 'serial':
                 await page.fill('input[name="serial"]', request.search_value)
             else:
                 await page.fill('input[name="label"]', request.search_value)
             
-            # Submit the form
             await page.click('input[type="submit"], button[type="submit"]')
             await page.wait_for_load_state('domcontentloaded', timeout=15000)
             await asyncio.sleep(2)
             
-            # Check if we got results
+            results_url = page.url
             content = await page.content()
+            debug_log.append(f"Step2: After submit URL: {results_url}")
+            debug_log.append(f"Step2: Content length: {len(content)}")
             
-            # Try multiple selectors to find and click to the detail page
-            # TDHCA uses various link patterns depending on the page version
-            detail_selectors = [
-                'a[href*="title_detail"]',
-                'a[href*="titleDetail"]',
-                'a[href*="detail"]',
-                'a:has-text("Detail")',
+            # ═══ Step 3: Check if we got results ═══
+            no_records_indicators = [
+                'No records', 'no records', 'total_rec" value="0"',
+                'No matching', 'no matching', '0 records',
             ]
+            if any(ind in content for ind in no_records_indicators):
+                await browser.close()
+                return {
+                    "success": False,
+                    "message": f"No se encontraron registros para {request.search_type}: {request.search_value}",
+                    "data": None
+                }
             
-            has_result = False
-            for selector in detail_selectors:
-                result_links = page.locator(selector)
-                count = await result_links.count()
-                if count > 0:
-                    logger.info(f"[TDHCA] Found {count} links with selector: {selector}")
-                    has_result = True
-                    break
+            # ═══ Step 4: Detect if we're on results page or detail page ═══
+            # TDHCA detail pages typically contain "Certificate #" or "Manufacturer"
+            # as table cell labels, NOT as column headers in a results table.
+            # Results pages have multiple rows with clickable links.
             
-            if not has_result:
-                # Check for "no records found" or empty results
-                if 'No records' in content or 'no records' in content.lower() or 'total_rec" value="0"' in content:
-                    await browser.close()
-                    return {
-                        "success": False,
-                        "message": f"No se encontraron registros para {request.search_type}: {request.search_value}",
-                        "data": None
-                    }
-                # If we're already on the detail page (no search results intermediate)
-                logger.info(f"[TDHCA] No detail links found — may already be on detail page")
+            is_detail_page = False
             
-            if has_result:
-                logger.info(f"[TDHCA] Clicking detail link to navigate to detail page")
-                await result_links.first.click()
-                await page.wait_for_load_state('domcontentloaded', timeout=15000)
-                await asyncio.sleep(2)
-                content = await page.content()
-                logger.info(f"[TDHCA] After click — page URL: {page.url}")
+            # Check URL patterns
+            url_lower = page.url.lower()
+            if 'title_detail' in url_lower or 'titledetail' in url_lower:
+                is_detail_page = True
+                debug_log.append("Step4: URL indicates detail page")
             
-            # ═══════════════════════════════════════════════
-            # PARSE THE DETAIL PAGE
-            # All parsing logic lives in tdhca_parser.py:
-            #   1. Table parsing (header+data rows, kv pairs)
-            #   2. Comprehensive regex from page text (17+ fields)
-            #   3. Label\nValue line-pair extraction
-            # ═══════════════════════════════════════════════
+            # Check page structure — detail pages have KV tables with specific labels
+            if not is_detail_page:
+                from bs4 import BeautifulSoup as _BS
+                _check_soup = _BS(content, 'html.parser')
+                _cells = [td.get_text(strip=True).lower() for td in _check_soup.find_all('td')]
+                # Detail pages have these as table cell TEXT (not column headers)
+                detail_indicators = ['certificate #', 'manufacturer', 'wind zone', 'square ftg']
+                detail_hits = sum(1 for ind in detail_indicators if ind in _cells)
+                if detail_hits >= 2:
+                    is_detail_page = True
+                    debug_log.append(f"Step4: Content analysis indicates detail page (hits={detail_hits})")
+            
+            # ═══ Step 5: If on results page, navigate to detail ═══
+            if not is_detail_page:
+                debug_log.append("Step5: On results page, trying to navigate to detail...")
+                
+                # Log ALL links on the page for debugging
+                all_links = page.locator('a')
+                link_count = await all_links.count()
+                link_info = []
+                for i in range(min(link_count, 30)):
+                    href = await all_links.nth(i).get_attribute('href') or ''
+                    text = (await all_links.nth(i).text_content() or '').strip()
+                    link_info.append(f"  [{i}] text='{text[:40]}' href='{href[:80]}'")
+                debug_log.append(f"Step5: Found {link_count} links:\n" + "\n".join(link_info))
+                logger.info(f"[TDHCA] All links on page:\n" + "\n".join(link_info))
+                
+                # Try to find a detail link — prioritize links inside table cells
+                # (results table rows) over navigation links
+                clicked = False
+                
+                # Strategy A: Link in a table row with href containing detail/certnum
+                detail_in_table = page.locator('table td a[href*="title_detail"], table td a[href*="titleDetail"], table td a[href*="certnum"]')
+                if await detail_in_table.count() > 0:
+                    debug_log.append(f"Step5A: Found {await detail_in_table.count()} detail links in table cells")
+                    await detail_in_table.first.click()
+                    clicked = True
+                
+                # Strategy B: Any link with href containing title_detail (NOT just "detail")
+                if not clicked:
+                    specific_detail = page.locator('a[href*="title_detail"], a[href*="titleDetail"]')
+                    if await specific_detail.count() > 0:
+                        debug_log.append(f"Step5B: Found {await specific_detail.count()} title_detail links")
+                        await specific_detail.first.click()
+                        clicked = True
+                
+                # Strategy C: Link in a table cell with text "Detail" (not nav bar)
+                if not clicked:
+                    table_detail = page.locator('table td a:has-text("Detail")')
+                    if await table_detail.count() > 0:
+                        debug_log.append(f"Step5C: Found {await table_detail.count()} 'Detail' links in table cells")
+                        await table_detail.first.click()
+                        clicked = True
+                
+                # Strategy D: First link in a results table row (skip header row)
+                if not clicked:
+                    # Try to find any link in the 2nd+ <tr> of a table (skip header)
+                    row_links = page.locator('table tr:not(:first-child) td a')
+                    if await row_links.count() > 0:
+                        debug_log.append(f"Step5D: Found {await row_links.count()} links in table rows")
+                        await row_links.first.click()
+                        clicked = True
+                
+                if clicked:
+                    await page.wait_for_load_state('domcontentloaded', timeout=15000)
+                    await asyncio.sleep(2)
+                    content = await page.content()
+                    debug_log.append(f"Step5: After click URL: {page.url}")
+                    logger.info(f"[TDHCA] After click — page URL: {page.url}")
+                else:
+                    debug_log.append("Step5: ⚠️ Could not find any detail link to click! Parsing current page as-is.")
+                    logger.warning(f"[TDHCA] Could not find detail link! Parsing results page as fallback.")
+            else:
+                debug_log.append("Step4: Already on detail page, no click needed")
+            
+            # ═══ Step 6: Parse the page ═══
             from bs4 import BeautifulSoup
             import re as _re
             soup = BeautifulSoup(content, 'html.parser')
             
-            # Get full page text for logging
             page_text = soup.get_text('\n', strip=True)
+            debug_log.append(f"Step6: Page URL: {page.url}")
+            debug_log.append(f"Step6: Page text (first 500): {page_text[:500]}")
             logger.info(f"[TDHCA] Page URL: {page.url}")
-            logger.info(f"[TDHCA] Page text (first 800 chars): {page_text[:800]}")
+            logger.info(f"[TDHCA] Page text (first 1500 chars): {page_text[:1500]}")
             
-            # Parse using centralized parser (tables + regex + line-pairs)
+            # Parse using centralized parser
             title_data = parse_tdhca_detail_page(soup, page_text)
             
+            debug_log.append(f"Step6: Parsed {len(title_data)} fields: {list(title_data.keys())}")
             logger.info(f"[TDHCA] Parsed fields ({len(title_data)}): {list(title_data.keys())}")
             
             # Get URLs for reference
@@ -1468,6 +1531,8 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 "message": f"Título encontrado para {request.search_type}: {request.search_value}",
                 "data": structured,
                 "page_text": page_text[:5000],
+                "debug_log": debug_log,
+                "raw_html": content[:10000],  # First 10K of HTML for debugging
             }
         
     except Exception as e:

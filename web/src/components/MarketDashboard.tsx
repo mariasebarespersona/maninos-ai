@@ -635,9 +635,16 @@ export default function MarketDashboard() {
           raw_fields_keys: data.data?.raw_fields ? Object.keys(data.data.raw_fields) : [],
           raw_fields: data.data?.raw_fields,
         });
-        // Also log the page_text for debugging TDHCA parsing issues
+        // Log debug info for TDHCA parsing issues
         if (data.page_text) {
-          console.log('[MarketDashboard] TDHCA page_text (first 1000):', data.page_text?.substring(0, 1000));
+          console.log('[MarketDashboard] TDHCA page_text (first 2000):', data.page_text?.substring(0, 2000));
+        }
+        if (data.debug_log) {
+          console.log('[MarketDashboard] 🔍 TDHCA debug log:');
+          (data.debug_log as string[]).forEach((line: string) => console.log('  ', line));
+        }
+        if (data.raw_html) {
+          console.log('[MarketDashboard] 📄 TDHCA raw HTML (first 3000):', data.raw_html?.substring(0, 3000));
         }
         setTdhcaResult(data.data);
         setTdhcaPageText(data.page_text || '');
