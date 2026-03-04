@@ -350,11 +350,9 @@ export default function TitleApplicationTemplate({
   const handleSave = async () => {
     if (!onSave) return
     const missing = getMissingBlock2AFields(data)
-    if (missing.length > 0) {
-      setMissingBlock2A(missing)
-      return
-    }
-    setMissingBlock2A([])
+    // Show missing fields as guidance, but do not block user save.
+    // Requirement: AI auto-fills from title; user can still leave/edit fields.
+    setMissingBlock2A(missing)
     setSaving(true)
     try {
       const f = await generatePDF()
