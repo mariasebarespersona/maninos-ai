@@ -305,7 +305,35 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
     'Financiero': '💰', 'Especificaciones': '📋', 'Cierre': '🔑',
   }
 
-  // Group checklist
+  // ─── Macro-groups: higher-level grouping of categories ───
+  const MACRO_GROUPS = [
+    {
+      id: 'inspeccion',
+      label: 'Inspección en Campo',
+      icon: '🔍',
+      description: 'Lo que revisa el empleado en la propiedad',
+      categories: ['Estructura', 'Instalaciones', 'Especificaciones'],
+    },
+    {
+      id: 'oficina',
+      label: 'Revisión Oficina',
+      icon: '📋',
+      description: 'Lo que valida Gabriel/Abigail desde la oficina',
+      categories: ['Documentación', 'Financiero'],
+    },
+    {
+      id: 'cierre',
+      label: 'Cierre de Compra',
+      icon: '🤝',
+      description: 'Pasos finales para cerrar el trato',
+      categories: ['Cierre'],
+    },
+  ]
+
+  const [collapsedMacro, setCollapsedMacro] = useState<Record<string, boolean>>({})
+  const toggleMacro = (id: string) => setCollapsedMacro(prev => ({ ...prev, [id]: !prev[id] }))
+
+  // Group checklist by category
   const groupedChecklist = checklist.reduce((acc: Record<string, any[]>, item: any) => {
     const cat = item.category || 'Otro'
     if (!acc[cat]) acc[cat] = []
@@ -527,33 +555,50 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
                       A medida que subas fotos y las analices, esta lista se irá reduciendo automáticamente.
                     </span>
                   </p>
-                  {Object.entries(groupedNeededPhotos).map(([category, items]: [string, any[]]) => (
-                    <div key={category}>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-sm">{categoryIcons[category] || '📌'}</span>
-                        <span className="text-xs font-bold text-navy-700 uppercase tracking-wider">{category}</span>
-                        <span className="text-[10px] text-blue-500">({items.length})</span>
-                      </div>
-                      <div className="space-y-1.5 ml-1">
-                        {items.map((item: any) => (
-                          <div
-                            key={item.id}
-                            className="flex items-start gap-2.5 bg-white border border-blue-100 rounded-lg px-3 py-2.5 hover:border-blue-300 transition-colors"
-                          >
-                            <CircleDot className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-navy-800">{item.label}</p>
-                              {item.photo_hint && (
-                                <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">
-                                  📷 {item.photo_hint}
-                                </p>
-                              )}
+                  {MACRO_GROUPS.map(macro => {
+                    const macroNeeded = neededPhotos.filter(i => macro.categories.includes(i.category || 'Otro'))
+                    if (macroNeeded.length === 0) return null
+                    return (
+                      <div key={macro.id}>
+                        <div className="flex items-center gap-2 mb-2 mt-1">
+                          <span className="text-base">{macro.icon}</span>
+                          <span className="text-xs font-bold text-blue-800">{macro.label}</span>
+                          <span className="text-[10px] text-blue-500">({macroNeeded.length} fotos)</span>
+                        </div>
+                        {macro.categories.map(cat => {
+                          const catItems = macroNeeded.filter((i: any) => i.category === cat)
+                          if (catItems.length === 0) return null
+                          return (
+                            <div key={cat} className="ml-2 mb-2">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-sm">{categoryIcons[cat] || '📌'}</span>
+                                <span className="text-[11px] font-semibold text-navy-700">{cat}</span>
+                                <span className="text-[10px] text-blue-400">({catItems.length})</span>
+                              </div>
+                              <div className="space-y-1.5 ml-1">
+                                {catItems.map((item: any) => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-start gap-2.5 bg-white border border-blue-100 rounded-lg px-3 py-2.5 hover:border-blue-300 transition-colors"
+                                  >
+                                    <CircleDot className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-navy-800">{item.label}</p>
+                                      {item.photo_hint && (
+                                        <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">
+                                          📷 {item.photo_hint}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   {neededPhotos.length <= 3 && (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
                       <p className="text-xs text-emerald-700 font-medium">
@@ -636,7 +681,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
             </div>
           )}
 
-          {/* ─── EDITABLE CHECKLIST ─── */}
+          {/* ─── EDITABLE CHECKLIST (grouped by macro → category → items) ─── */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button
               onClick={() => setShowChecklist(!showChecklist)}
@@ -650,81 +695,126 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
             </button>
             {showChecklist && (
               <div>
-                {Object.entries(groupedChecklist).map(([category, items]: [string, any[]]) => {
-                  const catPassed = items.filter(i => i.status === 'pass').length
-                  return (
-                    <div key={category}>
-                      <div className="bg-gray-100 px-4 py-2 flex items-center gap-2 border-t border-gray-200">
-                        <span className="text-sm">{categoryIcons[category] || '📌'}</span>
-                        <span className="text-xs font-semibold text-navy-700">{category}</span>
-                        <span className="text-[10px] text-gray-500 ml-auto">{catPassed}/{items.length} ✓</span>
-                      </div>
-                      <div className="divide-y divide-gray-100">
-                        {items.map((item: any) => (
-                          <div key={item.id} className={`px-4 py-3 ${getStatusColor(item.status)} border-l-4 ${
-                            item.status === 'pass' ? 'border-l-emerald-400' :
-                            item.status === 'fail' ? 'border-l-red-400' :
-                            item.status === 'warning' ? 'border-l-amber-400' :
-                            item.status === 'needs_photo' ? 'border-l-blue-400' :
-                            'border-l-gray-200'
-                          }`}>
-                            <div className="flex items-start gap-3">
-                              <div className="mt-0.5 flex-shrink-0">{getStatusIcon(item.status)}</div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-medium text-navy-800 flex-1">{item.label}</p>
-                                  <button
-                                    onClick={() => { setEditingItem(editingItem === item.id ? null : item.id); setEditNote(item.note || '') }}
-                                    className="p-1.5 rounded-lg hover:bg-white/50 transition-colors"
-                                    title="Editar"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5 text-gray-400 hover:text-navy-600" />
-                                  </button>
-                                </div>
-                                {item.note && editingItem !== item.id && (
-                                  <p className="text-xs text-gray-500 mt-0.5">{item.note}</p>
-                                )}
-                              </div>
-                            </div>
+                {MACRO_GROUPS.map(macro => {
+                  const macroItems = checklist.filter(i => macro.categories.includes(i.category || 'Otro'))
+                  if (macroItems.length === 0) return null
+                  const macroPassed = macroItems.filter(i => i.status === 'pass').length
+                  const macroTotal = macroItems.length
+                  const macroProgress = macroTotal > 0 ? Math.round((macroPassed / macroTotal) * 100) : 0
+                  const isCollapsed = collapsedMacro[macro.id]
 
-                            {/* Inline edit */}
-                            {editingItem === item.id && (
-                              <div className="mt-3 ml-7 space-y-2">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {STATUS_OPTIONS.map(opt => (
-                                    <button
-                                      key={opt.value}
-                                      onClick={() => updateChecklistItem(item.id, opt.value, editNote || item.note)}
-                                      className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
-                                        item.status === opt.value
-                                          ? opt.color + ' font-bold ring-2 ring-offset-1'
-                                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
-                                      }`}
-                                    >
-                                      {opt.label}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="flex gap-2">
-                                  <input
-                                    type="text"
-                                    value={editNote}
-                                    onChange={e => setEditNote(e.target.value)}
-                                    placeholder="Nota (opcional)"
-                                    className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
-                                  />
-                                  <button
-                                    onClick={() => updateChecklistItem(item.id, item.status, editNote)}
-                                    className="bg-gold-100 border border-gold-300 text-gold-700 rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-gold-200 transition-colors"
-                                  >
-                                    <Save className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+                  return (
+                    <div key={macro.id}>
+                      {/* Macro-group header */}
+                      <button
+                        onClick={() => toggleMacro(macro.id)}
+                        className="w-full px-4 py-3 flex items-center gap-3 bg-navy-50 hover:bg-navy-100 border-t border-navy-200 transition-colors"
+                      >
+                        <span className="text-lg">{macro.icon}</span>
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-navy-900">{macro.label}</span>
+                            <span className="text-[10px] text-navy-500">({macroTotal} puntos)</span>
                           </div>
-                        ))}
-                      </div>
+                          {/* Progress bar */}
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex-1 h-1.5 bg-navy-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  macroProgress === 100 ? 'bg-emerald-500' :
+                                  macroProgress > 50 ? 'bg-gold-500' :
+                                  macroProgress > 0 ? 'bg-blue-500' : 'bg-gray-300'
+                                }`}
+                                style={{ width: `${macroProgress}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-medium text-navy-600">{macroPassed}/{macroTotal} ✓</span>
+                          </div>
+                        </div>
+                        {isCollapsed ? <ChevronDown className="w-4 h-4 text-navy-400" /> : <ChevronUp className="w-4 h-4 text-navy-400" />}
+                      </button>
+
+                      {/* Sub-categories within this macro-group */}
+                      {!isCollapsed && macro.categories.map(cat => {
+                        const items = groupedChecklist[cat]
+                        if (!items || items.length === 0) return null
+                        const catPassed = items.filter((i: any) => i.status === 'pass').length
+                        return (
+                          <div key={cat}>
+                            <div className="bg-gray-100 px-4 py-2 flex items-center gap-2 border-t border-gray-200 pl-8">
+                              <span className="text-sm">{categoryIcons[cat] || '📌'}</span>
+                              <span className="text-xs font-semibold text-navy-700">{cat}</span>
+                              <span className="text-[10px] text-gray-500 ml-auto">{catPassed}/{items.length} ✓</span>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                              {items.map((item: any) => (
+                                <div key={item.id} className={`px-4 py-3 ${getStatusColor(item.status)} border-l-4 ${
+                                  item.status === 'pass' ? 'border-l-emerald-400' :
+                                  item.status === 'fail' ? 'border-l-red-400' :
+                                  item.status === 'warning' ? 'border-l-amber-400' :
+                                  item.status === 'needs_photo' ? 'border-l-blue-400' :
+                                  'border-l-gray-200'
+                                }`}>
+                                  <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 flex-shrink-0">{getStatusIcon(item.status)}</div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm font-medium text-navy-800 flex-1">{item.label}</p>
+                                        <button
+                                          onClick={() => { setEditingItem(editingItem === item.id ? null : item.id); setEditNote(item.note || '') }}
+                                          className="p-1.5 rounded-lg hover:bg-white/50 transition-colors"
+                                          title="Editar"
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5 text-gray-400 hover:text-navy-600" />
+                                        </button>
+                                      </div>
+                                      {item.note && editingItem !== item.id && (
+                                        <p className="text-xs text-gray-500 mt-0.5">{item.note}</p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Inline edit */}
+                                  {editingItem === item.id && (
+                                    <div className="mt-3 ml-7 space-y-2">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {STATUS_OPTIONS.map(opt => (
+                                          <button
+                                            key={opt.value}
+                                            onClick={() => updateChecklistItem(item.id, opt.value, editNote || item.note)}
+                                            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
+                                              item.status === opt.value
+                                                ? opt.color + ' font-bold ring-2 ring-offset-1'
+                                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                                            }`}
+                                          >
+                                            {opt.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={editNote}
+                                          onChange={e => setEditNote(e.target.value)}
+                                          placeholder="Nota (opcional)"
+                                          className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gold-400"
+                                        />
+                                        <button
+                                          onClick={() => updateChecklistItem(item.id, item.status, editNote)}
+                                          className="bg-gold-100 border border-gold-300 text-gold-700 rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-gold-200 transition-colors"
+                                        >
+                                          <Save className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
                 })}
@@ -853,23 +943,37 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
             </div>
           )}
 
-          {/* Checklist Summary */}
+          {/* Checklist Summary — grouped by macro-group */}
           {completedReport.checklist && completedReport.checklist.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-navy-700 mb-3">Checklist ({completedReport.checklist.length} puntos)</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {completedReport.checklist.map((item: any) => (
-                  <div key={item.id} className={`p-3 rounded-lg border ${getStatusColor(item.status)}`}>
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(item.status)}
-                      <span className="text-sm font-medium text-navy-800">{item.label}</span>
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-navy-700">Checklist ({completedReport.checklist.length} puntos)</h4>
+              {MACRO_GROUPS.map(macro => {
+                const macroItems = (completedReport.checklist as any[]).filter((i: any) => macro.categories.includes(i.category || 'Otro'))
+                if (macroItems.length === 0) return null
+                const macroPassed = macroItems.filter((i: any) => i.status === 'pass').length
+                return (
+                  <div key={macro.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-navy-50 px-4 py-2.5 flex items-center gap-2">
+                      <span className="text-base">{macro.icon}</span>
+                      <span className="text-xs font-bold text-navy-800">{macro.label}</span>
+                      <span className="ml-auto text-[10px] font-medium text-navy-600">{macroPassed}/{macroItems.length} ✓</span>
                     </div>
-                    {item.note && (
-                      <p className="text-xs text-navy-500 mt-1 ml-6">{item.note}</p>
-                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3">
+                      {macroItems.map((item: any) => (
+                        <div key={item.id} className={`p-3 rounded-lg border ${getStatusColor(item.status)}`}>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(item.status)}
+                            <span className="text-sm font-medium text-navy-800">{item.label}</span>
+                          </div>
+                          {item.note && (
+                            <p className="text-xs text-navy-500 mt-1 ml-6">{item.note}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )
+              })}
             </div>
           )}
 

@@ -1362,44 +1362,63 @@ export default function PropertyDetailPage() {
               </div>
             )}
 
-            {/* Checklist Items */}
-            {evalReport.checklist && evalReport.checklist.length > 0 && (
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-navy-700 mb-3">Checklist de Evaluación ({evalReport.checklist.length} puntos)</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {evalReport.checklist.map((item) => {
-                    const statusColors: Record<string, string> = {
-                      pass: 'bg-emerald-50 border-emerald-200',
-                      fail: 'bg-red-50 border-red-200',
-                      warning: 'bg-amber-50 border-amber-200',
-                      needs_photo: 'bg-blue-50 border-blue-200',
-                      not_evaluable: 'bg-gray-50 border-gray-200',
-                    }
-                    const statusIcons: Record<string, React.ReactNode> = {
-                      pass: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
-                      fail: <XCircle className="w-4 h-4 text-red-500" />,
-                      warning: <AlertTriangle className="w-4 h-4 text-amber-500" />,
-                      needs_photo: <Camera className="w-4 h-4 text-blue-500" />,
-                      not_evaluable: <div className="w-4 h-4 rounded-full bg-gray-300" />,
-                    }
+            {/* Checklist Items — grouped by macro-group */}
+            {evalReport.checklist && evalReport.checklist.length > 0 && (() => {
+              const MACRO_GROUPS_VIEW = [
+                { id: 'inspeccion', label: 'Inspección en Campo', icon: '🔍', categories: ['Estructura', 'Instalaciones', 'Especificaciones'] },
+                { id: 'oficina', label: 'Revisión Oficina', icon: '📋', categories: ['Documentación', 'Financiero'] },
+                { id: 'cierre', label: 'Cierre de Compra', icon: '🤝', categories: ['Cierre'] },
+              ]
+              const statusColors: Record<string, string> = {
+                pass: 'bg-emerald-50 border-emerald-200',
+                fail: 'bg-red-50 border-red-200',
+                warning: 'bg-amber-50 border-amber-200',
+                needs_photo: 'bg-blue-50 border-blue-200',
+                not_evaluable: 'bg-gray-50 border-gray-200',
+              }
+              const statusIcons: Record<string, React.ReactNode> = {
+                pass: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+                fail: <XCircle className="w-4 h-4 text-red-500" />,
+                warning: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+                needs_photo: <Camera className="w-4 h-4 text-blue-500" />,
+                not_evaluable: <div className="w-4 h-4 rounded-full bg-gray-300" />,
+              }
+              return (
+                <div className="mb-6 space-y-4">
+                  <h4 className="text-sm font-medium text-navy-700">Checklist de Evaluación ({evalReport.checklist.length} puntos)</h4>
+                  {MACRO_GROUPS_VIEW.map(macro => {
+                    const macroItems = evalReport.checklist.filter((i: any) => macro.categories.includes(i.category || 'Otro'))
+                    if (macroItems.length === 0) return null
+                    const macroPassed = macroItems.filter((i: any) => i.status === 'pass').length
                     return (
-                      <div
-                        key={item.id}
-                        className={`p-3 rounded-lg border ${statusColors[item.status] || 'bg-gray-50 border-gray-200'}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          {statusIcons[item.status] || <div className="w-4 h-4 rounded-full bg-gray-300" />}
-                          <span className="text-sm font-medium text-navy-800">{item.label}</span>
+                      <div key={macro.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-navy-50 px-4 py-2.5 flex items-center gap-2">
+                          <span className="text-base">{macro.icon}</span>
+                          <span className="text-xs font-bold text-navy-800">{macro.label}</span>
+                          <span className="ml-auto text-[10px] font-medium text-navy-600">{macroPassed}/{macroItems.length} ✓</span>
                         </div>
-                        {item.note && (
-                          <p className="text-xs text-navy-500 mt-1 ml-6">{item.note}</p>
-                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3">
+                          {macroItems.map((item: any) => (
+                            <div
+                              key={item.id}
+                              className={`p-3 rounded-lg border ${statusColors[item.status] || 'bg-gray-50 border-gray-200'}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {statusIcons[item.status] || <div className="w-4 h-4 rounded-full bg-gray-300" />}
+                                <span className="text-sm font-medium text-navy-800">{item.label}</span>
+                              </div>
+                              {item.note && (
+                                <p className="text-xs text-navy-500 mt-1 ml-6">{item.note}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )
                   })}
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Extra Notes */}
             {evalReport.extra_notes && evalReport.extra_notes.length > 0 && (
