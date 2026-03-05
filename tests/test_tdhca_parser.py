@@ -6,6 +6,7 @@ Tests all three extraction strategies:
   2. Regex extraction from page text
   3. Label\nValue line-pair extraction
 """
+import os
 import pytest
 from bs4 import BeautifulSoup
 from api.utils.tdhca_parser import (
@@ -1221,201 +1222,29 @@ def test_page_text_with_nav_is_cleaned_before_regex_and_linepairs():
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # REAL TDHCA PAGE TEST — Certificate #01191237
-# This HTML is from the ACTUAL TDHCA website (mhweb.tdhca.state.tx.us)
+# HTML fetched DIRECTLY from the live TDHCA website via the deployed Railway API.
+# Fixture file: tests/fixtures/tdhca_real_page.html
 # ═══════════════════════════════════════════════════════════════════════════════
 
-REAL_TDHCA_HTML = """
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Manufactured Housing - Certificate Detail</title></head>
-<body>
-<a name="top" id="top"></a>
-<div class="hiddentext"><a href="#content">skip to content</a></div>
-<div id="topnav">
-  <ul>
-    <li><a href="http://www.tdhca.state.tx.us/">Home</a></li>
-    <li><a href="http://www.tdhca.state.tx.us/au_offices.htm">Contact</a></li>
-    <li><a href="http://www.tdhca.state.tx.us/au.htm">About</a></li>
-    <li><a href="http://www.tdhca.state.tx.us/events/index.jsp">Calendar</a></li>
-    <li><a href="http://www.tdhca.state.tx.us/ppa/press/index.htm">Press</a></li>
-    <li><a href="http://www.tdhca.state.tx.us/hr/employment/index.jsp">Employment</a></li>
-  </ul>
-</div>
-<div id="logo" style="height:95px">
-  <div style="float:left"><img src="flag-logo-mh.gif" alt="TDHCA logo" border="0"></div>
-  <div id="mhdiv"><a href="http://www.tdhca.state.tx.us/mh/">Manufactured Housing Division</a></div>
-</div>
-<div id="search" style="margin-top:15px">
-  <form name="search" action="https://www.tdhca.texas.gov/search" id="cse-search-box">
-    <label for="words">Site Search:</label>
-    <input type="text" name="q" id="words" size="25">
-  </form>
-</div>
+_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), 'fixtures')
 
-<table border="0" cellpadding="3" cellspacing="0" width="100%" summary="menu table" id="content">
-  <tbody><tr valign="top">
-    <td height="100%" valign="top" rowspan="2" class="menuBG">
-      <table class="bgTable" cellspacing="0" cellpadding="2" border="0" width="155">
-        <tbody><tr>
-          <td valign="top">
-            <table class="bgNavBox" cellspacing="0" cellpadding="3" border="0">
-              <tbody>
-              <tr><td align="center" colspan="2"><a href="/mhweb/main.jsp" class="navBoxLink">Manufactured Housing Report Options</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" alt="" border="0"></td><td width="100%"><a href="/mhweb/title_view.jsp" class="navBoxLink">View Ownership Records</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" border="0" alt=""></td><td width="100%"><a href="/mhweb/download_title_info.jsp" class="navBoxLink">Download Ownership Records</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" border="0" alt=""></td><td width="100%"><a href="/mhweb/taxlien_view.jsp" class="navBoxLink">View Tax Lien Records</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" border="0" alt=""></td><td width="100%"><a href="/mhweb/license_view.jsp" class="navBoxLink">View License Records</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" border="0" alt=""></td><td width="100%"><a href="/mhweb/install_view.jsp" class="navBoxLink">View Installation Records</a></td></tr>
-              <tr><td><img src="bullet_dark.gif" border="0" alt=""></td><td width="100%"><a href="/mhweb/title_by_county_report.jsp?sortorder=1" class="navBoxLink">Ownership Records by County Report</a></td></tr>
-              </tbody>
-            </table>
-          </td>
-        </tr></tbody>
-      </table>
-    </td>
-  </tr>
-  <tr valign="top">
-    <td width="100%">
 
-<div style="padding-left:10px">
+def _load_fixture(filename: str) -> str:
+    """Load an HTML fixture file from tests/fixtures/."""
+    path = os.path.join(_FIXTURE_DIR, filename)
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
 
-  <table align="center" width="75%" cellspacing="1" cellpadding="5" border="1">
-    <tbody><tr>
-      <td align="center" width="40%">
-        <a href="cr_jump.jsp?reportName=mh\\home_detail_external.rpt" target="_blank"><b>Print Home Detail</b></a>
-      </td>
-      <td align="right" width="70%">&nbsp;</td>
-    </tr></tbody>
-  </table>
 
-  <h1 align="center">Certificate Detail for Certificate # 01191237</h1>
-  <h2 align="center"><font size="3" color="blue">Home elected as Personal Property</font></h2>
-  <h2 align="center"><font size="3" color="black">ISSUE DATE:&nbsp;&nbsp; 03/25/2001</font></h2>
-
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="0">
-    <tbody>
-    <tr>
-      <td width="25%"><b>Certificate Number:</b></td>
-      <td width="25%">01191237</td>
-      <td width="25%"><b>New/Used:</b></td>
-      <td width="25%">USED</td>
-    </tr>
-    <tr>
-      <td><b>Manufacture Date:</b></td>
-      <td>&nbsp;</td>
-      <td><b>Number of Sections:</b></td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <td><b>Date of Sale:</b></td>
-      <td>03/01/2001</td>
-      <td><b>Model:</b></td>
-      <td>CENTURION</td>
-    </tr>
-    <tr>
-      <td><b>Date of Certificate:</b></td>
-      <td>03/25/2001</td>
-      <td><b>Square Feet:</b></td>
-      <td>700</td>
-    </tr>
-    <tr>
-      <td><b>Right of Survivorship:</b></td>
-      <td>YES</td>
-      <td><b>Wind Zone:</b></td>
-      <td>Currently Installed in SMITH County</td>
-    </tr>
-    </tbody>
-  </table>
-
-  <br>
-  <h2 align="center"><font size="3">Owners</font></h2>
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="1">
-    <tbody>
-    <tr><td><b>Current Owner</b></td><td><b>Seller</b></td></tr>
-    <tr><td><b>Previous Owners</b></td><td></td></tr>
-    <tr>
-      <td>GERALD D. JANKE<br>KAREN J. JANKE<br>12027 CR 4153<br>TYLER, TX 75704</td>
-      <td>RICHARD D. ELLIOT<br>6969 CR 1125<br>TYLER, TX 75704</td>
-    </tr>
-    </tbody>
-  </table>
-
-  <br>
-  <h2 align="center"><font size="3">Beneficiary(ies)</font></h2>
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="0">
-    <tr><td>No Beneficiary</td></tr>
-  </table>
-
-  <br>
-  <h2 align="center"><font size="3">Active Mortgage Liens</font></h2>
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="1">
-    <tr><td><b>Lien Date</b></td><td><b>Lien Holder</b></td></tr>
-    <tr>
-      <td>10/19/2000</td>
-      <td>CITIZENS STATE BANK, FKA CHANDLER STATE BANK<br>P.O. BOX 635  CHANDLER, TX 75758</td>
-    </tr>
-  </table>
-
-  <br>
-  <h2 align="center"><font size="3">Sections</font></h2>
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="1">
-    <tr>
-      <td><b>Label</b></td>
-      <td><b>Serial</b></td>
-      <td><b>Weight</b></td>
-      <td><b>Width</b></td>
-      <td><b>Length</b></td>
-    </tr>
-    <tr>
-      <td>1</td>
-      <td>&nbsp;</td>
-      <td>&nbsp;</td>
-      <td>&nbsp;</td>
-      <td>&nbsp;</td>
-    </tr>
-    <tr>
-      <td>TEX0012345</td>
-      <td>C3208</td>
-      <td>12000</td>
-      <td>14</td>
-      <td>50</td>
-    </tr>
-  </table>
-
-  <br>
-  <h2 align="center"><font size="3">Manufacturer</font></h2>
-  <table width="75%" align="center" cellpadding="3" cellspacing="0" border="0">
-    <tr>
-      <td>MHDMAN00000039<br>
-        BRIGADIER HOMES A U.S. HOME COMPANY<br>
-        1001 SOUTH LOOP 340<br>
-        WACO, TX 76710
-      </td>
-    </tr>
-  </table>
-
-  <br>
-  <a href="title_view.jsp">Search Again</a>
-  <br><br>
-  <a href="http://www.tdhca.state.tx.us/au_privacy.html">Privacy &amp; security policy</a>
-  <a href="http://www.tdhca.state.tx.us/au_accessibility.html">Web accessibility policy</a>
-
-</div>
-
-    </td>
-  </tr>
-</tbody></table>
-
-</body>
-</html>
-"""
+# Backward compat: other tests may import REAL_TDHCA_HTML
+REAL_TDHCA_HTML = _load_fixture('tdhca_real_page.html')
 
 
 def test_real_tdhca_page_certificate_01191237():
     """
-    Test parsing with the REAL TDHCA page structure for Certificate #01191237.
-    This HTML is based on the actual page at:
-    https://mhweb.tdhca.state.tx.us/mhweb/title_detail.jsp?homeid=434420&db=TTL
+    Test parsing with the REAL TDHCA page for Certificate #01191237.
+    HTML fetched directly from: https://mhweb.tdhca.state.tx.us/mhweb/title_detail.jsp?homeid=434420&db=TTL
+    via the deployed Railway API on 2026-03-05.
     """
     soup = BeautifulSoup(REAL_TDHCA_HTML, 'html.parser')
     page_text = soup.get_text('\\n', strip=True)
