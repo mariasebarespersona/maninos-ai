@@ -1466,10 +1466,21 @@ def test_real_tdhca_page_certificate_01191237():
     # ═══ Wind Zone: should be empty (actual value is county text) ═══
     assert structured["wind_zone"] == ""
 
-    # ═══ Seller ═══
-    assert structured["seller"] is not None
-    assert "GERALD" in structured["seller"].upper() or "JANKE" in structured["seller"].upper() \
-        or "ELLIOT" in structured["seller"].upper()
+    # ═══ Buyer: should be the Current Owner (GERALD D. JANKE) ═══
+    assert structured["buyer"] is not None, "Buyer should not be empty"
+    assert "GERALD" in structured["buyer"].upper() or "JANKE" in structured["buyer"].upper(), \
+        f"Buyer should be GERALD JANKE, got: {structured['buyer']}"
+    # Buyer should NOT contain address
+    assert "12027" not in (structured["buyer"] or ""), \
+        f"Buyer should not contain address: {structured['buyer']}"
+
+    # ═══ Seller: should be RICHARD D. ELLIOT (not the buyer!) ═══
+    assert structured["seller"] is not None, "Seller should not be empty"
+    assert "ELLIOT" in structured["seller"].upper() or "RICHARD" in structured["seller"].upper(), \
+        f"Seller should be RICHARD ELLIOT, got: {structured['seller']}"
+    # Seller should NOT be the buyer
+    assert structured["seller"].strip() != structured["buyer"].strip(), \
+        f"Seller should differ from buyer: both are '{structured['seller']}'"
 
     # ═══ Election ═══
     assert structured["election"] == "Personal Property"

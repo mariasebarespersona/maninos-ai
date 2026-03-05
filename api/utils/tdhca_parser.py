@@ -21,6 +21,9 @@ _BAD_VALUES = {
     "weight", "size", "label/seal", "label/seal#",
     "serial", "serial#", "serial #", "n/a", "na", "-",
     "w", "l", "width", "length",
+    # Sub-headers in the Owners table — appear as cell values but are labels
+    "previous owners", "previous owner",
+    "no beneficiary",
 }
 
 # TDHCA navigation / chrome text that should NEVER be captured as field values.
@@ -494,8 +497,8 @@ def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> N
         if not header or not val or len(header) >= 60:
             continue
 
-        # Skip section labels and bad values
-        if _SECTION_RE.match(val) or val.lower() in _BAD_VALUES:
+        # Skip section labels, bad values, and navigation garbage
+        if _SECTION_RE.match(val) or val.lower() in _BAD_VALUES or val.lower() in _NAV_GARBAGE:
             continue
 
         # Skip bare section numbers (e.g., "1", "2") as values
@@ -505,8 +508,9 @@ def _map_header_data(headers: List[str], cells, title_data: Dict[str, str]) -> N
             continue
 
         existing = (title_data.get(header) or "").strip()
-        # Overwrite if empty, bad, a section label, or a bare section number
+        # Overwrite if empty, bad, nav garbage, a section label, or a bare section number
         if (not existing or existing.lower() in _BAD_VALUES
+                or existing.lower() in _NAV_GARBAGE
                 or _SECTION_RE.match(existing)
                 or re.fullmatch(r"\d{1,2}", existing)):
             title_data[header] = val
@@ -904,6 +908,30 @@ def _extract_manufacturer_parts(mfr_raw: str) -> Tuple[str, str, str]:
     return name, address, city_state_zip
 
 
+def _strip_address_from_name(text: str) -> str:
+    """
+    Strip street address from a name string that was collapsed onto one line.
+
+    TDHCA owner cells contain name + address:
+      "GERALD D. JANKE KAREN J. JANKE 12027 CR 4153 TYLER, TX 75704"
+    We want just the name(s): "GERALD D. JANKE KAREN J. JANKE"
+
+    Strategy: find the first occurrence of a street number (digit sequence followed
+    by a word) that looks like an address start, and truncate there.
+    """
+    if not text:
+        return text
+    # Match where an address typically starts: a digit sequence + space + word
+    # that's preceded by a space (not at the very start of the string).
+    # E.g. " 12027 CR " or " 1001 SOUTH "
+    m = re.search(r'\s+(\d{3,})\s+(?:[A-Z])', text)
+    if m:
+        truncated = text[:m.start()].strip()
+        if len(truncated) > 3:
+            return truncated
+    return text
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STRUCTURED OUTPUT BUILDER
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1177,13 +1205,26 @@ def build_structured_tdhca_data(
     )
     # Clean multi-line buyer values (address lines often appended)
     if buyer_raw and '\n' in buyer_raw:
-        # Take just the first line (the name), skip the address
         buyer_raw = buyer_raw.split('\n')[0].strip()
+    # Also strip address from single-line collapsed values (separator=' ')
+    # Pattern: "NAME1 NAME2 12345 STREET CITY, ST ZIP" → take name part before street number
+    buyer_raw = _strip_address_from_name(buyer_raw)
 
-    # ── Seller: also clean multi-line values ──
-    seller_raw = normalized.get("Seller/Transferor") or normalized.get("Seller") or ""
+    # ── Seller: prefer table-parsed "Seller" (correct column data) over
+    # "Seller/Transferor" (from regex/line-pairs that lose column structure) ──
+    seller_raw = normalized.get("Seller") or normalized.get("Seller/Transferor") or ""
     if seller_raw and '\n' in seller_raw:
         seller_raw = seller_raw.split('\n')[0].strip()
+    seller_raw = _strip_address_from_name(seller_raw)
+    # Safety: if seller == buyer, the line-pair probably picked up the wrong person
+    if seller_raw and buyer_raw and seller_raw.strip() == buyer_raw.strip():
+        logger.info(f"[TDHCA-struct] Seller matches buyer — trying alternate key")
+        # Try the other key
+        alt = normalized.get("Seller/Transferor") if seller_raw == _strip_address_from_name(normalized.get("Seller") or "") else normalized.get("Seller")
+        if alt:
+            alt = _strip_address_from_name(alt.split('\n')[0].strip() if '\n' in alt else alt)
+            if alt and alt.strip() != buyer_raw.strip():
+                seller_raw = alt
 
     # ── Lien info: real TDHCA has "Lien Holder" ──
     lien_raw = (

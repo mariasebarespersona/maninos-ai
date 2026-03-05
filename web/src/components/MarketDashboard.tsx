@@ -268,6 +268,8 @@ export default function MarketDashboard() {
   const [tdhcaResult, setTdhcaResult] = useState<any>(null);
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
   const [tdhcaPageText, setTdhcaPageText] = useState<string>('');
+  const [tdhcaDebugLog, setTdhcaDebugLog] = useState<string[]>([]);
+  const [showTdhcaDebug, setShowTdhcaDebug] = useState(false);
 
   // Evaluation report state (set by DesktopEvaluatorPanel callback)
   const [evalReport, setEvalReport] = useState<any>(null);
@@ -648,6 +650,7 @@ export default function MarketDashboard() {
         }
         setTdhcaResult(data.data);
         setTdhcaPageText(data.page_text || '');
+        setTdhcaDebugLog(data.debug_log || []);
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados');
@@ -2264,6 +2267,38 @@ export default function MarketDashboard() {
                             <ExternalLink className="w-3.5 h-3.5" />
                             Ver Registro Completo en TDHCA
                           </a>
+                        )}
+
+                        {/* Debug panel — collapsible */}
+                        <button
+                          onClick={() => setShowTdhcaDebug(!showTdhcaDebug)}
+                          className="mt-2 text-[10px] text-gray-400 hover:text-gray-600 underline"
+                        >
+                          {showTdhcaDebug ? 'Ocultar debug' : 'Mostrar debug (raw_fields)'}
+                        </button>
+                        {showTdhcaDebug && (
+                          <div className="mt-2 p-2 bg-gray-100 rounded text-[9px] font-mono max-h-60 overflow-auto">
+                            <p className="font-bold mb-1">raw_fields ({Object.keys(tdhcaResult.raw_fields || {}).length} campos):</p>
+                            {Object.entries(tdhcaResult.raw_fields || {}).sort().map(([k, v]) => (
+                              <div key={k} className="truncate">
+                                <span className="text-blue-600">{k}</span>: <span className="text-gray-700">{String(v).substring(0, 80)}</span>
+                              </div>
+                            ))}
+                            {tdhcaDebugLog.length > 0 && (
+                              <>
+                                <p className="font-bold mt-2 mb-1">debug_log:</p>
+                                {tdhcaDebugLog.map((line, i) => (
+                                  <div key={i} className="truncate text-gray-500">{line}</div>
+                                ))}
+                              </>
+                            )}
+                            {tdhcaPageText && (
+                              <>
+                                <p className="font-bold mt-2 mb-1">page_text (first 500):</p>
+                                <pre className="whitespace-pre-wrap text-gray-500">{tdhcaPageText.substring(0, 500)}</pre>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
