@@ -585,6 +585,139 @@ The most recent development has focused on:
 
 ---
 
+## Claude Code Agent Team (MANDATORY WORKFLOW)
+
+> **IMPORTANT**: When working on ANY task in this repository, Claude Code MUST internally reason through the problem using this 6-agent team structure before proposing changes. Each agent's perspective should be considered for every non-trivial task. This is NOT optional — it is the default development workflow.
+
+### The Team
+
+| # | Agent Role | Scope |
+|---|-----------|-------|
+| 1 | **AI/LLM Engineer** | Prompts, agents, token costs, caching, price_predictor |
+| 2 | **Backend Architect** | FastAPI + API design + services + Supabase patterns |
+| 3 | **Frontend Engineer** | React/Next.js, components, performance, UX, a11y |
+| 4 | **Security Engineer** | Auth, PII, Stripe, CORS, rate limiting, input validation |
+| 5 | **Data Engineer** | Schema, migrations, queries, indexes, data integrity |
+| 6 | **QA Engineer** | Tests (pytest + Jest), coverage, CI/CD, observability |
+
+### Agent Responsibilities
+
+**1. AI/LLM Engineer**
+- Owns: `api/agents/`, `prompts/`, `api/utils/price_predictor.py`, `api/routes/ai_assistant.py`, `api/routes/extract_listing.py`
+- Responsibilities: System prompt design, agent routing logic, token usage optimization, model selection (GPT-4o vs GPT-4o-mini), response caching, embedding strategy for RAG (`rag_chunks`), voice processing (Whisper), image analysis prompts
+- Activated when: Adding/modifying AI agents, changing prompts, optimizing LLM costs, working with scraper extraction, voice features, or any OpenAI API integration
+
+**2. Backend Architect**
+- Owns: `api/main.py`, `api/routes/`, `api/services/`, `api/models/`, `api/utils/`, `tools/`, `core/`
+- Responsibilities: API route design, service layer architecture, Pydantic schema validation, Supabase query patterns, business logic implementation, error handling strategy, API response format (`{ok, data, message}`), dependency injection, CORS configuration
+- Activated when: Creating/modifying API endpoints, adding business logic, changing database queries, modifying service layer, updating Pydantic models, touching `tools/` utilities
+
+**3. Frontend Engineer**
+- Owns: `web/src/` (all components, pages, hooks, lib, types)
+- Responsibilities: React component architecture, Next.js App Router patterns (server vs client components), TypeScript types (`types/index.ts`), Tailwind styling, state management, API proxy routes (`web/src/app/api/`), form validation, responsive design, accessibility (a11y), performance (code splitting, lazy loading), UI text in Spanish
+- Activated when: Creating/modifying UI components, adding pages, updating types, changing proxy routes, styling changes, working on any portal UI (Homes, Capital, Clientes)
+
+**4. Security Engineer**
+- Owns: `api/utils/roles.py`, `tools/stripe_payments.py`, `tools/stripe_identity.py`, `web/src/middleware.ts`, `web/src/lib/supabase/`
+- Responsibilities: Authentication enforcement (Supabase JWT validation), role-based access control (RBAC via `Depends()`), Stripe webhook signature verification, PII/KYC data protection, input validation and sanitization, CORS policy, rate limiting, file upload validation, RLS policy review, secret management
+- Activated when: ANY route handles user data, payment flows, auth logic, file uploads, webhook handlers, or when adding new API endpoints (must verify auth is enforced)
+
+**5. Data Engineer**
+- Owns: `migrations/`, database schema, `tools/supabase_client.py`
+- Responsibilities: Schema design and migrations (sequential numbering 001-N), index strategy, foreign key constraints and cascades, RLS policies, query optimization (N+1 prevention), data integrity constraints (CHECK, UNIQUE, NOT NULL), JSONB column design, polymorphic patterns (`documents` table), migration conflict detection (no duplicate numbers)
+- Activated when: Adding/modifying database tables, creating migrations, changing queries that could cause N+1, working with JSONB columns, modifying RLS policies, adding indexes
+
+**6. QA Engineer**
+- Owns: `tests/`, `web/__tests__/`, `.github/workflows/`, `jest.config.ts`, `Dockerfile`, `Procfile`, `railway.json`
+- Responsibilities: Test strategy (pytest for backend, Jest + RTL for frontend), test coverage targets, CI/CD pipeline integrity (tests MUST block deploys), Docker build verification, deployment configuration (Railway + Vercel), observability setup (Logfire, Langfuse), health check validation, type checking (`tsc --noEmit`)
+- Activated when: After ANY code change (verify tests pass), modifying CI/CD, changing Docker config, deployment issues, adding new features (must add tests), modifying existing tests
+
+### When to Activate Each Agent
+
+| Scenario | Agents Activated |
+|----------|-----------------|
+| New API endpoint | Backend Architect + Security Engineer + Data Engineer + QA Engineer |
+| New UI page/component | Frontend Engineer + Backend Architect (if new API needed) + QA Engineer |
+| Database schema change | Data Engineer + Backend Architect + QA Engineer |
+| AI/agent feature | AI/LLM Engineer + Backend Architect + QA Engineer |
+| Payment/financial flow | Security Engineer + Backend Architect + Data Engineer + QA Engineer |
+| Bug fix | Domain-specific agent + QA Engineer (always) |
+| Performance issue | Data Engineer (queries) + Frontend Engineer (UI) + Backend Architect (API) |
+| Security vulnerability | Security Engineer (lead) + all affected agents |
+| New migration | Data Engineer (lead) + Backend Architect (for model updates) |
+| Refactoring | Backend Architect or Frontend Engineer (lead) + QA Engineer |
+
+### Collaboration Workflow
+
+When Claude Code receives a task, follow this process:
+
+```
+Step 1: TRIAGE — Identify which agents are relevant to the task
+Step 2: ANALYZE — Each relevant agent examines the problem from their perspective:
+         - Backend Architect: API design, service patterns, error handling
+         - Frontend Engineer: Component structure, UX impact, type safety
+         - Security Engineer: Auth requirements, data exposure risks, input validation
+         - Data Engineer: Schema impact, query efficiency, migration needs
+         - AI/LLM Engineer: Prompt changes, token costs, model selection
+         - QA Engineer: Test strategy, CI impact, deployment risks
+Step 3: PLAN — Synthesize agent perspectives into a unified approach
+         - Resolve conflicts between agent recommendations
+         - Prioritize security and data integrity over convenience
+         - Ensure backward compatibility unless explicitly breaking
+Step 4: IMPLEMENT — Execute changes following each agent's guidelines
+Step 5: VERIFY — QA Engineer validates:
+         - Type check passes (`tsc --noEmit`)
+         - Existing tests pass
+         - New tests cover the change
+         - No security regressions (Security Engineer review)
+```
+
+### Cross-Agent Rules
+
+1. **Security Engineer has VETO power** — If the Security Engineer perspective identifies a risk, it must be addressed before merging. No exceptions.
+2. **QA Engineer is ALWAYS activated** — Every change needs verification. Even "simple" changes can break things.
+3. **Data Engineer reviews ALL migrations** — No schema change goes unreviewed. Migrations must be sequential, non-duplicate, and include rollback notes.
+4. **Backend Architect enforces patterns** — API response format, service layer usage, and error handling must follow established conventions.
+5. **Frontend Engineer owns the user experience** — UI text stays in Spanish, Tailwind only (no CSS modules), server components by default.
+6. **AI/LLM Engineer guards costs** — Every LLM call must justify its model choice (GPT-4o vs mini) and consider caching.
+
+### Typical Multi-Agent Workflow Example
+
+**Task**: "Add a new endpoint to calculate DTI for client applications"
+
+```
+1. Backend Architect: Design POST /api/capital/applications/{id}/dti
+   - Define DTIRequest/DTIResponse Pydantic schemas
+   - Create endpoint in api/routes/capital/applications.py
+   - Use existing formula: (total_debts / total_income) × 100, threshold ≤ 43%
+
+2. Security Engineer: Review
+   - Endpoint needs auth middleware (Supabase JWT + role check)
+   - Only 'admin' and 'treasury' roles can access
+   - Validate income > 0 to prevent division by zero
+   - PII fields (SSN, income) must not be logged
+
+3. Data Engineer: Check schema
+   - Verify clients table has income/debt fields
+   - If not, create migration for new columns
+   - Add CHECK constraint: income >= 0, debts >= 0
+
+4. Frontend Engineer: Build UI
+   - Add DTI calculator component to applications detail page
+   - Display result with color coding (green ≤ 35%, yellow 35-43%, red > 43%)
+   - Call through Next.js API proxy route
+
+5. AI/LLM Engineer: N/A (no LLM involvement)
+
+6. QA Engineer: Test
+   - Unit test for DTI calculation edge cases (zero income, zero debt)
+   - Integration test for endpoint with auth
+   - Frontend test for component rendering
+   - Verify CI pipeline passes
+```
+
+---
+
 ## Gotchas & Warnings
 
 1. **`app.py` is NOT the active backend** — Use `api/main.py`. The `app.py` file is legacy code.
