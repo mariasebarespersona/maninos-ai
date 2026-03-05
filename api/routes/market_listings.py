@@ -1485,15 +1485,24 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
             soup = BeautifulSoup(content, 'html.parser')
             
             page_text = soup.get_text('\n', strip=True)
+            tables_before = len(soup.find_all('table'))
             debug_log.append(f"Step6: Page URL: {page.url}")
+            debug_log.append(f"Step6: Tables in HTML: {tables_before}")
             debug_log.append(f"Step6: Page text (first 500): {page_text[:500]}")
             logger.info(f"[TDHCA] Page URL: {page.url}")
+            logger.info(f"[TDHCA] Tables in raw HTML: {tables_before}")
             logger.info(f"[TDHCA] Page text (first 1500 chars): {page_text[:1500]}")
             
-            # Parse using centralized parser
+            # Parse using centralized parser (NOTE: this modifies soup in-place via _strip_nav_elements)
             title_data = parse_tdhca_detail_page(soup, page_text)
             
+            # Get cleaned page_text AFTER parser stripped nav elements
+            clean_page_text = soup.get_text('\n', strip=True)
+            tables_after = len(soup.find_all('table'))
+            
+            debug_log.append(f"Step6: Tables after strip: {tables_after} (removed {tables_before - tables_after})")
             debug_log.append(f"Step6: Parsed {len(title_data)} fields: {list(title_data.keys())}")
+            logger.info(f"[TDHCA] Tables after strip: {tables_after} (removed {tables_before - tables_after})")
             logger.info(f"[TDHCA] Parsed fields ({len(title_data)}): {list(title_data.keys())}")
             
             # Get URLs for reference
@@ -1531,6 +1540,7 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 "message": f"Título encontrado para {request.search_type}: {request.search_value}",
                 "data": structured,
                 "page_text": page_text[:5000],
+                "clean_page_text": clean_page_text[:5000],
                 "debug_log": debug_log,
                 "raw_html": content[:10000],  # First 10K of HTML for debugging
             }

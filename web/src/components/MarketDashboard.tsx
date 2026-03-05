@@ -268,6 +268,7 @@ export default function MarketDashboard() {
   const [tdhcaResult, setTdhcaResult] = useState<any>(null);
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
   const [tdhcaPageText, setTdhcaPageText] = useState<string>('');
+  const [tdhcaCleanPageText, setTdhcaCleanPageText] = useState<string>('');
   const [tdhcaDebugLog, setTdhcaDebugLog] = useState<string[]>([]);
   const [showTdhcaDebug, setShowTdhcaDebug] = useState(false);
 
@@ -650,6 +651,7 @@ export default function MarketDashboard() {
         }
         setTdhcaResult(data.data);
         setTdhcaPageText(data.page_text || '');
+        setTdhcaCleanPageText(data.clean_page_text || '');
         setTdhcaDebugLog(data.debug_log || []);
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
@@ -2292,9 +2294,15 @@ export default function MarketDashboard() {
                                 ))}
                               </>
                             )}
+                            {tdhcaCleanPageText && (
+                              <>
+                                <p className="font-bold mt-2 mb-1">clean_page_text (after strip, first 1000):</p>
+                                <pre className="whitespace-pre-wrap text-green-700">{tdhcaCleanPageText.substring(0, 1000)}</pre>
+                              </>
+                            )}
                             {tdhcaPageText && (
                               <>
-                                <p className="font-bold mt-2 mb-1">page_text (first 500):</p>
+                                <p className="font-bold mt-2 mb-1">raw page_text (first 500):</p>
                                 <pre className="whitespace-pre-wrap text-gray-500">{tdhcaPageText.substring(0, 500)}</pre>
                               </>
                             )}

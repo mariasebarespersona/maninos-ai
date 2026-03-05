@@ -314,23 +314,25 @@ def _parse_search_results_table(soup, title_data: Dict[str, str]) -> None:
 def _strip_nav_elements(soup) -> None:
     """Remove navigation links and non-data elements from the soup BEFORE parsing."""
 
+    tables_before = len(soup.find_all('table'))
+    logger.info(f"[TDHCA-strip] Tables BEFORE stripping: {tables_before}")
+
     # ═══ CRITICAL: Remove the TDHCA sidebar navigation ═══
     # The TDHCA detail page uses a layout table with a <td class="menuBG">
     # that contains the entire sidebar menu. This sidebar has nested tables
     # with links like "View Ownership Records", "Download Tax Lien Records", etc.
-    # If not removed, our table parser captures the sidebar text as data values
-    # (e.g., "County" gets the entire sidebar text as its value).
+    # If not removed, our table parser captures the sidebar text as data values.
+    # Decomposing menuBG removes ALL nested elements (bgTable, bgNavBox) inside it.
+    stripped_sidebar = 0
     for sidebar in soup.find_all('td', class_='menuBG'):
-        logger.debug("[TDHCA-parser] Stripping sidebar <td class='menuBG'>")
+        stripped_sidebar += 1
         sidebar.decompose()
+    logger.info(f"[TDHCA-strip] Removed {stripped_sidebar} sidebar <td class='menuBG'>")
 
-    # Also remove nav boxes (TDHCA uses class="bgNavBox" for the sidebar menu)
-    for nav_box in soup.find_all('table', class_='bgNavBox'):
-        logger.debug("[TDHCA-parser] Stripping <table class='bgNavBox'>")
-        nav_box.decompose()
-    for nav_box in soup.find_all('table', class_='bgTable'):
-        logger.debug("[TDHCA-parser] Stripping <table class='bgTable'>")
-        nav_box.decompose()
+    # ═══ DO NOT strip by class="bgTable" or "bgNavBox" globally ═══
+    # These classes may also appear on DATA tables (Sections, Owners, etc.)
+    # on the real TDHCA page. The menuBG stripping above already removes
+    # sidebar tables. Any remaining bgTable/bgNavBox tables are DATA.
 
     # Remove the top navigation bar (id="topnav")
     for topnav in soup.find_all(id='topnav'):
@@ -378,6 +380,9 @@ def _strip_nav_elements(soup) -> None:
     for hidden in soup.find_all('div', class_='hiddentext'):
         hidden.decompose()
 
+    tables_after = len(soup.find_all('table'))
+    logger.info(f"[TDHCA-strip] Tables AFTER stripping: {tables_after} (removed {tables_before - tables_after})")
+
 
 def _clean_page_text(page_text: str) -> str:
     """Remove lines that consist solely of navigation/chrome terms."""
@@ -423,9 +428,22 @@ def _cleanup_nav_garbage(title_data: Dict[str, str]) -> None:
 def _parse_tables(soup, title_data: Dict[str, str]) -> None:
     """Extract fields from all HTML tables in the page."""
     tables = soup.find_all('table')
+    logger.info(f"[TDHCA-tables] Processing {len(tables)} tables")
 
-    for table in tables:
-        rows = table.find_all('tr')
+    for table_idx, table in enumerate(tables):
+        # Use recursive=False on <tbody> first, then fall back to direct <tr> children.
+        # This prevents processing rows from NESTED tables (which would create
+        # cross-table cell pairings and garbage field values).
+        tbody = table.find('tbody')
+        if tbody:
+            rows = tbody.find_all('tr', recursive=False)
+        else:
+            rows = table.find_all('tr', recursive=False)
+
+        if not rows:
+            continue
+
+        logger.debug(f"[TDHCA-tables] Table {table_idx}: {len(rows)} direct rows")
         pending_headers: Optional[List[str]] = None
 
         for row in rows:
@@ -543,9 +561,19 @@ def _parse_kv_cells(cells, title_data: Dict[str, str]) -> None:
 
         value_looks_like_header = any(h in val_l for h in _HEADER_HINTS) and len(val) < 30
 
+        # Reject keys that look like DATA values (from 4-column table cross-pairings):
+        # dates (03/01/2001), serial/label codes (TEX0012345), all-caps short words (USED, YES)
+        key_looks_like_value = bool(
+            re.match(r'\d{1,2}/\d{1,2}/\d{2,4}$', key)       # date
+            or re.match(r'[A-Z]{2,4}\d{4,}$', key)            # label/serial code
+            or (key.isupper() and len(key) <= 10 and ' ' not in key
+                and not key.endswith(':'))                       # short all-caps value like USED, YES
+        )
+
         if (key and val
                 and 1 < len(key) < 60
                 and not key.replace(',', '').replace('.', '').replace(' ', '').isdigit()
+                and not key_looks_like_value
                 and not value_looks_like_header
                 and key_l != val_l
                 and val_l not in _BAD_VALUES
