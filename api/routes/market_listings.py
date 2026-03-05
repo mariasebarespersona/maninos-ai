@@ -1542,7 +1542,7 @@ async def tdhca_title_lookup(request: TDHCALookupRequest):
                 "page_text": page_text[:5000],
                 "clean_page_text": clean_page_text[:5000],
                 "debug_log": debug_log,
-                "raw_html": content[:10000],  # First 10K of HTML for debugging
+                "raw_html": content,  # Full HTML for accurate debugging
             }
         
     except Exception as e:

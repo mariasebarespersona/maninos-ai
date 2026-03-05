@@ -269,6 +269,7 @@ export default function MarketDashboard() {
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
   const [tdhcaPageText, setTdhcaPageText] = useState<string>('');
   const [tdhcaCleanPageText, setTdhcaCleanPageText] = useState<string>('');
+  const [tdhcaRawHtml, setTdhcaRawHtml] = useState<string>('');
   const [tdhcaDebugLog, setTdhcaDebugLog] = useState<string[]>([]);
   const [showTdhcaDebug, setShowTdhcaDebug] = useState(false);
 
@@ -652,6 +653,7 @@ export default function MarketDashboard() {
         setTdhcaResult(data.data);
         setTdhcaPageText(data.page_text || '');
         setTdhcaCleanPageText(data.clean_page_text || '');
+        setTdhcaRawHtml(data.raw_html || '');
         setTdhcaDebugLog(data.debug_log || []);
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
@@ -2305,6 +2307,38 @@ export default function MarketDashboard() {
                                 <p className="font-bold mt-2 mb-1">raw page_text (first 500):</p>
                                 <pre className="whitespace-pre-wrap text-gray-500">{tdhcaPageText.substring(0, 500)}</pre>
                               </>
+                            )}
+
+                            {/* Raw HTML download/copy for debugging */}
+                            {tdhcaRawHtml && (
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    const blob = new Blob([tdhcaRawHtml], { type: 'text/html' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `tdhca_real_page_${Date.now()}.html`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700"
+                                >
+                                  ⬇️ Descargar HTML Real ({(tdhcaRawHtml.length / 1024).toFixed(1)} KB)
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(tdhcaRawHtml);
+                                    alert('HTML copiado al portapapeles');
+                                  }}
+                                  className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded hover:bg-gray-700"
+                                >
+                                  📋 Copiar HTML
+                                </button>
+                                <span className="text-xs text-gray-400 self-center">
+                                  Pega este HTML en el chat para que lo use como test fixture real
+                                </span>
+                              </div>
                             )}
                           </div>
                         )}
