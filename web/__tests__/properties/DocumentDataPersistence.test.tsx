@@ -187,7 +187,7 @@ let fetchMockResponses: Record<string, any> = {}
 
 function setupFetchMock(property: any) {
   fetchMockResponses = {}
-  global.fetch = jest.fn((url: string, options?: any) => {
+  global.fetch = jest.fn((url: string | URL | Request, options?: any) => {
     const urlStr = typeof url === 'string' ? url : url.toString()
 
     // GET property

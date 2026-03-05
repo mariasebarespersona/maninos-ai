@@ -12,6 +12,7 @@ export interface Block2AValidationData {
   section1_width: string
   section1_length: string
   has_hud_label: boolean
+  no_hud_label?: boolean
 }
 
 const BLOCK2A_REQUIRED_LABELS: Array<{ key: keyof Block2AValidationData; label: string }> = [
@@ -35,7 +36,7 @@ export function getMissingBlock2AFields(data: Block2AValidationData): string[] {
   if (!String(data.date_of_manufacture || '').trim() && !String(data.year || '').trim()) {
     missing.push('Date of Manufacture')
   }
-  if (data.has_hud_label && !String(data.section1_label || '').trim()) {
+  if (data.has_hud_label && !data.no_hud_label && !String(data.section1_label || '').trim()) {
     missing.push('Section 1 Label/Seal Number')
   }
   return missing
