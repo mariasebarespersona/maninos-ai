@@ -1,6 +1,6 @@
 # Agent Bible 🤖
 
-**Version 1.0** | Last Updated: January 28, 2026
+**Version 1.1** | Last Updated: March 5, 2026
 
 > **⚠️ CRITICAL: READ THIS ENTIRE DOCUMENT BEFORE BUILDING AGENTS**
 > 
@@ -1298,6 +1298,7 @@ Confidence levels:
 ---
 
 **Version History:**
+- v1.1 (Mar 5, 2026) - Updated date; see CLAUDE.md for full project context
 - v1.0 (Jan 28, 2026) - Initial version
 
 ---

@@ -1,8 +1,10 @@
 # Arquitectura de Portales - Maninos AI v1.0
 
-**Fecha:** 27 Enero 2026  
-**Estado:** Draft  
+**Fecha:** 27 Enero 2026 (actualizado 5 Marzo 2026)  
+**Estado:** Implementado  
 **Basado en:** `docs/Maninos_AI_Diagrama_Flujo_Completo.png`
+
+> **Nota:** Para el contexto completo y actualizado del proyecto, ver `CLAUDE.md` en la raíz del repo.
 
 ---
 
@@ -348,13 +350,13 @@ maninos-ai/
 
 ---
 
-## 🎯 Próximos Pasos
+## 🎯 Estado Actual (Marzo 2026)
 
-1. [ ] Validar este documento con el cliente
-2. [ ] Definir prioridades (¿qué portal primero?)
-3. [ ] Crear migración inicial de base de datos
-4. [ ] Configurar autenticación por portal
-5. [ ] Empezar desarrollo del primer portal
+1. [x] Validar este documento con el cliente — Validado en Texas (Feb 2026)
+2. [x] Definir prioridades — Portal Homes primero, luego Capital, luego Clientes
+3. [x] Crear migración inicial de base de datos — 47 migraciones completadas
+4. [x] Configurar autenticación por portal — Supabase Auth implementado
+5. [x] Empezar desarrollo — Los 3 portales están implementados y en producción
 
 ---
 

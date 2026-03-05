@@ -1,8 +1,10 @@
 # BuscadorAgent v2 - Documentación
 
+> **Nota:** Para el contexto completo del proyecto, ver `CLAUDE.md` en la raíz del repo.
+
 ## 🎯 Propósito
 
-El BuscadorAgent es un agente AI que busca mobile homes en internet, los analiza con las reglas financieras de Maninos, y mantiene un dashboard con 10 propiedades calificadas.
+El BuscadorAgent es un agente AI que busca mobile homes en internet, los analiza con las reglas financieras de Maninos, y mantiene un dashboard con propiedades calificadas.
 
 ---
 
@@ -10,9 +12,12 @@ El BuscadorAgent es un agente AI que busca mobile homes en internet, los analiza
 
 | # | Fuente | URL | Uso Principal |
 |---|--------|-----|---------------|
-| 1 | **MHVillage** | https://www.mhvillage.com | Fuente primaria - Marketplace #1 de mobile homes en USA. 23,617+ casas en venta, 44,639+ comunidades |
+| 1 | **MHVillage** | https://www.mhvillage.com | Fuente primaria - Marketplace #1 de mobile homes en USA |
 | 2 | **MobileHome.net** | https://www.mobilehome.net | Fuente secundaria - Cross-referencia de precios |
-| 3 | **Zillow** | https://www.zillow.com | Para estimaciones de ARV (After Repair Value) y comparables |
+| 3 | **Craigslist** | https://www.craigslist.org | Listados locales |
+| 4 | **21st Mortgage** | https://www.21stmortgage.com | Casas con financiamiento |
+| 5 | **VMF Homes (Vanderbilt)** | https://www.vmfhomes.com/homesearch | Casas nuevas y usadas |
+| 6 | **Facebook Marketplace** | via scraping (cookies) | Fuente #1 del cliente — owner-to-owner |
 
 ### Estructura de URLs para Texas
 
@@ -26,41 +31,42 @@ Zillow:       https://www.zillow.com/{city}-tx/mobile-homes/
 
 ## 📏 Reglas de Calificación
 
-### Regla 1: 70% Rule (40 puntos)
+### Regla 1: 60% Rule (Regla Principal)
 
 ```
-Precio Compra ≤ (ARV × 0.70) - Costo Renovación
+Precio Compra ≤ Valor de Mercado × 0.60
 
 Donde:
-- ARV = After Repair Value (valor después de reparaciones)
-- Renovación = Estimación de costo de renovación
-- 0.70 = Margen de seguridad estándar en inversión inmobiliaria
+- Valor de Mercado = Promedio de datos históricos de Maninos + promedio web scraping
+- 0.60 = Máximo a pagar (60% del valor de mercado)
+- Costo de renovación NO se incluye en este cálculo (presupuesto separado: $5K-$15K)
 ```
 
 **Ejemplo:**
-- ARV estimado: $55,000
-- Costo renovación: $8,000
-- Máximo a pagar: ($55,000 × 0.70) - $8,000 = **$30,500**
+- Valor de mercado estimado: $50,000
+- Máximo a pagar: $50,000 × 0.60 = **$30,000**
+- Renovación: $8,000 (presupuesto separado)
 
-### Regla 2: Antigüedad (30 puntos)
+> **NOTA:** La regla anterior era 70%. Fue cambiada a 60% por confirmación del cliente (Feb 2026).
 
-```
-Año de construcción ≥ 1995
-```
-
-- Mobile homes de más de 30 años tienen más riesgos estructurales
-- Financiamiento más difícil para casas muy antiguas
-- Mayor costo de renovación en casas viejas
-
-### Regla 3: Ubicación (30 puntos)
+### Regla 2: Ubicación y Zona
 
 ```
 Estado = Texas (TX)
+Radio = 200 millas desde Houston + 200 millas desde Dallas
 ```
 
 - Maninos opera solo en Texas
-- Conocimiento del mercado local
-- Red de contratistas establecida
+- Dos zonas de operación centradas en los 2 yards principales
+- El radio es desde las ciudades (Houston/Dallas), NO desde ubicación del empleado
+
+### Regla 3: Precio
+
+```
+Rango: $5,000 - $80,000
+```
+
+> **NOTA:** Ya NO hay filtro de antigüedad (year_built). Se eliminó por request del cliente (Feb 2026).
 
 ---
 
@@ -68,13 +74,13 @@ Estado = Texas (TX)
 
 | Regla | Puntos | Descripción |
 |-------|--------|-------------|
-| 70% Rule | 40 | Cumple regla del 70% |
-| Antigüedad | 30 | Año ≥ 1995 |
-| Ubicación | 30 | Texas |
+| 60% Rule | 50 | Precio ≤ 60% valor mercado |
+| Ubicación/Zona | 30 | Texas, dentro de 200mi de Houston o Dallas |
+| Rango de Precio | 20 | Entre $5K-$80K |
 | **TOTAL** | **100** | Máximo |
 
 **Calificación:**
-- **100 puntos**: ✅ Calificada (pasa las 3 reglas)
+- **100 puntos**: ✅ Calificada (pasa todas las reglas)
 - **70+ puntos**: ⚠️ Parcialmente calificada
 - **<70 puntos**: ❌ No califica
 

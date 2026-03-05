@@ -1,8 +1,11 @@
 # 🏠 Plan Portal Clientes - Maninos AI
 
-**Versión:** 1.0  
+**Versión:** 1.0 (implementado)  
 **Fecha:** Febrero 2026  
 **Autor:** Senior App Developer  
+
+> **Nota:** Portal Clientes está implementado y en producción en `/clientes/*`.
+> Para el contexto completo del proyecto, ver `CLAUDE.md` en la raíz del repo.
 
 ---
 

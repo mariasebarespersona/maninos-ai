@@ -1,6 +1,6 @@
 # Developer Bible 📖
 
-**Version 3.0** | Last Updated: January 27, 2026
+**Version 3.1** | Last Updated: March 5, 2026
 
 > **⚠️ CRITICAL: READ THIS ENTIRE DOCUMENT BEFORE CODING**
 > 
@@ -659,6 +659,7 @@ def test_create_user(db_session):
 ---
 
 **Version History:**
+- v3.1 (Mar 5, 2026) - Updated date; see CLAUDE.md for full project context
 - v3.0 (Jan 27, 2026) - Cleaned up to be generic, not app-specific
 - v2.0 (Jan 21, 2026) - Previous version with app-specific content
 - v1.0 (Dec 16, 2024) - Original version
