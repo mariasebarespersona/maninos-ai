@@ -350,9 +350,9 @@ Every FastAPI route has a corresponding Next.js proxy route in `web/src/app/api/
 
 | Rule | Value | Notes |
 |------|-------|-------|
-| **Max purchase price** | 60% of market value | Renovation cost NOT included |
-| **Max sale price** | 80% of market value | Client gets 20% below market |
-| **Target profit** | 20% margin | |
+| **Max purchase price** |
+| **Max sale price** | 
+| **Target profit** |
 | **Price range** | $5,000 - $80,000 | For searching |
 | **Zone** | 200 miles from Houston + 200 miles from Dallas | |
 | **Property types** | Single wide (80%) + Double wide (20%) | |
