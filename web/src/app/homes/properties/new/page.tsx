@@ -304,7 +304,8 @@ export default function NewPropertyPage() {
   const isBosComplete = !!(billOfSaleData || documents.billOfSale)
   const isTitleComplete = !!(tdhcaResult || documents.title)
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication)
-  const allDocsReady = isBosComplete && isTitleComplete && isTitleAppComplete
+  // Bill of Sale + Title are compulsory; Title Application is optional
+  const allDocsReady = isBosComplete && isTitleComplete
   const isPropertyInfoValid = !!form.address.trim()
 
   // Navigation
@@ -944,11 +945,12 @@ export default function NewPropertyPage() {
               )}
             </div>
 
-            {/* Title Application */}
+            {/* Title Application (optional) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <FileText className="w-4 h-4 inline mr-2" />
                 Aplicación Cambio de Título (Statement of Ownership)
+                <span className="ml-2 text-xs font-normal text-gray-400">(opcional)</span>
               </label>
               
               {showTitleApp ? (
@@ -1109,7 +1111,7 @@ export default function NewPropertyPage() {
                 <AlertCircle className="w-4 h-4" />
                 {!isBosComplete ? 'Completa el Bill of Sale (template o sube archivo)' : 
                  !isTitleComplete ? 'Busca el título en TDHCA o sube manualmente' : 
-                 'Completa todos los documentos para continuar'}
+                 'Completa los documentos obligatorios para continuar'}
               </p>
             )}
           </div>
@@ -1325,7 +1327,7 @@ export default function NewPropertyPage() {
                 <div className="flex justify-between items-center py-2 border-b border-green-200">
                   <span className="text-green-700">Documentos</span>
                   <span className="font-medium text-green-900">
-                    Bill of Sale {isBosComplete ? '✓' : '—'} | Título {isTitleComplete ? '✓' : '—'} | Cambio Título {isTitleAppComplete ? '✓' : '—'}
+                    Bill of Sale {isBosComplete ? '✓' : '—'} | Título {isTitleComplete ? '✓' : '—'} | Cambio Título {isTitleAppComplete ? '✓' : '(opcional)'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
