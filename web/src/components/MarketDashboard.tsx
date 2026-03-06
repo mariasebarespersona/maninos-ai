@@ -1934,13 +1934,13 @@ export default function MarketDashboard() {
                   <h3 className="text-xl font-semibold">
                     {purchaseStep === 'documents' && 'Paso 1: Documentos'}
                     {purchaseStep === 'checklist' && 'Paso 2: Evaluación en Campo'}
-                    {purchaseStep === 'payment' && 'Paso 3: Registrar Pago'}
+                    {purchaseStep === 'payment' && 'Paso 3: Orden de Pago'}
                     {purchaseStep === 'confirm' && 'Paso 4: Confirmar Compra'}
                   </h3>
                   <p className="text-navy-200 mt-1 text-sm">
                     {purchaseStep === 'documents' && 'Completa los templates de Bill of Sale, Título y Aplicación de Título'}
                     {purchaseStep === 'checklist' && 'Evalúa la casa con la app móvil antes de continuar'}
-                    {purchaseStep === 'payment' && 'Registra el pago realizado al vendedor'}
+                    {purchaseStep === 'payment' && 'Completa los datos de la orden de pago al vendedor'}
                     {purchaseStep === 'confirm' && 'Revisa y confirma la compra'}
                   </p>
                 </div>
