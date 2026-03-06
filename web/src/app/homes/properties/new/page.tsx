@@ -417,23 +417,32 @@ export default function NewPropertyPage() {
 
       // 4. Create pending payment order if payment info was provided
       if (payment.amount && payee.isPayeeValid) {
-        await fetch('/api/payment-orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            property_id: newProperty.id,
-            property_address: form.address,
-            payee_id: payment.payee_id || undefined,
-            payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
-            bank_name: payee.newPayee.bank_name || undefined,
-            routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
-            account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
-            account_type: payee.newPayee.account_type || 'checking',
-            amount: payment.amount,
-            method: payment.method,
-            notes: 'Compra directa desde Nueva Propiedad',
-          }),
-        }).catch(e => console.error('Error creating payment order:', e))
+        try {
+          const orderRes = await fetch('/api/payment-orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              property_id: newProperty.id,
+              property_address: form.address,
+              payee_id: payment.payee_id || undefined,
+              payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
+              bank_name: payee.newPayee.bank_name || undefined,
+              routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
+              account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
+              account_type: payee.newPayee.account_type || 'checking',
+              amount: payment.amount,
+              method: payment.method,
+              notes: 'Compra directa desde Nueva Propiedad',
+            }),
+          })
+          if (!orderRes.ok) {
+            console.error('Error creating payment order:', orderRes.status)
+            toast.warning('Propiedad creada, pero la orden de pago no se pudo generar.')
+          }
+        } catch (e) {
+          console.error('Error creating payment order:', e)
+          toast.warning('Propiedad creada, pero la orden de pago no se pudo generar.')
+        }
       }
 
       toast.success('¡Propiedad creada! Orden de pago enviada a Notificaciones.')

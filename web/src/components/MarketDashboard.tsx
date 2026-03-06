@@ -1018,23 +1018,33 @@ export default function MarketDashboard() {
       });
 
       // 3.1. Create pending payment order (Abigail will complete it)
-      await fetch('/api/payment-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          property_id: property.id,
-          property_address: selectedListing.address,
-          payee_id: payment.payee_id || undefined,
-          payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
-          bank_name: payee.newPayee.bank_name || undefined,
-          routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
-          account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
-          account_type: payee.newPayee.account_type || 'checking',
-          amount: payment.amount,
-          method: payment.method,
-          notes: `Compra desde Casas del Mercado`,
-        }),
-      });
+      try {
+        const orderRes = await fetch('/api/payment-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            property_id: property.id,
+            property_address: selectedListing.address,
+            payee_id: payment.payee_id || undefined,
+            payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
+            bank_name: payee.newPayee.bank_name || undefined,
+            routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
+            account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
+            account_type: payee.newPayee.account_type || 'checking',
+            amount: payment.amount,
+            method: payment.method,
+            notes: `Compra desde Casas del Mercado`,
+          }),
+        });
+        if (!orderRes.ok) {
+          const errData = await orderRes.json().catch(() => ({}));
+          console.error('Error creating payment order:', orderRes.status, errData);
+          toast.warning('Propiedad creada, pero la orden de pago no se pudo generar. Revisa Notificaciones.');
+        }
+      } catch (orderErr) {
+        console.error('Error creating payment order:', orderErr);
+        toast.warning('Propiedad creada, pero la orden de pago no se pudo generar.');
+      }
       
       // 3.5. Link evaluation report to property
       if (evalReport?.id) {
