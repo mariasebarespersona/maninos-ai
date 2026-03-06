@@ -961,7 +961,7 @@ export default function MarketDashboard() {
           sqft: tdhcaResult?.square_feet ? parseInt(tdhcaResult.square_feet) : selectedListing.sqft,
           bedrooms: selectedListing.bedrooms,
           bathrooms: selectedListing.bathrooms,
-          status: 'purchased',
+          status: 'pending_payment',
           photos: selectedListing.photos || [],
           thumbnail_url: selectedListing.thumbnail_url,
           checklist_data: Object.keys(evalChecklist).length > 0 ? evalChecklist : checklist,

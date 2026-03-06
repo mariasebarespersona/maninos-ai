@@ -50,10 +50,13 @@ async def list_properties(
 ):
     """List all properties with optional status filter."""
     query = sb.table("properties").select("*")
-    
+
     if status:
         query = query.eq("status", status.value)
-    
+    else:
+        # By default, hide pending_payment properties (not yet paid)
+        query = query.neq("status", "pending_payment")
+
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
     
     result = query.execute()

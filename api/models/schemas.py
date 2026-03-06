@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 # ============================================================================
 
 class PropertyStatus(str, Enum):
+    PENDING_PAYMENT = "pending_payment"  # Orden de pago creada, Abigail no ha pagado
     PURCHASED = "purchased"
     PUBLISHED = "published"
     RESERVED = "reserved"      # Reservada: venta en proceso (contado o RTO)

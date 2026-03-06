@@ -192,6 +192,15 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     if not result.data:
         raise HTTPException(status_code=500, detail="Error updating payment order")
 
+    # Update property status from pending_payment → purchased
+    property_id = order.get("property_id")
+    if property_id:
+        try:
+            sb.table("properties").update({"status": "purchased"}).eq("id", property_id).execute()
+            logger.info(f"[payment_orders] Property {property_id} status → purchased")
+        except Exception as e:
+            logger.warning(f"[payment_orders] Could not update property status: {e}")
+
     logger.info(f"[payment_orders] Completed order {order_id}: ref={req.reference}")
 
     return {
