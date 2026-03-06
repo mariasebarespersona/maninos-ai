@@ -13,10 +13,23 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from tools.supabase_client import sb
-from routes.accounting import _generate_transaction_number
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _generate_transaction_number() -> str:
+    today = date.today().strftime("%y%m%d")
+    prefix = f"TXN-{today}-"
+    try:
+        existing = sb.table("accounting_transactions") \
+            .select("transaction_number") \
+            .like("transaction_number", f"{prefix}%") \
+            .execute()
+        count = len(existing.data) if existing.data else 0
+    except Exception:
+        count = 0
+    return f"{prefix}{count + 1:03d}"
 
 
 # =============================================================================
