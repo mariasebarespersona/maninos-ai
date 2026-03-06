@@ -499,28 +499,31 @@ export default function MarketDashboard() {
     const errors: string[] = [];
 
     try {
-      for (const city of cities) {
-        try {
+      // Run all cities in parallel for speed
+      const results = await Promise.allSettled(
+        cities.map(async (city) => {
           const params = new URLSearchParams({ city, min_price: '5000', max_price: '80000' });
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 120000); // 2 min timeout per city
           const response = await fetch(`/api/market-listings/scrape?${params}`, {
             method: 'POST',
+            signal: controller.signal,
           });
+          clearTimeout(timer);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return { city, data: await response.json() };
+        })
+      );
 
-          if (!response.ok) {
-            errors.push(`${city}: HTTP ${response.status}`);
-            continue;
-          }
-
-          const result = await response.json();
-          if (result.success) {
-            totalScraped += result.market_analysis?.total_scraped || 0;
-            totalSaved += result.saved_to_db || 0;
-            totalQualified += result.qualified || 0;
-          } else {
-            errors.push(`${city}: ${result.detail || 'error'}`);
-          }
-        } catch (e) {
-          errors.push(`${city}: ${e}`);
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.data.success) {
+          totalScraped += r.value.data.market_analysis?.total_scraped || 0;
+          totalSaved += r.value.data.saved_to_db || 0;
+          totalQualified += r.value.data.qualified || 0;
+        } else if (r.status === 'fulfilled') {
+          errors.push(`${r.value.city}: ${r.value.data.detail || 'error'}`);
+        } else {
+          errors.push(r.reason?.message || 'error');
         }
       }
 
@@ -1416,7 +1419,7 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                BuscadorAgent trabajando...
+                Buscando casas...
             </>
           ) : (
             <>
