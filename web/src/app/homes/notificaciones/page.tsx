@@ -21,9 +21,13 @@ interface PaymentOrder {
   status: 'pending' | 'completed' | 'cancelled'
   payee_name: string
   bank_name: string | null
+  routing_number: string | null
+  account_number: string | null
   routing_number_last4: string | null
   account_number_last4: string | null
   account_type: string
+  payee_address: string | null
+  bank_address: string | null
   amount: number
   method: string
   reference: string | null
@@ -207,14 +211,40 @@ export default function NotificacionesPage() {
                     </span>
                   </div>
 
-                  {/* Payee Info */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                    <span className="flex items-center gap-1">
-                      <CreditCard className="w-3 h-3" />
+                  {/* Bank Details for Abigail */}
+                  <div className="bg-gray-50 rounded-lg p-3 mb-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                      <CreditCard className="w-4 h-4" />
                       {order.payee_name}
-                      {order.bank_name && ` - ${order.bank_name}`}
-                      {order.account_number_last4 && ` (****${order.account_number_last4})`}
-                    </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
+                      {order.bank_name && (
+                        <div><span className="font-medium">Banco:</span> {order.bank_name}</div>
+                      )}
+                      {order.account_type && (
+                        <div><span className="font-medium">Tipo:</span> {order.account_type === 'checking' ? 'Checking' : 'Savings'}</div>
+                      )}
+                      {order.routing_number && (
+                        <div><span className="font-medium">Routing #:</span> <span className="font-mono">{order.routing_number}</span></div>
+                      )}
+                      {order.account_number && (
+                        <div><span className="font-medium">Account #:</span> <span className="font-mono">{order.account_number}</span></div>
+                      )}
+                      {!order.routing_number && order.routing_number_last4 && (
+                        <div><span className="font-medium">Routing #:</span> ****{order.routing_number_last4}</div>
+                      )}
+                      {!order.account_number && order.account_number_last4 && (
+                        <div><span className="font-medium">Account #:</span> ****{order.account_number_last4}</div>
+                      )}
+                      {order.payee_address && (
+                        <div className="col-span-2"><span className="font-medium">Dir. beneficiario:</span> {order.payee_address}</div>
+                      )}
+                      {order.bank_address && (
+                        <div className="col-span-2"><span className="font-medium">Dir. banco:</span> {order.bank_address}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       Creado: {formatDate(order.created_at)}

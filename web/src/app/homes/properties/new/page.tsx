@@ -300,7 +300,7 @@ export default function NewPropertyPage() {
   const isPropertyInfoValid = !!form.address.trim()
 
   // Payment validation
-  const isPaymentComplete = payee.isPayeeValid && !!payment.reference
+  const isPaymentComplete = payee.isPayeeValid
 
   // Navigation
   const goToNextStep = async () => {
@@ -427,9 +427,11 @@ export default function NewPropertyPage() {
               payee_id: payment.payee_id || undefined,
               payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
               bank_name: payee.newPayee.bank_name || undefined,
-              routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
-              account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
+              routing_number: payee.newPayee.routing_number || undefined,
+              account_number: payee.newPayee.account_number || undefined,
               account_type: payee.newPayee.account_type || 'checking',
+              payee_address: payee.newPayee.address || undefined,
+              bank_address: payee.newPayee.bank_address || undefined,
               amount: payment.amount,
               method: payment.method,
               notes: 'Compra directa desde Nueva Propiedad',
@@ -1218,7 +1220,7 @@ export default function NewPropertyPage() {
                 <div className="flex justify-between items-center py-2">
                   <span className="text-green-700">Pago</span>
                   <span className="font-medium text-green-900">
-                    Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''} - Ref: {payment.reference}
+                    Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''}
                   </span>
                 </div>
               </div>

@@ -578,7 +578,7 @@ export default function MarketDashboard() {
   const isEvalComplete = !!evalReport;
 
   // Payment is complete when payee info is provided + confirmation reference
-  const isPaymentComplete = payee.isPayeeValid && !!payment.reference;
+  const isPaymentComplete = payee.isPayeeValid;
 
   const goToNextStep = async () => {
     if (purchaseStep === 'documents' && allDocsReady) {
@@ -920,7 +920,7 @@ export default function MarketDashboard() {
       const detailNotes = [
         `Fuente: ${sourceLabels[selectedListing.source] || selectedListing.source}`,
         `URL: ${selectedListing.source_url}`,
-        `Pago: Transferencia Bancaria${payment.payee_name ? ` a ${payment.payee_name}` : ''} - Ref: ${payment.reference}`,
+        `Pago: Transferencia Bancaria${payment.payee_name ? ` a ${payment.payee_name}` : ''}`,
         selectedListing.estimated_arv ? `Valor mercado estimado: $${selectedListing.estimated_arv.toLocaleString()}` : '',
         selectedListing.qualification_score ? `Score calificación: ${selectedListing.qualification_score}/100` : '',
         tdhcaResult?.certificate_number ? `TDHCA Cert#: ${tdhcaResult.certificate_number}` : '',
@@ -1028,9 +1028,11 @@ export default function MarketDashboard() {
             payee_id: payment.payee_id || undefined,
             payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
             bank_name: payee.newPayee.bank_name || undefined,
-            routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
-            account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
+            routing_number: payee.newPayee.routing_number || undefined,
+            account_number: payee.newPayee.account_number || undefined,
             account_type: payee.newPayee.account_type || 'checking',
+            payee_address: payee.newPayee.address || undefined,
+            bank_address: payee.newPayee.bank_address || undefined,
             amount: payment.amount,
             method: payment.method,
             notes: `Compra desde Casas del Mercado`,
@@ -1077,9 +1079,9 @@ export default function MarketDashboard() {
       // 6. Redirect to property page
       window.location.href = `/homes/properties/${property.id}`;
       
-    } catch (error) {
-      console.error('Error confirming purchase:', error);
-      toast.error('Error al confirmar la compra');
+    } catch (error: any) {
+      console.error('Error confirming purchase:', error?.message || error, error);
+      toast.error(`Error al confirmar la compra: ${error?.message || 'Error desconocido'}`);
     } finally {
       setProcessing(false);
     }
@@ -2676,7 +2678,7 @@ export default function MarketDashboard() {
                     <div className="flex justify-between items-center py-2">
                       <span className="text-green-700">Pago</span>
                       <span className="font-medium text-green-900">
-                        Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''} - Ref: {payment.reference}
+                        Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''}
                       </span>
                     </div>
                   </div>

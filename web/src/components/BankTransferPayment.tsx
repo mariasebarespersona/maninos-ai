@@ -125,7 +125,7 @@ export function BankTransferStep({
     isPayeeValid,
   } = payee
 
-  const isComplete = isPayeeValid && !!payment.reference
+  const isComplete = isPayeeValid
 
   return (
     <div className="space-y-6">
@@ -321,39 +321,11 @@ export function BankTransferStep({
         </div>
       )}
 
-      {/* Confirmation Number */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Numero de confirmacion / Referencia *
-        </label>
-        <input
-          type="text"
-          value={payment.reference}
-          onChange={(e) => onPaymentChange(prev => ({ ...prev, reference: e.target.value }))}
-          placeholder="Ingresa el # de confirmacion una vez realizada la transferencia"
-          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-        />
-      </div>
-
-      {/* Payment Date */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Fecha del Pago
-        </label>
-        <input
-          type="date"
-          value={payment.date}
-          onChange={(e) => onPaymentChange(prev => ({ ...prev, date: e.target.value }))}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-        />
-      </div>
-
-      {/* Warning */}
-      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
-        <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700">
-          <strong>Recuerda:</strong> Coordinar con Abigail antes de enviar la transferencia.
-          No se puede pagar al vendedor hasta que la aplicacion de cambio de titulo haya sido recibida.
+      {/* Info: Abigail completes the payment */}
+      <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <CheckCircle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-700">
+          Abigail (Tesoreria) ejecutara la transferencia y completara el pago desde <strong>Notificaciones</strong>.
         </p>
       </div>
 
@@ -361,12 +333,9 @@ export function BankTransferStep({
       {!isComplete && (
         <p className="text-sm text-amber-600 flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
-          {!isPayeeValid
-            ? payeeMode === 'existing'
-              ? 'Selecciona un beneficiario'
-              : 'Completa los datos bancarios del vendedor'
-            : 'Ingresa el numero de confirmacion de la transferencia'
-          }
+          {payeeMode === 'existing'
+            ? 'Selecciona un beneficiario'
+            : 'Completa los datos bancarios del vendedor'}
         </p>
       )}
     </div>

@@ -233,8 +233,9 @@ describe('NotificacionesPage', () => {
       expect(screen.getByText('Propiedad')).toBeInTheDocument()
       expect(screen.getByText('Beneficiario')).toBeInTheDocument()
       expect(screen.getByText('Monto')).toBeInTheDocument()
-      // Values in the modal summary
-      expect(screen.getByText('John Seller')).toBeInTheDocument()
+      // Values in the modal summary (name appears in card + modal)
+      const sellers = screen.getAllByText('John Seller')
+      expect(sellers.length).toBeGreaterThanOrEqual(2)
       // The amount appears in both the card and modal
       const amounts = screen.getAllByText('$45,000.00')
       expect(amounts.length).toBeGreaterThanOrEqual(2)

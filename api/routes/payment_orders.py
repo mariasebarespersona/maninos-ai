@@ -28,9 +28,13 @@ class PaymentOrderCreate(BaseModel):
     payee_id: Optional[str] = None
     payee_name: str
     bank_name: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_number: Optional[str] = None
     routing_number_last4: Optional[str] = None
     account_number_last4: Optional[str] = None
     account_type: Optional[str] = "checking"
+    payee_address: Optional[str] = None
+    bank_address: Optional[str] = None
     amount: float
     method: str = "transferencia"
     notes: Optional[str] = None
@@ -52,14 +56,22 @@ class PaymentOrderComplete(BaseModel):
 @router.post("")
 async def create_payment_order(req: PaymentOrderCreate):
     """Create a pending payment order (Gabriel)."""
+    # Auto-derive last4 from full numbers if not provided
+    r_last4 = req.routing_number_last4 or (req.routing_number[-4:] if req.routing_number else None)
+    a_last4 = req.account_number_last4 or (req.account_number[-4:] if req.account_number else None)
+
     data = {
         "property_id": req.property_id,
         "property_address": req.property_address,
         "payee_name": req.payee_name,
         "bank_name": req.bank_name,
-        "routing_number_last4": req.routing_number_last4,
-        "account_number_last4": req.account_number_last4,
+        "routing_number": req.routing_number,
+        "account_number": req.account_number,
+        "routing_number_last4": r_last4,
+        "account_number_last4": a_last4,
         "account_type": req.account_type,
+        "payee_address": req.payee_address,
+        "bank_address": req.bank_address,
         "amount": req.amount,
         "method": req.method,
         "status": "pending",
