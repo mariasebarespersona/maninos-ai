@@ -493,8 +493,6 @@ export default function MarketDashboard() {
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      // Use direct scraping endpoint (faster, no LLM needed)
-      // Scrapes MHVillage, MobileHome.net, and MHBay
       const response = await fetch('/api/market-listings/scrape', {
         method: 'POST',
       });
