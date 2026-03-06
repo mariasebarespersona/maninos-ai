@@ -489,25 +489,30 @@ export default function MarketDashboard() {
     }
   }, [listings, fetchPredictions]);
 
-  // Trigger AI search - Direct scraping endpoint
+  // Trigger AI search - calls Railway directly to avoid Vercel serverless timeout (60s Hobby cap)
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      const response = await fetch('/api/market-listings/scrape', {
-        method: 'POST',
-      });
-      
-      if (!response.ok) throw new Error('Search failed');
-      
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(
+        `${backendUrl}/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000`,
+        { method: 'POST' }
+      );
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Search failed (${response.status}): ${errText}`);
+      }
+
       const result = await response.json();
       toast.success(
         `✓ Encontradas ${result.qualified} casas calificadas de ${result.market_analysis?.total_scraped || 0} analizadas`
       );
-      
+
       // Refresh listings
       await fetchListings();
       await fetchStats();
-      
+
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Error al buscar propiedades');
