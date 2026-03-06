@@ -1077,7 +1077,8 @@ export default function MarketDashboard() {
       await fetchStats();
       
       // 6. Redirect to property page
-      window.location.href = `/homes/properties/${property.id}`;
+      // Property is pending_payment — don't redirect to its detail page
+      // It will appear in properties after Abigail completes payment
       
     } catch (error: any) {
       console.error('Error confirming purchase:', error?.message || error, error);

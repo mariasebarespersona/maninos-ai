@@ -452,7 +452,7 @@ export default function NewPropertyPage() {
       }
 
       toast.success('¡Propiedad creada! Orden de pago enviada a Notificaciones.')
-      router.push(`/homes/properties/${newProperty.id}`)
+      router.push('/homes/properties')
     } catch (err: any) {
       console.error('Error creating property:', err)
       const errorMsg = err.message || 'Error desconocido'

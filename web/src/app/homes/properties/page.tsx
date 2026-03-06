@@ -64,8 +64,10 @@ export default function PropertiesPage() {
   }, [])
 
   const filteredProperties = properties.filter(p => {
+    // Never show pending_payment properties — they appear only after Abigail completes payment
+    if (p.status === 'pending_payment') return false
     const matchesStatus = !statusFilter || p.status === statusFilter
-    const matchesSearch = !search || 
+    const matchesSearch = !search ||
       p.address.toLowerCase().includes(search.toLowerCase()) ||
       p.city?.toLowerCase().includes(search.toLowerCase()) ||
       p.property_code?.toLowerCase().includes(search.toLowerCase())
