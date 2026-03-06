@@ -517,6 +517,7 @@ export default function MarketDashboard() {
           }
 
           const result = await response.json();
+          console.log(`[Scrape] ${city}:`, result);
           if (result.success) {
             totalScraped += result.market_analysis?.total_scraped || 0;
             totalSaved += result.saved_to_db || 0;
