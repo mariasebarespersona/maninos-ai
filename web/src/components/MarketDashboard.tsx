@@ -504,8 +504,13 @@ export default function MarketDashboard() {
         try {
           const params = new URLSearchParams({ city, min_price: '5000', max_price: '80000' });
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 120000); // 2 min timeout per city
-          const response = await fetch(`/api/market-listings/scrape?${params}`, {
+          const timer = setTimeout(() => controller.abort(), 180000); // 3 min timeout per city
+          // Call Railway backend directly — Vercel proxy times out on long scrapes
+          const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+          const scrapeUrl = apiBase
+            ? `${apiBase}/api/market-listings/scrape?${params}`
+            : `/api/market-listings/scrape?${params}`;
+          const response = await fetch(scrapeUrl, {
             method: 'POST',
             signal: controller.signal,
           });
