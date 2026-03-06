@@ -36,9 +36,8 @@ import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
-import httpx
-
 from ..base import BaseAgent, AgentRequest, AgentResponse
+from tools.supabase_client import sb as supabase
 from langchain_core.tools import tool
 
 # Import real scrapers
@@ -348,40 +347,84 @@ def qualify_property(
 async def save_to_dashboard(listings: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     PURPOSE: Save qualified listings to the market_listings table in database
-    
+
     WHEN TO USE:
     ✓ After scraping and qualifying properties
     ✓ To update the dashboard with new options
-    
+
     PARAMETERS:
-        listings: List of qualified property listings
-    
+        listings: List of qualified property listings (each must have at least: source, source_url, address, city, listing_price)
+
     RETURNS:
         Result with count of saved listings
     """
     logger.info(f"[TOOL] save_to_dashboard: {len(listings)} listings")
-    
-    api_url = os.getenv("API_URL", "http://localhost:8000")
-    
+
+    if not listings:
+        return {"created": 0, "skipped": 0, "message": "No listings to save"}
+
+    # Allowed columns in market_listings table
+    ALLOWED_FIELDS = {
+        "source", "source_url", "source_id", "address", "city", "state",
+        "zip_code", "listing_price", "estimated_arv", "estimated_renovation",
+        "year_built", "sqft", "bedrooms", "bathrooms", "photos",
+        "thumbnail_url", "price_type", "estimated_full_price",
+        "scraped_at", "status",
+    }
+
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{api_url}/api/market-listings/bulk",
-                json=listings,
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                logger.info(f"[TOOL] save_to_dashboard: Saved {result.get('created', 0)} listings")
-                return result
+        # Normalize and filter listings
+        rows = []
+        skipped = 0
+        for listing in listings:
+            # Must have required fields
+            if not listing.get("source_url") or not listing.get("address"):
+                skipped += 1
+                continue
+
+            row = {k: v for k, v in listing.items() if k in ALLOWED_FIELDS and v is not None}
+            row.setdefault("state", "TX")
+            row.setdefault("status", "available")
+            row.setdefault("scraped_at", datetime.now().isoformat())
+            row.setdefault("source", "unknown")
+
+            # Ensure listing_price is a number
+            price = row.get("listing_price")
+            if price is None:
+                # Try alternate field names the LLM might use
+                price = listing.get("price") or listing.get("asking_price")
+            if price is not None:
+                try:
+                    row["listing_price"] = float(price)
+                except (ValueError, TypeError):
+                    skipped += 1
+                    continue
             else:
-                logger.error(f"[TOOL] save_to_dashboard failed: {response.status_code}")
-                return {"error": response.text, "saved_count": 0}
-                
+                skipped += 1
+                continue
+
+            rows.append(row)
+
+        if not rows:
+            return {"created": 0, "skipped": skipped, "message": "No valid listings to save"}
+
+        # Upsert directly via Supabase client (no HTTP self-call)
+        response = supabase.table("market_listings")\
+            .upsert(rows, on_conflict="source_url")\
+            .execute()
+
+        created_count = len(response.data) if response.data else 0
+        logger.info(f"[TOOL] save_to_dashboard: Saved {created_count}, skipped {skipped}")
+
+        return {
+            "created": created_count,
+            "skipped": skipped,
+            "message": f"Saved {created_count} listings, skipped {skipped}",
+        }
+
     except Exception as e:
         logger.error(f"[TOOL] save_to_dashboard error: {e}")
-        return {"error": str(e), "saved_count": 0}
+        return {"error": str(e), "created": 0}
 
 
 @tool
@@ -550,7 +593,6 @@ class BuscadorAgent(BaseAgent):
             save_to_dashboard,
             search_all_sources,
         ]
-        self.api_url = os.getenv("API_URL", "http://localhost:8000")
     
     @property
     def system_prompt(self) -> str:
@@ -770,13 +812,11 @@ Always provide:
     async def _get_dashboard_count(self) -> int:
         """Get current count of qualified listings in dashboard."""
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.api_url}/api/market-listings/count",
-                    timeout=5.0
-                )
-                if response.status_code == 200:
-                    return response.json().get("count", 0)
+            response = supabase.table("market_listings")\
+                .select("id", count="exact")\
+                .eq("status", "available")\
+                .execute()
+            return response.count if response.count is not None else 0
         except Exception as e:
             logger.warning(f"Could not get dashboard count: {e}")
         return 0
