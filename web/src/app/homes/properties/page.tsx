@@ -20,7 +20,7 @@ interface Property {
   address: string
   city?: string
   state?: string
-  status: 'purchased' | 'published' | 'reserved' | 'renovating' | 'sold'
+  status: 'pending_payment' | 'purchased' | 'published' | 'reserved' | 'renovating' | 'sold'
   is_renovated: boolean
   purchase_price?: number
   sale_price?: number
