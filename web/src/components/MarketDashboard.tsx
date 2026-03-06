@@ -499,9 +499,9 @@ export default function MarketDashboard() {
     const errors: string[] = [];
 
     try {
-      // Run all cities in parallel for speed
-      const results = await Promise.allSettled(
-        cities.map(async (city) => {
+      // Run cities sequentially (parallel crashes Railway — too many Playwright browsers)
+      for (const city of cities) {
+        try {
           const params = new URLSearchParams({ city, min_price: '5000', max_price: '80000' });
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 120000); // 2 min timeout per city
@@ -510,20 +510,22 @@ export default function MarketDashboard() {
             signal: controller.signal,
           });
           clearTimeout(timer);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          return { city, data: await response.json() };
-        })
-      );
 
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value.data.success) {
-          totalScraped += r.value.data.market_analysis?.total_scraped || 0;
-          totalSaved += r.value.data.saved_to_db || 0;
-          totalQualified += r.value.data.qualified || 0;
-        } else if (r.status === 'fulfilled') {
-          errors.push(`${r.value.city}: ${r.value.data.detail || 'error'}`);
-        } else {
-          errors.push(r.reason?.message || 'error');
+          if (!response.ok) {
+            errors.push(`${city}: HTTP ${response.status}`);
+            continue;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            totalScraped += result.market_analysis?.total_scraped || 0;
+            totalSaved += result.saved_to_db || 0;
+            totalQualified += result.qualified || 0;
+          } else {
+            errors.push(`${city}: ${result.detail || 'error'}`);
+          }
+        } catch (e: any) {
+          errors.push(`${city}: ${e.name === 'AbortError' ? 'timeout' : e.message || e}`);
         }
       }
 
