@@ -44,7 +44,6 @@ export function usePayeeState() {
     name: '', bank_name: '', routing_number: '', account_number: '',
     account_type: 'checking' as 'checking' | 'savings', address: '', bank_address: '',
   })
-  const [savePayee, setSavePayee] = useState(true)
   const [loadingPayees, setLoadingPayees] = useState(false)
 
   const fetchPayees = useCallback(async () => {
@@ -70,12 +69,11 @@ export function usePayeeState() {
     setPayeeMode('new')
     setSelectedPayeeId('')
     setNewPayee({ name: '', bank_name: '', routing_number: '', account_number: '', account_type: 'checking', address: '', bank_address: '' })
-    setSavePayee(true)
   }
 
-  /** Save new payee to DB if checkbox was checked. Returns the saved payee_id or undefined. */
+  /** Always save new payee to DB. Returns the saved payee or undefined on error. */
   const saveNewPayee = async (): Promise<{ id: string; name: string } | undefined> => {
-    if (payeeMode !== 'new' || !savePayee || !newPayee.name || !newPayee.routing_number || !newPayee.account_number) return undefined
+    if (payeeMode !== 'new' || !newPayee.name || !newPayee.routing_number || !newPayee.account_number) return undefined
     try {
       const res = await fetch('/api/purchase-payments/payees', {
         method: 'POST',
@@ -95,7 +93,6 @@ export function usePayeeState() {
     savedPayees,
     selectedPayeeId, setSelectedPayeeId,
     newPayee, setNewPayee,
-    savePayee, setSavePayee,
     loadingPayees,
     isPayeeValid,
     resetPayee,
@@ -124,7 +121,6 @@ export function BankTransferStep({
     savedPayees,
     selectedPayeeId, setSelectedPayeeId,
     newPayee, setNewPayee,
-    savePayee, setSavePayee,
     loadingPayees,
     isPayeeValid,
   } = payee
@@ -318,16 +314,10 @@ export function BankTransferStep({
             </div>
           </div>
 
-          {/* Save payee checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={savePayee}
-              onChange={(e) => setSavePayee(e.target.checked)}
-              className="rounded border-blue-300 text-gold-600 focus:ring-gold-500"
-            />
-            <span className="text-xs text-gray-600">Guardar beneficiario para futuras transferencias</span>
-          </label>
+          <p className="text-xs text-blue-600 flex items-center gap-1.5">
+            <CheckCircle className="w-3.5 h-3.5" />
+            El beneficiario se guardara automaticamente para futuras transferencias
+          </p>
         </div>
       )}
 

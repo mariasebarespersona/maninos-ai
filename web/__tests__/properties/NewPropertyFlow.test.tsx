@@ -113,8 +113,6 @@ jest.mock('@/components/BankTransferPayment', () => ({
     setSelectedPayeeId: jest.fn(),
     newPayee: { name: '', bank_name: '', routing_number: '', account_number: '', account_type: 'checking', address: '', bank_address: '' },
     setNewPayee: jest.fn(),
-    savePayee: true,
-    setSavePayee: jest.fn(),
     loadingPayees: false,
     isPayeeValid: false,
     resetPayee: jest.fn(),
