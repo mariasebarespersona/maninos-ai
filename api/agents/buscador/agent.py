@@ -691,123 +691,143 @@ Always provide:
     
     async def process(self, request: AgentRequest) -> AgentResponse:
         """
-        Process a search request using real web scraping.
+        Deterministic search pipeline — no LLM orchestration needed.
+
+        1. Call ALL scrapers in parallel
+        2. Save every listing that has required fields
+        3. Return real counts
         """
         logger.info(f"[BuscadorAgent] Processing: {request.query}")
-        
-        if not self.llm:
-            return self._error_response(
-                "BuscadorAgent requires LLM (OPENAI_API_KEY not configured)."
-            )
-        
+
+        total_found = 0
+        total_saved = 0
+        source_results = {}
+        errors = []
+
+        # Cities to search (200mi Houston + Dallas)
+        cities = ["Houston", "Dallas", "San Antonio", "Austin"]
+
         try:
-            # Build context
-            context = request.context or {}
-            
-            # Get current dashboard count
+            # ── Step 1: Scrape all sources in parallel ──────────────────────
+            all_listings = []
+
+            # 1a) MHVillage — Playwright scraper, search multiple cities
+            for city in cities:
+                try:
+                    listings = await MHVillageScraper.scrape(
+                        city=city, min_price=5000, max_price=80000, max_listings=15
+                    )
+                    converted = [l.__dict__ for l in listings]
+                    all_listings.extend(converted)
+                    source_results[f"mhvillage_{city}"] = len(converted)
+                    logger.info(f"[BuscadorAgent] MHVillage {city}: {len(converted)} listings")
+                except Exception as e:
+                    errors.append(f"MHVillage {city}: {e}")
+                    logger.warning(f"[BuscadorAgent] MHVillage {city} failed: {e}")
+
+            # 1b) MobileHome.net
+            for city in cities[:2]:  # Houston + Dallas
+                try:
+                    listings = await MobileHomeNetScraper.scrape(
+                        city=city, max_price=80000, max_listings=10
+                    )
+                    converted = [l.__dict__ for l in listings]
+                    all_listings.extend(converted)
+                    source_results[f"mobilehome_{city}"] = len(converted)
+                    logger.info(f"[BuscadorAgent] MobileHome.net {city}: {len(converted)} listings")
+                except Exception as e:
+                    errors.append(f"MobileHome.net {city}: {e}")
+                    logger.warning(f"[BuscadorAgent] MobileHome.net {city} failed: {e}")
+
+            # 1c) VMF Homes — JSON API
+            try:
+                listings = await VMFHomesScraper.scrape(min_price=5000, max_price=80000)
+                converted = [l.__dict__ if hasattr(l, '__dict__') else l for l in listings]
+                all_listings.extend(converted)
+                source_results["vmf_homes"] = len(converted)
+                logger.info(f"[BuscadorAgent] VMF Homes: {len(converted)} listings")
+            except Exception as e:
+                errors.append(f"VMF Homes: {e}")
+                logger.warning(f"[BuscadorAgent] VMF Homes failed: {e}")
+
+            # 1d) 21st Mortgage — JSON API
+            try:
+                listings = await TwentyFirstMortgageScraper.scrape(min_price=5000, max_price=80000)
+                converted = [l.__dict__ if hasattr(l, '__dict__') else l for l in listings]
+                all_listings.extend(converted)
+                source_results["21st_mortgage"] = len(converted)
+                logger.info(f"[BuscadorAgent] 21st Mortgage: {len(converted)} listings")
+            except Exception as e:
+                errors.append(f"21st Mortgage: {e}")
+                logger.warning(f"[BuscadorAgent] 21st Mortgage failed: {e}")
+
+            # 1e) Facebook Marketplace
+            try:
+                from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
+                listings = await FacebookMarketplaceScraper.scrape(
+                    max_listings=30, min_price=0, max_price=80000
+                )
+                converted = [{
+                    "source": "facebook_marketplace",
+                    "source_url": l.url or f"https://facebook.com/marketplace/{id(l)}",
+                    "address": l.title or "Facebook Listing",
+                    "city": l.city or "Houston",
+                    "state": l.state or "TX",
+                    "listing_price": l.price,
+                    "year_built": l.year_built,
+                    "bedrooms": l.bedrooms,
+                    "bathrooms": l.bathrooms,
+                    "sqft": l.sqft,
+                    "thumbnail_url": l.image_url,
+                    "price_type": l.price_type or "full",
+                    "estimated_full_price": l.estimated_full_price,
+                } for l in listings if l.price and l.url]
+                all_listings.extend(converted)
+                source_results["facebook"] = len(converted)
+                logger.info(f"[BuscadorAgent] Facebook: {len(converted)} listings")
+            except Exception as e:
+                errors.append(f"Facebook: {e}")
+                logger.warning(f"[BuscadorAgent] Facebook failed: {e}")
+
+            total_found = len(all_listings)
+            logger.info(f"[BuscadorAgent] Total scraped: {total_found} from {len(source_results)} sources")
+
+            # ── Step 2: Save ALL listings to dashboard ──────────────────────
+            if all_listings:
+                save_result = await save_to_dashboard.ainvoke({"listings": all_listings})
+                total_saved = save_result.get("created", 0)
+                logger.info(f"[BuscadorAgent] Saved: {total_saved}")
+
+            # ── Step 3: Return real results ─────────────────────────────────
             dashboard_count = await self._get_dashboard_count()
-            context["current_dashboard_count"] = dashboard_count
-            context["target_count"] = 10
-            context["need_more"] = dashboard_count < 10
-            
-            # Call LLM with tools
-            llm_with_tools = self.llm.bind_tools(self.tools)
-            
-            from langchain_core.messages import SystemMessage, HumanMessage
-            
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                SystemMessage(content=f"Current context: {json.dumps(context)}"),
-                HumanMessage(content=request.query),
-            ]
-            
-            # Let LLM decide which tools to use
-            response = await llm_with_tools.ainvoke(messages)
-            
-            # Process tool calls if any
-            result = await self._process_tool_calls(response, messages, llm_with_tools)
-            
+
+            result = {
+                "total_found": total_found,
+                "total_saved": total_saved,
+                "dashboard_count": dashboard_count,
+                "sources": source_results,
+                "errors": errors if errors else None,
+            }
+
+            if total_found == 0:
+                return self._error_response(
+                    f"No se encontraron casas. {len(errors)} fuentes fallaron: {'; '.join(errors[:3])}"
+                )
+
             return self._success_response(
                 result=result,
-                confidence=0.85,
+                confidence=0.9 if total_saved > 0 else 0.5,
                 suggestions=[
-                    "Revisa las propiedades calificadas en el dashboard",
-                    "Puedes filtrar por ciudad o rango de precio",
-                    "Haz clic en 'Comprar' para iniciar el proceso de compra",
+                    f"Se encontraron {total_found} casas, {total_saved} nuevas guardadas",
+                    f"Dashboard tiene {dashboard_count} propiedades disponibles",
                 ],
             )
-            
+
         except Exception as e:
             logger.error(f"[BuscadorAgent] Error: {e}")
             return self._error_response(str(e))
         finally:
-            # Clean up browser
             await BrowserManager.close()
-    
-    async def _process_tool_calls(self, response, messages, llm_with_tools, max_iterations=5):
-        """Process tool calls from LLM response."""
-        from langchain_core.messages import AIMessage, ToolMessage
-        
-        iteration = 0
-        current_response = response
-        
-        while hasattr(current_response, 'tool_calls') and current_response.tool_calls and iteration < max_iterations:
-            iteration += 1
-            
-            # Add AI message with tool calls
-            messages.append(current_response)
-            
-            # Execute each tool call
-            for tool_call in current_response.tool_calls:
-                tool_name = tool_call["name"]
-                tool_args = tool_call["args"]
-                
-                logger.info(f"[BuscadorAgent] Executing tool: {tool_name}")
-                
-                # Find and execute the tool
-                tool_result = await self._execute_tool(tool_name, tool_args)
-                
-                # Add tool result message
-                messages.append(ToolMessage(
-                    content=json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result,
-                    tool_call_id=tool_call["id"],
-                ))
-            
-            # Get next response
-            current_response = await llm_with_tools.ainvoke(messages)
-        
-        # Return final content
-        if hasattr(current_response, 'content'):
-            return {"response": current_response.content, "iterations": iteration}
-        return {"response": str(current_response), "iterations": iteration}
-    
-    async def _execute_tool(self, tool_name: str, args: dict) -> Any:
-        """Execute a tool by name."""
-        tool_map = {
-            "scrape_facebook_marketplace": scrape_facebook_marketplace,
-            "scrape_mhvillage": scrape_mhvillage,
-            "scrape_mobilehome_net": scrape_mobilehome_net,
-            "scrape_vmf_homes": scrape_vmf_homes,
-            "scrape_21st_mortgage": scrape_21st_mortgage,
-            "get_zillow_arv": get_zillow_arv,
-            "qualify_property": qualify_property,
-            "save_to_dashboard": save_to_dashboard,
-            "search_all_sources": search_all_sources,
-        }
-        
-        tool = tool_map.get(tool_name)
-        if not tool:
-            return {"error": f"Tool {tool_name} not found"}
-        
-        try:
-            # Check if tool is async
-            if asyncio.iscoroutinefunction(tool.func):
-                return await tool.ainvoke(args)
-            else:
-                return tool.invoke(args)
-        except Exception as e:
-            logger.error(f"Tool {tool_name} failed: {e}")
-            return {"error": str(e)}
     
     async def _get_dashboard_count(self) -> int:
         """Get current count of qualified listings in dashboard."""

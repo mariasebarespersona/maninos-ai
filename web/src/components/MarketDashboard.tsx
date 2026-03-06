@@ -489,26 +489,47 @@ export default function MarketDashboard() {
     }
   }, [listings, fetchPredictions]);
 
-  // Trigger AI search - BuscadorAgent (LLM-powered, 7 sources)
+  // Trigger direct scraping — no LLM, calls each city sequentially
   const triggerSearch = async () => {
     setSearching(true);
+    const cities = ['Houston', 'Dallas', 'San Antonio', 'Austin'];
+    let totalScraped = 0;
+    let totalSaved = 0;
+    let totalQualified = 0;
+    const errors: string[] = [];
+
     try {
-      const response = await fetch('/api/agents/buscador', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: 'Busca mobile homes en Texas. Usa todas las fuentes disponibles: Facebook Marketplace, MHVillage, MobileHome.net, VMF Homes (Vanderbilt) y 21st Mortgage. Aplica la regla del 60% y guarda las calificadas en el dashboard.',
-        }),
-      });
+      for (const city of cities) {
+        try {
+          const params = new URLSearchParams({ city, min_price: '5000', max_price: '80000' });
+          const response = await fetch(`/api/market-listings/scrape?${params}`, {
+            method: 'POST',
+          });
 
-      if (!response.ok) throw new Error('Search failed');
+          if (!response.ok) {
+            errors.push(`${city}: HTTP ${response.status}`);
+            continue;
+          }
 
-      const result = await response.json();
+          const result = await response.json();
+          if (result.success) {
+            totalScraped += result.market_analysis?.total_scraped || 0;
+            totalSaved += result.saved_to_db || 0;
+            totalQualified += result.qualified || 0;
+          } else {
+            errors.push(`${city}: ${result.detail || 'error'}`);
+          }
+        } catch (e) {
+          errors.push(`${city}: ${e}`);
+        }
+      }
 
-      if (result.success) {
-        toast.success('BuscadorAgent completo — revisa las nuevas propiedades');
+      if (totalScraped > 0) {
+        toast.success(`Encontradas ${totalScraped} casas, ${totalQualified} califican, ${totalSaved} nuevas guardadas.`);
+      } else if (errors.length > 0) {
+        toast.warning(`Busqueda parcial: ${errors.slice(0, 2).join('; ')}`);
       } else {
-        toast.warning(result.error || 'Busqueda parcial — algunas fuentes fallaron');
+        toast.warning('No se encontraron casas en ninguna ciudad.');
       }
 
       // Refresh listings
