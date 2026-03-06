@@ -408,8 +408,8 @@ export default function NewPropertyPage() {
       // 3. Link evaluation report if exists
       if (evalReport?.id) {
         try {
-          await fetch(`/api/evaluations/${evalReport.id}`, {
-            method: 'PATCH',
+          await fetch(`/api/evaluations/${evalReport.id}/link`, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ property_id: newProperty.id }),
           })
