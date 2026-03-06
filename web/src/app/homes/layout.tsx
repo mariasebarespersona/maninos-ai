@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { 
@@ -16,7 +16,8 @@ import {
   FileText,
   Search,
   Award,
-  Calculator
+  Calculator,
+  Bell
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -36,6 +37,7 @@ const navigation: NavItem[] = [
   { name: 'Ventas', href: '/homes/sales', icon: DollarSign },
   { name: 'Comisiones', href: '/homes/commissions', icon: Award },
   { name: 'Documentos', href: '/homes/transfers', icon: FileText },
+  { name: 'Notificaciones', href: '/homes/notificaciones', icon: Bell },
   { name: 'Contabilidad', href: '/homes/accounting', icon: Calculator },
 ]
 
@@ -50,6 +52,14 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
   const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [pendingOrderCount, setPendingOrderCount] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/payment-orders/stats')
+      .then(r => r.json())
+      .then(d => { if (d.ok) setPendingOrderCount(d.data?.pending || 0) })
+      .catch(() => {})
+  }, [pathname])
 
   const isActive = (href: string) => {
     if (href === '/homes') return pathname === '/homes'
@@ -141,7 +151,12 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
                 style={active ? { backgroundColor: 'var(--navy-50)' } : {}}
               >
                 <Icon className="w-5 h-5" strokeWidth={1.75} />
-                <span className="text-base">{item.name}</span>
+                <span className="text-base flex-1">{item.name}</span>
+                {item.name === 'Notificaciones' && pendingOrderCount > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {pendingOrderCount > 9 ? '9+' : pendingOrderCount}
+                  </span>
+                )}
               </Link>
             )
           })}
@@ -266,6 +281,7 @@ function Breadcrumb({ pathname }: { pathname: string }) {
     new: 'Nuevo',
     edit: 'Editar',
     renovate: 'Renovar',
+    notificaciones: 'Notificaciones',
     accounting: 'Contabilidad',
   }
 

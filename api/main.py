@@ -24,6 +24,7 @@ from api.routes.renovation import router as renovation_router
 from api.routes.evaluations import router as evaluations_router
 from api.routes.accounting import router as accounting_router
 from api.routes.moves import router as moves_router
+from api.routes.payment_orders import router as payment_orders_router
 
 # Capital routes
 from api.routes.capital import router as capital_router
@@ -118,6 +119,7 @@ app.include_router(evaluations_router, prefix="/api/evaluations", tags=["Evaluat
 app.include_router(portal_links_router, prefix="/api/portal-links", tags=["Portal Links"])
 app.include_router(accounting_router, prefix="/api/accounting", tags=["Accounting"])
 app.include_router(moves_router, prefix="/api/moves", tags=["Moves"])
+app.include_router(payment_orders_router, prefix="/api/payment-orders", tags=["Payment Orders"])
 
 # Documents (already has /api/documents prefix in the router itself)
 app.include_router(documents_router, tags=["Documents"])

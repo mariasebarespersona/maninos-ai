@@ -999,7 +999,7 @@ export default function MarketDashboard() {
         titleApplicationUrl = TDHCA_TITLE_APPLICATION_URL;
       }
       
-      // 3. Create title transfer record with payment info AND document URLs
+      // 3. Create title transfer record with document URLs
       await fetch('/api/transfers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1009,13 +1009,30 @@ export default function MarketDashboard() {
           from_name: 'Vendedor',
           to_name: 'Maninos Homes',
           payment_method: payment.method,
-          payment_reference: payment.reference,
           payment_date: payment.date,
           payment_amount: payment.amount,
-          // Include uploaded document URLs
           bill_of_sale_url: billOfSaleUrl,
           title_url: titleUrl,
           title_application_url: titleApplicationUrl,
+        }),
+      });
+
+      // 3.1. Create pending payment order (Abigail will complete it)
+      await fetch('/api/payment-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: property.id,
+          property_address: selectedListing.address,
+          payee_id: payment.payee_id || undefined,
+          payee_name: payment.payee_name || payee.newPayee.name || 'Vendedor',
+          bank_name: payee.newPayee.bank_name || undefined,
+          routing_number_last4: payee.newPayee.routing_number ? payee.newPayee.routing_number.slice(-4) : undefined,
+          account_number_last4: payee.newPayee.account_number ? payee.newPayee.account_number.slice(-4) : undefined,
+          account_type: payee.newPayee.account_type || 'checking',
+          amount: payment.amount,
+          method: payment.method,
+          notes: `Compra desde Casas del Mercado`,
         }),
       });
       
@@ -1040,7 +1057,7 @@ export default function MarketDashboard() {
         });
       }
       
-      toast.success('✓ ¡Casa comprada! Documentos guardados y agregada al inventario.');
+      toast.success('¡Casa comprada! Orden de pago creada. Abigail la procesara en Notificaciones.');
       
       // 5. Close modal and refresh listings
       closeModal();
