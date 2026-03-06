@@ -1093,13 +1093,12 @@ async def scrape_and_save(
         # Import zone checker
         from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE, BUY_PERCENT
         
-        # First, count qualified before saving (new rules Feb 2026)
+        # First, count qualified before saving (Mar 2026: price range + zone only)
         qualified_count = 0
         for listing in all_listings:
-            passes_60 = listing.listing_price <= max_offer_60
             passes_range = MIN_PRICE <= listing.listing_price <= MAX_PRICE
             passes_zone, _ = is_within_zone(listing.city, listing.state)
-            if passes_60 and passes_range and passes_zone:
+            if passes_range and passes_zone:
                 qualified_count += 1
         
         # Save market analysis

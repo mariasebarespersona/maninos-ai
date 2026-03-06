@@ -1,15 +1,14 @@
 """
 Maninos Property Qualification Rules — Single Source of Truth.
 
-Updated Feb 2026 based on D1 Texas trip with Sebastian/Gabriel.
+Updated Mar 2026.
 
 RULES:
-1. 60% Rule: price <= market_value * 0.60  (renovation NOT included)
-2. NO year filter  (removed — they buy any age)
-3. Location: Within 200mi of Houston OR 200mi of Dallas
-4. Price range: $5,000 — $80,000
-5. Type: Single wide + Double wide accepted
-6. State: Texas only
+1. NO year filter  (removed — they buy any age)
+2. Location: Within 200mi of Houston OR 200mi of Dallas
+3. Price range: $5,000 — $80,000
+4. Type: Single wide + Double wide accepted
+5. State: Texas only
 
 SELL RULE:
 - Max 80% of market value
@@ -218,58 +217,48 @@ def qualify_listing(
     state: str = "TX",
 ) -> dict:
     """
-    Qualify a property using Maninos' rules (Feb 2026).
-    
+    Qualify a property using Maninos' rules (Mar 2026).
+
     Rules:
-    1. 60% Rule: price <= market_value * 0.60 (no renovation in calc)
-    2. NO year filter (removed)
-    3. Location: within 200mi of Houston OR Dallas
-    4. Price range: $5,000 — $80,000
-    5. State: Texas only
-    
+    1. NO year filter (removed)
+    2. Location: within 200mi of Houston OR Dallas
+    3. Price range: $5,000 — $80,000
+    4. State: Texas only
+
     Returns dict with all qualification fields for DB storage.
     """
     reasons = []
     score = 0
-    
-    # Rule 1: 60% of market value (50 points)
+
+    # Market value info (informational only, not a filter)
+    pct_of_market = 0
     max_offer = market_value * BUY_PERCENT if market_value and market_value > 0 else 0
     if market_value and market_value > 0 and listing_price > 0:
         pct_of_market = (listing_price / market_value) * 100
-        passes_price_rule = listing_price <= max_offer
-        if passes_price_rule:
-            reasons.append(f"✓ 60%: ${listing_price:,.0f} = {pct_of_market:.0f}% del mercado (≤60%)")
-            score += 50
-        else:
-            reasons.append(f"✗ 60%: ${listing_price:,.0f} = {pct_of_market:.0f}% del mercado (>60%)")
-    else:
-        passes_price_rule = False
-        pct_of_market = 0
-        reasons.append(f"✗ 60%: Sin valor de mercado para comparar")
-    
-    # Rule 2: Price range $5K-$80K (20 points)
+
+    # Rule 1: Price range $5K-$80K (50 points)
     passes_range = MIN_PRICE <= listing_price <= MAX_PRICE
     if passes_range:
         reasons.append(f"✓ Rango: ${listing_price:,.0f} (dentro de $5K-$80K)")
-        score += 20
+        score += 50
     else:
         reasons.append(f"✗ Rango: ${listing_price:,.0f} (fuera de $5K-$80K)")
-    
-    # Rule 3: Location — 200mi of Houston OR Dallas (30 points)
+
+    # Rule 2: Location — 200mi of Houston OR Dallas (50 points)
     passes_zone, min_distance = is_within_zone(city, state)
     if passes_zone:
         dist_str = f" ({min_distance}mi)" if min_distance is not None else ""
         reasons.append(f"✓ Zona: {city}, {state}{dist_str} (≤200mi Houston/Dallas)")
-        score += 30
+        score += 50
     else:
         dist_str = f" ({min_distance}mi)" if min_distance is not None else ""
         reasons.append(f"✗ Zona: {city}, {state}{dist_str} (>200mi de Houston y Dallas)")
-    
-    # Overall: must pass ALL rules
-    is_qualified = passes_price_rule and passes_range and passes_zone
-    
+
+    # Overall: must pass ALL rules (price range + zone)
+    is_qualified = passes_range and passes_zone
+
     return {
-        "passes_60_rule": passes_price_rule,
+        "passes_60_rule": True,  # No longer a filter — always passes
         "passes_price_range": passes_range,
         "passes_zone_rule": passes_zone,
         "is_qualified": is_qualified,
