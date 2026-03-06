@@ -495,6 +495,20 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
   setFlowFilter: (s: '' | 'income' | 'expense') => void; page: number; setPage: (n: number) => void; onRefresh: () => void
 }) {
   const [attachTxnId, setAttachTxnId] = useState<string | null>(null)
+  const [txnsWithReceipts, setTxnsWithReceipts] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const fetchReceiptStatus = async () => {
+      try {
+        const res = await fetch('/api/accounting/receipts')
+        if (!res.ok) return
+        const receipts: { transaction_id: string | null }[] = await res.json()
+        const ids = new Set(receipts.filter(r => r.transaction_id).map(r => r.transaction_id!))
+        setTxnsWithReceipts(ids)
+      } catch {}
+    }
+    if (transactions.length > 0) fetchReceiptStatus()
+  }, [transactions])
 
   const handleVoid = async (id: string) => {
     if (!confirm('¿Anular esta transacción?')) return
@@ -562,8 +576,9 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>{t.status}</span></td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => setAttachTxnId(t.id)} className="text-stone-400 hover:text-navy-700 transition-colors" title="Adjuntar documento">
+                          <button onClick={() => setAttachTxnId(t.id)} className={`${txnsWithReceipts.has(t.id) ? 'text-emerald-500 hover:text-emerald-700' : 'text-stone-400 hover:text-navy-700'} transition-colors relative`} title={txnsWithReceipts.has(t.id) ? 'Documentos adjuntos ✓' : 'Adjuntar documento'}>
                             <Paperclip className="w-4 h-4" />
+                            {txnsWithReceipts.has(t.id) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 absolute -top-1 -right-1" />}
                           </button>
                           {t.status !== 'voided' && <button onClick={() => handleVoid(t.id)} className="text-red-400 hover:text-red-600" title="Anular"><X className="w-4 h-4" /></button>}
                         </div>
@@ -583,7 +598,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
       </div>
 
       {/* Attachment modal */}
-      {attachTxnId && <TransactionAttachments transactionId={attachTxnId} onClose={() => setAttachTxnId(null)} />}
+      {attachTxnId && <TransactionAttachments transactionId={attachTxnId} onClose={() => { setAttachTxnId(null); onRefresh() }} />}
     </div>
   )
 }
