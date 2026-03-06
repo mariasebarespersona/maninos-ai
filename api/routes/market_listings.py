@@ -953,11 +953,10 @@ async def scrape_and_save(
         
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
         
-        # Check Facebook auth status
-        fb_connected = FacebookAuth.is_authenticated()
-        source_count = 6 if fb_connected else 5
+        # Facebook disabled — blocked from Railway datacenter IPs (timeouts)
+        fb_connected = False
+        source_count = 5
         logger.info(f"[Scrape] Will scrape {source_count} sources: "
-                     f"{'Facebook MP, ' if fb_connected else '(FB not connected) '}"
                      f"MHVillage, MobileHome.net, MHBay, VMF Homes, 21st Mortgage")
         
         all_listings = []
