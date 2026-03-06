@@ -157,6 +157,8 @@ async def create_property(data: PropertyCreate):
         if key in insert_data and insert_data[key] is not None:
             insert_data[key] = int(insert_data[key])
     
+    logger.info(f"[properties] Creating property with status='{insert_data.get('status')}', address='{insert_data.get('address')}'")
+
     try:
         result = sb.table("properties").insert(insert_data).execute()
     except Exception as e:
