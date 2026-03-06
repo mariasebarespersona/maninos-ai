@@ -361,6 +361,8 @@ export default function NewPropertyPage() {
       if (billOfSaleData) docData.bos_purchase = billOfSaleData
       if (titleAppData) docData.title_app_purchase = titleAppData
 
+      const purchasePrice = form.purchase_price ? parseFloat(form.purchase_price) : 0
+
       const payload = {
         address: form.address,
         city: form.city || undefined,
@@ -368,13 +370,14 @@ export default function NewPropertyPage() {
         zip_code: form.zip_code || undefined,
         hud_number: form.hud_number || undefined,
         year: form.year ? parseInt(form.year) : undefined,
-        purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : undefined,
+        purchase_price: purchasePrice || undefined,
         bedrooms: form.bedrooms ? parseInt(form.bedrooms) : undefined,
         bathrooms: form.bathrooms ? parseFloat(form.bathrooms) : undefined,
         square_feet: sqFt,
         length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
         width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
         document_data: Object.keys(docData).length > 0 ? docData : undefined,
+        status: 'pending_payment',
       }
 
       // 1. Create property
@@ -415,8 +418,9 @@ export default function NewPropertyPage() {
         }
       }
 
-      // 4. Create pending payment order if payment info was provided
-      if (payment.amount && payee.isPayeeValid) {
+      // 4. Create pending payment order if payee info was provided
+      const orderAmount = purchasePrice || payment.amount
+      if (payee.isPayeeValid) {
         try {
           const orderRes = await fetch('/api/payment-orders', {
             method: 'POST',
@@ -432,7 +436,7 @@ export default function NewPropertyPage() {
               account_type: payee.newPayee.account_type || 'checking',
               payee_address: payee.newPayee.address || undefined,
               bank_address: payee.newPayee.bank_address || undefined,
-              amount: payment.amount,
+              amount: orderAmount,
               method: payment.method,
               notes: 'Compra directa desde Nueva Propiedad',
             }),
