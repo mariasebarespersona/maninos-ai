@@ -255,6 +255,41 @@ async def get_property_transfers(property_id: str):
     }
 
 
+@router.get("/title-monitor")
+async def get_title_monitor():
+    """Get title monitoring dashboard data"""
+    from api.services.title_monitor import get_title_monitor_summary
+    try:
+        summary = get_title_monitor_summary()
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/title-monitor/populate")
+async def populate_all_tdhca_fields():
+    """Populate tdhca_serial/label from document_data for all transfers missing them"""
+    from api.services.title_monitor import populate_tdhca_fields_from_document_data
+
+    try:
+        transfers = sb.table("title_transfers").select("id").is_(
+            "tdhca_serial", "null"
+        ).execute()
+
+        populated = 0
+        errors = 0
+        for t in (transfers.data or []):
+            result = populate_tdhca_fields_from_document_data(t["id"])
+            if result.get("ok") and result.get("serial"):
+                populated += 1
+            elif not result.get("ok"):
+                errors += 1
+
+        return {"ok": True, "populated": populated, "errors": errors, "total": len(transfers.data or [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{transfer_id}")
 async def get_transfer(transfer_id: str):
     """Get a specific transfer by ID"""
@@ -358,6 +393,33 @@ async def mark_as_completed(transfer_id: str):
         raise HTTPException(status_code=404, detail="Transfer not found")
     
     return result.data[0]
+
+
+@router.post("/{transfer_id}/populate-tdhca")
+async def populate_transfer_tdhca(transfer_id: str):
+    """Populate tdhca_serial/label from document_data for a single transfer (no TDHCA call)"""
+    from api.services.title_monitor import populate_tdhca_fields_from_document_data
+    result = populate_tdhca_fields_from_document_data(transfer_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Could not find serial/label"))
+    return result
+
+
+@router.post("/{transfer_id}/recheck-title")
+async def recheck_title(transfer_id: str):
+    """Manually trigger a TDHCA title name check for a specific transfer"""
+    from api.services.title_monitor import check_single_transfer, populate_tdhca_fields_from_document_data
+
+    # First ensure serial/label are populated
+    pop = populate_tdhca_fields_from_document_data(transfer_id)
+    if not pop.get("ok"):
+        raise HTTPException(status_code=400, detail=pop.get("error", "Could not find serial/label"))
+
+    result = await check_single_transfer(transfer_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=result.get("error", "TDHCA check failed"))
+
+    return result
 
 
 @router.post("/{transfer_id}/document/{doc_key}/upload")

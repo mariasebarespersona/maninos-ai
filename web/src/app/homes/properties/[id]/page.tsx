@@ -1058,7 +1058,11 @@ export default function PropertyDetailPage() {
                     } catch (err) { console.error('Upload error:', err) }
                   }
                   if (saved) {
-                    toast.success('✓ Aplicación de Título guardada con datos')
+                    toast.success('Aplicacion de Titulo guardada con datos')
+                    // Auto-populate serial/label on the title transfer for TDHCA monitoring
+                    if (transferId) {
+                      fetch(`/api/transfers/${transferId}/populate-tdhca`, { method: 'POST' }).catch(() => {})
+                    }
                   }
                   setShowTitleAppTemplate(null)
                 }}

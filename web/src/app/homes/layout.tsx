@@ -36,7 +36,7 @@ const navigation: NavItem[] = [
   { name: 'Clientes', href: '/homes/clients', icon: Users },
   { name: 'Ventas', href: '/homes/sales', icon: DollarSign },
   { name: 'Comisiones', href: '/homes/commissions', icon: Award },
-  { name: 'Documentos', href: '/homes/transfers', icon: FileText },
+  { name: 'Titulos', href: '/homes/transfers', icon: FileText },
   { name: 'Notificaciones', href: '/homes/notificaciones', icon: Bell },
   { name: 'Contabilidad', href: '/homes/accounting', icon: Calculator },
 ]
@@ -277,7 +277,7 @@ function Breadcrumb({ pathname }: { pathname: string }) {
     clients: 'Clientes',
     sales: 'Ventas',
     commissions: 'Comisiones',
-    transfers: 'Documentos',
+    transfers: 'Titulos',
     new: 'Nuevo',
     edit: 'Editar',
     renovate: 'Renovar',

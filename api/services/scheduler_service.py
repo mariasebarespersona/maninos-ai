@@ -226,6 +226,23 @@ def _job_refresh_partner_listings():
         return {"ok": False, "error": str(e)}
 
 
+def _job_title_monitor():
+    """Job: Check TDHCA for title name updates on pending transfers."""
+    try:
+        from api.services.title_monitor import run_title_monitor_job
+        result = run_title_monitor_job()
+        _log_job("title_monitor", result)
+        checked = result.get("checked", 0)
+        matched = result.get("matched", 0)
+        if checked > 0:
+            logger.info(f"[scheduler] Title monitor: checked {checked}, matched {matched}")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in title_monitor: {e}")
+        _log_job("title_monitor", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 # =========================================================================
 # SCHEDULER LIFECYCLE
 # =========================================================================
@@ -296,8 +313,18 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Job 6: Title monitor - 1st of every month at 10:00 AM CT
+    # Checks TDHCA for owner name updates on pending title transfers
+    _scheduler.add_job(
+        _job_title_monitor,
+        trigger=CronTrigger(day=1, hour=10, minute=0),
+        id="title_monitor",
+        name="TDHCA Title Name Monitor (monthly)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("[scheduler] ✅ Scheduler started with 5 jobs")
+    logger.info("[scheduler] ✅ Scheduler started with 6 jobs")
     return _scheduler
 
 
