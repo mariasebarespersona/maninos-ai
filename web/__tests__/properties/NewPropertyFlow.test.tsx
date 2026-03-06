@@ -101,6 +101,28 @@ jest.mock('@/components/DesktopEvaluatorPanel', () => {
   }
 })
 
+jest.mock('@/components/BankTransferPayment', () => ({
+  BankTransferStep: function MockBankTransferStep() {
+    return <div data-testid="bank-transfer-step">Bank Transfer Step</div>
+  },
+  usePayeeState: () => ({
+    payeeMode: 'new',
+    setPayeeMode: jest.fn(),
+    savedPayees: [],
+    selectedPayeeId: '',
+    setSelectedPayeeId: jest.fn(),
+    newPayee: { name: '', bank_name: '', routing_number: '', account_number: '', account_type: 'checking', address: '', bank_address: '' },
+    setNewPayee: jest.fn(),
+    savePayee: true,
+    setSavePayee: jest.fn(),
+    loadingPayees: false,
+    isPayeeValid: false,
+    resetPayee: jest.fn(),
+    saveNewPayee: jest.fn(),
+    fetchPayees: jest.fn(),
+  }),
+}))
+
 // ─── Import component under test ─────────────────────────────────
 import NewPropertyPage from '@/app/homes/properties/new/page'
 

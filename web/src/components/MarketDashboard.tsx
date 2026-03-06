@@ -37,6 +37,7 @@ import AddMarketListingModal from './AddMarketListingModal';
 import StripePaymentForm from './StripePaymentForm';
 import BillOfSaleTemplate, { type BillOfSaleData } from './BillOfSaleTemplate';
 import TitleApplicationTemplate, { type TitleApplicationData } from './TitleApplicationTemplate';
+import { BankTransferStep, usePayeeState, type PaymentInfo, type Payee, type PayeeMode } from './BankTransferPayment';
 import DesktopEvaluatorPanel from './DesktopEvaluatorPanel';
 
 // Dynamic import of map component (Leaflet doesn't support SSR)
@@ -156,14 +157,6 @@ const pipelineStatusConfig: Record<string, { label: string; color: string; step:
 // Purchase flow steps (docs FIRST, then evaluation, then payment, then confirm)
 type PurchaseStep = 'documents' | 'checklist' | 'payment' | 'confirm';
 
-// Payment methods — bank transfer is #1 (80% of cases per Abigail/Gabriel)
-const PAYMENT_METHODS = [
-  { id: 'transferencia', label: '🏦 Transferencia Bancaria', recommended: true, description: 'Método principal (80% de compras)' },
-  { id: 'zelle', label: '💸 Zelle', recommended: false, description: 'Zelle al 832-745-9600' },
-  { id: 'cheque', label: '📝 Cheque', recommended: false, description: 'Cheque certificado' },
-  { id: 'efectivo', label: '💵 Efectivo', recommended: false, description: 'Solo montos pequeños' },
-];
-
 // Document types for purchase
 interface PurchaseDocuments {
   billOfSale: File | null;
@@ -174,13 +167,7 @@ interface PurchaseDocuments {
 // Official Texas TDHCA Title Application form
 const TDHCA_TITLE_APPLICATION_URL = 'https://www.tdhca.texas.gov/sites/default/files/mh/docs/1023-Statement-Ownership.pdf';
 
-// Payment info
-interface PaymentInfo {
-  method: string;
-  reference: string;
-  date: string;
-  amount: number;
-}
+// PaymentInfo, Payee, PayeeMode imported from BankTransferPayment
 
 // Checklist de 26 puntos para evaluar propiedades ANTES de comprar
 // Basado en el checklist oficial de Maninos Capital LLC
@@ -255,12 +242,15 @@ export default function MarketDashboard() {
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [documents, setDocuments] = useState<PurchaseDocuments>({ billOfSale: null, title: null, titleApplication: null });
   const [payment, setPayment] = useState<PaymentInfo>({
-    method: '',
+    method: 'transferencia',
     reference: '',
     date: new Date().toISOString().split('T')[0],
     amount: 0,
   });
-  
+
+  // Payee state (shared hook)
+  const payee = usePayeeState();
+
   // TDHCA Title lookup state
   const [tdhcaSearchValue, setTdhcaSearchValue] = useState('');
   const [tdhcaSearchType, setTdhcaSearchType] = useState<'label' | 'serial'>('serial');
@@ -536,11 +526,14 @@ export default function MarketDashboard() {
     setChecklist({});
     setDocuments({ billOfSale: null, title: null, titleApplication: null });
     setPayment({
-      method: '',
+      method: 'transferencia',
       reference: '',
       date: new Date().toISOString().split('T')[0],
       amount: listing.listing_price,
     });
+    // Reset payee state
+    payee.resetPayee();
+    payee.fetchPayees();
     // Initialize templates
     setShowBillOfSale(false);
     setBillOfSaleData(null);
@@ -558,7 +551,8 @@ export default function MarketDashboard() {
     setPurchaseStep('documents');
     setChecklist({});
     setDocuments({ billOfSale: null, title: null, titleApplication: null });
-    setPayment({ method: '', reference: '', date: '', amount: 0 });
+    setPayment({ method: 'transferencia', reference: '', date: '', amount: 0 });
+    payee.resetPayee();
     setTdhcaSearchValue('');
     setTdhcaResult(null);
     setTdhcaError(null);
@@ -583,12 +577,20 @@ export default function MarketDashboard() {
 
   const isEvalComplete = !!evalReport;
 
-  const goToNextStep = () => {
+  // Payment is complete when payee info is provided + confirmation reference
+  const isPaymentComplete = payee.isPayeeValid && !!payment.reference;
+
+  const goToNextStep = async () => {
     if (purchaseStep === 'documents' && allDocsReady) {
       setPurchaseStep('checklist');
     } else if (purchaseStep === 'checklist' && isEvalComplete) {
       setPurchaseStep('payment');
-    } else if (purchaseStep === 'payment' && payment.method && payment.reference) {
+    } else if (purchaseStep === 'payment' && isPaymentComplete) {
+      const saved = await payee.saveNewPayee();
+      if (saved) {
+        setPayment(prev => ({ ...prev, payee_id: saved.id, payee_name: saved.name }));
+        toast.success(`Beneficiario "${saved.name}" guardado`);
+      }
       setPurchaseStep('confirm');
     }
   };
@@ -918,7 +920,7 @@ export default function MarketDashboard() {
       const detailNotes = [
         `Fuente: ${sourceLabels[selectedListing.source] || selectedListing.source}`,
         `URL: ${selectedListing.source_url}`,
-        `Pago: ${payment.method} - Ref: ${payment.reference}`,
+        `Pago: Transferencia Bancaria${payment.payee_name ? ` a ${payment.payee_name}` : ''} - Ref: ${payment.reference}`,
         selectedListing.estimated_arv ? `Valor mercado estimado: $${selectedListing.estimated_arv.toLocaleString()}` : '',
         selectedListing.qualification_score ? `Score calificación: ${selectedListing.qualification_score}/100` : '',
         tdhcaResult?.certificate_number ? `TDHCA Cert#: ${tdhcaResult.certificate_number}` : '',
@@ -2591,173 +2593,14 @@ export default function MarketDashboard() {
               </div>
             )}
             
-            {/* Step 3: Payment */}
+            {/* Step 3: Payment — Bank Transfer Only */}
             {purchaseStep === 'payment' && (
               <div className="p-6">
-                <div className="space-y-6">
-                  {/* Payment Amount */}
-                  <div className="bg-gradient-to-r from-navy-900 to-navy-800 rounded-xl p-5 text-white">
-                    <p className="text-sm text-navy-200 mb-1">Monto a pagar al vendedor</p>
-                    <div className="text-3xl font-bold">${payment.amount.toLocaleString()}</div>
-                    <p className="text-xs text-navy-300 mt-1">Coordinado por Abigail (Tesorería)</p>
-                  </div>
-                  
-                  {/* Payment Method */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      <CreditCard className="w-4 h-4 inline mr-2" />
-                      Método de Pago *
-                    </label>
-                    <div className="space-y-2">
-                      {PAYMENT_METHODS.map(method => (
-                        <button
-                          key={method.id}
-                          onClick={() => setPayment(prev => ({ ...prev, method: method.id }))}
-                          className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center gap-3 ${
-                            payment.method === method.id
-                              ? 'border-gold-500 bg-gold-50 shadow-sm'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex-1">
-                            <span className={`font-medium block ${payment.method === method.id ? 'text-gold-800' : 'text-gray-700'}`}>
-                            {method.label}
-                          </span>
-                            <span className="text-xs text-gray-500">{method.description}</span>
-                          </div>
-                          {method.recommended && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                              Recomendado
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Bank Transfer Details */}
-                  {payment.method === 'transferencia' && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
-                      <p className="text-sm font-semibold text-blue-900">Datos para Transferencia Bancaria</p>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                          <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Banco del vendedor</label>
-                          <input
-                            type="text"
-                            placeholder="Ej: Chase, Wells Fargo..."
-                            className="w-full p-2.5 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                            onChange={(e) => setPayment(prev => ({ ...prev, reference: `BANK:${e.target.value}|${prev.reference?.split('|')[1] || ''}` }))}
-                          />
-                          </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Routing Number</label>
-                          <input
-                            type="text"
-                            placeholder="9 dígitos"
-                            maxLength={9}
-                            className="w-full p-2.5 border border-blue-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Account Number</label>
-                          <input
-                            type="text"
-                            placeholder="Número de cuenta"
-                            className="w-full p-2.5 border border-blue-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del beneficiario</label>
-                          <input
-                            type="text"
-                            placeholder="Nombre del vendedor"
-                            className="w-full p-2.5 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Número de confirmación / Referencia *</label>
-                        <input
-                          type="text"
-                          value={payment.reference}
-                          onChange={(e) => setPayment(prev => ({ ...prev, reference: e.target.value }))}
-                          placeholder="Ingresa el # de confirmación una vez realizada la transferencia"
-                          className="w-full p-2.5 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-amber-700">
-                          <strong>Recuerda:</strong> Coordinar con Abigail antes de enviar la transferencia. 
-                          No se puede pagar al vendedor hasta que la aplicación de cambio de título haya sido recibida.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Zelle Details */}
-                  {payment.method === 'zelle' && (
-                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 space-y-3">
-                      <p className="text-sm font-semibold text-purple-900">Pago por Zelle</p>
-                      <div className="bg-white rounded-lg p-3 border border-purple-200">
-                        <p className="text-xs text-gray-500 mb-1">Enviar Zelle a:</p>
-                        <p className="text-lg font-mono font-bold text-purple-800">832-745-9600</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Número de confirmación *</label>
-                        <input
-                          type="text"
-                          value={payment.reference}
-                          onChange={(e) => setPayment(prev => ({ ...prev, reference: e.target.value }))}
-                          placeholder="# de confirmación de Zelle"
-                          className="w-full p-2.5 border border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Other Methods */}
-                  {payment.method && !['transferencia', 'zelle'].includes(payment.method) && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Referencia / Número de Transacción *
-                      </label>
-                      <input
-                        type="text"
-                        value={payment.reference}
-                        onChange={(e) => setPayment(prev => ({ ...prev, reference: e.target.value }))}
-                        placeholder="Ej: CHK-123456789"
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                      />
-                    </div>
-                  )}
-                  
-                  {/* Payment Date */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Fecha del Pago
-                    </label>
-                    <input
-                      type="date"
-                      value={payment.date}
-                      onChange={(e) => setPayment(prev => ({ ...prev, date: e.target.value }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                    />
-                  </div>
-                </div>
-                
-                {(!payment.method || !payment.reference) && (
-                  <p className="text-sm text-amber-600 mt-4 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    {payment.method === 'stripe' && !payment.reference 
-                      ? 'Completa el pago con tarjeta para continuar'
-                      : 'Completa el método y la referencia de pago'
-                    }
-                  </p>
-                )}
+                <BankTransferStep
+                  payment={payment}
+                  onPaymentChange={setPayment}
+                  payee={payee}
+                />
               </div>
             )}
             
@@ -2806,7 +2649,7 @@ export default function MarketDashboard() {
                     <div className="flex justify-between items-center py-2">
                       <span className="text-green-700">Pago</span>
                       <span className="font-medium text-green-900">
-                        {PAYMENT_METHODS.find(m => m.id === payment.method)?.label} - Ref: {payment.reference}
+                        Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''} - Ref: {payment.reference}
                       </span>
                     </div>
                   </div>
@@ -2983,9 +2826,9 @@ export default function MarketDashboard() {
               {purchaseStep === 'payment' && (
                 <button
                   onClick={goToNextStep}
-                  disabled={!payment.method || !payment.reference}
+                  disabled={!isPaymentComplete}
                   className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-                    payment.method && payment.reference
+                    isPaymentComplete
                       ? 'btn-gold'
                       : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   }`}

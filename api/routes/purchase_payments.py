@@ -1,15 +1,16 @@
 """
-Purchase Payments API - Stripe integration for property acquisition (Paso 1.4)
+Purchase Payments API - Bank transfer payments for property acquisition (Paso 1.4)
 
-When Maninos Homes buys a house from a seller, this handles Stripe payment processing.
-Also provides a unified endpoint to register any payment method.
+When Maninos Homes buys a house from a seller, this handles bank transfer payments.
+Also provides payee management (save/reuse seller bank info).
 """
 
 import os
 import logging
-from typing import Optional
+from datetime import datetime
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from tools.supabase_client import sb
 
@@ -21,12 +22,40 @@ router = APIRouter()
 # SCHEMAS
 # =============================================================================
 
+class PayeeCreate(BaseModel):
+    """Create a new payee (seller bank info)."""
+    name: str
+    bank_name: str
+    routing_number: str
+    account_number: str
+    account_type: str = "checking"  # 'checking' or 'savings'
+    address: Optional[str] = None
+    bank_address: Optional[str] = None
+    memo: Optional[str] = None
+
+    @field_validator("routing_number")
+    @classmethod
+    def validate_routing(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) != 9 or not v.isdigit():
+            raise ValueError("Routing number must be exactly 9 digits")
+        return v
+
+    @field_validator("account_type")
+    @classmethod
+    def validate_account_type(cls, v: str) -> str:
+        if v not in ("checking", "savings"):
+            raise ValueError("Account type must be 'checking' or 'savings'")
+        return v
+
+
 class PurchasePaymentRequest(BaseModel):
-    """Payment for purchasing a property (Maninos buys from seller)."""
+    """Payment for purchasing a property (Maninos buys from seller). Bank transfer only."""
     property_id: str
     amount: float
-    method: str  # 'stripe', 'transferencia', 'cheque', 'efectivo', 'zelle'
-    reference: Optional[str] = None
+    method: str = "transferencia"
+    payee_id: Optional[str] = None  # Reference to saved payee
+    reference: Optional[str] = None  # Confirmation number after transfer
     date: Optional[str] = None  # ISO date
     seller_name: Optional[str] = None
     notes: Optional[str] = None
@@ -262,6 +291,77 @@ async def register_purchase_payment(request: PurchasePaymentRequest):
         raise
     except Exception as e:
         logger.error(f"[purchase_payment] Error registering payment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# PAYEES — Saved seller bank info for reuse
+# ============================================================================
+
+@router.get("/payees")
+async def list_payees():
+    """List all saved payees (seller bank accounts)."""
+    try:
+        result = sb.table("payees").select("*").order("name").execute()
+        # Mask account numbers in response (show last 4 only)
+        payees = []
+        for p in (result.data or []):
+            masked = {**p}
+            acct = p.get("account_number", "")
+            masked["account_number_masked"] = f"****{acct[-4:]}" if len(acct) >= 4 else "****"
+            payees.append(masked)
+        return {"ok": True, "data": payees}
+    except Exception as e:
+        logger.error(f"[payees] Error listing payees: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/payees")
+async def create_payee(request: PayeeCreate):
+    """Save a new payee (seller bank info) for future reuse."""
+    try:
+        data = {
+            "name": request.name.strip(),
+            "bank_name": request.bank_name.strip(),
+            "routing_number": request.routing_number.strip(),
+            "account_number": request.account_number.strip(),
+            "account_type": request.account_type,
+        }
+        if request.address:
+            data["address"] = request.address.strip()
+        if request.bank_address:
+            data["bank_address"] = request.bank_address.strip()
+        if request.memo:
+            data["memo"] = request.memo.strip()
+
+        result = sb.table("payees").insert(data).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Error saving payee")
+
+        payee = result.data[0]
+        logger.info(f"[payees] Created payee: {payee['name']} at {payee['bank_name']}")
+
+        return {"ok": True, "data": payee, "message": f"Beneficiario '{payee['name']}' guardado"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[payees] Error creating payee: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payees/{payee_id}")
+async def get_payee(payee_id: str):
+    """Get a single payee by ID (full details for payment form)."""
+    try:
+        result = sb.table("payees").select("*").eq("id", payee_id).single().execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Beneficiario no encontrado")
+        return {"ok": True, "data": result.data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[payees] Error getting payee {payee_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
