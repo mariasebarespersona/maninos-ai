@@ -489,64 +489,27 @@ export default function MarketDashboard() {
     }
   }, [listings, fetchPredictions]);
 
-  // Trigger direct scraping — no LLM, calls each city sequentially
+  // Trigger AI search - Direct scraping endpoint
   const triggerSearch = async () => {
     setSearching(true);
-    const cities = ['Houston', 'Dallas', 'San Antonio', 'Austin'];
-    let totalScraped = 0;
-    let totalSaved = 0;
-    let totalQualified = 0;
-    const errors: string[] = [];
-
     try {
-      // Run cities sequentially (parallel crashes Railway — too many Playwright browsers)
-      for (const city of cities) {
-        try {
-          const params = new URLSearchParams({ city, min_price: '5000', max_price: '80000' });
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 180000); // 3 min timeout per city
-          // Call Railway backend directly — Vercel proxy times out on long scrapes
-          const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-          const scrapeUrl = apiBase
-            ? `${apiBase}/api/market-listings/scrape?${params}`
-            : `/api/market-listings/scrape?${params}`;
-          const response = await fetch(scrapeUrl, {
-            method: 'POST',
-            signal: controller.signal,
-          });
-          clearTimeout(timer);
-
-          if (!response.ok) {
-            errors.push(`${city}: HTTP ${response.status}`);
-            continue;
-          }
-
-          const result = await response.json();
-          console.log(`[Scrape] ${city}:`, result);
-          if (result.success) {
-            totalScraped += result.market_analysis?.total_scraped || 0;
-            totalSaved += result.saved_to_db || 0;
-            totalQualified += result.qualified || 0;
-          } else {
-            errors.push(`${city}: ${result.detail || 'error'}`);
-          }
-        } catch (e: any) {
-          errors.push(`${city}: ${e.name === 'AbortError' ? 'timeout' : e.message || e}`);
-        }
-      }
-
-      if (totalScraped > 0) {
-        toast.success(`Encontradas ${totalScraped} casas, ${totalQualified} califican, ${totalSaved} nuevas guardadas.`);
-      } else if (errors.length > 0) {
-        toast.warning(`Busqueda parcial: ${errors.slice(0, 2).join('; ')}`);
-      } else {
-        toast.warning('No se encontraron casas en ninguna ciudad.');
-      }
-
+      // Use direct scraping endpoint (faster, no LLM needed)
+      // Scrapes MHVillage, MobileHome.net, and MHBay
+      const response = await fetch('/api/market-listings/scrape', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) throw new Error('Search failed');
+      
+      const result = await response.json();
+      toast.success(
+        `✓ Encontradas ${result.qualified} casas calificadas de ${result.market_analysis?.total_scraped || 0} analizadas`
+      );
+      
       // Refresh listings
       await fetchListings();
       await fetchStats();
-
+      
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Error al buscar propiedades');
@@ -1269,7 +1232,7 @@ export default function MarketDashboard() {
           <div className="flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600" />
             <p className="text-amber-800">
-              No hay análisis de mercado. Haz clic en "Buscar Casas" para buscar en las 7 fuentes.
+              No hay análisis de mercado. Haz clic en "Buscar con AI" para scrapear las 3 fuentes.
             </p>
           </div>
         </div>
@@ -1427,12 +1390,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando casas...
+                Buscando en {fbConnected ? 5 : 4} fuentes...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                Buscar Casas (7 fuentes)
+                🔍 Buscar Casas ({fbConnected ? '5 fuentes' : '4 fuentes'})
             </>
           )}
         </button>

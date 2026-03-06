@@ -953,10 +953,11 @@ async def scrape_and_save(
         
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
         
-        # Facebook is blocked from Railway datacenter IPs — skip to avoid wasting 45s/city
-        fb_connected = False
-        source_count = 5
+        # Check Facebook auth status
+        fb_connected = FacebookAuth.is_authenticated()
+        source_count = 6 if fb_connected else 5
         logger.info(f"[Scrape] Will scrape {source_count} sources: "
+                     f"{'Facebook MP, ' if fb_connected else '(FB not connected) '}"
                      f"MHVillage, MobileHome.net, MHBay, VMF Homes, 21st Mortgage")
         
         all_listings = []
@@ -1092,7 +1093,7 @@ async def scrape_and_save(
         # Import zone checker
         from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE, BUY_PERCENT
         
-        # First, count qualified before saving (Mar 2026: price range + zone only)
+        # First, count qualified before saving (new rules Feb 2026)
         qualified_count = 0
         for listing in all_listings:
             passes_range = MIN_PRICE <= listing.listing_price <= MAX_PRICE
