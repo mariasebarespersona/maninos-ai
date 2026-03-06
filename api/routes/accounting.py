@@ -2660,6 +2660,104 @@ async def delete_bank_statement(statement_id: str):
 
 
 # ============================================================================
+# RECEIPTS
+# ============================================================================
+
+@router.get("/receipts")
+async def list_receipts(transaction_id: Optional[str] = Query(None)):
+    """List receipts, optionally filtered by transaction_id."""
+    q = sb.table("receipts").select("*")
+    if transaction_id:
+        q = q.eq("transaction_id", transaction_id)
+    result = q.order("created_at", desc=True).execute()
+    return result.data or []
+
+
+@router.post("/receipts")
+async def upload_receipt(
+    file: UploadFile = File(...),
+    transaction_id: str = Form(None),
+    vendor_name: str = Form(None),
+    amount: float = Form(None),
+    receipt_date: str = Form(None),
+    description: str = Form(None),
+    property_id: str = Form(None),
+    notes: str = Form(None),
+):
+    """Upload a receipt file (image or PDF) attached to a transaction."""
+    import uuid as _uuid
+
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
+    allowed = {"jpg", "jpeg", "png", "pdf", "heic", "webp"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"File type .{ext} not supported. Use: {', '.join(allowed)}")
+
+    file_content = await file.read()
+    if len(file_content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    storage_path = f"receipts/{_uuid.uuid4().hex[:12]}_{file.filename}"
+    file_url = None
+    try:
+        sb.storage.from_("transaction-documents").upload(
+            storage_path, file_content,
+            {"content-type": file.content_type or "application/octet-stream"}
+        )
+        file_url = sb.storage.from_("transaction-documents").get_public_url(storage_path)
+        if file_url and file_url.endswith("?"):
+            file_url = file_url[:-1]
+    except Exception as e:
+        logger.error(f"[Receipts] Storage upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not upload file to storage")
+
+    receipt_data = {
+        "file_url": file_url,
+        "storage_path": storage_path,
+        "file_type": ext,
+        "original_filename": file.filename or "unknown",
+    }
+    if transaction_id:
+        receipt_data["transaction_id"] = transaction_id
+    if vendor_name:
+        receipt_data["vendor_name"] = vendor_name
+    if amount is not None:
+        receipt_data["amount"] = amount
+    if receipt_date:
+        receipt_data["receipt_date"] = receipt_date
+    if description:
+        receipt_data["description"] = description
+    if property_id:
+        receipt_data["property_id"] = property_id
+    if notes:
+        receipt_data["notes"] = notes
+
+    result = sb.table("receipts").insert(receipt_data).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Could not save receipt record")
+
+    return result.data[0]
+
+
+@router.delete("/receipts/{receipt_id}")
+async def delete_receipt(receipt_id: str):
+    """Delete a receipt record and its file from storage."""
+    # Get the receipt to find storage path
+    receipt = sb.table("receipts").select("storage_path").eq("id", receipt_id).execute()
+    if not receipt.data:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    storage_path = receipt.data[0].get("storage_path")
+    if storage_path:
+        try:
+            sb.storage.from_("transaction-documents").remove([storage_path])
+        except Exception as e:
+            logger.warning(f"[Receipts] Could not delete file from storage: {e}")
+
+    sb.table("receipts").delete().eq("id", receipt_id).execute()
+    return {"message": "Receipt deleted"}
+
+
+# ============================================================================
 # INTERNAL: Extract text and parse movements from bank statement files
 # ============================================================================
 

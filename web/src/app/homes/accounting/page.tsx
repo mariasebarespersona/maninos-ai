@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -494,6 +494,8 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
   typeFilter: string; setTypeFilter: (s: string) => void; flowFilter: '' | 'income' | 'expense'
   setFlowFilter: (s: '' | 'income' | 'expense') => void; page: number; setPage: (n: number) => void; onRefresh: () => void
 }) {
+  const [attachTxnId, setAttachTxnId] = useState<string | null>(null)
+
   const handleVoid = async (id: string) => {
     if (!confirm('¿Anular esta transacción?')) return
     await fetch(`/api/accounting/transactions/${id}`, { method: 'DELETE' })
@@ -558,7 +560,14 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--ash)' }}>{PAYMENT_LABELS[t.payment_method || ''] || t.payment_method || '—'}</td>
                       <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>{t.is_income ? '+' : '-'}{fmtFull(t.amount)}</td>
                       <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>{t.status}</span></td>
-                      <td className="px-4 py-3 text-center">{t.status !== 'voided' && <button onClick={() => handleVoid(t.id)} className="text-red-400 hover:text-red-600" title="Anular"><X className="w-4 h-4" /></button>}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setAttachTxnId(t.id)} className="text-stone-400 hover:text-navy-700 transition-colors" title="Adjuntar documento">
+                            <Paperclip className="w-4 h-4" />
+                          </button>
+                          {t.status !== 'voided' && <button onClick={() => handleVoid(t.id)} className="text-red-400 hover:text-red-600" title="Anular"><X className="w-4 h-4" /></button>}
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
@@ -572,6 +581,9 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
         <span className="text-sm" style={{ color: 'var(--slate)' }}>Página {page}</span>
         <button onClick={() => setPage(page + 1)} disabled={transactions.length < 30} className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border disabled:opacity-40" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Siguiente <ChevronRight className="w-4 h-4" /></button>
       </div>
+
+      {/* Attachment modal */}
+      {attachTxnId && <TransactionAttachments transactionId={attachTxnId} onClose={() => setAttachTxnId(null)} />}
     </div>
   )
 }
@@ -3108,5 +3120,163 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
         {isPosted && <CheckCircle2 className="w-4 h-4 text-blue-500 mx-auto" />}
       </td>
     </tr>
+  )
+}
+
+// ============================================================================
+// TRANSACTION ATTACHMENT TYPES
+// ============================================================================
+
+interface ReceiptRecord {
+  id: string
+  transaction_id?: string
+  description?: string
+  vendor_name?: string
+  amount?: number
+  receipt_date?: string
+  file_url: string
+  storage_path: string
+  file_type?: string
+  original_filename?: string
+  property_id?: string
+  notes?: string
+  created_at: string
+}
+
+function TransactionAttachments({ transactionId, onClose }: { transactionId: string; onClose: () => void }) {
+  const { addToast } = useToast()
+  const [receipts, setReceipts] = useState<ReceiptRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [viewReceipt, setViewReceipt] = useState<ReceiptRecord | null>(null)
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
+
+  const fetchReceipts = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/accounting/receipts?transaction_id=${transactionId}`)
+      if (res.ok) setReceipts(await res.json())
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [transactionId])
+
+  useEffect(() => { fetchReceipts() }, [fetchReceipts])
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('transaction_id', transactionId)
+      const res = await fetch('/api/accounting/receipts', { method: 'POST', body: formData })
+      if (res.ok) {
+        addToast('success', 'Documento adjuntado')
+        fetchReceipts()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        addToast('error', `Error: ${err.detail || 'No se pudo subir'}`)
+      }
+    } catch { addToast('error', 'Error de conexion') }
+    finally { setUploading(false) }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleUpload(file)
+    e.target.value = ''
+  }
+
+  const deleteReceipt = async (id: string) => {
+    if (!confirm('¿Eliminar este documento?')) return
+    try {
+      const res = await fetch(`/api/accounting/receipts/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setReceipts(prev => prev.filter(r => r.id !== id))
+        if (viewReceipt?.id === id) setViewReceipt(null)
+      }
+    } catch { addToast('error', 'Error de conexion') }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+          <h3 className="font-serif font-semibold" style={{ color: 'var(--ink)' }}>Documentos Adjuntos</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-stone-100"><X className="w-5 h-5" style={{ color: 'var(--slate)' }} /></button>
+        </div>
+
+        {/* Upload buttons */}
+        <div className="p-4 border-b flex flex-wrap gap-2" style={{ borderColor: 'var(--sand)' }}>
+          <button onClick={() => cameraInputRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+            Tomar Foto
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            Subir Archivo
+          </button>
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
+          <input ref={fileInputRef} type="file" accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
+        </div>
+
+        {/* Documents list */}
+        <div className="p-4 overflow-y-auto max-h-[50vh]">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--ash)' }} /></div>
+          ) : receipts.length === 0 ? (
+            <div className="text-center py-8">
+              <ImageIcon className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
+              <p className="text-sm" style={{ color: 'var(--ash)' }}>Sin documentos adjuntos</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Sube una foto de recibo, factura o comprobante</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {receipts.map(r => (
+                <div key={r.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-sand/30 group">
+                  {/* Thumbnail */}
+                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-stone-100 flex-shrink-0 cursor-pointer" onClick={() => setViewReceipt(r)}>
+                    {r.file_type === 'pdf' ? (
+                      <div className="w-full h-full flex items-center justify-center"><FileText className="w-6 h-6" style={{ color: 'var(--slate)' }} /></div>
+                    ) : (
+                      <img src={r.file_url} alt={r.original_filename || ''} className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewReceipt(r)}>
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{r.original_filename || 'Documento'}</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>{new Date(r.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                  <button onClick={() => deleteReceipt(r.id)}
+                    className="p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50">
+                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Image viewer overlay */}
+      {viewReceipt && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onClick={() => setViewReceipt(null)}>
+          <div className="relative max-w-3xl max-h-[90vh] w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewReceipt(null)} className="absolute -top-3 -right-3 z-10 p-2 rounded-full bg-white shadow-lg hover:bg-stone-100">
+              <X className="w-5 h-5" style={{ color: 'var(--charcoal)' }} />
+            </button>
+            {viewReceipt.file_type === 'pdf' ? (
+              <iframe src={viewReceipt.file_url} className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewReceipt.file_url} alt="Documento" className="w-full max-h-[80vh] object-contain rounded-lg bg-white" />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

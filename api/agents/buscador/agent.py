@@ -2,7 +2,7 @@
 BuscadorAgent - Intelligent Mobile Home Finder for Texas Market.
 
 PURPOSE:
-- Web scraping from MHVillage, MobileHome.net, MHBay, Facebook MP
+- Web scraping from MHVillage, MobileHome.net, MHBay, Facebook MP, VMF homes and 21st Mortgage.
 - Filter properties using Maninos rules (updated Feb 2026)
 - Maintain qualified properties in dashboard
 - Auto-replenish when a property is purchased
@@ -12,11 +12,12 @@ SOURCES:
 - https://www.mobilehome.net (Secondary)
 - https://www.zillow.com (For market value comparables)
 - Facebook Marketplace (Primary purchase source - owner-to-owner)
+- https://www.vmfhomes.com (Vanderbilt Mortgage - mobile homes for sale, JSON API)
+- https://www.21stmortgage.com (21st Mortgage - repo/used mobile homes, JSON API)
 
 RULES (Feb 2026 — confirmed with Maninos):
-1. 60% Rule: price <= market_value * 0.60  (renovation NOT included)
-2. Price Range: $5,000 — $80,000
-3. Location: Within 200mi of Houston OR Dallas
+1. Price Range: $5,000 — $80,000
+2. Location: Within 200mi of Houston OR Dallas
 4. NO year filter (any age accepted)
 5. Types: single wide + double wide
 
@@ -47,6 +48,8 @@ from .scraper import (
     ZillowScraper,
     MobileHomeScraper,
     BrowserManager,
+    VMFHomesScraper,
+    TwentyFirstMortgageScraper,
 )
 
 logger = logging.getLogger(__name__)
@@ -417,6 +420,85 @@ async def search_all_sources(city: str, min_price: float = 0, max_price: float =
         return {"error": str(e), "total_found": 0, "listings": []}
 
 
+@tool
+async def scrape_vmf_homes(min_price: float = 5000, max_price: float = 80000) -> List[Dict[str, Any]]:
+    """
+    PURPOSE: Scrape mobile homes for sale from VMF Homes (Vanderbilt Mortgage & Finance)
+
+    WHEN TO USE:
+    ✓ For finding Vanderbilt-financed mobile homes in Texas
+    ✓ Good source for move-in ready homes at competitive prices
+    ✓ Uses JSON API — fast and reliable, no browser needed
+
+    WHEN NOT TO USE:
+    ✗ For ARV comparables (use Zillow instead)
+
+    PARAMETERS:
+        min_price: Minimum listing price (default $5,000)
+        max_price: Maximum listing price (default $80,000)
+
+    RETURNS:
+        List of mobile home listings from VMF Homes (Vanderbilt)
+
+    TECH: Pure HTTP + JSON API (no Playwright needed)
+    """
+    logger.info(f"[TOOL] scrape_vmf_homes: ${min_price}-${max_price}")
+
+    try:
+        listings = await VMFHomesScraper.scrape(
+            min_price=min_price,
+            max_price=max_price,
+        )
+
+        result = [l.__dict__ if hasattr(l, '__dict__') else l for l in listings]
+        logger.info(f"[TOOL] scrape_vmf_homes: Found {len(result)} listings")
+        return result
+
+    except Exception as e:
+        logger.error(f"[TOOL] scrape_vmf_homes error: {e}")
+        return []
+
+
+@tool
+async def scrape_21st_mortgage(min_price: float = 5000, max_price: float = 80000) -> List[Dict[str, Any]]:
+    """
+    PURPOSE: Scrape repo/used mobile homes from 21st Mortgage
+
+    WHEN TO USE:
+    ✓ For finding repossessed mobile homes at below-market prices
+    ✓ 21st Mortgage is a major lender — their repos are often good deals
+    ✓ Uses JSON API — fast and reliable, no browser needed
+
+    WHEN NOT TO USE:
+    ✗ For new/retail-priced homes
+    ✗ For ARV comparables (use Zillow instead)
+
+    PARAMETERS:
+        min_price: Minimum listing price (default $5,000)
+        max_price: Maximum listing price (default $80,000)
+
+    RETURNS:
+        List of repo mobile home listings from 21st Mortgage in Texas
+
+    TECH: Pure HTTP + JSON API (no Playwright needed)
+    """
+    logger.info(f"[TOOL] scrape_21st_mortgage: ${min_price}-${max_price}")
+
+    try:
+        listings = await TwentyFirstMortgageScraper.scrape(
+            min_price=min_price,
+            max_price=max_price,
+        )
+
+        result = [l.__dict__ if hasattr(l, '__dict__') else l for l in listings]
+        logger.info(f"[TOOL] scrape_21st_mortgage: Found {len(result)} listings")
+        return result
+
+    except Exception as e:
+        logger.error(f"[TOOL] scrape_21st_mortgage error: {e}")
+        return []
+
+
 # ============================================
 # BUSCADOR AGENT
 # ============================================
@@ -424,33 +506,36 @@ async def search_all_sources(city: str, min_price: float = 0, max_price: float =
 class BuscadorAgent(BaseAgent):
     """
     Intelligent Mobile Home Finder for Maninos Homes.
-    
+
     Responsibilities:
-    1. Scrape properties from MHVillage, MobileHome.net, MHBay, Facebook MP
+    1. Scrape properties from MHVillage, MobileHome.net, Facebook MP, VMF Homes (Vanderbilt), 21st Mortgage
     2. Qualify properties using Maninos rules (60%, $5K-$80K, 200mi zone)
     3. Maintain qualified properties in dashboard
     4. Auto-replenish when a property is purchased
-    
+
     Rules (Feb 2026):
     - 60% of market value (NOT 70%, renovation NOT included)
     - No year filter (any age accepted)
     - Within 200mi of Houston OR Dallas
     - Price range: $5,000 — $80,000
     - Types: single wide + double wide
-    
-    Tools (using Playwright for browser automation):
-    - scrape_mhvillage: Primary source for listings
-    - scrape_mobilehome_net: Secondary source
+
+    Tools:
+    - scrape_facebook_marketplace: PRIMARY source (owner-to-owner)
+    - scrape_mhvillage: Largest mobile home marketplace
+    - scrape_mobilehome_net: Secondary marketplace
+    - scrape_vmf_homes: Vanderbilt Mortgage homes for sale (JSON API)
+    - scrape_21st_mortgage: 21st Mortgage repo/used homes (JSON API)
     - get_zillow_arv: For market value estimates and comparables
     - qualify_property: Check qualification rules
     - save_to_dashboard: Save to database
-    - search_all_sources: Combined search across all sources
+    - search_all_sources: Combined search across MHVillage + MobileHome.net
     """
-    
+
     def __init__(self):
         super().__init__(
             name="buscador",
-            description="Intelligent mobile home finder with REAL web scraping using Playwright",
+            description="Intelligent mobile home finder with REAL web scraping (7 sources)",
             model="gpt-4o",
             temperature=0.2,
         )
@@ -458,6 +543,8 @@ class BuscadorAgent(BaseAgent):
             scrape_facebook_marketplace,  # PRIMARY source — always search first
             scrape_mhvillage,
             scrape_mobilehome_net,
+            scrape_vmf_homes,             # Vanderbilt — JSON API, fast
+            scrape_21st_mortgage,         # 21st Mortgage repos — JSON API, fast
             get_zillow_arv,
             qualify_property,
             save_to_dashboard,
@@ -471,10 +558,10 @@ class BuscadorAgent(BaseAgent):
 You are BuscadorAgent, an intelligent mobile home finder for Maninos Homes in Texas.
 Your job: Find good mobile home deals that meet Maninos' investment criteria.
 
-# YOUR TOOLS (Using Playwright for REAL web scraping)
+# YOUR TOOLS (7 sources)
 
 1. **search_all_sources** - RECOMMENDED: Search MHVillage + MobileHome.net + get Zillow ARV
-   - Use this for comprehensive searches
+   - Use this for comprehensive marketplace searches
    - Returns combined results with ARV estimates
 
 2. **scrape_facebook_marketplace** - PRIMARY source (owner-to-owner)
@@ -482,7 +569,7 @@ Your job: Find good mobile home deals that meet Maninos' investment criteria.
    - ALWAYS search this first
    - Automatically searches Houston + Dallas areas
 
-3. **scrape_mhvillage** - Market value comparison source
+3. **scrape_mhvillage** - Largest mobile home marketplace
    - https://www.mhvillage.com
    - Use for targeted searches and price comparison
 
@@ -490,24 +577,36 @@ Your job: Find good mobile home deals that meet Maninos' investment criteria.
    - https://www.mobilehome.net
    - Use for cross-referencing
 
-4. **get_zillow_arv** - Get market value estimates from Zillow
+5. **scrape_vmf_homes** - Vanderbilt Mortgage & Finance homes for sale
+   - https://www.vmfhomes.com
+   - JSON API — fast, no browser needed
+   - Good source for move-in ready homes at competitive prices
+   - Only mobile homes FOR SALE in Texas
+
+6. **scrape_21st_mortgage** - 21st Mortgage repo/used mobile homes
+   - https://www.21stmortgage.com
+   - JSON API — fast, no browser needed
+   - Repossessed homes often priced below market — great for 60% rule
+   - Major mobile home lender with large repo inventory
+
+7. **get_zillow_arv** - Get market value estimates from Zillow
    - https://www.zillow.com
    - Use to calculate the 60% rule
 
-5. **qualify_property** - Check qualification rules (Feb 2026)
+8. **qualify_property** - Check qualification rules (Feb 2026)
    - 60% Rule: price <= market_value * 0.60  (renovation NOT included)
    - Price Range: $5,000 — $80,000
    - Zone: within 200mi of Houston OR Dallas
    - NO year filter (any age accepted)
    - Types: single wide + double wide accepted
 
-6. **save_to_dashboard** - Save qualified properties to database
+9. **save_to_dashboard** - Save qualified properties to database
    - Only save properties that pass ALL rules
    - Dashboard should have active properties available
 
 # WORKFLOW
 1. Receive search request (city, price range)
-2. Use search_all_sources OR individual scrapers
+2. Search ALL sources: Facebook MP, search_all_sources (MHVillage + MobileHome.net), VMF Homes, 21st Mortgage
 3. For each listing, calculate qualification using qualify_property
 4. Save qualified properties with save_to_dashboard
 5. Report results
@@ -643,8 +742,11 @@ Always provide:
     async def _execute_tool(self, tool_name: str, args: dict) -> Any:
         """Execute a tool by name."""
         tool_map = {
+            "scrape_facebook_marketplace": scrape_facebook_marketplace,
             "scrape_mhvillage": scrape_mhvillage,
             "scrape_mobilehome_net": scrape_mobilehome_net,
+            "scrape_vmf_homes": scrape_vmf_homes,
+            "scrape_21st_mortgage": scrape_21st_mortgage,
             "get_zillow_arv": get_zillow_arv,
             "qualify_property": qualify_property,
             "save_to_dashboard": save_to_dashboard,

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from tools.supabase_client import sb
+from routes.accounting import _generate_transaction_number
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -149,8 +150,9 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     acct_txn_id = None
     try:
         txn_data = {
+            "transaction_number": _generate_transaction_number(),
             "transaction_date": req.payment_date,
-            "transaction_type": "expense",
+            "transaction_type": "purchase_house",
             "amount": order["amount"],
             "is_income": False,
             "description": f"Compra propiedad: {order.get('property_address', 'N/A')} - Pago a {order['payee_name']}",

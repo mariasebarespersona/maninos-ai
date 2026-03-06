@@ -489,27 +489,32 @@ export default function MarketDashboard() {
     }
   }, [listings, fetchPredictions]);
 
-  // Trigger AI search - Direct scraping endpoint
+  // Trigger AI search - BuscadorAgent (LLM-powered, 7 sources)
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      // Use direct scraping endpoint (faster, no LLM needed)
-      // Scrapes MHVillage, MobileHome.net, and MHBay
-      const response = await fetch('/api/market-listings/scrape', {
+      const response = await fetch('/api/agents/buscador', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'Busca mobile homes en Texas. Usa todas las fuentes disponibles: Facebook Marketplace, MHVillage, MobileHome.net, VMF Homes (Vanderbilt) y 21st Mortgage. Aplica la regla del 60% y guarda las calificadas en el dashboard.',
+        }),
       });
-      
+
       if (!response.ok) throw new Error('Search failed');
-      
+
       const result = await response.json();
-      toast.success(
-        `✓ Encontradas ${result.qualified} casas calificadas de ${result.market_analysis?.total_scraped || 0} analizadas`
-      );
-      
+
+      if (result.success) {
+        toast.success('BuscadorAgent completo — revisa las nuevas propiedades');
+      } else {
+        toast.warning(result.error || 'Busqueda parcial — algunas fuentes fallaron');
+      }
+
       // Refresh listings
       await fetchListings();
       await fetchStats();
-      
+
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Error al buscar propiedades');
@@ -1232,7 +1237,7 @@ export default function MarketDashboard() {
           <div className="flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600" />
             <p className="text-amber-800">
-              No hay análisis de mercado. Haz clic en "Buscar con AI" para scrapear las 3 fuentes.
+              No hay análisis de mercado. Haz clic en "Buscar Casas" para buscar en las 7 fuentes.
             </p>
           </div>
         </div>
@@ -1390,12 +1395,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando en {fbConnected ? 5 : 4} fuentes...
+                BuscadorAgent trabajando...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                🔍 Buscar Casas ({fbConnected ? '5 fuentes' : '4 fuentes'})
+                Buscar Casas (7 fuentes)
             </>
           )}
         </button>
