@@ -34,7 +34,6 @@ import {
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
-import StripePaymentForm from './StripePaymentForm';
 import BillOfSaleTemplate, { type BillOfSaleData } from './BillOfSaleTemplate';
 import TitleApplicationTemplate, { type TitleApplicationData } from './TitleApplicationTemplate';
 import { BankTransferStep, usePayeeState, type PaymentInfo, type Payee, type PayeeMode } from './BankTransferPayment';
