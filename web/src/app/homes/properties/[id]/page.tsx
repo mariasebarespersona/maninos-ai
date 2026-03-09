@@ -459,14 +459,16 @@ ${price}
         } catch { /* skip failed photo */ }
       }
 
-      if (navigator.canShare && navigator.canShare({ text: whatsAppMessage, files })) {
-        await navigator.share({ text: whatsAppMessage, files })
+      if (files.length > 0 && navigator.canShare && navigator.canShare({ files })) {
+        // Copy text to clipboard first, then share only photos
+        // WhatsApp ignores files when text is also passed
+        await navigator.clipboard.writeText(whatsAppMessage)
+        await navigator.share({ files })
+        toast.success('Texto copiado al clipboard. Pega el mensaje en WhatsApp despues de enviar las fotos.')
       } else if (files.length === 0) {
-        // No photos loaded, fall back to text-only
         sendWhatsAppTextOnly()
       } else {
-        // Browser doesn't support file sharing, fall back to text-only
-        toast.warning('Tu navegador no soporta compartir fotos. Usa el boton Copiar y adjunta las fotos manualmente.')
+        toast.warning('Tu navegador no soporta compartir fotos. Usa Copiar y adjunta las fotos manualmente.')
         sendWhatsAppTextOnly()
       }
     } catch (err: any) {
@@ -1826,11 +1828,15 @@ ${price}
                 className="w-full p-3 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
               {property?.photos && property.photos.length > 0 && (
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {property.photos.slice(0, 5).map((url, i) => (
-                    <img key={i} src={url} alt={`Foto ${i + 1}`} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
-                  ))}
-                  <span className="text-xs text-gray-400 self-center ml-1">{Math.min(property.photos.length, 5)} fotos se adjuntan</span>
+                <div className="mt-3">
+                  <div className="flex gap-2 overflow-x-auto">
+                    {property.photos.slice(0, 5).map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i + 1}`} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    "Enviar fotos" envia las {Math.min(property.photos.length, 5)} fotos y copia el texto. Luego pega el texto en WhatsApp.
+                  </p>
                 </div>
               )}
             </div>
