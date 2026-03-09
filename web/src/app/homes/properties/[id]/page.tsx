@@ -444,36 +444,163 @@ ${price}
     setShowWhatsAppModal(true)
   }
 
-  const shareWithPhotos = async () => {
+  const generateAndShareFlyer = async () => {
     if (!property) return
     setSharingSending(true)
     try {
-      const photoUrls = (property.photos || []).slice(0, 5)
-      const files: File[] = []
+      const W = 1080, H = 1920 // Instagram story / WhatsApp friendly
+      const canvas = document.createElement('canvas')
+      canvas.width = W
+      canvas.height = H
+      const ctx = canvas.getContext('2d')!
 
-      for (let i = 0; i < photoUrls.length; i++) {
+      // Background
+      ctx.fillStyle = '#0f172a'
+      ctx.fillRect(0, 0, W, H)
+
+      // Load and draw main photo (top 55%)
+      const photoUrl = (property.photos || [])[0]
+      if (photoUrl) {
         try {
-          const res = await fetch(photoUrls[i])
-          const blob = await res.blob()
-          files.push(new File([blob], `casa-${property.property_code || 'foto'}-${i + 1}.jpg`, { type: blob.type || 'image/jpeg' }))
-        } catch { /* skip failed photo */ }
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const i = new window.Image()
+            i.crossOrigin = 'anonymous'
+            i.onload = () => resolve(i)
+            i.onerror = reject
+            i.src = photoUrl
+          })
+          const photoH = H * 0.55
+          const scale = Math.max(W / img.width, photoH / img.height)
+          const sw = img.width * scale, sh = img.height * scale
+          ctx.drawImage(img, (W - sw) / 2, (photoH - sh) / 2, sw, sh)
+          // Gradient overlay at bottom of photo
+          const grad = ctx.createLinearGradient(0, photoH - 200, 0, photoH)
+          grad.addColorStop(0, 'rgba(15,23,42,0)')
+          grad.addColorStop(1, 'rgba(15,23,42,1)')
+          ctx.fillStyle = grad
+          ctx.fillRect(0, photoH - 200, W, 200)
+        } catch { /* no photo */ }
       }
 
-      if (files.length > 0 && navigator.canShare && navigator.canShare({ files })) {
-        // Copy text to clipboard first, then share only photos
-        // WhatsApp ignores files when text is also passed
-        await navigator.clipboard.writeText(whatsAppMessage)
-        await navigator.share({ files })
-        toast.success('Texto copiado al clipboard. Pega el mensaje en WhatsApp despues de enviar las fotos.')
-      } else if (files.length === 0) {
-        sendWhatsAppTextOnly()
+      // Text section starting below photo
+      let y = H * 0.55 + 20
+
+      // Property code + year
+      ctx.fillStyle = '#f59e0b'
+      ctx.font = 'bold 56px system-ui, sans-serif'
+      const title = property.property_code ? `Casa ${property.property_code}` : 'Casa en Venta'
+      ctx.fillText(title, 60, y)
+      if (property.year) {
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = '40px system-ui, sans-serif'
+        ctx.fillText(`${property.year}`, 60 + ctx.measureText(title).width + 30, y)
+      }
+      y += 70
+
+      // Dimensions
+      if (property.width_ft && property.length_ft) {
+        ctx.fillStyle = '#e2e8f0'
+        ctx.font = '38px system-ui, sans-serif'
+        ctx.fillText(`📏 ${property.width_ft} x ${property.length_ft}`, 60, y)
+        y += 55
+      }
+
+      // Beds / Baths / Sqft
+      const details: string[] = []
+      if (property.bedrooms) details.push(`${fmtNum(property.bedrooms)} Cuartos`)
+      if (property.bathrooms) details.push(`${fmtNum(property.bathrooms)} Baños`)
+      if (property.square_feet) details.push(`${property.square_feet} sqft`)
+      if (details.length) {
+        ctx.fillStyle = '#e2e8f0'
+        ctx.font = '38px system-ui, sans-serif'
+        ctx.fillText(`🛏 ${details.join('  •  ')}`, 60, y)
+        y += 55
+      }
+
+      y += 20
+
+      // Price banner
+      if (property.sale_price) {
+        ctx.fillStyle = '#16a34a'
+        ctx.beginPath()
+        ctx.roundRect(40, y, W - 80, 90, 16)
+        ctx.fill()
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 52px system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText(`💰 ${fmtPrice(property.sale_price)}`, W / 2, y + 62)
+        ctx.textAlign = 'left'
+        y += 120
+      }
+
+      // Financing
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '34px system-ui, sans-serif'
+      ctx.fillText('🏦 Financiamiento disponible', 60, y)
+      y += 55
+
+      // Ready to move in
+      ctx.fillStyle = '#4ade80'
+      ctx.font = 'bold 36px system-ui, sans-serif'
+      ctx.fillText('✅ Lista para mudarte de inmediato', 60, y)
+      y += 80
+
+      // Address
+      const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
+      ctx.fillStyle = '#cbd5e1'
+      ctx.font = '30px system-ui, sans-serif'
+      // Word wrap address
+      const words = addr.split(' ')
+      let line = '📍 '
+      for (const word of words) {
+        const test = line + word + ' '
+        if (ctx.measureText(test).width > W - 120) {
+          ctx.fillText(line.trim(), 60, y)
+          y += 42
+          line = '    ' + word + ' '
+        } else {
+          line = test
+        }
+      }
+      ctx.fillText(line.trim(), 60, y)
+      y += 60
+
+      // CTA
+      ctx.fillStyle = '#f59e0b'
+      ctx.font = 'bold 34px system-ui, sans-serif'
+      ctx.fillText('📲 ¡Contáctanos hoy!', 60, y)
+
+      // Bottom bar
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, H - 80, W, 80)
+      ctx.fillStyle = '#64748b'
+      ctx.font = '28px system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('Maninos Homes  •  (936) 200-5200', W / 2, H - 30)
+      ctx.textAlign = 'left'
+
+      // Convert to file and share
+      const blob = await new Promise<Blob>((resolve) =>
+        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.92)
+      )
+      const file = new File([blob], `casa-${property.property_code || 'venta'}.jpg`, { type: 'image/jpeg' })
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] })
       } else {
-        toast.warning('Tu navegador no soporta compartir fotos. Usa Copiar y adjunta las fotos manualmente.')
-        sendWhatsAppTextOnly()
+        // Desktop fallback: download the image
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = file.name
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Flyer descargado. Compártelo manualmente en WhatsApp.')
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
-        toast.error('Error al compartir')
+        console.error('Flyer error:', err)
+        toast.error('Error al generar flyer')
       }
     } finally {
       setSharingSending(false)
@@ -1835,7 +1962,7 @@ ${price}
                     ))}
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
-                    "Enviar fotos" envia las {Math.min(property.photos.length, 5)} fotos y copia el texto. Luego pega el texto en WhatsApp.
+                    "Enviar Flyer" genera una imagen con la foto principal + info de la casa y la comparte directamente.
                   </p>
                 </div>
               )}
@@ -1857,12 +1984,12 @@ ${price}
                 Solo texto
               </button>
               <button
-                onClick={shareWithPhotos}
+                onClick={generateAndShareFlyer}
                 disabled={sharingSending}
                 className="flex items-center gap-2 px-5 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-50"
               >
                 {sharingSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                Enviar con fotos
+                Enviar Flyer
               </button>
             </div>
           </div>
