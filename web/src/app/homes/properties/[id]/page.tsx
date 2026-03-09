@@ -479,9 +479,7 @@ ${price}
   }
 
   const sendWhatsAppTextOnly = () => {
-    // Strip emojis — wa.me URL encoding breaks them into replacement chars
-    const clean = whatsAppMessage.replace(/[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '').replace(/\n{3,}/g, '\n\n')
-    window.open(`https://wa.me/?text=${encodeURIComponent(clean)}`, '_blank')
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
   }
 
   const copyWhatsAppMessage = async () => {
