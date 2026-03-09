@@ -30,7 +30,7 @@ class PromissoryNoteCreate(BaseModel):
     signed_at: Optional[str] = None
     signed_city: str = "Conroe"
     signed_state: str = "Texas"
-    subscriber_name: str = "Maninos Capital LLC"
+    subscriber_name: str = "Maninos Homes LLC"
     subscriber_representative: Optional[str] = None
     subscriber_address: str = "15891 Old Houston Rd, Conroe, Tx. Zip Code 77302"
     lender_name: Optional[str] = None       # auto-populated from investor if empty
@@ -618,7 +618,7 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(Spacer(1, 16))
         
         # Body text
-        subscriber = note.get("subscriber_name", "Maninos Capital LLC")
+        subscriber = note.get("subscriber_name", "Maninos Homes LLC")
         lender = note.get("lender_name", investor.get("name", ""))
         lender_co = note.get("lender_company", "")
         
@@ -713,7 +713,7 @@ async def download_promissory_note_pdf(note_id: str):
         # Footer
         elements.append(Spacer(1, 20))
         elements.append(Paragraph(
-            f"Generated {datetime.now().strftime('%m/%d/%Y %H:%M')} — Maninos Capital LLC — Confidential",
+            f"Generated {datetime.now().strftime('%m/%d/%Y %H:%M')} — Maninos Homes LLC — Confidential",
             ParagraphStyle(name='PNFooter', parent=styles['Normal'], fontSize=7,
                            textColor=colors.grey, alignment=TA_CENTER)
         ))

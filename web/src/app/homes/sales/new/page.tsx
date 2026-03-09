@@ -356,7 +356,7 @@ function NewSaleContent() {
         </Link>
         <h1 className="font-serif text-2xl text-navy-900">
           {paymentType === 'contado' ? 'Venta Contado (Cash)' : 
-           paymentType === 'rto' ? 'Venta RTO (Maninos Capital)' : 
+           paymentType === 'rto' ? 'Venta RTO (Maninos Homes)' : 
            'Nueva Venta'}
         </h1>
         <p className="text-navy-500 mt-1">
@@ -532,12 +532,12 @@ function NewSaleContent() {
                     }`} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-navy-900">Maninos Capital (RTO)</h3>
+                    <h3 className="font-semibold text-navy-900">Maninos Homes (RTO)</h3>
                     <p className="text-sm text-purple-600">Comisión: $1,000</p>
                   </div>
                 </div>
                 <p className="text-sm text-navy-600">
-                  Rent-to-Own. Maninos Capital adquiere la propiedad y financia al cliente.
+                  Rent-to-Own. Maninos Homes adquiere la propiedad y financia al cliente.
                 </p>
               </button>
             </div>
@@ -548,10 +548,10 @@ function NewSaleContent() {
                 <div className="flex items-start gap-3">
                   <Clock className="w-5 h-5 text-purple-500 mt-0.5" />
                   <div>
-                    <h4 className="font-medium text-purple-900">Portal Maninos Capital - Próximamente</h4>
+                    <h4 className="font-medium text-purple-900">Portal Maninos Homes - Próximamente</h4>
                     <p className="text-sm text-purple-700 mt-1">
                       El flujo RTO completo (Adquirir, Incorporar, Gestionar Cartera, Entregar, Fondear) 
-                      estará disponible en el Portal Maninos Capital.
+                      estará disponible en el Portal Maninos Homes.
                     </p>
                     <p className="text-sm text-purple-600 mt-2">
                       Por ahora, puedes registrar la venta como &quot;RTO pendiente&quot; para seguimiento.
@@ -871,7 +871,7 @@ function NewSaleContent() {
                   Tipo de Pago
                 </p>
                 <p className={`font-semibold ${paymentType === 'contado' ? 'text-emerald-700' : 'text-purple-700'}`}>
-                  {paymentType === 'contado' ? '💵 Contado (Cash)' : '🏛️ Maninos Capital (RTO)'}
+                  {paymentType === 'contado' ? '💵 Contado (Cash)' : '🏛️ Maninos Homes (RTO)'}
                 </p>
               </div>
 
@@ -922,7 +922,7 @@ function NewSaleContent() {
                 <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
                   <p className="text-sm text-purple-700">
                     <strong>Nota:</strong> Esta venta se registrará como &quot;RTO Pendiente&quot;. 
-                    El flujo completo de Maninos Capital estará disponible próximamente.
+                    El flujo completo de Maninos Homes estará disponible próximamente.
                   </p>
                 </div>
               )}

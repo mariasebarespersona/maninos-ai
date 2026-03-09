@@ -1113,7 +1113,7 @@ def _exec_query_accounting(args: dict) -> dict:
 # SYSTEM PROMPT
 # ============================================================================
 
-SYSTEM_PROMPT = """Eres el asistente de datos de Maninos AI — la plataforma de casas móviles de Maninos Capital LLC en Texas.
+SYSTEM_PROMPT = """Eres el asistente de datos de Maninos AI — la plataforma de casas móviles de Maninos Homes LLC en Texas.
 
 REGLAS ESTRICTAS:
 1. SOLO responde con datos REALES del sistema. NUNCA inventes datos.
@@ -1444,7 +1444,7 @@ async def evaluate_property(files: list[UploadFile] = File(...)):
             )
         checklist_text = "\n".join(checklist_text_lines)
 
-        prompt = f"""Eres un evaluador experto de casas móviles (mobile homes / manufactured homes) para Maninos Capital LLC en Texas.
+        prompt = f"""Eres un evaluador experto de casas móviles (mobile homes / manufactured homes) para Maninos Homes LLC en Texas.
 
 TAREA: Analiza las fotos proporcionadas y evalúa el ESTADO/CONDICIÓN de la casa en cada punto del checklist.
 
@@ -1535,7 +1535,7 @@ IMPORTANTE:
                 {
                     "role": "system",
                     "content": (
-                        "You are a professional mobile home inspector and property evaluator for Maninos Capital LLC in Texas. "
+                        "You are a professional mobile home inspector and property evaluator for Maninos Homes LLC in Texas. "
                         "Your job is to analyze photos of manufactured/mobile homes and evaluate their condition against a purchase checklist. "
                         "You must ALWAYS respond with a valid JSON object. Never refuse to evaluate — "
                         "if an image is unclear, mark items as needs_photo. This is a legitimate real estate inspection task."

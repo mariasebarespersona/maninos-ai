@@ -191,12 +191,12 @@ async def review_application(application_id: str, review: ApplicationReview):
                     "rto_contract_id": existing_cid,
                 }).eq("id", application["sale_id"]).execute()
             
-            # Create title transfer: Maninos Homes → Maninos Capital
+            # Create title transfer: Maninos Homes → Maninos Homes
             # (Capital acquires the property — docs come in Capital's name)
             existing_transfer = sb.table("title_transfers") \
                 .select("id") \
                 .eq("property_id", application["property_id"]) \
-                .eq("to_name", "Maninos Capital LLC") \
+                .eq("to_name", "Maninos Homes LLC") \
                 .eq("transfer_type", "sale") \
                 .execute()
             
@@ -240,7 +240,7 @@ async def review_application(application_id: str, review: ApplicationReview):
                     "sale_id": application["sale_id"],
                     "transfer_type": "sale",
                     "from_name": "Maninos Homes LLC",
-                    "to_name": "Maninos Capital LLC",
+                    "to_name": "Maninos Homes LLC",
                     "status": "pending",
                     "documents_checklist": docs_checklist,
                     "notes": f"Adquisición RTO - Capital adquiere propiedad de Homes. Solicitud {application_id}"

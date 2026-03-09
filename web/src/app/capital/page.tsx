@@ -112,7 +112,7 @@ export default function CapitalDashboardPage() {
       {/* Header */}
       <div>
         <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>
-          Panel Maninos Capital
+          Panel Maninos Homes
         </h1>
         <p className="mt-1" style={{ color: 'var(--slate)' }}>
           Gestión de contratos Rent-to-Own y cartera de pagos

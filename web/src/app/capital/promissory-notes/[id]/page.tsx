@@ -553,7 +553,7 @@ export default function PromissoryNoteDetailPage() {
       {/* TAB: Document View */}
       {activeTab === 'document' && (
         <div ref={printRef} className="card-luxury p-8 print:shadow-none print:border-none" style={{ maxWidth: 800, margin: '0 auto' }}>
-          {/* Header — Maninos Capital + Phoenician Boat */}
+          {/* Header — Maninos Homes + Phoenician Boat */}
           <div className="text-center mb-6">
             <div className="flex items-center justify-center gap-3 mb-2">
               {/* Phoenician Boat SVG */}

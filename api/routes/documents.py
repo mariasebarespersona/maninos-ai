@@ -64,7 +64,7 @@ async def generate_bill_of_sale_pdf(request: BillOfSaleRequest):
     
     # Generate PDF
     pdf_bytes = generate_bill_of_sale(
-        seller_name="Maninos Capital LLC",
+        seller_name="Maninos Homes LLC",
         buyer_name=client_data.get("name", "Unknown"),
         property_address=property_data.get("address", "Unknown"),
         hud_number=property_data.get("hud_number"),

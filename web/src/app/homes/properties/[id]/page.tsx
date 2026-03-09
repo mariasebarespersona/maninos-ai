@@ -1005,18 +1005,18 @@ ${price}
         </div>
 
         {/* RTO Context Banner — shown when property has a sale transfer to Capital */}
-        {transfers.sale && transfers.sale.to_name === 'Maninos Capital LLC' && (
+        {transfers.sale && transfers.sale.to_name === 'Maninos Homes LLC' && (
           <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-start gap-3">
             <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0">
               <Landmark className="w-5 h-5 text-purple-600" />
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-purple-900 text-sm">
-                🏛 Propiedad gestionada por Maninos Capital (RTO)
+                🏛 Propiedad gestionada por Maninos Homes (RTO)
               </h3>
               <p className="text-purple-700 text-xs mt-1">
                 Esta propiedad fue adquirida por Capital para un contrato Rent-to-Own. 
-                Los documentos de transferencia deben estar a nombre de <strong>Maninos Capital LLC</strong>.
+                Los documentos de transferencia deben estar a nombre de <strong>Maninos Homes LLC</strong>.
               </p>
               <div className="flex items-center gap-4 mt-2 text-xs text-purple-600">
                 <span className="flex items-center gap-1">
@@ -1396,7 +1396,7 @@ ${price}
             {/* Sale Transfer: Maninos → Capital (RTO) or Maninos → Client */}
             {transfers.sale ? (
               <>
-                {transfers.sale.to_name === 'Maninos Capital LLC' && (
+                {transfers.sale.to_name === 'Maninos Homes LLC' && (
                   <div className="text-xs text-purple-600 font-medium flex items-center gap-1 mb-1 ml-1">
                     <Landmark className="w-3 h-3" /> Transferencia RTO a Capital
                   </div>

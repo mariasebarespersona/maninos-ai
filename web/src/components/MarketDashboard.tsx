@@ -171,7 +171,7 @@ const TDHCA_TITLE_APPLICATION_URL = 'https://www.tdhca.texas.gov/sites/default/f
 // PaymentInfo, Payee, PayeeMode imported from BankTransferPayment
 
 // Checklist de 26 puntos para evaluar propiedades ANTES de comprar
-// Basado en el checklist oficial de Maninos Capital LLC
+// Basado en el checklist oficial de Maninos Homes LLC
 const CHECKLIST_ITEMS = [
   // ESTRUCTURA (4 items)
   { id: 'marco_acero', category: 'Estructura', label: 'Marco de acero' },

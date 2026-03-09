@@ -1,5 +1,5 @@
 """
-Maninos Capital API Routes
+Maninos Homes API Routes
 Portal for RTO (Rent-to-Own) management.
 """
 

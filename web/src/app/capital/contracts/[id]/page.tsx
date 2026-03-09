@@ -108,7 +108,7 @@ export default function ContractDetailPage() {
         body: JSON.stringify({
           _action: 'activate',
           signed_by_client: contract.clients?.name || 'Cliente',
-          signed_by_company: 'Maninos Capital LLC'
+          signed_by_company: 'Maninos Homes LLC'
         })
       })
       const data = await res.json()

@@ -309,7 +309,7 @@ async def analyze_photos(
             )
         checklist_text = "\n".join(checklist_text_lines)
 
-        prompt = f"""Eres un evaluador experto de casas móviles para Maninos Capital LLC en Texas.
+        prompt = f"""Eres un evaluador experto de casas móviles para Maninos Homes LLC en Texas.
 
 TAREA: Analiza las fotos y evalúa el ESTADO/CONDICIÓN de la casa.
 NO incluyas estimaciones de costo de reparación. Solo evalúa la condición.

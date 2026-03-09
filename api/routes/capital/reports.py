@@ -193,7 +193,7 @@ def _generate_report_pdf(report_data: dict, period_label: str) -> bytes:
     fmt = lambda n: f"${n:,.0f}" if n else "$0"
 
     # Title
-    elements.append(Paragraph("Maninos Capital LLC", styles['ReportTitle']))
+    elements.append(Paragraph("Maninos Homes LLC", styles['ReportTitle']))
     elements.append(Paragraph(f"Reporte Mensual — {period_label}", styles['Heading2']))
     elements.append(Spacer(1, 20))
 
@@ -298,7 +298,7 @@ def _generate_report_pdf(report_data: dict, period_label: str) -> bytes:
     # Footer
     elements.append(Spacer(1, 30))
     elements.append(Paragraph(
-        f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Maninos Capital LLC — Confidencial",
+        f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Maninos Homes LLC — Confidencial",
         ParagraphStyle(name='Footer', parent=styles['Normal'], fontSize=8,
                        textColor=colors.grey, alignment=TA_CENTER)
     ))

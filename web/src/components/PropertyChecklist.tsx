@@ -5,7 +5,7 @@ import { CheckCircle2, Circle, Save, Loader2, ClipboardCheck, ChevronDown, Chevr
 import { useToast } from './ui/Toast'
 
 // Checklist de 28 puntos para evaluar propiedades ANTES de comprar
-// Basado en el checklist oficial de Maninos Capital LLC
+// Basado en el checklist oficial de Maninos Homes LLC
 // IDs sincronizados con Market Dashboard
 const CHECKLIST_ITEMS = [
   // ESTRUCTURA (4 items)

@@ -1,5 +1,5 @@
 """
-Capital Accounting — Financial management for Maninos Capital LLC.
+Capital Accounting — Financial management for Maninos Homes LLC.
 
 Features:
   - Dashboard: P&L overview, cash flow, KPIs
@@ -2464,7 +2464,7 @@ async def _ai_classify_capital_movements(
         for i, mv in enumerate(movements)
     ])
 
-    prompt = f"""You are an expert accountant for Maninos Capital LLC, a mobile home rent-to-own (RTO) financing company in Texas.
+    prompt = f"""You are an expert accountant for Maninos Homes LLC, a mobile home rent-to-own (RTO) financing company in Texas.
 
 For each bank movement below, suggest the most appropriate accounting account from our Chart of Accounts.
 
@@ -2477,7 +2477,7 @@ IMPORTANT RULES:
 CHART OF ACCOUNTS:
 {accounts_reference}
 
-CONTEXT about Maninos Capital:
+CONTEXT about Maninos Homes:
 - They finance mobile homes through rent-to-own (RTO) contracts
 - Main income: interest earned on RTO loans, down payments
 - They have investors who lend money (VALTO, SGZ entities)

@@ -45,7 +45,7 @@ def safe_query(table: str, query_fn):
 @router.get("")
 @router.get("/summary")
 async def get_dashboard_summary():
-    """Get overview KPIs for Maninos Capital dashboard."""
+    """Get overview KPIs for Maninos Homes dashboard."""
     try:
         now = datetime.utcnow()
         month_start = now.replace(day=1, hour=0, minute=0, second=0).isoformat()

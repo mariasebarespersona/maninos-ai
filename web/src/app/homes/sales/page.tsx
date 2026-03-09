@@ -36,7 +36,7 @@ import { useToast } from '@/components/ui/Toast'
 // Maninos bank info for client payments
 const MANINOS_BANK_INFO = {
   bank_name: 'Chase Bank',
-  account_name: 'Maninos Capital LLC',
+  account_name: 'Maninos Homes LLC',
   zelle: '832-745-9600',
   routing_number: '111000614',
   account_number: 'Contact Abigail for details',
@@ -705,10 +705,10 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
                 <h4 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
                   <Landmark className="w-4 h-4" />
-                  Documentos RTO — Maninos Capital
+                  Documentos RTO — Maninos Homes
                 </h4>
                 <p className="text-xs text-purple-600 mb-3">
-                  Los documentos de esta venta están a nombre de <strong>Maninos Capital LLC</strong>.
+                  Los documentos de esta venta están a nombre de <strong>Maninos Homes LLC</strong>.
                   Capital gestiona la transferencia de documentos al cliente al completar el contrato RTO.
                 </p>
                 <div className="space-y-2">

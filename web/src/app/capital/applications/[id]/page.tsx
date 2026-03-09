@@ -1898,7 +1898,7 @@ export default function ApplicationDetailPage() {
                         Documentos de Capital
                       </h3>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                        Maninos Homes → Maninos Capital • Propiedad a nombre de Capital
+                        Maninos Homes → Maninos Homes • Propiedad a nombre de Capital
                       </p>
                     </div>
                     {capitalTransfer && (
@@ -1937,7 +1937,7 @@ export default function ApplicationDetailPage() {
                         Transferencia al Cliente
                       </h3>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                        Maninos Capital → {clientName || 'Cliente'} • Se ejecuta al completar pagos RTO
+                        Maninos Homes → {clientName || 'Cliente'} • Se ejecuta al completar pagos RTO
                       </p>
                     </div>
                     {clientTransfer ? (
