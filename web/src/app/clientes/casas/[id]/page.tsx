@@ -35,7 +35,7 @@ interface Property {
    ──────────────────────────────────────────────────────────────── */
 function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId: string }) {
   const router = useRouter()
-  const [downPaymentPct, setDownPaymentPct] = useState(30)
+  const [downPaymentPct, setDownPaymentPct] = useState(50)
   const [termMonths, setTermMonths] = useState(36)
 
   const downPaymentAmount = useMemo(() => Math.round(salePrice * (downPaymentPct / 100)), [salePrice, downPaymentPct])
@@ -118,11 +118,6 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
         <Row label="Precio de venta" value={`$${salePrice.toLocaleString()}`} />
         <Row label="Enganche" value={`-$${downPaymentAmount.toLocaleString()}`} color="#16a34a" />
         <Row label="A financiar" value={`$${rto.financeAmount.toLocaleString()}`} />
-        <Row label={`Interés (${(rto.annualRate * 100).toFixed(0)}%)`} value={`+$${Math.round(rto.totalInterest).toLocaleString()}`} color="#b5850a" />
-        <div className="border-t border-gray-200 pt-2 flex justify-between">
-          <span className="font-semibold text-[#222]">Total a pagar</span>
-          <span className="font-bold text-[#222]">${Math.round(rto.totalToPay).toLocaleString()}</span>
-        </div>
       </div>
 
       {/* CTA */}
