@@ -99,6 +99,7 @@ interface MarketAnalysis {
 }
 
 interface MarketStats {
+  total_in_db: number;
   qualified_in_db: number;
   by_source: Record<string, number>;
   top_cities: { city: string; count: number }[];
@@ -1210,7 +1211,7 @@ export default function MarketDashboard() {
               <p className="text-navy-300 text-sm">Calificadas en DB</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-3xl font-bold text-green-400">{stats.qualified_in_db}</p>
-                <p className="text-navy-300 text-sm">de {stats.market_analysis.total_scraped}</p>
+                <p className="text-navy-300 text-sm">de {stats.total_in_db} en DB</p>
               </div>
             </div>
           </div>

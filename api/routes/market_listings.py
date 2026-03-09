@@ -368,36 +368,42 @@ async def get_listings_stats():
     """
     try:
         # ============================================
-        # QUALIFIED LISTINGS (from market_listings)
-        # Enforce $5K-$80K range — exclude stale data from before filter update
+        # LISTINGS COUNTS (from market_listings)
         # ============================================
         from api.utils.qualification import MIN_PRICE, MAX_PRICE
-        
-        listings_query = supabase.table("market_listings")\
-            .select("id, source, city, listing_price")\
+
+        # Total available in DB (any price)
+        all_query = supabase.table("market_listings")\
+            .select("id, source, city, listing_price, is_qualified")\
             .eq("status", "available")\
-            .gte("listing_price", MIN_PRICE)\
-            .lte("listing_price", MAX_PRICE)\
             .execute()
+
+        total_in_db = len(all_query.data) if all_query.data else 0
+
+        # Qualified = is_qualified AND in price range
+        listings_query_data = [
+            l for l in (all_query.data or [])
+            if l.get("is_qualified") and
+               MIN_PRICE <= (l.get("listing_price") or 0) <= MAX_PRICE
+        ]
+        qualified_count = len(listings_query_data)
         
-        qualified_count = len(listings_query.data) if listings_query.data else 0
-        
-        # By source
+        # By source (qualified only)
         by_source = {"mhvillage": 0, "mobilehome": 0, "mhbay": 0}
-        for listing in (listings_query.data or []):
+        for listing in listings_query_data:
             source = listing.get("source", "")
             if source in by_source:
                 by_source[source] += 1
-        
-        # By city
+
+        # By city (qualified only)
         city_counts = {}
-        for listing in (listings_query.data or []):
+        for listing in listings_query_data:
             city = listing.get("city", "Unknown")
             city_counts[city] = city_counts.get(city, 0) + 1
         top_cities = sorted(city_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-        
+
         # Price range of qualified listings
-        listing_prices = [l.get("listing_price", 0) for l in (listings_query.data or []) if l.get("listing_price")]
+        listing_prices = [l.get("listing_price", 0) for l in listings_query_data if l.get("listing_price")]
         qualified_price_min = min(listing_prices) if listing_prices else 0
         qualified_price_max = max(listing_prices) if listing_prices else 0
         
@@ -422,6 +428,7 @@ async def get_listings_stats():
         # ============================================
         
         response = {
+            "total_in_db": total_in_db,
             "qualified_in_db": qualified_count,
             "by_source": by_source,
             "top_cities": [{"city": c[0], "count": c[1]} for c in top_cities],
