@@ -444,158 +444,237 @@ ${price}
     setShowWhatsAppModal(true)
   }
 
+  const loadImage = (url: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Image load failed'))
+      img.src = url
+    })
+
+  const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + w - r, y)
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+    ctx.lineTo(x + w, y + h - r)
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+    ctx.lineTo(x + r, y + h)
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+    ctx.lineTo(x, y + r)
+    ctx.quadraticCurveTo(x, y, x + r, y)
+    ctx.closePath()
+  }
+
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) => {
+    const words = text.split(' ')
+    let line = ''
+    let cy = y
+    for (const word of words) {
+      const test = line + word + ' '
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line.trim(), x, cy)
+        cy += lineH
+        line = word + ' '
+      } else {
+        line = test
+      }
+    }
+    ctx.fillText(line.trim(), x, cy)
+    return cy + lineH
+  }
+
   const generateAndShareFlyer = async () => {
     if (!property) return
     setSharingSending(true)
     try {
-      const W = 1080, H = 1920 // Instagram story / WhatsApp friendly
+      const W = 1080, H = 1350 // 4:5 ratio — optimal for WhatsApp/Instagram
+      const PAD = 60
       const canvas = document.createElement('canvas')
       canvas.width = W
       canvas.height = H
       const ctx = canvas.getContext('2d')!
 
-      // Background
-      ctx.fillStyle = '#0f172a'
+      // ── Background ──
+      ctx.fillStyle = '#283242'
       ctx.fillRect(0, 0, W, H)
 
-      // Load and draw main photo (top 55%)
-      const photoUrl = (property.photos || [])[0]
-      if (photoUrl) {
-        try {
-          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const i = new window.Image()
-            i.crossOrigin = 'anonymous'
-            i.onload = () => resolve(i)
-            i.onerror = reject
-            i.src = photoUrl
-          })
-          const photoH = H * 0.55
-          const scale = Math.max(W / img.width, photoH / img.height)
-          const sw = img.width * scale, sh = img.height * scale
-          ctx.drawImage(img, (W - sw) / 2, (photoH - sh) / 2, sw, sh)
-          // Gradient overlay at bottom of photo
-          const grad = ctx.createLinearGradient(0, photoH - 200, 0, photoH)
-          grad.addColorStop(0, 'rgba(15,23,42,0)')
-          grad.addColorStop(1, 'rgba(15,23,42,1)')
-          ctx.fillStyle = grad
-          ctx.fillRect(0, photoH - 200, W, 200)
-        } catch { /* no photo */ }
-      }
+      // ── Top gold accent bar ──
+      ctx.fillStyle = '#b8a070'
+      ctx.fillRect(0, 0, W, 8)
 
-      // Text section starting below photo
-      let y = H * 0.55 + 20
-
-      // Property code + year
-      ctx.fillStyle = '#f59e0b'
-      ctx.font = 'bold 56px system-ui, sans-serif'
-      const title = property.property_code ? `Casa ${property.property_code}` : 'Casa en Venta'
-      ctx.fillText(title, 60, y)
-      if (property.year) {
-        ctx.fillStyle = '#94a3b8'
-        ctx.font = '40px system-ui, sans-serif'
-        ctx.fillText(`${property.year}`, 60 + ctx.measureText(title).width + 30, y)
-      }
-      y += 70
-
-      // Dimensions
-      if (property.width_ft && property.length_ft) {
-        ctx.fillStyle = '#e2e8f0'
-        ctx.font = '38px system-ui, sans-serif'
-        ctx.fillText(`📏 ${property.width_ft} x ${property.length_ft}`, 60, y)
-        y += 55
-      }
-
-      // Beds / Baths / Sqft
-      const details: string[] = []
-      if (property.bedrooms) details.push(`${fmtNum(property.bedrooms)} Cuartos`)
-      if (property.bathrooms) details.push(`${fmtNum(property.bathrooms)} Baños`)
-      if (property.square_feet) details.push(`${property.square_feet} sqft`)
-      if (details.length) {
-        ctx.fillStyle = '#e2e8f0'
-        ctx.font = '38px system-ui, sans-serif'
-        ctx.fillText(`🛏 ${details.join('  •  ')}`, 60, y)
-        y += 55
-      }
-
-      y += 20
-
-      // Price banner
-      if (property.sale_price) {
-        ctx.fillStyle = '#16a34a'
-        ctx.beginPath()
-        ctx.roundRect(40, y, W - 80, 90, 16)
-        ctx.fill()
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 52px system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText(`💰 ${fmtPrice(property.sale_price)}`, W / 2, y + 62)
+      // ── Header: "EN VENTA" + code ──
+      ctx.fillStyle = '#b8a070'
+      ctx.font = 'bold 32px sans-serif'
+      ctx.letterSpacing = '4px'
+      ctx.fillText('EN VENTA', PAD, 58)
+      ctx.letterSpacing = '0px'
+      if (property.property_code) {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'
+        ctx.font = '28px sans-serif'
+        ctx.textAlign = 'right'
+        ctx.fillText(property.property_code, W - PAD, 58)
         ctx.textAlign = 'left'
-        y += 120
       }
 
-      // Financing
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '34px system-ui, sans-serif'
-      ctx.fillText('🏦 Financiamiento disponible', 60, y)
-      y += 55
+      // ── Main photo ──
+      const photoY = 80
+      const photoH = 580
+      const photoUrls = (property.photos || [])
 
-      // Ready to move in
-      ctx.fillStyle = '#4ade80'
-      ctx.font = 'bold 36px system-ui, sans-serif'
-      ctx.fillText('✅ Lista para mudarte de inmediato', 60, y)
-      y += 80
+      // Draw main photo with rounded corners
+      ctx.save()
+      drawRoundedRect(ctx, PAD, photoY, W - PAD * 2, photoH, 20)
+      ctx.clip()
 
-      // Address
-      const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
-      ctx.fillStyle = '#cbd5e1'
-      ctx.font = '30px system-ui, sans-serif'
-      // Word wrap address
-      const words = addr.split(' ')
-      let line = '📍 '
-      for (const word of words) {
-        const test = line + word + ' '
-        if (ctx.measureText(test).width > W - 120) {
-          ctx.fillText(line.trim(), 60, y)
-          y += 42
-          line = '    ' + word + ' '
-        } else {
-          line = test
+      if (photoUrls[0]) {
+        try {
+          const mainImg = await loadImage(photoUrls[0])
+          const scale = Math.max((W - PAD * 2) / mainImg.width, photoH / mainImg.height)
+          const dw = mainImg.width * scale, dh = mainImg.height * scale
+          ctx.drawImage(mainImg, PAD + ((W - PAD * 2) - dw) / 2, photoY + (photoH - dh) / 2, dw, dh)
+        } catch {
+          ctx.fillStyle = '#3d4f63'
+          ctx.fillRect(PAD, photoY, W - PAD * 2, photoH)
+          ctx.fillStyle = '#64748b'
+          ctx.font = '36px sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText('Sin foto disponible', W / 2, photoY + photoH / 2)
+          ctx.textAlign = 'left'
         }
       }
-      ctx.fillText(line.trim(), 60, y)
-      y += 60
+      ctx.restore()
 
-      // CTA
-      ctx.fillStyle = '#f59e0b'
-      ctx.font = 'bold 34px system-ui, sans-serif'
-      ctx.fillText('📲 ¡Contáctanos hoy!', 60, y)
+      // ── Small photo strip (up to 3 thumbnails) ──
+      const thumbY = photoY + photoH + 12
+      const thumbH = 120
+      const thumbW = (W - PAD * 2 - 16) / 3
+      const extraPhotos = photoUrls.slice(1, 4)
+      for (let i = 0; i < extraPhotos.length; i++) {
+        const tx = PAD + i * (thumbW + 8)
+        ctx.save()
+        drawRoundedRect(ctx, tx, thumbY, thumbW, thumbH, 12)
+        ctx.clip()
+        try {
+          const tImg = await loadImage(extraPhotos[i])
+          const ts = Math.max(thumbW / tImg.width, thumbH / tImg.height)
+          const tw = tImg.width * ts, th = tImg.height * ts
+          ctx.drawImage(tImg, tx + (thumbW - tw) / 2, thumbY + (thumbH - th) / 2, tw, th)
+        } catch {
+          ctx.fillStyle = '#3d4f63'
+          ctx.fillRect(tx, thumbY, thumbW, thumbH)
+        }
+        ctx.restore()
+      }
 
-      // Bottom bar
-      ctx.fillStyle = '#1e293b'
-      ctx.fillRect(0, H - 80, W, 80)
-      ctx.fillStyle = '#64748b'
-      ctx.font = '28px system-ui, sans-serif'
+      // ── Info section ──
+      let y = thumbY + thumbH + 45
+
+      // Price — large, prominent
+      if (property.sale_price) {
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 72px sans-serif'
+        ctx.fillText(fmtPrice(property.sale_price), PAD, y)
+        y += 50
+
+        ctx.fillStyle = '#b8a070'
+        ctx.font = '30px sans-serif'
+        ctx.fillText('Financiamiento disponible', PAD, y)
+        y += 55
+      }
+
+      // Divider line
+      ctx.strokeStyle = 'rgba(184,160,112,0.3)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(PAD, y)
+      ctx.lineTo(W - PAD, y)
+      ctx.stroke()
+      y += 35
+
+      // Property details — icon-style grid
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '34px sans-serif'
+      const col1 = PAD, col2 = W / 2
+
+      if (property.bedrooms) {
+        ctx.fillText(`${fmtNum(property.bedrooms)} Cuartos`, col1, y)
+      }
+      if (property.bathrooms) {
+        ctx.fillText(`${fmtNum(property.bathrooms)} Banos`, col2, y)
+      }
+      y += 48
+
+      if (property.year) {
+        ctx.fillText(`Ano ${property.year}`, col1, y)
+      }
+      if (property.width_ft && property.length_ft) {
+        ctx.fillText(`${property.width_ft} x ${property.length_ft} ft`, col2, y)
+      } else if (property.square_feet) {
+        ctx.fillText(`${property.square_feet} sqft`, col2, y)
+      }
+      y += 48
+
+      if (property.is_renovated) {
+        ctx.fillStyle = '#4ade80'
+        ctx.font = 'bold 34px sans-serif'
+        ctx.fillText('Renovada', col1, y)
+        y += 48
+      }
+
+      y += 10
+
+      // "Lista para mudarte" badge
+      drawRoundedRect(ctx, PAD, y, W - PAD * 2, 60, 12)
+      ctx.fillStyle = 'rgba(74,222,128,0.15)'
+      ctx.fill()
+      ctx.fillStyle = '#4ade80'
+      ctx.font = 'bold 30px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Maninos Homes  •  (936) 200-5200', W / 2, H - 30)
+      ctx.fillText('Lista para mudarte de inmediato', W / 2, y + 40)
+      ctx.textAlign = 'left'
+      y += 85
+
+      // Address
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.font = '28px sans-serif'
+      const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
+      y = wrapText(ctx, addr, PAD, y, W - PAD * 2, 38)
+
+      // ── Bottom bar ──
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, H - 90, W, 90)
+      // Gold accent
+      ctx.fillStyle = '#b8a070'
+      ctx.fillRect(0, H - 90, W, 3)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 30px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('MANINOS HOMES', W / 2, H - 52)
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'
+      ctx.font = '26px sans-serif'
+      ctx.fillText('(936) 200-5200  |  (832) 745-9600', W / 2, H - 18)
       ctx.textAlign = 'left'
 
-      // Convert to file and share
+      // ── Export & share ──
       const blob = await new Promise<Blob>((resolve) =>
-        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.92)
+        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.93)
       )
       const file = new File([blob], `casa-${property.property_code || 'venta'}.jpg`, { type: 'image/jpeg' })
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] })
       } else {
-        // Desktop fallback: download the image
+        // Desktop: download
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
         a.download = file.name
         a.click()
         URL.revokeObjectURL(url)
-        toast.success('Flyer descargado. Compártelo manualmente en WhatsApp.')
+        toast.success('Flyer descargado')
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
