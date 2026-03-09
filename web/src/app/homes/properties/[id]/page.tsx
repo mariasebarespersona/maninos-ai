@@ -413,15 +413,18 @@ export default function PropertyDetailPage() {
 
   const [sharingSending, setSharingSending] = useState(false)
 
+  const fmtPrice = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+  const fmtNum = (n: number) => Number.isInteger(n) ? String(n) : String(Math.round(n))
+
   const openWhatsAppModal = () => {
     if (!property) return
     const code = property.property_code ? `Casa ${property.property_code}` : 'Casa'
     const year = property.year ? `\n📆 ${property.year}` : ''
     const dims = property.width_ft && property.length_ft ? `\n📏 ${property.width_ft} x ${property.length_ft}` : ''
-    const beds = property.bedrooms ? `\n🛏️ ${property.bedrooms} Cuartos` : ''
-    const baths = property.bathrooms ? `\n🛀 ${property.bathrooms} Baños` : ''
+    const beds = property.bedrooms ? `\n🛏️ ${fmtNum(property.bedrooms)} Cuartos` : ''
+    const baths = property.bathrooms ? `\n🛀 ${fmtNum(property.bathrooms)} Baños` : ''
     const sqft = property.square_feet ? `\n📐 ${property.square_feet} sqft` : ''
-    const price = property.sale_price ? `\n\n💰 Precio: $${property.sale_price.toLocaleString()}` : ''
+    const price = property.sale_price ? `\n\n💰 Precio: ${fmtPrice(property.sale_price)}` : ''
     const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
 
     const msg = `🏡 ${code}${year}${dims}
@@ -460,11 +463,11 @@ ${price}
         await navigator.share({ text: whatsAppMessage, files })
       } else if (files.length === 0) {
         // No photos loaded, fall back to text-only
-        window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
+        sendWhatsAppTextOnly()
       } else {
         // Browser doesn't support file sharing, fall back to text-only
         toast.warning('Tu navegador no soporta compartir fotos. Usa el boton Copiar y adjunta las fotos manualmente.')
-        window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
+        sendWhatsAppTextOnly()
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
@@ -476,7 +479,9 @@ ${price}
   }
 
   const sendWhatsAppTextOnly = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
+    // Strip emojis — wa.me URL encoding breaks them into replacement chars
+    const clean = whatsAppMessage.replace(/[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '').replace(/\n{3,}/g, '\n\n')
+    window.open(`https://wa.me/?text=${encodeURIComponent(clean)}`, '_blank')
   }
 
   const copyWhatsAppMessage = async () => {
