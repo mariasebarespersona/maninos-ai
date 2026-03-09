@@ -656,6 +656,91 @@ async def download_contract_pdf(contract_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/regenerate-all-pdfs")
+async def regenerate_all_contract_pdfs():
+    """
+    Regenerate all RTO contract PDFs (e.g. after branding change).
+    Re-uploads to Supabase Storage and updates contract_pdf_url.
+    """
+    from api.services.pdf_service import generate_rto_contract
+
+    try:
+        result = sb.table("rto_contracts") \
+            .select("id, term_months, monthly_rent, down_payment, purchase_price, start_date, end_date, payment_due_day, late_fee_per_day, grace_period_days, client_id, property_id, status") \
+            .in_("status", ["active", "completed", "delivered", "pending_signature"]) \
+            .execute()
+
+        contracts = result.data or []
+        regenerated = 0
+        errors = []
+
+        for c in contracts:
+            contract_id = c["id"]
+            try:
+                client_data = sb.table("clients").select("name").eq("id", c["client_id"]).single().execute()
+                property_data = sb.table("properties").select("address, hud_number, year").eq("id", c["property_id"]).single().execute()
+
+                tenant_name = client_data.data.get("name", "N/A") if client_data.data else "N/A"
+                prop = property_data.data or {}
+
+                pdf_bytes = generate_rto_contract(
+                    tenant_name=tenant_name,
+                    property_address=prop.get("address", "N/A"),
+                    hud_number=prop.get("hud_number"),
+                    property_year=prop.get("year"),
+                    lease_term_months=c["term_months"],
+                    monthly_rent=float(c["monthly_rent"]),
+                    down_payment=float(c.get("down_payment", 0)),
+                    purchase_price=float(c["purchase_price"]),
+                    start_date=_safe_date(c["start_date"]) or date.today(),
+                    end_date=_safe_date(c.get("end_date")),
+                    payment_due_day=c.get("payment_due_day", 15),
+                    late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
+                    grace_period_days=c.get("grace_period_days", 5) or 5,
+                )
+
+                bucket = "transaction-documents"
+                storage_path = f"rto-contracts/{contract_id}/RTO_Contract_{contract_id[:8]}.pdf"
+
+                # Remove old file first, then upload new one
+                try:
+                    sb.storage.from_(bucket).remove([storage_path])
+                except Exception:
+                    pass
+
+                sb.storage.from_(bucket).upload(
+                    storage_path,
+                    pdf_bytes,
+                    {"content-type": "application/pdf"},
+                )
+
+                contract_pdf_url = sb.storage.from_(bucket).get_public_url(storage_path)
+                if contract_pdf_url and contract_pdf_url.endswith("?"):
+                    contract_pdf_url = contract_pdf_url[:-1]
+
+                sb.table("rto_contracts").update({
+                    "contract_pdf_url": contract_pdf_url,
+                }).eq("id", contract_id).execute()
+
+                regenerated += 1
+                logger.info(f"Regenerated PDF for contract {contract_id[:8]}")
+
+            except Exception as e:
+                errors.append({"contract_id": contract_id[:8], "error": str(e)})
+                logger.error(f"Failed to regenerate PDF for {contract_id[:8]}: {e}")
+
+        return {
+            "ok": True,
+            "total": len(contracts),
+            "regenerated": regenerated,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in bulk PDF regeneration: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/calculate-dti")
 async def calculate_dti(data: DTIRequest):
     """
