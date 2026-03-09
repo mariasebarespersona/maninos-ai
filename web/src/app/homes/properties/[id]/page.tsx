@@ -541,75 +541,71 @@ ${price}
         ctx.textAlign = 'left'
       }
 
-      // ── Bottom section: mirrors WhatsApp message format ──
-      let y = H - 560
+      // ── Bottom section: uniform white text ──
+      // First, build all text lines to calculate total height
+      const textColor = '#ffffff'
+      const fontSize = 34
+      const lineGap = 46
+      const sectionGap = 16
+
+      const lines: { text: string; bold: boolean; size: number; gap: number }[] = []
 
       // Casa code
       const code = property.property_code ? `Casa ${property.property_code}` : 'Casa en Venta'
-      ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 52px sans-serif'
-      ctx.fillText(code, P, y)
-      y += 30
+      lines.push({ text: code, bold: true, size: 48, gap: 12 })
 
-      // Year + dimensions on same line if available
+      // Year + dimensions
       const subParts: string[] = []
       if (property.year) subParts.push(String(property.year))
       if (property.width_ft && property.length_ft) subParts.push(`${property.width_ft} x ${property.length_ft}`)
       if (subParts.length) {
-        ctx.fillStyle = 'rgba(255,255,255,0.7)'
-        ctx.font = '36px sans-serif'
-        ctx.fillText(subParts.join('  |  '), P, y)
+        lines.push({ text: subParts.join('  |  '), bold: false, size: fontSize, gap: sectionGap })
       }
-      y += 55
 
-      // "Caracteristicas principales:" header
-      ctx.fillStyle = '#b8a070'
-      ctx.font = 'bold 34px sans-serif'
-      ctx.fillText('Caracteristicas principales:', P, y)
-      y += 50
+      // Characteristics
+      lines.push({ text: 'Caracteristicas principales:', bold: true, size: fontSize, gap: 6 })
+      if (property.bedrooms) lines.push({ text: `  ${fmtNum(property.bedrooms)} Cuartos`, bold: false, size: fontSize, gap: 0 })
+      if (property.bathrooms) lines.push({ text: `  ${fmtNum(property.bathrooms)} Banos`, bold: false, size: fontSize, gap: 0 })
+      if (property.square_feet) lines.push({ text: `  ${property.square_feet} sqft`, bold: false, size: fontSize, gap: 0 })
+      if (property.is_renovated) lines.push({ text: '  Renovada', bold: false, size: fontSize, gap: 0 })
 
-      // Detail items as list
-      ctx.fillStyle = '#ffffff'
-      ctx.font = '34px sans-serif'
-      if (property.bedrooms) { ctx.fillText(`${fmtNum(property.bedrooms)} Cuartos`, P + 20, y); y += 46 }
-      if (property.bathrooms) { ctx.fillText(`${fmtNum(property.bathrooms)} Banos`, P + 20, y); y += 46 }
-      if (property.square_feet) { ctx.fillText(`${property.square_feet} sqft`, P + 20, y); y += 46 }
-      if (property.is_renovated) { ctx.fillStyle = '#4ade80'; ctx.fillText('Renovada', P + 20, y); ctx.fillStyle = '#ffffff'; y += 46 }
-      y += 10
-
-      // "Lista para mudarte"
-      ctx.fillStyle = '#4ade80'
-      ctx.font = 'bold 36px sans-serif'
-      ctx.fillText('Lista para mudarte de inmediato', P, y)
-      y += 60
+      // Ready to move in
+      lines.push({ text: 'Lista para mudarte de inmediato', bold: true, size: fontSize, gap: sectionGap })
 
       // Price
       if (property.sale_price) {
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 72px sans-serif'
-        ctx.fillText(`Precio: ${fmtPrice(property.sale_price)}`, P, y)
-        y += 50
+        lines.push({ text: `Precio: ${fmtPrice(property.sale_price)}`, bold: true, size: 56, gap: 10 })
       }
 
-      // Financiamiento
-      ctx.fillStyle = '#b8a070'
-      ctx.font = '34px sans-serif'
-      ctx.fillText('Financiamiento disponible', P, y)
-      y += 55
+      // Financing
+      lines.push({ text: 'Financiamiento disponible', bold: false, size: fontSize, gap: sectionGap })
 
-      // "Ideal para vivir o como inversion"
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'
-      ctx.font = '32px sans-serif'
-      ctx.fillText('Ideal para vivir o como inversion.', P, y)
-      y += 42
-      ctx.fillText('Contactanos hoy mismo antes de que se venda!', P, y)
-      y += 55
+      // CTA
+      lines.push({ text: 'Ideal para vivir o como inversion.', bold: false, size: 30, gap: 0 })
+      lines.push({ text: 'Contactanos hoy mismo!', bold: false, size: 30, gap: sectionGap })
 
       // Address
-      ctx.fillStyle = 'rgba(255,255,255,0.7)'
-      ctx.font = '30px sans-serif'
       const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
-      y = drawWrapped(addr, P, y, W - P * 2, 40)
+      lines.push({ text: addr, bold: false, size: 28, gap: 0 })
+
+      // Calculate total height needed
+      let totalH = 0
+      for (const l of lines) {
+        totalH += l.size + 8 + l.gap // size + base spacing + gap
+      }
+
+      // Position text so it ends above the bottom bar (H - 110)
+      const bottomLimit = H - 110
+      let y = Math.min(H - 560, bottomLimit - totalH)
+      if (y < H * 0.35) y = H * 0.35 // don't go above 35% of canvas
+
+      // Draw all lines uniformly
+      for (const l of lines) {
+        ctx.fillStyle = textColor
+        ctx.font = `${l.bold ? 'bold ' : ''}${l.size}px sans-serif`
+        ctx.fillText(l.text, P, y)
+        y += l.size + 8 + l.gap
+      }
 
       // ── Bottom bar ──
       ctx.fillStyle = 'rgba(0,0,0,0.6)'
