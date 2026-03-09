@@ -3,7 +3,7 @@ import React from 'react'
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/Auth/AuthProvider'
 import { ToastProvider } from '@/components/ui/Toast'
-import PWAInstall from '@/components/PWA/PWAInstall'
+
 
 // Import Google Fonts via HTML link for reliability
 const fontUrl = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap";
@@ -55,7 +55,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <AuthProvider>
             {children}
-            <PWAInstall />
           </AuthProvider>
         </ToastProvider>
       </body>
