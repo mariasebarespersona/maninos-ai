@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -25,6 +25,54 @@ export default function ClientLoginPage() {
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
+  // Rate limiting: login attempts
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const [loginLockoutSeconds, setLoginLockoutSeconds] = useState(0)
+  const loginLockoutTimer = useRef<NodeJS.Timeout | null>(null)
+
+  // Rate limiting: password reset
+  const [resetCooldownSeconds, setResetCooldownSeconds] = useState(0)
+  const resetCooldownTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const startLoginLockout = useCallback(() => {
+    setLoginLockoutSeconds(60)
+    if (loginLockoutTimer.current) clearInterval(loginLockoutTimer.current)
+    loginLockoutTimer.current = setInterval(() => {
+      setLoginLockoutSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(loginLockoutTimer.current!)
+          loginLockoutTimer.current = null
+          setFailedAttempts(0)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }, [])
+
+  const startResetCooldown = useCallback(() => {
+    setResetCooldownSeconds(60)
+    if (resetCooldownTimer.current) clearInterval(resetCooldownTimer.current)
+    resetCooldownTimer.current = setInterval(() => {
+      setResetCooldownSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(resetCooldownTimer.current!)
+          resetCooldownTimer.current = null
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }, [])
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (loginLockoutTimer.current) clearInterval(loginLockoutTimer.current)
+      if (resetCooldownTimer.current) clearInterval(resetCooldownTimer.current)
+    }
+  }, [])
+
   const callbackError = searchParams.get('error')
 
   useEffect(() => {
@@ -42,12 +90,18 @@ export default function ClientLoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (loginLockoutSeconds > 0) return
     if (!email.trim()) { setError('Por favor ingresa tu correo electrónico'); return }
     if (!password) { setError('Por favor ingresa tu contraseña'); return }
     setLoading(true)
     try {
       const { error: authError } = await signInWithPassword(email, password)
       if (authError) {
+        const newFailedAttempts = failedAttempts + 1
+        setFailedAttempts(newFailedAttempts)
+        if (newFailedAttempts >= 5) {
+          startLoginLockout()
+        }
         if (authError.message.includes('Invalid login credentials')) {
           setError('Correo o contraseña incorrectos. ¿Olvidaste tu contraseña?')
         } else if (authError.message.includes('Email not confirmed')) {
@@ -58,6 +112,7 @@ export default function ClientLoginPage() {
         setLoading(false)
         return
       }
+      setFailedAttempts(0)
       toast.success('¡Bienvenido!')
       // Use full page navigation (not client-side router.push) to ensure
       // the Supabase session cookie is properly read on the new page.
@@ -73,7 +128,7 @@ export default function ClientLoginPage() {
     setError('')
     if (!email.trim()) { setError('Por favor ingresa tu correo electrónico'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Correo electrónico inválido'); return }
-    if (!password || password.length < 6) { setError('La contraseña debe tener al menos 6 caracteres'); return }
+    if (!password || password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres'); return }
     setLoading(true)
     try {
       // Check if client exists in our DB
@@ -111,12 +166,14 @@ export default function ClientLoginPage() {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (resetCooldownSeconds > 0) return
     if (!email.trim()) { setError('Por favor ingresa tu correo electrónico'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Correo electrónico inválido'); return }
     setLoading(true)
     try {
       const { error: resetError } = await sendPasswordResetEmail(email)
       if (resetError) { setError('Error al enviar el enlace. Intenta de nuevo.'); return }
+      startResetCooldown()
       setSuccessMessage('¡Enlace enviado! Revisa tu correo para crear una nueva contraseña.')
       toast.success('¡Revisa tu correo!')
     } catch {
@@ -226,7 +283,14 @@ export default function ClientLoginPage() {
                   </div>
                 </div>
 
-                {error && (
+                {loginLockoutSeconds > 0 && (
+                  <div className="mb-4 p-3 rounded-lg bg-amber-50 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-amber-700">Demasiados intentos. Intenta de nuevo en {loginLockoutSeconds} segundos.</p>
+                  </div>
+                )}
+
+                {error && !loginLockoutSeconds && (
                   <div className="mb-4 p-3 rounded-lg bg-red-50 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-red-600">{error}</p>
@@ -235,12 +299,14 @@ export default function ClientLoginPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || loginLockoutSeconds > 0}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[15px] transition-colors disabled:opacity-50"
                   style={{ background: '#0068b7' }}
                 >
                   {loading ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Entrando...</>
+                  ) : loginLockoutSeconds > 0 ? (
+                    <>Bloqueado ({loginLockoutSeconds}s)</>
                   ) : (
                     <>Iniciar sesión <ArrowRight className="w-4 h-4" /></>
                   )}
@@ -287,7 +353,7 @@ export default function ClientLoginPage() {
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={e => { setPassword(e.target.value); setError('') }}
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="Mínimo 8 caracteres"
                       className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
                     />
                     <button
@@ -353,6 +419,13 @@ export default function ClientLoginPage() {
                   </div>
                 </div>
 
+                {resetCooldownSeconds > 0 && (
+                  <div className="mb-4 p-3 rounded-lg bg-blue-50 flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-blue-700">Correo enviado. Espera {resetCooldownSeconds} segundos para solicitar otro.</p>
+                  </div>
+                )}
+
                 {error && (
                   <div className="mb-4 p-3 rounded-lg bg-red-50 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
@@ -362,12 +435,14 @@ export default function ClientLoginPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || resetCooldownSeconds > 0}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-[15px] transition-colors disabled:opacity-50"
                   style={{ background: '#0068b7' }}
                 >
                   {loading ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                  ) : resetCooldownSeconds > 0 ? (
+                    <>Espera ({resetCooldownSeconds}s)</>
                   ) : (
                     <>Enviar enlace <ArrowRight className="w-4 h-4" /></>
                   )}

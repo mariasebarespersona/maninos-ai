@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthHeaders } from '@/lib/api-auth'
 
 const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -8,7 +9,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const authHeaders = await getAuthHeaders()
     const res = await fetch(`${API_URL}/api/public/clients/${id}/documents`, {
+      headers: { ...authHeaders },
       cache: 'no-store'
     })
     

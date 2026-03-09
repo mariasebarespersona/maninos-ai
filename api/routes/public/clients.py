@@ -8,9 +8,10 @@ import logging
 import uuid
 from datetime import datetime, date, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.auth import get_current_user_email, verify_client_ownership
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/clients", tags=["Public - Clients"])
@@ -70,10 +71,11 @@ async def lookup_client(email: str = Query(..., description="Client email")):
 
 
 @router.get("/{client_id}/purchases")
-async def get_client_purchases(client_id: str):
+async def get_client_purchases(client_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Get all purchases for a client, including RTO info.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         result = sb.table("sales") \
             .select("""
@@ -107,10 +109,11 @@ async def get_client_purchases(client_id: str):
 
 
 @router.get("/{client_id}/rto-contract/{sale_id}")
-async def get_client_rto_contract(client_id: str, sale_id: str):
+async def get_client_rto_contract(client_id: str, sale_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Get RTO contract details and payment schedule for a client.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # Verify the sale belongs to this client
         sale_result = sb.table("sales") \
@@ -266,7 +269,7 @@ def _extract_docs_from_checklist(checklist: dict, transfer_type: str, transfer_i
 
 
 @router.get("/{client_id}/documents")
-async def get_client_documents(client_id: str):
+async def get_client_documents(client_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Get all documents for a client's purchases.
     Documents come from title_transfers.documents_checklist (JSONB).
@@ -274,6 +277,7 @@ async def get_client_documents(client_id: str):
       - Sale title_transfer docs (type=sale, linked to this sale)
       - Purchase title_transfer docs (type=purchase, same property) — e.g. Bill of Sale from when Maninos bought
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # Get all paid/completed sales for this client with property info
         # Cash flow: pending → paid → completed
@@ -386,11 +390,12 @@ async def get_client_documents(client_id: str):
 # =============================================================================
 
 @router.get("/{client_id}/payments")
-async def get_client_payments(client_id: str):
+async def get_client_payments(client_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Get all payment history, upcoming payments, and alerts for a client.
     Aggregates data across all active RTO contracts.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # 1. Get all active/completed RTO contracts for this client
         contracts_result = sb.table("rto_contracts") \
@@ -540,12 +545,13 @@ async def get_client_payments(client_id: str):
 # =============================================================================
 
 @router.get("/{client_id}/account-statement")
-async def get_client_account_statement(client_id: str):
+async def get_client_account_statement(client_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Full account statement for a client.
     Shows all contracts, balances, payment history, and payment health.
     Visible to both the client portal and Capital (for RTO approval decisions).
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # 1. Get client info
         client_res = sb.table("clients") \
@@ -698,15 +704,16 @@ class ClientReportPayment(BaseModel):
 
 
 @router.post("/{client_id}/payments/{payment_id}/report")
-async def client_report_payment(client_id: str, payment_id: str, data: ClientReportPayment):
+async def client_report_payment(client_id: str, payment_id: str, data: ClientReportPayment, user_email: str = Depends(get_current_user_email)):
     """
     Client reports that they've paid a specific scheduled/pending/late payment.
     Sets status to 'client_reported' — Capital must confirm before it becomes 'paid'.
-    
+
     Payment methods:
     - cash_office: Client paid cash at a Maninos office
     - bank_transfer: Client made a bank transfer using Maninos bank details
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # 1. Verify the payment exists and belongs to this client
         payment_result = sb.table("rto_payments") \
@@ -776,11 +783,12 @@ class ClientKYCSubmit(BaseModel):
 
 
 @router.get("/{client_id}/kyc-status")
-async def get_client_kyc_status(client_id: str):
+async def get_client_kyc_status(client_id: str, user_email: str = Depends(get_current_user_email)):
     """
     Client checks their own KYC status.
     Shows whether Capital has requested verification and current status.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         result = sb.table("clients") \
             .select("id, name, kyc_verified, kyc_verified_at, kyc_status, kyc_requested, kyc_requested_at, kyc_failure_reason, kyc_documents") \
@@ -824,11 +832,13 @@ async def client_upload_kyc_documents(
     selfie: UploadFile = File(...),
     id_back: Optional[UploadFile] = File(None),
     id_type: str = Form("drivers_license"),
+    user_email: str = Depends(get_current_user_email),
 ):
     """
     Client uploads KYC document files (ID front, selfie, optional ID back).
     Files are uploaded to Supabase Storage and URLs saved to client record.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         # Verify client exists
         client_result = sb.table("clients") \
@@ -921,11 +931,12 @@ async def client_upload_kyc_documents(
 
 
 @router.post("/{client_id}/kyc-submit")
-async def client_submit_kyc_documents(client_id: str, data: ClientKYCSubmit):
+async def client_submit_kyc_documents(client_id: str, data: ClientKYCSubmit, user_email: str = Depends(get_current_user_email)):
     """
     Client submits KYC document URLs after uploading files to storage.
     Sets status to 'pending_review' — Capital must review and approve/reject.
     """
+    verify_client_ownership(client_id, user_email)
     try:
         client_result = sb.table("clients") \
             .select("id, name, kyc_verified, kyc_status") \

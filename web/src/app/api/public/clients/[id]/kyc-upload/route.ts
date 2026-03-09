@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthHeaders } from '@/lib/api-auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -87,9 +88,10 @@ export async function POST(
 
     // Call FastAPI to save the URLs and update client KYC status
     console.log(`[KYC Upload] Files uploaded. Saving to client record via backend...`)
+    const authHeaders = await getAuthHeaders()
     const res = await fetch(`${API_URL}/api/public/clients/${clientId}/kyc-submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({
         id_front_url: idFrontUrl,
         id_back_url: idBackUrl,

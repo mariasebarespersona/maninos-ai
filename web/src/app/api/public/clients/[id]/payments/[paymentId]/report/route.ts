@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthHeaders } from '@/lib/api-auth'
 
 const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -9,12 +10,13 @@ export async function POST(
   try {
     const { id: clientId, paymentId } = await params
     const body = await request.json()
+    const authHeaders = await getAuthHeaders()
 
     const res = await fetch(
       `${API_URL}/api/public/clients/${clientId}/payments/${paymentId}/report`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(body),
         cache: 'no-store',
       }

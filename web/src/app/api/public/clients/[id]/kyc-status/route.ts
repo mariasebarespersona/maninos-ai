@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthHeaders } from '@/lib/api-auth'
 
 const API = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -8,7 +9,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const res = await fetch(`${API}/api/public/clients/${id}/kyc-status`, { cache: 'no-store' })
+    const authHeaders = await getAuthHeaders()
+    const res = await fetch(`${API}/api/public/clients/${id}/kyc-status`, {
+      headers: { ...authHeaders },
+      cache: 'no-store'
+    })
     const data = await res.json()
 
     if (!res.ok && !('ok' in data)) {
