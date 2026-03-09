@@ -1208,10 +1208,10 @@ export default function MarketDashboard() {
             
             {/* Qualified Count */}
             <div className="space-y-1">
-              <p className="text-navy-300 text-sm">Calificadas en DB</p>
+              <p className="text-navy-300 text-sm">Calificadas</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-3xl font-bold text-green-400">{stats.qualified_in_db}</p>
-                <p className="text-navy-300 text-sm">de {stats.total_in_db} en DB</p>
+                <p className="text-navy-300 text-sm">de {stats.market_analysis.total_scraped} encontradas</p>
               </div>
             </div>
           </div>
