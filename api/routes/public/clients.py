@@ -288,19 +288,28 @@ async def get_client_documents(client_id: str, user_email: str = Depends(get_cur
             .in_("status", ["paid", "completed"]) \
             .execute()
         
+        # Fetch client info once for the response
+        client_result = sb.table("clients") \
+            .select("name, phone, email") \
+            .eq("id", client_id) \
+            .single() \
+            .execute()
+
+        client_info = client_result.data or {}
+
         sales_with_docs = []
-        
+
         for sale in sales_result.data or []:
             property_id = sale["property_id"]
             sale_id = sale["id"]
-            
-            # Fetch property address separately to avoid join issues
+
+            # Fetch full property details for Bill of Sale / Title Application templates
             prop_result = sb.table("properties") \
-                .select("address, city, state") \
+                .select("address, city, state, bedrooms, bathrooms, square_feet, year, hud_number, width_ft, length_ft") \
                 .eq("id", property_id) \
                 .single() \
                 .execute()
-            
+
             prop = prop_result.data or {}
             property_address = prop.get("address", "Dirección no disponible")
             property_city = prop.get("city", "")
@@ -366,10 +375,28 @@ async def get_client_documents(client_id: str, user_email: str = Depends(get_cur
             
             sales_with_docs.append({
                 "id": sale_id,
+                "sale_type": sale.get("sale_type"),
+                "sale_price": sale["sale_price"],
                 "property_address": property_address,
                 "property_city": property_city,
                 "property_state": property_state,
-                "sale_price": sale["sale_price"],
+                "property_details": {
+                    "address": prop.get("address"),
+                    "city": prop.get("city"),
+                    "state": prop.get("state"),
+                    "bedrooms": prop.get("bedrooms"),
+                    "bathrooms": prop.get("bathrooms"),
+                    "square_feet": prop.get("square_feet"),
+                    "year": prop.get("year"),
+                    "hud_number": prop.get("hud_number"),
+                    "width_ft": prop.get("width_ft"),
+                    "length_ft": prop.get("length_ft"),
+                },
+                "client_info": {
+                    "name": client_info.get("name"),
+                    "phone": client_info.get("phone"),
+                    "email": client_info.get("email"),
+                },
                 "completed_at": sale["completed_at"],
                 "title_status": title_status,
                 "documents": all_docs,

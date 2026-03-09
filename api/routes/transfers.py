@@ -11,6 +11,11 @@ import os
 import uuid
 
 from supabase import create_client, Client
+from api.services.email_service import send_title_transferred_email
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -74,6 +79,41 @@ DOCUMENT_LABELS = {
     "lien_release": "Liberación de Gravamen (Lien Release)",
     "notarized_forms": "Formularios Notarizados",
 }
+
+
+# ============ Helpers ============
+
+def _notify_title_transferred(transfer: dict):
+    """Send title-transferred email if this is a sale with a linked client."""
+    try:
+        if transfer.get("transfer_type") != "sale" or not transfer.get("sale_id"):
+            return
+        # Look up the sale to get client_id and property_id
+        sale = sb.table("sales").select("client_id, property_id").eq(
+            "id", transfer["sale_id"]
+        ).single().execute()
+        if not sale.data:
+            return
+        # Look up the client
+        client = sb.table("clients").select("email, name").eq(
+            "id", sale.data["client_id"]
+        ).single().execute()
+        if not client.data or not client.data.get("email"):
+            return
+        # Look up the property
+        prop = sb.table("properties").select("address").eq(
+            "id", sale.data["property_id"]
+        ).single().execute()
+        property_address = (prop.data or {}).get("address", "N/A")
+
+        send_title_transferred_email(
+            client_email=client.data["email"],
+            client_name=client.data.get("name", "Cliente"),
+            property_address=property_address,
+        )
+        logger.info(f"[transfers] Title-transferred email sent for transfer {transfer.get('id')}")
+    except Exception as e:
+        logger.error(f"[transfers] Failed to send title-transferred email: {e}")
 
 
 # ============ Endpoints ============
@@ -331,10 +371,13 @@ async def update_transfer(transfer_id: str, transfer: TransferUpdate):
         raise HTTPException(status_code=400, detail="No fields to update")
     
     result = sb.table("title_transfers").update(update_data).eq("id", transfer_id).execute()
-    
+
     if not result.data:
         raise HTTPException(status_code=404, detail="Transfer not found")
-    
+
+    if update_data.get("status") == "completed":
+        _notify_title_transferred(result.data[0])
+
     return result.data[0]
 
 
@@ -388,10 +431,12 @@ async def mark_as_completed(transfer_id: str):
         "status": "completed",
         "completed_at": datetime.now().isoformat()
     }).eq("id", transfer_id).execute()
-    
+
     if not result.data:
         raise HTTPException(status_code=404, detail="Transfer not found")
-    
+
+    _notify_title_transferred(result.data[0])
+
     return result.data[0]
 
 

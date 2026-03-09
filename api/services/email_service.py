@@ -294,6 +294,59 @@ def send_referral_request_email(
         return {"ok": False, "error": str(e)}
 
 
+def _title_transferred_html(client_name: str, property_address: str) -> str:
+    """Congratulations email when a title is transferred to the client."""
+    content = f"""
+    <div class="header">
+        <h1>🏠 ¡Tu título ha sido transferido!</h1>
+        <p>¡Felicidades, la casa es oficialmente tuya!</p>
+    </div>
+    <div class="body">
+        <p>Hola <strong>{client_name}</strong>,</p>
+        <p>¡Felicidades! El título de propiedad de <strong>{property_address}</strong> ha sido transferido a tu nombre.</p>
+
+        <div class="highlight">
+            <h3>📋 ¿Qué significa esto?</h3>
+            <ul>
+                <li>🏡 La propiedad está <strong>oficialmente a tu nombre</strong></li>
+                <li>📄 Tus documentos legales están listos para descargar</li>
+                <li>🔑 ¡Disfruta tu nuevo hogar!</li>
+            </ul>
+        </div>
+
+        <p>Puedes descargar tu Bill of Sale, solicitud de título y demás documentos desde tu portal de cliente:</p>
+
+        <center>
+            <a href="{APP_URL}/clientes/mi-cuenta/documentos" class="btn">Descargar Mis Documentos</a>
+        </center>
+
+        <hr class="divider">
+        <p style="font-size: 13px; color: #718096;">Si tienes preguntas sobre tus documentos, llámanos al {COMPANY_PHONE}.</p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_title_transferred_email(
+    client_email: str,
+    client_name: str,
+    property_address: str,
+) -> dict:
+    """Send congratulations email when title is transferred to client."""
+    try:
+        html = _title_transferred_html(client_name, property_address)
+        result = send_email(
+            to=[client_email],
+            subject="🏠 ¡Tu título ha sido transferido! - Maninos Homes",
+            html=html,
+        )
+        logger.info(f"[email_service] Title transferred email sent to {client_email}")
+        return {"ok": True, "type": "title_transferred", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send title transferred email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 def send_rto_application_email(
     client_email: str,
     client_name: str,
