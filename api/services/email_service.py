@@ -110,8 +110,9 @@ def _payment_confirmation_html(
     property_city: str,
     sale_price: float,
     payment_date: str,
+    payment_method: str = "Transferencia bancaria",
 ) -> str:
-    """Payment confirmation email after successful Stripe payment."""
+    """Payment confirmation email after successful payment."""
     content = f"""
     <div class="header">
         <h1>✅ ¡Pago Confirmado!</h1>
@@ -120,14 +121,14 @@ def _payment_confirmation_html(
     <div class="body">
         <p>Hola <strong>{client_name}</strong>,</p>
         <p>¡Felicidades! Tu pago ha sido recibido y tu compra está confirmada.</p>
-        
+
         <div class="highlight">
             <h3>📋 Detalles de tu compra:</h3>
             <p><strong>Propiedad:</strong> {property_address}</p>
             <p><strong>Ciudad:</strong> {property_city}</p>
             <p><strong>Precio:</strong> ${sale_price:,.2f} USD</p>
             <p><strong>Fecha:</strong> {payment_date}</p>
-            <p><strong>Método:</strong> Tarjeta (Stripe)</p>
+            <p><strong>Método:</strong> {payment_method}</p>
         </div>
         
         <h3>📌 Próximos pasos:</h3>
@@ -236,12 +237,13 @@ def send_payment_confirmation_email(
     property_address: str,
     property_city: str,
     sale_price: float,
+    payment_method: str = "Transferencia bancaria",
 ) -> dict:
     """Send payment confirmation email."""
     try:
         payment_date = datetime.now().strftime("%d de %B, %Y")
         html = _payment_confirmation_html(
-            client_name, property_address, property_city, sale_price, payment_date,
+            client_name, property_address, property_city, sale_price, payment_date, payment_method,
         )
         result = send_email(
             to=[client_email],
