@@ -411,6 +411,8 @@ export default function PropertyDetailPage() {
     setShowPublishModal(true)
   }
 
+  const [sharingSending, setSharingSending] = useState(false)
+
   const openWhatsAppModal = () => {
     if (!property) return
     const code = property.property_code ? `Casa ${property.property_code}` : 'Casa'
@@ -421,9 +423,6 @@ export default function PropertyDetailPage() {
     const sqft = property.square_feet ? `\n📐 ${property.square_feet} sqft` : ''
     const price = property.sale_price ? `\n\n💰 Precio: $${property.sale_price.toLocaleString()}` : ''
     const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
-
-    const photos = (property.photos || []).slice(0, 5).map((url, i) => `📸 Foto ${i + 1}: ${url}`).join('\n')
-    const photosSection = photos ? `\n\n${photos}` : ''
 
     const msg = `🏡 ${code}${year}${dims}
 
@@ -436,15 +435,48 @@ ${price}
 🌟 Ideal para vivir o como inversión.
 📲 ¡Contáctanos hoy mismo antes de que se venda!
 
-📍${addr}${photosSection}`
+📍${addr}`
 
     setWhatsAppMessage(msg.trim())
     setShowWhatsAppModal(true)
   }
 
-  const sendWhatsApp = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`
-    window.open(url, '_blank')
+  const shareWithPhotos = async () => {
+    if (!property) return
+    setSharingSending(true)
+    try {
+      const photoUrls = (property.photos || []).slice(0, 5)
+      const files: File[] = []
+
+      for (let i = 0; i < photoUrls.length; i++) {
+        try {
+          const res = await fetch(photoUrls[i])
+          const blob = await res.blob()
+          files.push(new File([blob], `casa-${property.property_code || 'foto'}-${i + 1}.jpg`, { type: blob.type || 'image/jpeg' }))
+        } catch { /* skip failed photo */ }
+      }
+
+      if (navigator.canShare && navigator.canShare({ text: whatsAppMessage, files })) {
+        await navigator.share({ text: whatsAppMessage, files })
+      } else if (files.length === 0) {
+        // No photos loaded, fall back to text-only
+        window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
+      } else {
+        // Browser doesn't support file sharing, fall back to text-only
+        toast.warning('Tu navegador no soporta compartir fotos. Usa el boton Copiar y adjunta las fotos manualmente.')
+        window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        toast.error('Error al compartir')
+      }
+    } finally {
+      setSharingSending(false)
+    }
+  }
+
+  const sendWhatsAppTextOnly = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`, '_blank')
   }
 
   const copyWhatsAppMessage = async () => {
@@ -1788,12 +1820,15 @@ ${price}
                 value={whatsAppMessage}
                 onChange={(e) => setWhatsAppMessage(e.target.value)}
                 rows={16}
-                className="w-full p-3 border border-gray-200 rounded-xl text-sm font-mono resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full p-3 border border-gray-200 rounded-xl text-sm resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
               {property?.photos && property.photos.length > 0 && (
-                <p className="text-xs text-gray-400 mt-2">
-                  Se incluyen hasta 5 links de fotos. WhatsApp mostrara preview de la primera imagen.
-                </p>
+                <div className="mt-3 flex gap-2 overflow-x-auto">
+                  {property.photos.slice(0, 5).map((url, i) => (
+                    <img key={i} src={url} alt={`Foto ${i + 1}`} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+                  ))}
+                  <span className="text-xs text-gray-400 self-center ml-1">{Math.min(property.photos.length, 5)} fotos se adjuntan</span>
+                </div>
               )}
             </div>
 
@@ -1806,11 +1841,19 @@ ${price}
                 Copiar
               </button>
               <button
-                onClick={sendWhatsApp}
-                className="flex items-center gap-2 px-5 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
+                onClick={sendWhatsAppTextOnly}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 <Send className="w-4 h-4" />
-                Abrir WhatsApp
+                Solo texto
+              </button>
+              <button
+                onClick={shareWithPhotos}
+                disabled={sharingSending}
+                className="flex items-center gap-2 px-5 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-50"
+              >
+                {sharingSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                Enviar con fotos
               </button>
             </div>
           </div>
