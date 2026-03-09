@@ -35,6 +35,9 @@ import {
   Landmark,
   Pencil,
   Check,
+  MessageCircle,
+  Copy,
+  Send,
 } from 'lucide-react'
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -142,6 +145,8 @@ export default function PropertyDetailPage() {
   // Moves (movida)
   const [moves, setMoves] = useState<any[]>([])
   const [showNewMoveModal, setShowNewMoveModal] = useState(false)
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+  const [whatsAppMessage, setWhatsAppMessage] = useState('')
   const [newMove, setNewMove] = useState({
     move_type: 'purchase' as string,
     origin_address: '',
@@ -406,6 +411,44 @@ export default function PropertyDetailPage() {
     setShowPublishModal(true)
   }
 
+  const openWhatsAppModal = () => {
+    if (!property) return
+    const code = property.property_code ? `Casa ${property.property_code}` : 'Casa'
+    const year = property.year ? `\n📆 ${property.year}` : ''
+    const dims = property.width_ft && property.length_ft ? `\n📏 ${property.width_ft} x ${property.length_ft}` : ''
+    const beds = property.bedrooms ? `\n🛏️ ${property.bedrooms} Cuartos` : ''
+    const baths = property.bathrooms ? `\n🛀 ${property.bathrooms} Baños` : ''
+    const sqft = property.square_feet ? `\n📐 ${property.square_feet} sqft` : ''
+    const price = property.sale_price ? `\n\n💰 Precio: $${property.sale_price.toLocaleString()}` : ''
+    const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
+
+    const msg = `🏡 ${code}${year}${dims}
+
+✨ Características principales:${beds}${baths}${sqft}
+
+✅ Lista para mudarte de inmediato
+${price}
+🏦 Financiamiento disponible
+
+🌟 Ideal para vivir o como inversión.
+📲 ¡Contáctanos hoy mismo antes de que se venda!
+
+📍${addr}`
+
+    setWhatsAppMessage(msg.trim())
+    setShowWhatsAppModal(true)
+  }
+
+  const sendWhatsApp = () => {
+    const url = `https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`
+    window.open(url, '_blank')
+  }
+
+  const copyWhatsAppMessage = async () => {
+    await navigator.clipboard.writeText(whatsAppMessage)
+    toast.success('Mensaje copiado')
+  }
+
   const handlePublish = async (priceStr: string) => {
     if (!property) return
     
@@ -658,17 +701,24 @@ export default function PropertyDetailPage() {
               </>
             )}
             
-            {/* Publicada: Vender, Renovar */}
+            {/* Publicada: WhatsApp, Vender, Renovar */}
             {property.status === 'published' && (
               <>
-                <Link 
+                <button
+                  onClick={openWhatsAppModal}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  WhatsApp
+                </button>
+                <Link
                   href={`/homes/sales/new?property=${property.id}`}
                   className="btn-gold"
                 >
                   <Tag className="w-5 h-5" />
                   Vender (Contado)
                 </Link>
-                <button 
+                <button
                   onClick={handleStartRenovation}
                   disabled={actionLoading}
                   className="btn-primary"
@@ -1709,6 +1759,55 @@ export default function PropertyDetailPage() {
               >
                 {savingMove ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
                 Contratar Movida
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: WhatsApp Share */}
+      {showWhatsAppModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-navy-900 flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-green-500" />
+                Compartir por WhatsApp
+              </h3>
+              <button onClick={() => setShowWhatsAppModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto">
+              <p className="text-sm text-gray-500 mb-2">Edita el mensaje antes de enviar:</p>
+              <textarea
+                value={whatsAppMessage}
+                onChange={(e) => setWhatsAppMessage(e.target.value)}
+                rows={16}
+                className="w-full p-3 border border-gray-200 rounded-xl text-sm font-mono resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+              {property?.photos && property.photos.length > 0 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Las fotos no se pueden adjuntar por WhatsApp link. Puedes adjuntarlas manualmente despues de pegar el mensaje.
+                </p>
+              )}
+            </div>
+
+            <div className="border-t border-gray-100 p-4 flex justify-end gap-2">
+              <button
+                onClick={copyWhatsAppMessage}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+                Copiar
+              </button>
+              <button
+                onClick={sendWhatsApp}
+                className="flex items-center gap-2 px-5 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
+              >
+                <Send className="w-4 h-4" />
+                Abrir WhatsApp
               </button>
             </div>
           </div>
