@@ -33,6 +33,7 @@ class ClientStatus(str, Enum):
 
 class SaleStatus(str, Enum):
     PENDING = "pending"
+    TRANSFER_REPORTED = "transfer_reported"
     PAID = "paid"
     RTO_APPROVED = "rto_approved"
     RTO_ACTIVE = "rto_active"

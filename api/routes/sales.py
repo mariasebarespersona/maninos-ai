@@ -19,6 +19,8 @@ from api.models.schemas import (
     ClientStatus,
 )
 from api.services.property_service import PropertyService
+from api.services.email_service import send_sale_completed_email, schedule_post_sale_emails
+from api.services.document_service import auto_generate_sale_documents
 from tools.supabase_client import sb
 
 logger = logging.getLogger(__name__)
@@ -159,6 +161,63 @@ async def get_capital_payments():
         })
     
     return {"payments": payments}
+
+
+@router.get("/pending-transfers")
+async def get_pending_transfers():
+    """
+    Get all pending contado transfers (status=transfer_reported).
+    Used by the Notificaciones page for Abigail to confirm payments.
+    """
+    try:
+        sales_result = sb.table("sales") \
+            .select("*") \
+            .eq("status", "transfer_reported") \
+            .eq("sale_type", "contado") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        if not sales_result.data:
+            return {"transfers": []}
+
+        # Gather property and client IDs
+        property_ids = list(set(s["property_id"] for s in sales_result.data))
+        client_ids = list(set(s["client_id"] for s in sales_result.data))
+
+        props = sb.table("properties") \
+            .select("id, address, city, sale_price, photos") \
+            .in_("id", property_ids) \
+            .execute()
+        clients = sb.table("clients") \
+            .select("id, name, email, phone") \
+            .in_("id", client_ids) \
+            .execute()
+
+        props_map = {p["id"]: p for p in (props.data or [])}
+        clients_map = {c["id"]: c for c in (clients.data or [])}
+
+        transfers = []
+        for sale in sales_result.data:
+            prop = props_map.get(sale["property_id"], {})
+            client = clients_map.get(sale["client_id"], {})
+            transfers.append({
+                "sale_id": sale["id"],
+                "sale_price": float(sale["sale_price"]),
+                "reported_at": sale.get("client_reported_at") or sale["created_at"],
+                "property_id": sale["property_id"],
+                "property_address": prop.get("address"),
+                "property_city": prop.get("city"),
+                "client_id": sale["client_id"],
+                "client_name": client.get("name"),
+                "client_email": client.get("email"),
+                "client_phone": client.get("phone"),
+            })
+
+        return {"ok": True, "transfers": transfers}
+
+    except Exception as e:
+        logger.error(f"Error fetching pending transfers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{sale_id}", response_model=SaleResponse)
@@ -344,6 +403,178 @@ async def mark_sale_paid(sale_id: str, data: SaleComplete):
         prop.data["address"] if prop.data else None,
         client.data["name"] if client.data else None,
     )
+
+
+@router.post("/{sale_id}/confirm-transfer")
+async def confirm_transfer(sale_id: str):
+    """
+    Confirm a bank transfer for a contado sale.
+    Abigail confirms payment received → sale goes to paid, docs generated, email sent.
+
+    Transition: transfer_reported -> paid
+    """
+    try:
+        # 1. Verify sale exists and is in transfer_reported status
+        sale_result = sb.table("sales") \
+            .select("*, clients(*), properties(*)") \
+            .eq("id", sale_id) \
+            .single() \
+            .execute()
+
+        if not sale_result.data:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+        sale = sale_result.data
+
+        if sale["status"] != "transfer_reported":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Esta venta no está en estado 'transfer_reported' (status actual: {sale['status']})"
+            )
+
+        # 2. Update sale status to paid
+        sb.table("sales").update({
+            "status": "paid",
+            "payment_method": "transferencia",
+            "completed_at": datetime.utcnow().isoformat(),
+        }).eq("id", sale_id).execute()
+
+        # 3. Update property status to sold
+        sb.table("properties").update({
+            "status": PropertyStatus.SOLD.value,
+        }).eq("id", sale["property_id"]).execute()
+        logger.info(f"[sales] Property {sale['property_id']} marked SOLD (transfer confirmed, sale {sale_id})")
+
+        # 4. Update client status to active
+        sb.table("clients").update({
+            "status": ClientStatus.ACTIVE.value,
+        }).eq("id", sale["client_id"]).execute()
+
+        # 5. Create title_transfers record
+        existing_transfer = sb.table("title_transfers") \
+            .select("id") \
+            .eq("sale_id", sale_id) \
+            .execute()
+
+        if not existing_transfer.data:
+            sb.table("title_transfers").insert({
+                "property_id": sale["property_id"],
+                "sale_id": sale_id,
+                "transfer_type": "sale",
+                "from_name": "Maninos Homes LLC",
+                "to_name": sale["clients"]["name"],
+                "to_contact": sale["clients"].get("phone"),
+                "status": "pending",
+                "notes": "Venta contado - transferencia bancaria confirmada"
+            }).execute()
+
+        # 6. Auto-generate Bill of Sale + Title PDFs
+        documents = {}
+        try:
+            doc_result = auto_generate_sale_documents(
+                sale_id=sale_id,
+                sale_data=sale,
+                client_data=sale["clients"],
+                property_data=sale["properties"],
+            )
+            if doc_result.get("errors"):
+                logger.warning(f"Document generation had errors: {doc_result['errors']}")
+            else:
+                logger.info(f"Documents auto-generated for sale {sale_id}")
+            documents = {
+                "bill_of_sale": doc_result.get("bill_of_sale"),
+                "title": doc_result.get("title"),
+            }
+        except Exception as doc_error:
+            logger.warning(f"Failed to auto-generate documents: {doc_error}")
+
+        # 7. Send "Venta Completada" email to client
+        try:
+            send_sale_completed_email(
+                client_email=sale["clients"]["email"],
+                client_name=sale["clients"]["name"],
+                property_address=sale["properties"]["address"],
+                property_city=sale["properties"].get("city", "Texas"),
+                sale_price=float(sale["sale_price"]),
+            )
+        except Exception as email_error:
+            logger.warning(f"Failed to send sale completed email: {email_error}")
+
+        # 8. Schedule post-sale emails (review 7d + referral 30d)
+        try:
+            schedule_post_sale_emails(
+                sale_id=sale_id,
+                client_id=sale["client_id"],
+                client_email=sale["clients"]["email"],
+                client_name=sale["clients"]["name"],
+                property_address=sale["properties"]["address"],
+            )
+        except Exception as schedule_error:
+            logger.warning(f"Failed to schedule post-sale emails: {schedule_error}")
+
+        # 9. Create accounting transaction for bank reconciliation
+        try:
+            from datetime import date as date_type
+            today = date_type.today()
+            prefix = f"TXN-{today.strftime('%y%m%d')}-"
+            existing_txns = sb.table("accounting_transactions") \
+                .select("transaction_number") \
+                .like("transaction_number", f"{prefix}%") \
+                .execute()
+            txn_count = len(existing_txns.data) if existing_txns.data else 0
+            txn_number = f"{prefix}{txn_count + 1:03d}"
+
+            # Resolve account_id from category "ventas_contado"
+            acct_result = sb.table("accounting_accounts") \
+                .select("id") \
+                .eq("category", "ventas_contado") \
+                .eq("is_active", True) \
+                .limit(1) \
+                .execute()
+            account_id = acct_result.data[0]["id"] if acct_result.data else None
+
+            # Get property yard_id for proper categorization
+            prop_yard = sb.table("properties") \
+                .select("yard_id") \
+                .eq("id", sale["property_id"]) \
+                .single() \
+                .execute()
+            yard_id = prop_yard.data.get("yard_id") if prop_yard.data else None
+
+            txn_insert = {
+                "transaction_number": txn_number,
+                "transaction_date": today.isoformat(),
+                "transaction_type": "sale_cash",
+                "amount": float(sale["sale_price"]),
+                "is_income": True,
+                "account_id": account_id,
+                "entity_type": "sale",
+                "entity_id": sale_id,
+                "property_id": sale["property_id"],
+                "yard_id": yard_id,
+                "payment_method": "transferencia",
+                "counterparty_name": sale["clients"]["name"],
+                "counterparty_type": "client",
+                "description": f"Venta contado - {sale['properties']['address']} - {sale['clients']['name']}",
+                "status": "confirmed",
+            }
+            txn_insert = {k: v for k, v in txn_insert.items() if v is not None}
+            sb.table("accounting_transactions").insert(txn_insert).execute()
+            logger.info(f"[sales] Accounting transaction {txn_number} created for sale {sale_id}")
+        except Exception as acct_error:
+            logger.warning(f"Failed to create accounting transaction: {acct_error}")
+
+        return {
+            "ok": True,
+            "sale_id": sale_id,
+            "documents": documents,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming transfer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{sale_id}/complete", response_model=SaleResponse)

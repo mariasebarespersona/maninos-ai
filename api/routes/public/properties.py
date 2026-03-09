@@ -213,7 +213,7 @@ async def refresh_partner_listings():
     import asyncio
     
     try:
-        from api.agents.buscador.scraper import VMFHomesScraper, TwentyFirstMortgageScraper
+        from api.services.scrapers.partner_scrapers import VMFHomesScraper, TwentyFirstMortgageScraper
         
         logger.info("[Partners] Refreshing partner listings (VMF + 21st)...")
         

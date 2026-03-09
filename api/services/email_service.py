@@ -408,6 +408,145 @@ def send_rto_application_email(
         return {"ok": False, "error": str(e)}
 
 
+def _transfer_reported_html(
+    client_name: str,
+    property_address: str,
+    property_city: str,
+    sale_price: float,
+) -> str:
+    """Acknowledgment email when client reports a bank transfer."""
+    content = f"""
+    <div class="header">
+        <h1>Hemos registrado tu transferencia</h1>
+        <p>Tu reporte ha sido recibido</p>
+    </div>
+    <div class="body">
+        <p>Hola <strong>{client_name}</strong>,</p>
+        <p>Hemos recibido tu reporte de transferencia bancaria para la propiedad en <strong>{property_address}</strong>.</p>
+
+        <div class="highlight">
+            <h3>Detalles de la propiedad:</h3>
+            <p><strong>Direccion:</strong> {property_address}</p>
+            <p><strong>Ciudad:</strong> {property_city}</p>
+            <p><strong>Precio:</strong> ${sale_price:,.2f} USD</p>
+        </div>
+
+        <h3>Proximos pasos:</h3>
+        <ol>
+            <li>Nuestro equipo verificara la transferencia</li>
+            <li>Te notificaremos por email una vez confirmado el pago</li>
+        </ol>
+
+        <div class="highlight" style="border-left-color: #e53e3e;">
+            <p style="margin: 0; color: #e53e3e;"><strong>Importante:</strong> Este email NO confirma la recepcion del pago, solo que hemos registrado tu reporte.</p>
+        </div>
+
+        <center>
+            <a href="{APP_URL}/clientes/mi-cuenta" class="btn">Ver Mi Cuenta</a>
+        </center>
+
+        <hr class="divider">
+        <p style="font-size: 13px; color: #718096;">Si tienes preguntas, contactanos al {COMPANY_PHONE}.</p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_transfer_reported_email(
+    client_email: str,
+    client_name: str,
+    property_address: str,
+    property_city: str,
+    sale_price: float,
+) -> dict:
+    """Send acknowledgment email when client reports a bank transfer."""
+    try:
+        html = _transfer_reported_html(
+            client_name, property_address, property_city, sale_price,
+        )
+        result = send_email(
+            to=[client_email],
+            subject=f"Transferencia Registrada - {COMPANY_NAME}",
+            html=html,
+        )
+        logger.info(f"[email_service] Transfer reported email sent to {client_email}")
+        return {"ok": True, "type": "transfer_reported", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send transfer reported email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def _sale_completed_html(
+    client_name: str,
+    property_address: str,
+    property_city: str,
+    sale_price: float,
+    documents_url: str = None,
+) -> str:
+    """Sale completed email after transfer is confirmed."""
+    docs_url = documents_url or f"{APP_URL}/clientes/mi-cuenta/documentos"
+    content = f"""
+    <div class="header">
+        <h1>Venta Completada!</h1>
+        <p>Felicidades por tu nueva casa</p>
+    </div>
+    <div class="body">
+        <p>Hola <strong>{client_name}</strong>,</p>
+        <p>Felicidades! Tu compra de la propiedad en <strong>{property_address}</strong> ha sido confirmada.</p>
+
+        <div class="highlight">
+            <h3>Detalles de tu compra:</h3>
+            <p><strong>Direccion:</strong> {property_address}</p>
+            <p><strong>Ciudad:</strong> {property_city}</p>
+            <p><strong>Precio:</strong> ${sale_price:,.2f} USD</p>
+        </div>
+
+        <h3>Tus documentos estan listos:</h3>
+        <ul>
+            <li>Bill of Sale</li>
+            <li>Aplicacion de Cambio de Titulo</li>
+            <li>Titulo</li>
+        </ul>
+
+        <center>
+            <a href="{docs_url}" class="btn">Ver Mis Documentos</a>
+        </center>
+
+        <h3>Proximos pasos:</h3>
+        <p>Procesaremos la transferencia del titulo a tu nombre. Recibiras una notificacion cuando este listo.</p>
+
+        <hr class="divider">
+        <p style="font-size: 13px; color: #718096;">Si tienes preguntas, contactanos al {COMPANY_PHONE}.</p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_sale_completed_email(
+    client_email: str,
+    client_name: str,
+    property_address: str,
+    property_city: str,
+    sale_price: float,
+    documents_url: str = None,
+) -> dict:
+    """Send sale completed email after transfer is confirmed."""
+    try:
+        html = _sale_completed_html(
+            client_name, property_address, property_city, sale_price, documents_url,
+        )
+        result = send_email(
+            to=[client_email],
+            subject=f"Venta Completada! - {COMPANY_NAME}",
+            html=html,
+        )
+        logger.info(f"[email_service] Sale completed email sent to {client_email}")
+        return {"ok": True, "type": "sale_completed", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send sale completed email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # =============================================================================
 # RTO EMAIL TEMPLATES
 # =============================================================================

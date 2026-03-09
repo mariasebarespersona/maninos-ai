@@ -14,4 +14,5 @@ WHERE from_name = 'Maninos Capital LLC';
 -- 3. title_transfers: to_name
 UPDATE title_transfers
 SET to_name = 'Maninos Homes LLC'
+
 WHERE to_name = 'Maninos Capital LLC';

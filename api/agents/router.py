@@ -5,7 +5,6 @@ Exposes INTELLIGENT agents as REST endpoints.
 ALL endpoints use LLM for intelligent analysis - no simple formulas.
 
 Endpoints:
-- POST /api/agents/buscador    - Intelligent market search
 - POST /api/agents/costos      - Intelligent cost estimation
 - POST /api/agents/precio      - Intelligent price analysis
 - POST /api/agents/fotos       - Vision AI photo classification
@@ -23,7 +22,6 @@ import logging
 import os
 
 from .base import AgentRequest, AgentResponse, AgentRegistry
-from .buscador import BuscadorAgent
 from .costos import CostosAgent
 from .precio import PrecioAgent
 from .fotos import FotosAgent
@@ -46,7 +44,6 @@ def initialize_agents():
         return
     
     try:
-        AgentRegistry.register(BuscadorAgent())
         AgentRegistry.register(CostosAgent())
         AgentRegistry.register(PrecioAgent())
         AgentRegistry.register(FotosAgent())
@@ -97,33 +94,6 @@ async def list_agents():
         agents=AgentRegistry.list_agents(),
         llm_available=bool(os.getenv("OPENAI_API_KEY"))
     )
-
-
-@router.post("/buscador", response_model=AgentResponse)
-async def invoke_buscador(request: AgentInvokeRequest):
-    """
-    🔍 INTELLIGENT Market Search Agent
-    
-    Uses GPT-4 to understand your search intent and analyze market data.
-    
-    Capabilities:
-    - Natural language search understanding
-    - Market trend analysis
-    - ROI calculations with reasoning
-    - Risk assessment
-    
-    Example queries:
-    - "Busca casas en Houston bajo $35,000 con buen ROI"
-    - "Analiza el mercado de Dallas para mobile homes"
-    - "¿Es buen momento para comprar en Austin?"
-    """
-    initialize_agents()
-    agent_request = AgentRequest(
-        query=request.query,
-        context=request.context,
-        property_id=request.property_id,
-    )
-    return await AgentRegistry.invoke("buscador", agent_request)
 
 
 @router.post("/costos", response_model=AgentResponse)
@@ -262,20 +232,6 @@ async def invoke_voz(request: AgentInvokeRequest):
 # CONVENIENCE ENDPOINTS (still use LLM)
 # ============================================
 
-@router.get("/buscador/status")
-async def buscador_status():
-    """Get BuscadorAgent status and capabilities."""
-    initialize_agents()
-    agent = AgentRegistry.get("buscador")
-    return {
-        "ok": True,
-        "agent": "buscador",
-        "available": agent is not None,
-        "llm_available": bool(os.getenv("OPENAI_API_KEY")),
-        "description": agent.description if agent else "Not initialized",
-    }
-
-
 @router.get("/renovacion/status")
 async def renovacion_status():
     """Get RenovacionAgent status and capabilities."""
@@ -288,34 +244,6 @@ async def renovacion_status():
         "llm_available": bool(os.getenv("OPENAI_API_KEY")),
         "description": agent.description if agent else "Not initialized",
     }
-
-
-class MarketSearchRequest(BaseModel):
-    """Structured market search request."""
-    city: str = Field(description="City in Texas to search")
-    min_price: float = Field(default=15000, description="Minimum price")
-    max_price: float = Field(default=60000, description="Maximum price")
-    bedrooms: Optional[int] = Field(default=None, description="Number of bedrooms")
-
-
-@router.post("/buscador/search", response_model=AgentResponse)
-async def structured_market_search(request: MarketSearchRequest):
-    """
-    Structured market search (still uses LLM intelligence).
-    
-    Convenience endpoint when you have structured parameters.
-    """
-    initialize_agents()
-    agent = AgentRegistry.get("buscador")
-    if not agent:
-        raise HTTPException(status_code=500, detail="BuscadorAgent not initialized")
-    
-    return await agent.search_market(
-        city=request.city,
-        min_price=request.min_price,
-        max_price=request.max_price,
-        bedrooms=request.bedrooms,
-    )
 
 
 class RenovationEstimateRequest(BaseModel):

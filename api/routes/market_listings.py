@@ -954,84 +954,20 @@ async def scrape_and_save(
     Does NOT require LLM - direct web scraping with Playwright.
     """
     try:
-        from api.agents.buscador.scraper import MHVillageScraper, MobileHomeNetScraper, MHBayScraper, VMFHomesScraper, TwentyFirstMortgageScraper, BrowserManager
-        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper, convert_to_scraped_listings
-        from api.agents.buscador.fb_auth import FacebookAuth
-        
+        from api.services.scrapers.partner_scrapers import VMFHomesScraper, TwentyFirstMortgageScraper
+
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
-        
-        # Check Facebook auth status (requires cookies + RESIDENTIAL_PROXY_URL)
-        fb_connected = FacebookAuth.is_authenticated()
-        source_count = 6 if fb_connected else 5
-        logger.info(f"[Scrape] Will scrape {source_count} sources: "
-                     f"{'Facebook MP, ' if fb_connected else '(FB not connected) '}"
-                     f"MHVillage, MobileHome.net, MHBay, VMF Homes, 21st Mortgage")
-        
+
+        source_count = 2  # VMF Homes + 21st Mortgage (partner JSON APIs)
+        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF Homes, 21st Mortgage")
+
         all_listings = []
         all_prices = []
         fb_count = 0
         
-        # ============================================
-        # PASO 1: Scrapear TODAS LAS FUENTES
-        # ============================================
-        
-        # SOURCE 0: Facebook Marketplace (PRIMARY - owner-to-owner, REQUIRES AUTH)
-        if fb_connected:
-            logger.info(f"[Scrape] 0/{source_count} - Scraping Facebook Marketplace (authenticated)...")
-            try:
-                fb_listings = await FacebookMarketplaceScraper.scrape(
-                    max_listings=30,
-                    min_price=min_price,
-                    max_price=max_price,
-                )
-                fb_converted = convert_to_scraped_listings(fb_listings)
-                all_listings.extend(fb_converted)
-                all_prices.extend([l.listing_price for l in fb_converted])
-                fb_count = len(fb_converted)
-                logger.info(f"[Scrape] ✅ Facebook MP: {fb_count} mobile homes")
-            except Exception as e:
-                logger.warning(f"[Scrape] Facebook MP failed: {e}")
-        else:
-            logger.info("[Scrape] ⚠️ Facebook Marketplace SKIPPED - not connected. "
-                        "Click 'Conectar Facebook' in the dashboard to enable.")
-        
-        # SOURCE 1: MHVillage (fuente principal - solo mobile homes)
-        logger.info(f"[Scrape] 1/{source_count} - Scraping MHVillage...")
-        mhv_listings = await MHVillageScraper.scrape(
-            city=city,
-            min_price=min_price,
-            max_price=max_price,
-            max_listings=20,
-        )
-        all_listings.extend(mhv_listings)
-        all_prices.extend([l.listing_price for l in mhv_listings])
-        logger.info(f"[Scrape] ✅ MHVillage: {len(mhv_listings)} mobile homes")
-        
-        # SOURCE 2: MobileHome.net (solo mobile homes)
-        logger.info(f"[Scrape] 2/{source_count} - Scraping MobileHome.net...")
-        mhn_listings = await MobileHomeNetScraper.scrape(
-            city=city,
-            max_price=max_price,
-            max_listings=15,
-        )
-        all_listings.extend(mhn_listings)
-        all_prices.extend([l.listing_price for l in mhn_listings])
-        logger.info(f"[Scrape] ✅ MobileHome.net: {len(mhn_listings)} mobile homes")
-        
-        # SOURCE 3: MHBay (mobile homes only)
-        logger.info(f"[Scrape] 3/{source_count} - Scraping MHBay...")
-        mhbay_listings = await MHBayScraper.scrape(
-            city=city,
-            max_price=max_price,
-            max_listings=15,
-        )
-        all_listings.extend(mhbay_listings)
-        all_prices.extend([l.listing_price for l in mhbay_listings])
-        logger.info(f"[Scrape] ✅ MHBay: {len(mhbay_listings)} mobile homes")
-        
-        # SOURCE 4: VMF Homes / Vanderbilt (mobile homes for SALE only — JSON API, no browser)
+        # SOURCE 1: VMF Homes / Vanderbilt (mobile homes for SALE only — JSON API, no browser)
         vmf_count = 0
-        logger.info(f"[Scrape] 4/{source_count} - Scraping VMF Homes (Vanderbilt) via JSON API...")
+        logger.info(f"[Scrape] 1/{source_count} - Scraping VMF Homes (Vanderbilt) via JSON API...")
         try:
             vmf_listings = await VMFHomesScraper.scrape(
                 min_price=min_price,
@@ -1045,9 +981,9 @@ async def scrape_and_save(
         except Exception as e:
             logger.warning(f"[Scrape] VMF Homes failed: {e}")
         
-        # SOURCE 5: 21st Mortgage (repo/used mobile homes — JSON API, no browser needed)
+        # SOURCE 2: 21st Mortgage (repo/used mobile homes — JSON API, no browser needed)
         mortgage21_count = 0
-        logger.info(f"[Scrape] 5/{source_count} - Scraping 21st Mortgage (JSON API)...")
+        logger.info(f"[Scrape] 2/{source_count} - Scraping 21st Mortgage (JSON API)...")
         try:
             mortgage21_listings = await TwentyFirstMortgageScraper.scrape(
                 min_price=min_price,
@@ -1060,9 +996,6 @@ async def scrape_and_save(
             logger.info(f"[Scrape] ✅ 21st Mortgage: {mortgage21_count} mobile homes")
         except Exception as e:
             logger.warning(f"[Scrape] 21st Mortgage failed: {e}")
-        
-        # Close browser (only needed for Playwright-based scrapers)
-        await BrowserManager.close()
         
         if not all_listings:
             return {
@@ -1089,10 +1022,6 @@ async def scrape_and_save(
         # ============================================
         
         sources_data = {
-            "facebook_marketplace": fb_count,
-            "mhvillage": len(mhv_listings),
-            "mobilehome_net": len(mhn_listings),
-            "mhbay": len(mhbay_listings),
             "vmf_homes": vmf_count,
             "21st_mortgage": mortgage21_count,
         }

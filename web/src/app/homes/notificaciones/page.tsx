@@ -57,6 +57,11 @@ export default function NotificacionesPage() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  const [pendingTransfers, setPendingTransfers] = useState<any[]>([])
+  const [loadingTransfers, setLoadingTransfers] = useState(true)
+  const [confirmingTransfer, setConfirmingTransfer] = useState<any | null>(null)
+  const [confirmingSubmitting, setConfirmingSubmitting] = useState(false)
+
   const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
@@ -80,7 +85,21 @@ export default function NotificacionesPage() {
     }
   }
 
+  const fetchPendingTransfers = useCallback(async () => {
+    setLoadingTransfers(true)
+    try {
+      const res = await fetch('/api/sales/pending-transfers')
+      const data = await res.json()
+      if (data.ok) setPendingTransfers(data.transfers || [])
+    } catch (e) {
+      console.error('Error fetching pending transfers:', e)
+    } finally {
+      setLoadingTransfers(false)
+    }
+  }, [])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
+  useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
 
   const openCompleteModal = (order: PaymentOrder) => {
     setCompleting(order)
@@ -109,6 +128,26 @@ export default function NotificacionesPage() {
     }
   }
 
+  const handleConfirmTransfer = async (saleId: string) => {
+    setConfirmingSubmitting(true)
+    try {
+      const res = await fetch(`/api/sales/${saleId}/confirm-transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setConfirmingTransfer(null)
+        fetchPendingTransfers()
+        fetchOrders() // refresh payment orders too
+      }
+    } catch (e) {
+      console.error('Error confirming transfer:', e)
+    } finally {
+      setConfirmingSubmitting(false)
+    }
+  }
+
   const formatCurrency = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -125,11 +164,108 @@ export default function NotificacionesPage() {
               Notificaciones
             </h1>
             <p className="text-sm" style={{ color: 'var(--slate)' }}>
-              Ordenes de pago pendientes y realizadas
+              Ordenes de pago y transferencias pendientes
             </p>
           </div>
         </div>
       </div>
+
+      {/* Pending Contado Transfers */}
+      {pendingTransfers.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+              Transferencias Pendientes de Confirmar
+            </h2>
+            <span className="ml-auto bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full">
+              {pendingTransfers.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {pendingTransfers.map((transfer: any) => (
+              <div
+                key={transfer.sale_id}
+                className="bg-white rounded-xl border-2 border-orange-200 p-5 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <DollarSign className="w-4 h-4 text-orange-500" />
+                      <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
+                        Pago Contado - Transferencia Bancaria
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
+                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
+                        {transfer.property_address}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 mb-3">
+                      <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
+                        {formatCurrency(transfer.sale_price)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        <AlertCircle className="w-3 h-3" />
+                        Pendiente de confirmar
+                      </span>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg p-3 mb-2">
+                      <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--slate)' }}>
+                        <div><span className="font-medium">Cliente:</span> {transfer.client_name}</div>
+                        <div><span className="font-medium">Email:</span> {transfer.client_email}</div>
+                        <div><span className="font-medium">Telefono:</span> {transfer.client_phone}</div>
+                        <div><span className="font-medium">Reportado:</span> {formatDate(transfer.reported_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {confirmingTransfer?.sale_id === transfer.sale_id ? (
+                      <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[240px]">
+                        <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                          ¿Confirmas que el pago ha sido recibido?
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setConfirmingTransfer(null)}
+                            className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-gray-50"
+                            style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => handleConfirmTransfer(transfer.sale_id)}
+                            disabled={confirmingSubmitting}
+                            className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                            style={{ backgroundColor: '#16a34a' }}
+                          >
+                            {confirmingSubmitting ? (
+                              <span className="flex items-center justify-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin" /> ...
+                              </span>
+                            ) : 'Si, confirmar'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingTransfer(transfer)}
+                        className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                        style={{ backgroundColor: '#16a34a' }}
+                        onMouseOver={e => (e.currentTarget.style.backgroundColor = '#15803d')}
+                        onMouseOut={e => (e.currentTarget.style.backgroundColor = '#16a34a')}
+                      >
+                        El pago ha sido recibido
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1" style={{ borderColor: 'var(--sand)' }}>

@@ -60,10 +60,42 @@ export default function PaymentMethodPage() {
   }, [propertyId, router])
 
   const [showBankDetails, setShowBankDetails] = useState(false)
+  const [reportingTransfer, setReportingTransfer] = useState(false)
+  const [transferReported, setTransferReported] = useState(false)
 
   const handleContado = () => {
     setSelectedMethod('contado')
     setShowBankDetails(true)
+  }
+
+  const handleReportTransfer = async () => {
+    if (!clientData) return
+    setReportingTransfer(true)
+    try {
+      const res = await fetch('/api/public/purchases/report-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: clientData.property_id,
+          client_name: clientData.client_name,
+          client_email: clientData.client_email,
+          client_phone: clientData.client_phone,
+          client_terreno: clientData.client_terreno,
+        })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setTransferReported(true)
+        toast.success('¡Transferencia registrada!')
+      } else {
+        toast.error(data.detail || 'Error al registrar la transferencia')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error de conexión')
+    } finally {
+      setReportingTransfer(false)
+    }
   }
 
   const handleRTO = async () => {
@@ -233,6 +265,22 @@ export default function PaymentMethodPage() {
               </div>
 
               {showBankDetails ? (
+                transferReported ? (
+                  <div className="bg-green-50 border border-green-300 rounded-xl p-5 text-center">
+                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                    <h3 className="text-lg font-bold text-green-800 mb-2">¡Transferencia Registrada!</h3>
+                    <p className="text-sm text-green-700 mb-4">
+                      Hemos registrado tu reporte. Nuestro equipo verificará la transferencia y te notificaremos por email.
+                    </p>
+                    <Link
+                      href="/clientes/mi-cuenta"
+                      className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition-colors"
+                    >
+                      Ir a Mi Cuenta
+                      <ArrowRight className="w-5 h-5" />
+                    </Link>
+                  </div>
+                ) : (
                 <>
                   {/* Bank Details */}
                   <div className="bg-gray-50 rounded-xl p-5 mb-6 space-y-3">
@@ -270,7 +318,35 @@ export default function PaymentMethodPage() {
                     Enviar comprobante por WhatsApp
                     <ArrowRight className="w-5 h-5" />
                   </a>
+
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="bg-white px-3 text-gray-500">o</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleReportTransfer}
+                    disabled={reportingTransfer}
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-colors bg-navy-900 text-white hover:bg-navy-800 disabled:opacity-50"
+                  >
+                    {reportingTransfer ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Registrando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        Ya he hecho la transferencia
+                      </>
+                    )}
+                  </button>
                 </>
+                )
               ) : (
                 <>
                   {/* Benefits */}

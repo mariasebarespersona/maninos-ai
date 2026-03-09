@@ -140,7 +140,7 @@ def _job_refresh_partner_listings():
     from datetime import datetime as dt
 
     try:
-        from api.agents.buscador.scraper import VMFHomesScraper, TwentyFirstMortgageScraper
+        from api.services.scrapers.partner_scrapers import VMFHomesScraper, TwentyFirstMortgageScraper
         from tools.supabase_client import sb
 
         async def _scrape_and_save():

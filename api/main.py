@@ -13,8 +13,6 @@ from api.routes.market_listings import router as market_listings_router
 from api.routes.ai_assistant import router as ai_router
 from api.routes.team import router as team_router
 from api.routes.transfers import router as transfers_router
-from api.routes.purchase_payments import router as purchase_payments_router
-from api.routes.facebook_auth import router as facebook_router
 from api.routes.extract_listing import router as extract_listing_router
 from api.routes.emails import router as emails_router
 from api.routes.materials import router as materials_router
@@ -112,8 +110,6 @@ app.include_router(market_listings_router, prefix="/api/market-listings", tags=[
 app.include_router(ai_router, prefix="/api/ai", tags=["AI Assistant"])
 app.include_router(team_router, prefix="/api/team", tags=["Team"])
 app.include_router(transfers_router, prefix="/api/transfers", tags=["Title Transfers"])
-app.include_router(purchase_payments_router, prefix="/api/purchase-payments", tags=["Purchase Payments"])
-app.include_router(facebook_router, prefix="/api/facebook", tags=["Facebook"])
 app.include_router(extract_listing_router, prefix="/api/extract-listing", tags=["Extract Listing"])
 app.include_router(emails_router, prefix="/api/emails", tags=["Emails"])
 app.include_router(materials_router, prefix="/api/materials", tags=["Materials"])
@@ -124,7 +120,7 @@ app.include_router(accounting_router, prefix="/api/accounting", tags=["Accountin
 app.include_router(moves_router, prefix="/api/moves", tags=["Moves"])
 app.include_router(payment_orders_router, prefix="/api/payment-orders", tags=["Payment Orders"])
 
-# Agents (BuscadorAgent, CostosAgent, PrecioAgent, etc.)
+# Agents (CostosAgent, PrecioAgent, etc.)
 app.include_router(agents_router, tags=["Agents"])
 
 # Documents (already has /api/documents prefix in the router itself)
