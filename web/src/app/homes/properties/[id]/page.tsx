@@ -422,6 +422,9 @@ export default function PropertyDetailPage() {
     const price = property.sale_price ? `\n\n💰 Precio: $${property.sale_price.toLocaleString()}` : ''
     const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
 
+    const photos = (property.photos || []).slice(0, 5).map((url, i) => `📸 Foto ${i + 1}: ${url}`).join('\n')
+    const photosSection = photos ? `\n\n${photos}` : ''
+
     const msg = `🏡 ${code}${year}${dims}
 
 ✨ Características principales:${beds}${baths}${sqft}
@@ -433,7 +436,7 @@ ${price}
 🌟 Ideal para vivir o como inversión.
 📲 ¡Contáctanos hoy mismo antes de que se venda!
 
-📍${addr}`
+📍${addr}${photosSection}`
 
     setWhatsAppMessage(msg.trim())
     setShowWhatsAppModal(true)
@@ -1789,7 +1792,7 @@ ${price}
               />
               {property?.photos && property.photos.length > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
-                  Las fotos no se pueden adjuntar por WhatsApp link. Puedes adjuntarlas manualmente despues de pegar el mensaje.
+                  Se incluyen hasta 5 links de fotos. WhatsApp mostrara preview de la primera imagen.
                 </p>
               )}
             </div>
