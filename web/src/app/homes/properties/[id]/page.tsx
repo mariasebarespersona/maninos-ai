@@ -444,205 +444,186 @@ ${price}
     setShowWhatsAppModal(true)
   }
 
-  // Load image via proxy to avoid CORS issues with Supabase Storage
   const loadImage = (url: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
       const img = new window.Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => resolve(img)
-      img.onerror = () => reject(new Error('Failed'))
-      // Proxy through our API to add CORS headers
-      img.src = `/api/images/proxy?url=${encodeURIComponent(url)}`
+      img.onerror = () => {
+        // Retry via proxy if direct CORS fails
+        const img2 = new window.Image()
+        img2.crossOrigin = 'anonymous'
+        img2.onload = () => resolve(img2)
+        img2.onerror = () => reject(new Error('Failed'))
+        img2.src = `/api/images/proxy?url=${encodeURIComponent(url)}`
+      }
+      img.src = url
     })
 
   const generateAndShareFlyer = async () => {
     if (!property) return
     setSharingSending(true)
     try {
-      const W = 1080, H = 1920
+      const W = 1080, H = 1350 // 4:5 — WhatsApp/Instagram optimal
       const canvas = document.createElement('canvas')
       canvas.width = W
       canvas.height = H
       const ctx = canvas.getContext('2d')!
-      const PAD = 50
+      const P = 60 // padding
 
-      // ── Full white background ──
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, W, H)
+      // Helper: word wrap
+      const drawWrapped = (text: string, x: number, startY: number, maxW: number, lineH: number) => {
+        let cy = startY
+        const words = text.split(' ')
+        let line = ''
+        for (const w of words) {
+          if (ctx.measureText(line + w + ' ').width > maxW && line) {
+            ctx.fillText(line.trim(), x, cy)
+            cy += lineH
+            line = w + ' '
+          } else {
+            line += w + ' '
+          }
+        }
+        if (line) { ctx.fillText(line.trim(), x, cy); cy += lineH }
+        return cy
+      }
 
-      // ── Top accent bar (gold) ──
-      ctx.fillStyle = '#b8a070'
-      ctx.fillRect(0, 0, W, 10)
-
-      // ── "EN VENTA" header ──
-      ctx.fillStyle = '#283242'
-      ctx.fillRect(0, 10, W, 80)
-      ctx.fillStyle = '#b8a070'
-      ctx.font = 'bold 36px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('CASA EN VENTA', W / 2, 62)
-      ctx.textAlign = 'left'
-
-      // ── Main photo (large, edge to edge with padding) ──
-      const photoY = 110
-      const photoH = 700
-      const photos = (property.photos || [])
+      // ── Background: full photo bleed ──
+      const photos = property.photos || []
+      let photoLoaded = false
 
       if (photos[0]) {
         try {
           const img = await loadImage(photos[0])
-          const scale = Math.max((W - PAD * 2) / img.width, photoH / img.height)
+          // Draw photo covering entire canvas
+          const scale = Math.max(W / img.width, H / img.height)
           const dw = img.width * scale, dh = img.height * scale
-          // Clip to rounded rect
-          ctx.save()
-          ctx.beginPath()
-          ctx.roundRect(PAD, photoY, W - PAD * 2, photoH, 16)
-          ctx.clip()
-          ctx.drawImage(img, PAD + ((W - PAD * 2) - dw) / 2, photoY + (photoH - dh) / 2, dw, dh)
-          ctx.restore()
+          ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+          photoLoaded = true
+
+          // Dark overlay — gradient from top (subtle) to bottom (heavy)
+          const grad = ctx.createLinearGradient(0, 0, 0, H)
+          grad.addColorStop(0, 'rgba(0,0,0,0.15)')
+          grad.addColorStop(0.4, 'rgba(0,0,0,0.25)')
+          grad.addColorStop(0.65, 'rgba(0,0,0,0.7)')
+          grad.addColorStop(1, 'rgba(0,0,0,0.92)')
+          ctx.fillStyle = grad
+          ctx.fillRect(0, 0, W, H)
         } catch {
-          // Grey placeholder
-          ctx.fillStyle = '#e5e7eb'
-          ctx.beginPath()
-          ctx.roundRect(PAD, photoY, W - PAD * 2, photoH, 16)
-          ctx.fill()
-          ctx.fillStyle = '#9ca3af'
-          ctx.font = '40px sans-serif'
-          ctx.textAlign = 'center'
-          ctx.fillText('Foto no disponible', W / 2, photoY + photoH / 2)
-          ctx.textAlign = 'left'
+          // Photo failed to load
         }
       }
 
-      // ── Thumbnail strip (up to 4 small photos) ──
-      const thumbGap = 10
-      const thumbY = photoY + photoH + 14
-      const thumbCount = Math.min(photos.length - 1, 4)
-      if (thumbCount > 0) {
-        const thumbW = (W - PAD * 2 - thumbGap * (thumbCount - 1)) / thumbCount
-        const thumbH = 160
-        for (let i = 0; i < thumbCount; i++) {
-          const tx = PAD + i * (thumbW + thumbGap)
-          ctx.save()
-          ctx.beginPath()
-          ctx.roundRect(tx, thumbY, thumbW, thumbH, 10)
-          ctx.clip()
-          try {
-            const tImg = await loadImage(photos[i + 1])
-            const ts = Math.max(thumbW / tImg.width, thumbH / tImg.height)
-            ctx.drawImage(tImg, tx + (thumbW - tImg.width * ts) / 2, thumbY + (thumbH - tImg.height * ts) / 2, tImg.width * ts, tImg.height * ts)
-          } catch {
-            ctx.fillStyle = '#e5e7eb'
-            ctx.fillRect(tx, thumbY, thumbW, thumbH)
-          }
-          ctx.restore()
-        }
+      if (!photoLoaded) {
+        // Solid navy background when no photo
+        ctx.fillStyle = '#283242'
+        ctx.fillRect(0, 0, W, H)
       }
 
-      // ── Info section ──
-      const infoY = thumbCount > 0 ? thumbY + 174 + 30 : photoY + photoH + 40
-      let y = infoY
+      // ── Top: "EN VENTA" pill ──
+      const pillText = 'EN VENTA'
+      ctx.font = 'bold 28px sans-serif'
+      const pillW = ctx.measureText(pillText).width + 50
+      ctx.fillStyle = '#b8a070'
+      ctx.beginPath()
+      ctx.roundRect(P, 50, pillW, 50, 25)
+      ctx.fill()
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(pillText, P + 25, 83)
 
-      // Property code
+      // Property code top-right
       if (property.property_code) {
-        ctx.fillStyle = '#b8a070'
-        ctx.font = 'bold 34px sans-serif'
-        ctx.fillText(`Casa ${property.property_code}`, PAD, y)
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.font = 'bold 32px sans-serif'
+        ctx.textAlign = 'right'
+        ctx.fillText(`Casa ${property.property_code}`, W - P, 83)
+        ctx.textAlign = 'left'
+      }
+
+      // ── Bottom section: mirrors WhatsApp message format ──
+      let y = H - 560
+
+      // Casa code
+      const code = property.property_code ? `Casa ${property.property_code}` : 'Casa en Venta'
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 52px sans-serif'
+      ctx.fillText(code, P, y)
+      y += 30
+
+      // Year + dimensions on same line if available
+      const subParts: string[] = []
+      if (property.year) subParts.push(String(property.year))
+      if (property.width_ft && property.length_ft) subParts.push(`${property.width_ft} x ${property.length_ft}`)
+      if (subParts.length) {
+        ctx.fillStyle = 'rgba(255,255,255,0.7)'
+        ctx.font = '36px sans-serif'
+        ctx.fillText(subParts.join('  |  '), P, y)
+      }
+      y += 55
+
+      // "Caracteristicas principales:" header
+      ctx.fillStyle = '#b8a070'
+      ctx.font = 'bold 34px sans-serif'
+      ctx.fillText('Caracteristicas principales:', P, y)
+      y += 50
+
+      // Detail items as list
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '34px sans-serif'
+      if (property.bedrooms) { ctx.fillText(`${fmtNum(property.bedrooms)} Cuartos`, P + 20, y); y += 46 }
+      if (property.bathrooms) { ctx.fillText(`${fmtNum(property.bathrooms)} Banos`, P + 20, y); y += 46 }
+      if (property.square_feet) { ctx.fillText(`${property.square_feet} sqft`, P + 20, y); y += 46 }
+      if (property.is_renovated) { ctx.fillStyle = '#4ade80'; ctx.fillText('Renovada', P + 20, y); ctx.fillStyle = '#ffffff'; y += 46 }
+      y += 10
+
+      // "Lista para mudarte"
+      ctx.fillStyle = '#4ade80'
+      ctx.font = 'bold 36px sans-serif'
+      ctx.fillText('Lista para mudarte de inmediato', P, y)
+      y += 60
+
+      // Price
+      if (property.sale_price) {
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 72px sans-serif'
+        ctx.fillText(`Precio: ${fmtPrice(property.sale_price)}`, P, y)
         y += 50
       }
 
-      // ── PRICE (big and bold) ──
-      if (property.sale_price) {
-        ctx.fillStyle = '#283242'
-        ctx.font = 'bold 80px sans-serif'
-        ctx.fillText(fmtPrice(property.sale_price), PAD, y)
-        y += 48
-        ctx.fillStyle = '#b8a070'
-        ctx.font = '32px sans-serif'
-        ctx.fillText('Financiamiento disponible', PAD, y)
-        y += 55
-      }
-
-      // ── Gold divider ──
+      // Financiamiento
       ctx.fillStyle = '#b8a070'
-      ctx.fillRect(PAD, y, 120, 4)
-      y += 35
+      ctx.font = '34px sans-serif'
+      ctx.fillText('Financiamiento disponible', P, y)
+      y += 55
 
-      // ── Details grid (2 columns) ──
-      ctx.font = '36px sans-serif'
-      const detailItems: [string, string][] = []
-      if (property.bedrooms) detailItems.push(['Cuartos', fmtNum(property.bedrooms)])
-      if (property.bathrooms) detailItems.push(['Banos', fmtNum(property.bathrooms)])
-      if (property.year) detailItems.push(['Ano', String(property.year)])
-      if (property.width_ft && property.length_ft) detailItems.push(['Tamano', `${property.width_ft} x ${property.length_ft} ft`])
-      else if (property.square_feet) detailItems.push(['Tamano', `${property.square_feet} sqft`])
-      if (property.is_renovated) detailItems.push(['Estado', 'Renovada'])
+      // "Ideal para vivir o como inversion"
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'
+      ctx.font = '32px sans-serif'
+      ctx.fillText('Ideal para vivir o como inversion.', P, y)
+      y += 42
+      ctx.fillText('Contactanos hoy mismo antes de que se venda!', P, y)
+      y += 55
 
-      for (let i = 0; i < detailItems.length; i += 2) {
-        const [label1, val1] = detailItems[i]
-        ctx.fillStyle = '#6b7280'
-        ctx.font = '28px sans-serif'
-        ctx.fillText(label1, PAD, y)
-        ctx.fillStyle = '#283242'
-        ctx.font = 'bold 38px sans-serif'
-        ctx.fillText(val1, PAD, y + 42)
-
-        if (detailItems[i + 1]) {
-          const [label2, val2] = detailItems[i + 1]
-          ctx.fillStyle = '#6b7280'
-          ctx.font = '28px sans-serif'
-          ctx.fillText(label2, W / 2, y)
-          ctx.fillStyle = '#283242'
-          ctx.font = 'bold 38px sans-serif'
-          ctx.fillText(val2, W / 2, y + 42)
-        }
-        y += 85
-      }
-
-      y += 10
-
-      // ── Green "ready" badge ──
-      ctx.fillStyle = '#dcfce7'
-      ctx.beginPath()
-      ctx.roundRect(PAD, y, W - PAD * 2, 65, 12)
-      ctx.fill()
-      ctx.fillStyle = '#16a34a'
-      ctx.font = 'bold 32px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('Lista para mudarte de inmediato', W / 2, y + 43)
-      ctx.textAlign = 'left'
-      y += 95
-
-      // ── Address ──
-      ctx.fillStyle = '#6b7280'
+      // Address
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
       ctx.font = '30px sans-serif'
       const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
-      const addrWords = addr.split(' ')
-      let addrLine = ''
-      for (const w of addrWords) {
-        if (ctx.measureText(addrLine + w + ' ').width > W - PAD * 2 && addrLine) {
-          ctx.fillText(addrLine.trim(), PAD, y)
-          y += 40
-          addrLine = w + ' '
-        } else {
-          addrLine += w + ' '
-        }
-      }
-      if (addrLine) ctx.fillText(addrLine.trim(), PAD, y)
+      y = drawWrapped(addr, P, y, W - P * 2, 40)
 
-      // ── Bottom bar (navy) ──
-      ctx.fillStyle = '#283242'
-      ctx.fillRect(0, H - 120, W, 120)
+      // ── Bottom bar ──
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'
+      ctx.fillRect(0, H - 90, W, 90)
       ctx.fillStyle = '#b8a070'
-      ctx.fillRect(0, H - 120, W, 4)
+      ctx.fillRect(0, H - 90, W, 2)
 
-      ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 36px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('MANINOS HOMES', W / 2, H - 70)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 30px sans-serif'
+      ctx.fillText('MANINOS HOMES', W / 2, H - 55)
       ctx.fillStyle = 'rgba(255,255,255,0.7)'
-      ctx.font = '28px sans-serif'
-      ctx.fillText('(936) 200-5200  |  (832) 745-9600  |  (469) 600-5200', W / 2, H - 28)
+      ctx.font = '26px sans-serif'
+      ctx.fillText('(936) 200-5200  |  (832) 745-9600  |  (469) 600-5200', W / 2, H - 22)
       ctx.textAlign = 'left'
 
       // ── Export ──
