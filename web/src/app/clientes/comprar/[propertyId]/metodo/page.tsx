@@ -59,45 +59,11 @@ export default function PaymentMethodPage() {
     setLoading(false)
   }, [propertyId, router])
 
-  const handleContado = async () => {
-    if (!clientData) return
-    setSubmitting(true)
+  const [showBankDetails, setShowBankDetails] = useState(false)
+
+  const handleContado = () => {
     setSelectedMethod('contado')
-
-    try {
-      // Call backend to initiate contado purchase
-      const res = await fetch('/api/public/purchases/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          property_id: clientData.property_id,
-          client_name: clientData.client_name,
-          client_email: clientData.client_email,
-          client_phone: clientData.client_phone,
-          client_terreno: clientData.client_terreno
-        })
-      })
-
-      const data = await res.json()
-
-      if (data.ok) {
-        sessionStorage.setItem('maninos_purchase', JSON.stringify({
-          ...data,
-          client_email: clientData.client_email
-        }))
-        toast.success('¡Continuando al pago!')
-        router.push(`/clientes/comprar/${propertyId}/pago`)
-      } else {
-        toast.error(data.detail || 'Error al procesar')
-        setSubmitting(false)
-        setSelectedMethod(null)
-      }
-    } catch (error) {
-      console.error('Error:', error)
-      toast.error('Error de conexión')
-      setSubmitting(false)
-      setSelectedMethod(null)
-    }
+    setShowBankDetails(true)
   }
 
   const handleRTO = async () => {
@@ -232,12 +198,12 @@ export default function PaymentMethodPage() {
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {/* Option 1: Contado */}
           <div
-            className={`relative bg-white rounded-2xl shadow-sm border-2 transition-all cursor-pointer hover:shadow-lg ${
-              selectedMethod === 'contado' && submitting
+            className={`relative bg-white rounded-2xl shadow-sm border-2 transition-all ${
+              showBankDetails
                 ? 'border-green-500 shadow-lg'
-                : 'border-gray-200 hover:border-green-400'
+                : 'border-gray-200 hover:border-green-400 cursor-pointer hover:shadow-lg'
             }`}
-            onClick={() => !submitting && handleContado()}
+            onClick={() => !showBankDetails && handleContado()}
           >
             {/* Badge */}
             <div className="absolute -top-3 left-6">
@@ -254,7 +220,7 @@ export default function PaymentMethodPage() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-navy-900">Al Contado</h2>
-                  <p className="text-gray-500 text-sm">Pago completo ahora</p>
+                  <p className="text-gray-500 text-sm">Transferencia bancaria</p>
                 </div>
               </div>
 
@@ -266,43 +232,76 @@ export default function PaymentMethodPage() {
                 </p>
               </div>
 
-              {/* Benefits */}
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">La casa es tuya <strong>inmediatamente</strong></span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Título transferido <strong>a tu nombre</strong></span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Sin pagos mensuales ni intereses</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CreditCard className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Pago seguro con <strong>Stripe</strong></span>
-                </li>
-              </ul>
+              {showBankDetails ? (
+                <>
+                  {/* Bank Details */}
+                  <div className="bg-gray-50 rounded-xl p-5 mb-6 space-y-3">
+                    <p className="text-sm font-bold text-navy-900 mb-3">Datos para transferencia:</p>
+                    {[
+                      { label: 'Banco', value: 'Chase Bank' },
+                      { label: 'Nombre de la cuenta', value: 'Maninos Homes LLC' },
+                      { label: 'Número de cuenta', value: '000000000000' },
+                      { label: 'Routing Number', value: '000000000' },
+                      { label: 'Tipo de cuenta', value: 'Business Checking' },
+                    ].map((item) => (
+                      <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-gray-200 last:border-0">
+                        <span className="text-sm text-gray-600">{item.label}</span>
+                        <span className="text-sm font-semibold text-navy-900 font-mono">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
 
-              {/* CTA Button */}
-              <button
-                disabled={submitting}
-                className="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {submitting && selectedMethod === 'contado' ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Procesando...
-                  </>
-                ) : (
-                  <>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+                    <p className="text-sm text-green-800">
+                      <strong>Importante:</strong> Una vez realizada la transferencia, envíanos el comprobante
+                      por WhatsApp al <strong>(936) 200-5200</strong> para confirmar tu compra.
+                    </p>
+                  </div>
+
+                  <a
+                    href={`https://api.whatsapp.com/send?phone=+19362005200&text=${encodeURIComponent(
+                      `Hola! Acabo de hacer una transferencia para la compra al contado de la casa en ${property.address}. Mi nombre es ${clientData?.client_name || ''}. Adjunto mi comprobante.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold transition-colors"
+                    style={{ background: '#25d366' }}
+                  >
+                    Enviar comprobante por WhatsApp
+                    <ArrowRight className="w-5 h-5" />
+                  </a>
+                </>
+              ) : (
+                <>
+                  {/* Benefits */}
+                  <ul className="space-y-3 mb-8">
+                    <li className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-gray-700">La casa es tuya <strong>inmediatamente</strong></span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-gray-700">Título transferido <strong>a tu nombre</strong></span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-gray-700">Sin pagos mensuales ni intereses</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-gray-700">Pago por <strong>transferencia bancaria</strong></span>
+                    </li>
+                  </ul>
+
+                  {/* CTA Button */}
+                  <button
+                    className="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                  >
                     Pagar al Contado
                     <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -429,7 +428,7 @@ export default function PaymentMethodPage() {
                 ¿Qué es pagar al contado?
               </h4>
               <p className="text-sm text-gray-600">
-                Pagas el precio completo de la casa en un solo pago. El título se transfiere 
+                Pagas el precio completo de la casa por transferencia bancaria. El título se transfiere
                 directamente a tu nombre y la casa es tuya inmediatamente.
               </p>
             </div>
