@@ -320,7 +320,7 @@ def send_rto_application_email(
                 </div>
                 <h3 style="color: #1e3a5f;">¿Qué sigue?</h3>
                 <ol style="color: #555; line-height: 1.8;">
-                    <li><strong>Revisión de solicitud</strong> — Nuestro equipo de Maninos Capital revisará tu aplicación</li>
+                    <li><strong>Revisión de solicitud</strong> — Nuestro equipo de Maninos Homes revisará tu aplicación</li>
                     <li><strong>Contacto</strong> — Te contactaremos dentro de 24-48 horas hábiles</li>
                     <li><strong>Documentación</strong> — Te pediremos información adicional para evaluar tu solicitud</li>
                     <li><strong>Aprobación</strong> — Si todo está en orden, procederemos con el contrato RTO</li>
@@ -504,9 +504,9 @@ def send_rto_payment_reminder(
         if days_until_due > 0:
             subject = f"📅 Recordatorio: Tu pago RTO vence en {days_until_due} días"
         elif days_until_due == 0:
-            subject = "⚠️ HOY vence tu pago RTO - Maninos Capital"
+            subject = "⚠️ HOY vence tu pago RTO - Maninos Homes"
         else:
-            subject = f"🚨 Pago RTO atrasado ({abs(days_until_due)} días) - Maninos Capital"
+            subject = f"🚨 Pago RTO atrasado ({abs(days_until_due)} días) - Maninos Homes"
         
         result = send_email(to=[client_email], subject=subject, html=html)
         logger.info(f"[email_service] RTO reminder sent to {client_email} (days: {days_until_due})")

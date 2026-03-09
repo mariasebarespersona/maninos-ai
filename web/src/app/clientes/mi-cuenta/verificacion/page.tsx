@@ -412,7 +412,7 @@ export default function ClientVerificationPage() {
                   <div>
                     <p className="font-semibold text-[12px] text-green-800">Seguro y confidencial</p>
                     <p className="text-[11px] text-green-700">
-                      Tus documentos están almacenados de forma segura y encriptada. Solo el equipo de Maninos Capital puede verlos para verificar tu identidad.
+                      Tus documentos están almacenados de forma segura y encriptada. Solo el equipo de Maninos Homes puede verlos para verificar tu identidad.
                     </p>
                   </div>
                 </div>

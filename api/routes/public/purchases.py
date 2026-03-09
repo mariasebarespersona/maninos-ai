@@ -435,10 +435,10 @@ async def initiate_rto(request: RTOInitRequest):
     - Creates or updates client record
     - Creates sale with type 'rto' and status 'rto_pending'
     - Creates RTO application record
-    - Does NOT create Stripe customer (payment handled by Maninos Capital later)
+    - Does NOT create Stripe customer (payment handled by Maninos Homes later)
     
-    This triggers the Maninos Capital flow:
-    Property goes from Maninos Homes → Maninos Capital for RTO management.
+    This triggers the Maninos Homes flow:
+    Property goes from Maninos Homes → Maninos Homes for RTO management.
     """
     try:
         # 1. Verify property exists and check its status
@@ -617,7 +617,7 @@ async def initiate_rto(request: RTOInitRequest):
                 "sale_price": float(property_data["sale_price"]),
                 "photos": property_data.get("photos", [])
             },
-            "message": "Solicitud RTO recibida. Maninos Capital revisará tu aplicación."
+            "message": "Solicitud RTO recibida. Maninos Homes revisará tu aplicación."
         }
         
     except HTTPException:

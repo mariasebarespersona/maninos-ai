@@ -909,7 +909,7 @@ async def client_upload_kyc_documents(
 
         return {
             "ok": True,
-            "message": "¡Documentos enviados! Maninos Capital revisará tu identidad pronto.",
+            "message": "¡Documentos enviados! Maninos Homes revisará tu identidad pronto.",
             "status": "pending_review",
         }
 
@@ -969,7 +969,7 @@ async def client_submit_kyc_documents(client_id: str, data: ClientKYCSubmit):
 
         return {
             "ok": True,
-            "message": "¡Documentos enviados! Maninos Capital revisará tu identidad pronto.",
+            "message": "¡Documentos enviados! Maninos Homes revisará tu identidad pronto.",
             "status": "pending_review",
         }
 

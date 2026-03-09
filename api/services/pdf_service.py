@@ -1,5 +1,5 @@
 """
-PDF Generation Service for Maninos Capital LLC
+PDF Generation Service for Maninos Homes LLC
 Generates Bill of Sale, Deposit Agreement, and other documents
 """
 
@@ -14,7 +14,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
 
 
 # Company info
-COMPANY_NAME = "Maninos Capital LLC"
+COMPANY_NAME = "Maninos Homes LLC"
 COMPANY_ADDRESS = "Houston, Texas"
 COMPANY_PHONE = "832-745-9600"
 COMPANY_EMAIL = "info@maninoscapital.com"
@@ -371,7 +371,7 @@ def generate_rto_contract(
 ) -> bytes:
     """
     Generate a full Texas Residential Lease Agreement With Purchase Option PDF.
-    Contains all 33 clauses as per the Maninos Capital LLC RTO template.
+    Contains all 33 clauses as per the Maninos Homes LLC RTO template.
     
     Returns: PDF as bytes
     """
@@ -442,7 +442,7 @@ def generate_rto_contract(
     # Parties
     story.append(Paragraph("PARTIES TO THIS AGREEMENT", styles['SectionHeader']))
     story.append(Paragraph(
-        '<b>LANDLORD / SELLER:</b> Maninos Capital LLC ("Landlord")',
+        '<b>LANDLORD / SELLER:</b> Maninos Homes LLC ("Landlord")',
         styles['ClauseBody']
     ))
     story.append(Paragraph(
@@ -868,7 +868,7 @@ def generate_rto_contract(
     sig_data = [
         ["_" * 40, "", "_" * 40],
         ["LANDLORD / SELLER", "", "TENANT / BUYER"],
-        ["Maninos Capital LLC", "", tenant_name],
+        ["Maninos Homes LLC", "", tenant_name],
         ["", "", ""],
         ["Date: _______________", "", "Date: _______________"],
         ["", "", ""],

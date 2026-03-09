@@ -449,7 +449,7 @@ export default function PaymentMethodPage() {
                 ¿Cuánto tiempo tarda el proceso RTO?
               </h4>
               <p className="text-sm text-gray-600">
-                Después de enviar tu solicitud, nuestro equipo de Maninos Capital la revisa 
+                Después de enviar tu solicitud, nuestro equipo de Maninos Homes la revisa 
                 en 24-48 horas. Si es aprobada, puedes mudarte rápidamente.
               </p>
             </div>

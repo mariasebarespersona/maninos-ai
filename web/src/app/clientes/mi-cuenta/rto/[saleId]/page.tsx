@@ -311,52 +311,7 @@ export default function ClientRTOPage() {
           </div>
         )}
 
-        {/* Contract Terms & Dates */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-[#222] mb-4 flex items-center gap-2 text-[15px]">
-              <FileText className="w-5 h-5 text-[#004274]" />
-              Resumen del Contrato
-            </h3>
-            <div className="space-y-3">
-              <Row label="Renta Mensual" value={fmt(contract.monthly_rent)} highlight />
-              <Row label="Precio de Compra" value={fmt(contract.purchase_price)} />
-              <Row label="Enganche" value={fmt(contract.down_payment)} />
-              <Row label="Plazo" value={`${contract.term_months} meses`} />
-              <Row label="Día de Pago" value={`Día ${contract.payment_due_day} de cada mes`} />
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-[#222] mb-4 flex items-center gap-2 text-[15px]">
-              <Calendar className="w-5 h-5 text-[#004274]" />
-              Fechas
-            </h3>
-            <div className="space-y-3">
-              <Row label="Inicio" value={new Date(contract.start_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })} />
-              <Row label="Fin" value={new Date(contract.end_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })} />
-            </div>
-            {contract.properties?.square_feet && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <p className="text-[13px] text-[#717171]">Tamaño: <strong className="text-[#222]">{contract.properties.square_feet} sqft</strong></p>
-              </div>
-            )}
-
-            {/* PDF download - also shown in dates card as secondary link */}
-            {contract.contract_pdf_url && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <a
-                  href={contract.contract_pdf_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#004274] hover:underline"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Descargar contrato completo (PDF)
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Contract Terms removed — client only sees the PDF document */}
 
         {/* Payment Schedule */}
         {payments.length > 0 && (

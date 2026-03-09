@@ -150,7 +150,7 @@ export default function RTOConfirmationPage() {
                         {
                           step: 1,
                           title: 'Revisión de solicitud',
-                          description: 'Nuestro equipo de Maninos Capital revisará tu aplicación',
+                          description: 'Nuestro equipo de Maninos Homes revisará tu aplicación',
                           time: '24-48 horas',
                           icon: FileText,
                           active: true
@@ -259,7 +259,7 @@ export default function RTOConfirmationPage() {
                 <div className="flex items-start gap-3">
                   <Shield className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-medium text-orange-800 mb-1">Programa Rent-to-Own de Maninos Capital</p>
+                    <p className="font-medium text-orange-800 mb-1">Programa Rent-to-Own de Maninos Homes</p>
                     <p className="text-sm text-orange-700">
                       Nuestro programa te permite entrar a vivir en tu casa con un depósito inicial
                       y pagos mensuales accesibles. Parte de cada pago se aplica al precio final.
@@ -306,7 +306,7 @@ export default function RTOConfirmationPage() {
           </div>
 
           <p className="text-center text-gray-500 text-sm mt-8">
-            Gracias por confiar en Maninos Homes y Maninos Capital. 🏠
+            Gracias por confiar en Maninos Homes. 🏠
           </p>
         </div>
       </div>

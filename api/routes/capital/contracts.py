@@ -71,7 +71,7 @@ class ContractUpdate(BaseModel):
 class ContractActivate(BaseModel):
     """Activate a contract (mark as signed)."""
     signed_by_client: str
-    signed_by_company: str = "Maninos Capital LLC"
+    signed_by_company: str = "Maninos Homes LLC"
 
 
 class DTIRequest(BaseModel):
@@ -416,7 +416,7 @@ async def activate_contract(contract_id: str, data: ContractActivate):
         sb.table("title_transfers").update({
             "status": "in_progress",
         }).eq("property_id", c["property_id"]) \
-          .eq("to_name", "Maninos Capital LLC") \
+          .eq("to_name", "Maninos Homes LLC") \
           .eq("transfer_type", "sale") \
           .execute()
         
@@ -481,7 +481,7 @@ async def deliver_title(contract_id: str):
         existing = sb.table("title_transfers") \
             .select("id") \
             .eq("property_id", c["property_id"]) \
-            .eq("from_name", "Maninos Capital LLC") \
+            .eq("from_name", "Maninos Homes LLC") \
             .eq("to_name", c["clients"]["name"]) \
             .eq("transfer_type", "sale") \
             .execute()
@@ -499,7 +499,7 @@ async def deliver_title(contract_id: str):
                 "property_id": c["property_id"],
                 "sale_id": c["sale_id"],
                 "transfer_type": "sale",
-                "from_name": "Maninos Capital LLC",
+                "from_name": "Maninos Homes LLC",
                 "to_name": c["clients"]["name"],
                 "status": "completed",
                 "completed_at": datetime.utcnow().isoformat(),
@@ -518,7 +518,7 @@ async def deliver_title(contract_id: str):
         sb.table("title_transfers").update({
             "status": "completed",
         }).eq("property_id", c["property_id"]) \
-          .eq("to_name", "Maninos Capital LLC") \
+          .eq("to_name", "Maninos Homes LLC") \
           .eq("transfer_type", "sale") \
           .execute()
 
@@ -568,7 +568,7 @@ async def deliver_title(contract_id: str):
             from api.services.email_service import email_service
             await email_service.send_email(
                 to_email=c["clients"]["email"],
-                subject="🎉 ¡Felicidades! Tu casa ya es tuya - Maninos Capital",
+                subject="🎉 ¡Felicidades! Tu casa ya es tuya - Maninos Homes",
                 html=f"""
                 <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                     <h1 style="color: #1a2744; font-size: 28px;">¡Felicidades, {c['clients']['name']}!</h1>

@@ -338,7 +338,7 @@ export default function ClientDashboard() {
               <ShieldCheck className="w-6 h-6 text-[#004274] flex-shrink-0" />
               <div>
                 <h3 className="font-bold text-[#222] text-[14px]" style={{ letterSpacing: '-0.015em' }}>Verificación de Identidad Requerida</h3>
-                <p className="text-[12px] text-[#484848]">Maninos Capital necesita que verifiques tu identidad.</p>
+                <p className="text-[12px] text-[#484848]">Maninos Homes necesita que verifiques tu identidad.</p>
               </div>
             </div>
                   <Link
@@ -765,7 +765,7 @@ export default function ClientDashboard() {
                       </div>
                       <div>
                         <p className="font-semibold text-[15px] text-[#222]">Transferencia bancaria</p>
-                        <p className="text-[13px] text-[#717171] mt-0.5">Transfiere a la cuenta de Maninos Capital</p>
+                        <p className="text-[13px] text-[#717171] mt-0.5">Transfiere a la cuenta de Maninos Homes</p>
                       </div>
                       <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-[#004274] ml-auto flex-shrink-0 transition-colors" />
                     </div>
@@ -850,7 +850,7 @@ export default function ClientDashboard() {
                     <div className="rounded-xl border border-gray-200 overflow-hidden">
                       {[
                         { label: 'Banco', value: 'Chase Bank' },
-                        { label: 'Nombre de la cuenta', value: 'Maninos Capital LLC' },
+                        { label: 'Nombre de la cuenta', value: 'Maninos Homes LLC' },
                         { label: 'Número de cuenta', value: '000123456789' },
                         { label: 'Routing Number', value: '021000021' },
                         { label: 'Tipo de cuenta', value: 'Business Checking' },
