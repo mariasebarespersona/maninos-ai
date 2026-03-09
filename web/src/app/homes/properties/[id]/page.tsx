@@ -444,221 +444,208 @@ ${price}
     setShowWhatsAppModal(true)
   }
 
+  // Load image via proxy to avoid CORS issues with Supabase Storage
   const loadImage = (url: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
       const img = new window.Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => resolve(img)
-      img.onerror = () => reject(new Error('Image load failed'))
-      img.src = url
+      img.onerror = () => reject(new Error('Failed'))
+      // Proxy through our API to add CORS headers
+      img.src = `/api/images/proxy?url=${encodeURIComponent(url)}`
     })
-
-  const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-    ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.lineTo(x + w - r, y)
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-    ctx.lineTo(x + w, y + h - r)
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-    ctx.lineTo(x + r, y + h)
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-    ctx.lineTo(x, y + r)
-    ctx.quadraticCurveTo(x, y, x + r, y)
-    ctx.closePath()
-  }
-
-  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) => {
-    const words = text.split(' ')
-    let line = ''
-    let cy = y
-    for (const word of words) {
-      const test = line + word + ' '
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line.trim(), x, cy)
-        cy += lineH
-        line = word + ' '
-      } else {
-        line = test
-      }
-    }
-    ctx.fillText(line.trim(), x, cy)
-    return cy + lineH
-  }
 
   const generateAndShareFlyer = async () => {
     if (!property) return
     setSharingSending(true)
     try {
-      const W = 1080, H = 1350 // 4:5 ratio — optimal for WhatsApp/Instagram
-      const PAD = 60
+      const W = 1080, H = 1920
       const canvas = document.createElement('canvas')
       canvas.width = W
       canvas.height = H
       const ctx = canvas.getContext('2d')!
+      const PAD = 50
 
-      // ── Background ──
-      ctx.fillStyle = '#283242'
+      // ── Full white background ──
+      ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, W, H)
 
-      // ── Top gold accent bar ──
+      // ── Top accent bar (gold) ──
       ctx.fillStyle = '#b8a070'
-      ctx.fillRect(0, 0, W, 8)
+      ctx.fillRect(0, 0, W, 10)
 
-      // ── Header: "EN VENTA" + code ──
+      // ── "EN VENTA" header ──
+      ctx.fillStyle = '#283242'
+      ctx.fillRect(0, 10, W, 80)
       ctx.fillStyle = '#b8a070'
-      ctx.font = 'bold 32px sans-serif'
-      ctx.letterSpacing = '4px'
-      ctx.fillText('EN VENTA', PAD, 58)
-      ctx.letterSpacing = '0px'
-      if (property.property_code) {
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'
-        ctx.font = '28px sans-serif'
-        ctx.textAlign = 'right'
-        ctx.fillText(property.property_code, W - PAD, 58)
-        ctx.textAlign = 'left'
-      }
+      ctx.font = 'bold 36px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('CASA EN VENTA', W / 2, 62)
+      ctx.textAlign = 'left'
 
-      // ── Main photo ──
-      const photoY = 80
-      const photoH = 580
-      const photoUrls = (property.photos || [])
+      // ── Main photo (large, edge to edge with padding) ──
+      const photoY = 110
+      const photoH = 700
+      const photos = (property.photos || [])
 
-      // Draw main photo with rounded corners
-      ctx.save()
-      drawRoundedRect(ctx, PAD, photoY, W - PAD * 2, photoH, 20)
-      ctx.clip()
-
-      if (photoUrls[0]) {
+      if (photos[0]) {
         try {
-          const mainImg = await loadImage(photoUrls[0])
-          const scale = Math.max((W - PAD * 2) / mainImg.width, photoH / mainImg.height)
-          const dw = mainImg.width * scale, dh = mainImg.height * scale
-          ctx.drawImage(mainImg, PAD + ((W - PAD * 2) - dw) / 2, photoY + (photoH - dh) / 2, dw, dh)
+          const img = await loadImage(photos[0])
+          const scale = Math.max((W - PAD * 2) / img.width, photoH / img.height)
+          const dw = img.width * scale, dh = img.height * scale
+          // Clip to rounded rect
+          ctx.save()
+          ctx.beginPath()
+          ctx.roundRect(PAD, photoY, W - PAD * 2, photoH, 16)
+          ctx.clip()
+          ctx.drawImage(img, PAD + ((W - PAD * 2) - dw) / 2, photoY + (photoH - dh) / 2, dw, dh)
+          ctx.restore()
         } catch {
-          ctx.fillStyle = '#3d4f63'
-          ctx.fillRect(PAD, photoY, W - PAD * 2, photoH)
-          ctx.fillStyle = '#64748b'
-          ctx.font = '36px sans-serif'
+          // Grey placeholder
+          ctx.fillStyle = '#e5e7eb'
+          ctx.beginPath()
+          ctx.roundRect(PAD, photoY, W - PAD * 2, photoH, 16)
+          ctx.fill()
+          ctx.fillStyle = '#9ca3af'
+          ctx.font = '40px sans-serif'
           ctx.textAlign = 'center'
-          ctx.fillText('Sin foto disponible', W / 2, photoY + photoH / 2)
+          ctx.fillText('Foto no disponible', W / 2, photoY + photoH / 2)
           ctx.textAlign = 'left'
         }
       }
-      ctx.restore()
 
-      // ── Small photo strip (up to 3 thumbnails) ──
-      const thumbY = photoY + photoH + 12
-      const thumbH = 120
-      const thumbW = (W - PAD * 2 - 16) / 3
-      const extraPhotos = photoUrls.slice(1, 4)
-      for (let i = 0; i < extraPhotos.length; i++) {
-        const tx = PAD + i * (thumbW + 8)
-        ctx.save()
-        drawRoundedRect(ctx, tx, thumbY, thumbW, thumbH, 12)
-        ctx.clip()
-        try {
-          const tImg = await loadImage(extraPhotos[i])
-          const ts = Math.max(thumbW / tImg.width, thumbH / tImg.height)
-          const tw = tImg.width * ts, th = tImg.height * ts
-          ctx.drawImage(tImg, tx + (thumbW - tw) / 2, thumbY + (thumbH - th) / 2, tw, th)
-        } catch {
-          ctx.fillStyle = '#3d4f63'
-          ctx.fillRect(tx, thumbY, thumbW, thumbH)
+      // ── Thumbnail strip (up to 4 small photos) ──
+      const thumbGap = 10
+      const thumbY = photoY + photoH + 14
+      const thumbCount = Math.min(photos.length - 1, 4)
+      if (thumbCount > 0) {
+        const thumbW = (W - PAD * 2 - thumbGap * (thumbCount - 1)) / thumbCount
+        const thumbH = 160
+        for (let i = 0; i < thumbCount; i++) {
+          const tx = PAD + i * (thumbW + thumbGap)
+          ctx.save()
+          ctx.beginPath()
+          ctx.roundRect(tx, thumbY, thumbW, thumbH, 10)
+          ctx.clip()
+          try {
+            const tImg = await loadImage(photos[i + 1])
+            const ts = Math.max(thumbW / tImg.width, thumbH / tImg.height)
+            ctx.drawImage(tImg, tx + (thumbW - tImg.width * ts) / 2, thumbY + (thumbH - tImg.height * ts) / 2, tImg.width * ts, tImg.height * ts)
+          } catch {
+            ctx.fillStyle = '#e5e7eb'
+            ctx.fillRect(tx, thumbY, thumbW, thumbH)
+          }
+          ctx.restore()
         }
-        ctx.restore()
       }
 
       // ── Info section ──
-      let y = thumbY + thumbH + 45
+      const infoY = thumbCount > 0 ? thumbY + 174 + 30 : photoY + photoH + 40
+      let y = infoY
 
-      // Price — large, prominent
-      if (property.sale_price) {
-        ctx.fillStyle = '#ffffff'
-        ctx.font = 'bold 72px sans-serif'
-        ctx.fillText(fmtPrice(property.sale_price), PAD, y)
-        y += 50
-
+      // Property code
+      if (property.property_code) {
         ctx.fillStyle = '#b8a070'
-        ctx.font = '30px sans-serif'
+        ctx.font = 'bold 34px sans-serif'
+        ctx.fillText(`Casa ${property.property_code}`, PAD, y)
+        y += 50
+      }
+
+      // ── PRICE (big and bold) ──
+      if (property.sale_price) {
+        ctx.fillStyle = '#283242'
+        ctx.font = 'bold 80px sans-serif'
+        ctx.fillText(fmtPrice(property.sale_price), PAD, y)
+        y += 48
+        ctx.fillStyle = '#b8a070'
+        ctx.font = '32px sans-serif'
         ctx.fillText('Financiamiento disponible', PAD, y)
         y += 55
       }
 
-      // Divider line
-      ctx.strokeStyle = 'rgba(184,160,112,0.3)'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(PAD, y)
-      ctx.lineTo(W - PAD, y)
-      ctx.stroke()
+      // ── Gold divider ──
+      ctx.fillStyle = '#b8a070'
+      ctx.fillRect(PAD, y, 120, 4)
       y += 35
 
-      // Property details — icon-style grid
-      ctx.fillStyle = '#ffffff'
-      ctx.font = '34px sans-serif'
-      const col1 = PAD, col2 = W / 2
+      // ── Details grid (2 columns) ──
+      ctx.font = '36px sans-serif'
+      const detailItems: [string, string][] = []
+      if (property.bedrooms) detailItems.push(['Cuartos', fmtNum(property.bedrooms)])
+      if (property.bathrooms) detailItems.push(['Banos', fmtNum(property.bathrooms)])
+      if (property.year) detailItems.push(['Ano', String(property.year)])
+      if (property.width_ft && property.length_ft) detailItems.push(['Tamano', `${property.width_ft} x ${property.length_ft} ft`])
+      else if (property.square_feet) detailItems.push(['Tamano', `${property.square_feet} sqft`])
+      if (property.is_renovated) detailItems.push(['Estado', 'Renovada'])
 
-      if (property.bedrooms) {
-        ctx.fillText(`${fmtNum(property.bedrooms)} Cuartos`, col1, y)
-      }
-      if (property.bathrooms) {
-        ctx.fillText(`${fmtNum(property.bathrooms)} Banos`, col2, y)
-      }
-      y += 48
+      for (let i = 0; i < detailItems.length; i += 2) {
+        const [label1, val1] = detailItems[i]
+        ctx.fillStyle = '#6b7280'
+        ctx.font = '28px sans-serif'
+        ctx.fillText(label1, PAD, y)
+        ctx.fillStyle = '#283242'
+        ctx.font = 'bold 38px sans-serif'
+        ctx.fillText(val1, PAD, y + 42)
 
-      if (property.year) {
-        ctx.fillText(`Ano ${property.year}`, col1, y)
-      }
-      if (property.width_ft && property.length_ft) {
-        ctx.fillText(`${property.width_ft} x ${property.length_ft} ft`, col2, y)
-      } else if (property.square_feet) {
-        ctx.fillText(`${property.square_feet} sqft`, col2, y)
-      }
-      y += 48
-
-      if (property.is_renovated) {
-        ctx.fillStyle = '#4ade80'
-        ctx.font = 'bold 34px sans-serif'
-        ctx.fillText('Renovada', col1, y)
-        y += 48
+        if (detailItems[i + 1]) {
+          const [label2, val2] = detailItems[i + 1]
+          ctx.fillStyle = '#6b7280'
+          ctx.font = '28px sans-serif'
+          ctx.fillText(label2, W / 2, y)
+          ctx.fillStyle = '#283242'
+          ctx.font = 'bold 38px sans-serif'
+          ctx.fillText(val2, W / 2, y + 42)
+        }
+        y += 85
       }
 
       y += 10
 
-      // "Lista para mudarte" badge
-      drawRoundedRect(ctx, PAD, y, W - PAD * 2, 60, 12)
-      ctx.fillStyle = 'rgba(74,222,128,0.15)'
+      // ── Green "ready" badge ──
+      ctx.fillStyle = '#dcfce7'
+      ctx.beginPath()
+      ctx.roundRect(PAD, y, W - PAD * 2, 65, 12)
       ctx.fill()
-      ctx.fillStyle = '#4ade80'
-      ctx.font = 'bold 30px sans-serif'
+      ctx.fillStyle = '#16a34a'
+      ctx.font = 'bold 32px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Lista para mudarte de inmediato', W / 2, y + 40)
+      ctx.fillText('Lista para mudarte de inmediato', W / 2, y + 43)
       ctx.textAlign = 'left'
-      y += 85
+      y += 95
 
-      // Address
-      ctx.fillStyle = 'rgba(255,255,255,0.7)'
-      ctx.font = '28px sans-serif'
+      // ── Address ──
+      ctx.fillStyle = '#6b7280'
+      ctx.font = '30px sans-serif'
       const addr = [property.address, property.city, property.state, property.zip_code].filter(Boolean).join(', ')
-      y = wrapText(ctx, addr, PAD, y, W - PAD * 2, 38)
+      const addrWords = addr.split(' ')
+      let addrLine = ''
+      for (const w of addrWords) {
+        if (ctx.measureText(addrLine + w + ' ').width > W - PAD * 2 && addrLine) {
+          ctx.fillText(addrLine.trim(), PAD, y)
+          y += 40
+          addrLine = w + ' '
+        } else {
+          addrLine += w + ' '
+        }
+      }
+      if (addrLine) ctx.fillText(addrLine.trim(), PAD, y)
 
-      // ── Bottom bar ──
-      ctx.fillStyle = '#1e293b'
-      ctx.fillRect(0, H - 90, W, 90)
-      // Gold accent
+      // ── Bottom bar (navy) ──
+      ctx.fillStyle = '#283242'
+      ctx.fillRect(0, H - 120, W, 120)
       ctx.fillStyle = '#b8a070'
-      ctx.fillRect(0, H - 90, W, 3)
+      ctx.fillRect(0, H - 120, W, 4)
 
       ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 30px sans-serif'
+      ctx.font = 'bold 36px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('MANINOS HOMES', W / 2, H - 52)
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'
-      ctx.font = '26px sans-serif'
-      ctx.fillText('(936) 200-5200  |  (832) 745-9600', W / 2, H - 18)
+      ctx.fillText('MANINOS HOMES', W / 2, H - 70)
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.font = '28px sans-serif'
+      ctx.fillText('(936) 200-5200  |  (832) 745-9600  |  (469) 600-5200', W / 2, H - 28)
       ctx.textAlign = 'left'
 
-      // ── Export & share ──
+      // ── Export ──
       const blob = await new Promise<Blob>((resolve) =>
         canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.93)
       )
@@ -667,7 +654,6 @@ ${price}
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] })
       } else {
-        // Desktop: download
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
