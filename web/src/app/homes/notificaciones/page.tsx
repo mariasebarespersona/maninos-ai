@@ -13,6 +13,7 @@ import {
   X,
   Calendar,
 } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
 interface PaymentOrder {
   id: string
@@ -47,6 +48,7 @@ interface BankAccount {
 }
 
 export default function NotificacionesPage() {
+  const toast = useToast()
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending')
@@ -137,12 +139,16 @@ export default function NotificacionesPage() {
       })
       const data = await res.json()
       if (data.ok) {
+        toast.success('Pago confirmado. Documentos generados y email enviado al cliente.')
         setConfirmingTransfer(null)
         fetchPendingTransfers()
-        fetchOrders() // refresh payment orders too
+        fetchOrders()
+      } else {
+        toast.error(data.detail || 'Error al confirmar la transferencia')
       }
     } catch (e) {
       console.error('Error confirming transfer:', e)
+      toast.error('Error de conexion al confirmar la transferencia')
     } finally {
       setConfirmingSubmitting(false)
     }
