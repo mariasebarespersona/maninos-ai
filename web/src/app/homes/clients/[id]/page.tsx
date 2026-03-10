@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from '@/components/ui/Toast'
+import { useAuth } from '@/components/Auth/AuthProvider'
 import {
   ArrowLeft,
   Users,
@@ -173,11 +174,13 @@ const noteTypeConfig: Record<string, { label: string; color: string; icon: any }
 
 export default function ClientDetailPage() {
   const params = useParams()
+  const { user: authUser } = useAuth()
   const [data, setData] = useState<ClientHistory | null>(null)
   const [loading, setLoading] = useState(true)
   // Tracking / Follow-up state
   const [notes, setNotes] = useState<ClientNote[]>([])
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [assignedEmployeeId, setAssignedEmployeeId] = useState<string>('')
   const [newNoteType, setNewNoteType] = useState<string>('observation')
   const [newNoteContent, setNewNoteContent] = useState('')
@@ -208,7 +211,15 @@ export default function ClientDetailPage() {
         }
         if (teamRes.ok) {
           const users = await teamRes.json()
-          setTeamUsers(Array.isArray(users) ? users : [])
+          const userList = Array.isArray(users) ? users : []
+          setTeamUsers(userList)
+          // Find the logged-in user's ID in the team list
+          if (authUser?.email && userList.length > 0) {
+            const me = userList.find((u: TeamUser) => u.email === authUser.email)
+            setCurrentUserId(me?.id || userList[0]?.id || null)
+          } else if (userList.length > 0) {
+            setCurrentUserId(userList[0].id)
+          }
         }
       } catch (error) {
         console.error('Error loading client data:', error)
@@ -246,10 +257,10 @@ export default function ClientDetailPage() {
     if (!newNoteContent.trim()) return
     setSubmittingNote(true)
     try {
-      // Use the first team user as author (in a real app this would be the logged-in user)
-      const authorId = teamUsers.length > 0 ? teamUsers[0].id : null
+      const authorId = currentUserId
       if (!authorId) {
-        toast.error('No se encontro un usuario para registrar la nota')
+        toast.error('No se encontró un usuario para registrar la nota. Recarga la página.')
+        setSubmittingNote(false)
         return
       }
       const res = await fetch(`/api/clients/${clientId}/notes`, {
