@@ -154,7 +154,8 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
 }
 
 const saleStatusConfig: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Pendiente de Pago', color: 'bg-amber-100 text-amber-700' },
+  pending: { label: 'Pendiente', color: 'bg-amber-100 text-amber-700' },
+  transfer_reported: { label: 'Transferencia Reportada', color: 'bg-blue-100 text-blue-700' },
   paid: { label: 'Pagada', color: 'bg-blue-100 text-blue-700' },
   completed: { label: 'Completada', color: 'bg-emerald-100 text-emerald-700' },
   cancelled: { label: 'Cancelada', color: 'bg-red-100 text-red-700' },
@@ -182,13 +183,8 @@ export default function ClientDetailPage() {
   const [newNoteContent, setNewNoteContent] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const [assigningEmployee, setAssigningEmployee] = useState(false)
-  useEffect(() => {
-    fetchClientHistory()
-    fetchNotes()
-    fetchTeamUsers()
-  }, [params.id])
 
-  const fetchClientHistory = async () => {
+  const fetchClientHistory = useCallback(async () => {
     try {
       const res = await fetch(`/api/clients/${params.id}/history`)
       if (res.ok) {
@@ -201,7 +197,7 @@ export default function ClientDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params.id])
 
   const fetchNotes = useCallback(async () => {
     try {
@@ -226,6 +222,12 @@ export default function ClientDetailPage() {
       console.error('Error fetching team users:', error)
     }
   }, [])
+
+  useEffect(() => {
+    fetchClientHistory()
+    fetchNotes()
+    fetchTeamUsers()
+  }, [fetchClientHistory, fetchNotes, fetchTeamUsers])
 
   const handleAssignEmployee = async (employeeId: string) => {
     setAssigningEmployee(true)
