@@ -2755,40 +2755,51 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
 async def confirm_reconciliation(statement_id: str, data: dict):
     """Confirm matched movement-transaction pairs. Marks both as reconciled."""
     pairs = data.get("pairs", [])
+    logger.info(f"[reconcile-confirm] Received {len(pairs)} pairs for statement {statement_id}")
+
     if not pairs:
         raise HTTPException(status_code=400, detail="No pairs provided")
 
     now_str = datetime.utcnow().isoformat()
     reconciled = 0
+    errors = []
 
     for pair in pairs:
         mv_id = pair.get("movement_id")
         txn_id = pair.get("transaction_id")
+        logger.info(f"[reconcile-confirm] Processing pair: mv={mv_id}, txn={txn_id}")
+
         if not mv_id or not txn_id:
+            errors.append(f"Missing mv_id or txn_id in pair: {pair}")
             continue
 
         try:
-            # Update movement: mark as reconciled and link to transaction
-            mv_update: dict = {"status": "reconciled"}
-            try:
-                mv_update["matched_transaction_id"] = txn_id
-                sb.table("statement_movements").update(mv_update).eq("id", mv_id).execute()
-            except Exception:
-                # Column may not exist yet - retry without it
-                sb.table("statement_movements").update({"status": "reconciled"}).eq("id", mv_id).execute()
+            # Update movement: mark as reconciled
+            mv_result = sb.table("statement_movements").update({
+                "status": "reconciled",
+            }).eq("id", mv_id).execute()
+            logger.info(f"[reconcile-confirm] Movement update result: {len(mv_result.data or [])} rows")
 
             # Update transaction: mark as reconciled
-            sb.table("accounting_transactions").update({
+            txn_result = sb.table("accounting_transactions").update({
                 "status": "reconciled",
                 "reconciled_at": now_str,
             }).eq("id", txn_id).execute()
+            logger.info(f"[reconcile-confirm] Transaction update result: {len(txn_result.data or [])} rows")
 
             _log_audit("accounting_transactions", txn_id, "reconcile")
             reconciled += 1
         except Exception as e:
-            logger.warning(f"[reconcile-confirm] Error for mv={mv_id}, txn={txn_id}: {e}")
+            err_msg = f"mv={mv_id}, txn={txn_id}: {e}"
+            logger.error(f"[reconcile-confirm] Error: {err_msg}")
+            errors.append(err_msg)
 
-    return {"reconciled": reconciled, "message": f"{reconciled} movimientos conciliados"}
+    logger.info(f"[reconcile-confirm] Done: {reconciled} reconciled, {len(errors)} errors")
+    return {
+        "reconciled": reconciled,
+        "message": f"{reconciled} movimientos conciliados",
+        "errors": errors[:5] if errors else [],
+    }
 
 
 @router.post("/bank-statements/{statement_id}/classify")

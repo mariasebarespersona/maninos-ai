@@ -2601,6 +2601,7 @@ function EstadoCuentaTab() {
     const pairs = reconcileMatches
       .filter(m => selectedMatches.has(m.movement_id))
       .map(m => ({ movement_id: m.movement_id, transaction_id: m.transaction_id }))
+    console.log('[reconcile-confirm] Sending pairs:', JSON.stringify(pairs, null, 2))
     if (pairs.length === 0) {
       setReconcileDone(true)
       return
@@ -2614,13 +2615,19 @@ function EstadoCuentaTab() {
       })
       if (res.ok) {
         const data = await res.json()
+        console.log('[reconcile-confirm] Response:', data)
+        if (data.errors?.length > 0) console.warn('[reconcile-confirm] Errors:', data.errors)
         alert(`✅ ${data.reconciled} movimientos conciliados`)
         setReconcileDone(true)
         // Reload movements without resetting wizard state
         await reloadMovements(stmtId)
         fetchStatements()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        console.error('[reconcile-confirm] Error response:', res.status, err)
+        alert(`Error: ${err.detail || 'Error al confirmar conciliación'}`)
       }
-    } catch (e) { alert('Error de conexión') }
+    } catch (e) { console.error('[reconcile-confirm] Fetch error:', e); alert('Error de conexión') }
     finally { setConfirmingReconcile(false) }
   }
 
