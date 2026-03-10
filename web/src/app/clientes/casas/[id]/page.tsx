@@ -796,14 +796,14 @@ export default function PropertyDetailPage() {
                 <p className="text-[12px] text-[#b0b0b0] font-medium text-center">¿Tienes preguntas?</p>
                 <div className="flex gap-2">
                   <a
-                    href="tel:9362005200"
+                    href="tel:8327459600"
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#222] border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                   >
                     <Phone className="w-4 h-4" />
                     Llamar
                   </a>
                   <a
-                    href={`https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
+                    href={`https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20la%20casa%20en%20${encodeURIComponent(property.address)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-sm"
                     style={{ background: '#25d366' }}

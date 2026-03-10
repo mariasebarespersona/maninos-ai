@@ -739,13 +739,13 @@ export default function ClientDashboard() {
               <p className="text-[12px] text-[#717171] mb-4">Estamos aquí para ayudarte.</p>
               <div className="space-y-2">
                 <a
-                  href="tel:+19362005200"
+                  href="tel:+18327459600"
                   className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-[13px] font-semibold text-[#222] border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
-                  <Phone className="w-4 h-4" /> Conroe: (936) 200-5200
+                  <Phone className="w-4 h-4" /> Conroe: (832) 745-9600
                 </a>
                 <a
-                  href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Tengo%20una%20pregunta"
+                  href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Tengo%20una%20pregunta"
                   target="_blank" rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-[13px] font-semibold text-white transition-colors"
                   style={{ background: '#25d366' }}
@@ -863,7 +863,7 @@ export default function ClientDashboard() {
                     <h4 className="font-semibold text-[13px] text-[#222] mb-3 uppercase tracking-wide">Nuestras oficinas</h4>
                     <div className="space-y-2">
                       {[
-                        { city: 'Conroe', address: 'Conroe, TX', phone: '(936) 200-5200' },
+                        { city: 'Conroe', address: 'Conroe, TX', phone: '(832) 745-9600' },
                         { city: 'Houston', address: 'Houston, TX', phone: '(713) 555-0100' },
                         { city: 'Dallas', address: 'Dallas, TX', phone: '(469) 555-0100' },
                       ].map(office => (

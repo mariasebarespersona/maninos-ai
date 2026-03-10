@@ -448,17 +448,17 @@ function HowItWorks() {
           <p className="text-[13px] text-[#b0b0b0]">¿Prefieres hablar con alguien?</p>
           <div className="flex items-center gap-3">
             <a
-              href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20una%20casa"
+              href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa"
               target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-medium text-[#25d366] border border-[#25d366]/30 hover:bg-[#25d366]/5 transition-colors"
             >
               <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
             </a>
             <a
-              href="tel:9362005200"
+              href="tel:8327459600"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-medium text-[#717171] border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              <Phone className="w-3.5 h-3.5" /> (936) 200-5200
+              <Phone className="w-3.5 h-3.5" /> (832) 745-9600
             </a>
           </div>
         </div>
@@ -489,7 +489,7 @@ function CTASection() {
             Ver casas <ArrowRight className="w-4 h-4" />
           </Link>
           <a
-            href="https://api.whatsapp.com/send?phone=+19362005200&text=Hola!%20Me%20interesa%20una%20casa"
+            href="https://api.whatsapp.com/send?phone=+18327459600&text=Hola!%20Me%20interesa%20una%20casa"
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-[15px] text-[#222] border border-gray-300 hover:border-gray-400 hover:shadow-sm transition-all"
           >

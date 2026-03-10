@@ -302,12 +302,12 @@ export default function PaymentMethodPage() {
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
                     <p className="text-sm text-green-800">
                       <strong>Importante:</strong> Una vez realizada la transferencia, envíanos el comprobante
-                      por WhatsApp al <strong>(936) 200-5200</strong> para confirmar tu compra.
+                      por WhatsApp al <strong>(832) 745-9600</strong> para confirmar tu compra.
                     </p>
                   </div>
 
                   <a
-                    href={`https://api.whatsapp.com/send?phone=+19362005200&text=${encodeURIComponent(
+                    href={`https://api.whatsapp.com/send?phone=+18327459600&text=${encodeURIComponent(
                       `Hola! Acabo de hacer una transferencia para la compra al contado de la casa en ${property.address}. Mi nombre es ${clientData?.client_name || ''}. Adjunto mi comprobante.`
                     )}`}
                     target="_blank"

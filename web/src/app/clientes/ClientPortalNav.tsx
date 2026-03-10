@@ -94,8 +94,8 @@ export default function ClientPortalNav({
                   <Phone className="w-3.5 h-3.5" /> Oficinas
                 </button>
                 <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-200 py-2 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                  <a href="tel:9362005200" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
-                    <span className="font-semibold text-[#222]">Conroe</span> · (936) 200-5200
+                  <a href="tel:8327459600" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
+                    <span className="font-semibold text-[#222]">Conroe</span> · (832) 745-9600
                   </a>
                   <a href="tel:8327459600" className="block px-4 py-2 text-[13px] text-[#484848] hover:bg-gray-50 transition-colors">
                     <span className="font-semibold text-[#222]">Houston</span> · (832) 745-9600
@@ -157,12 +157,12 @@ export default function ClientPortalNav({
                   <MessageCircle className="w-4 h-4" /> WhatsApp
                 </a>
                 <a
-                  href="tel:9362005200"
+                  href="tel:8327459600"
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
                     useTransparent ? 'text-white/70' : 'text-gray-500'
                   }`}
                 >
-                  <Phone className="w-4 h-4" /> Conroe: (936) 200-5200
+                  <Phone className="w-4 h-4" /> Conroe: (832) 745-9600
                 </a>
               </div>
             </nav>
@@ -225,8 +225,8 @@ export default function ClientPortalNav({
               <h4 className="text-[13px] font-bold text-[#222] uppercase tracking-wide mb-4">Oficinas</h4>
               <ul className="space-y-2.5">
                 <li>
-                  <a href="tel:9362005200" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5" /> Conroe: (936) 200-5200
+                  <a href="tel:8327459600" className="text-[13px] text-[#717171] hover:text-[#222] transition-colors hover:underline flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5" /> Conroe: (832) 745-9600
                   </a>
                 </li>
                 <li>

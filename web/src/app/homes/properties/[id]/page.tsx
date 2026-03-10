@@ -619,7 +619,7 @@ ${price}
       ctx.fillText('MANINOS HOMES', W / 2, H - 55)
       ctx.fillStyle = 'rgba(255,255,255,0.7)'
       ctx.font = '26px sans-serif'
-      ctx.fillText('(936) 200-5200  |  (832) 745-9600  |  (469) 600-5200', W / 2, H - 22)
+      ctx.fillText('(832) 745-9600  |  (469) 600-5200', W / 2, H - 22)
       ctx.textAlign = 'left'
 
       // ── Export ──
