@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from '@/components/ui/Toast'
@@ -184,55 +184,46 @@ export default function ClientDetailPage() {
   const [submittingNote, setSubmittingNote] = useState(false)
   const [assigningEmployee, setAssigningEmployee] = useState(false)
 
-  const fetchClientHistory = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/clients/${params.id}/history`)
-      if (res.ok) {
-        const history = await res.json()
-        setData(history)
-        setAssignedEmployeeId(history.assigned_employee_id || '')
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [params.id])
-
-  const fetchNotes = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/clients/${params.id}/notes`)
-      if (res.ok) {
-        const notesData = await res.json()
-        setNotes(notesData)
-      }
-    } catch (error) {
-      console.error('Error fetching notes:', error)
-    }
-  }, [params.id])
-
-  const fetchTeamUsers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/team/users')
-      if (res.ok) {
-        const users = await res.json()
-        setTeamUsers(users)
-      }
-    } catch (error) {
-      console.error('Error fetching team users:', error)
-    }
-  }, [])
+  const clientId = params.id as string
 
   useEffect(() => {
-    fetchClientHistory()
-    fetchNotes()
-    fetchTeamUsers()
-  }, [fetchClientHistory, fetchNotes, fetchTeamUsers])
+    if (!clientId) return
+
+    const loadData = async () => {
+      try {
+        const [historyRes, notesRes, teamRes] = await Promise.all([
+          fetch(`/api/clients/${clientId}/history`),
+          fetch(`/api/clients/${clientId}/notes`),
+          fetch('/api/team/users'),
+        ])
+
+        if (historyRes.ok) {
+          const history = await historyRes.json()
+          setData(history)
+          setAssignedEmployeeId(history.assigned_employee_id || '')
+        }
+        if (notesRes.ok) {
+          const notesData = await notesRes.json()
+          setNotes(Array.isArray(notesData) ? notesData : [])
+        }
+        if (teamRes.ok) {
+          const users = await teamRes.json()
+          setTeamUsers(Array.isArray(users) ? users : [])
+        }
+      } catch (error) {
+        console.error('Error loading client data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [clientId])
 
   const handleAssignEmployee = async (employeeId: string) => {
     setAssigningEmployee(true)
     try {
-      const res = await fetch(`/api/clients/${params.id}/assign-employee`, {
+      const res = await fetch(`/api/clients/${clientId}/assign-employee`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: employeeId || null }),
@@ -261,7 +252,7 @@ export default function ClientDetailPage() {
         toast.error('No se encontro un usuario para registrar la nota')
         return
       }
-      const res = await fetch(`/api/clients/${params.id}/notes`, {
+      const res = await fetch(`/api/clients/${clientId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -313,7 +304,7 @@ export default function ClientDetailPage() {
 
   const hasPersonalInfo = client.date_of_birth || client.ssn_itin || client.marital_status || client.address
   const hasEmploymentInfo = client.employer_name || client.occupation || client.monthly_income
-  const hasReferences = client.personal_references && client.personal_references.length > 0
+  const hasReferences = Array.isArray(client.personal_references) && client.personal_references.length > 0
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -331,12 +322,12 @@ export default function ClientDetailPage() {
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center shadow-card">
               <span className="text-white font-serif text-3xl">
-                {client.name.charAt(0).toUpperCase()}
+                {(client.name || 'C').charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="font-serif text-2xl text-navy-900">{client.name}</h1>
+                <h1 className="font-serif text-2xl text-navy-900">{client.name || 'Cliente'}</h1>
                 <div className={`badge ${status.bgColor} ${status.color}`}>
                   <StatusIcon className="w-4 h-4" />
                   {status.label}
