@@ -51,7 +51,7 @@ export default function NotificacionesPage() {
   const toast = useToast()
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending')
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'received'>('pending')
 
   // Completion modal state
   const [completing, setCompleting] = useState<PaymentOrder | null>(null)
@@ -63,6 +63,9 @@ export default function NotificacionesPage() {
   const [loadingTransfers, setLoadingTransfers] = useState(true)
   const [confirmingTransfer, setConfirmingTransfer] = useState<any | null>(null)
   const [confirmingSubmitting, setConfirmingSubmitting] = useState(false)
+
+  const [confirmedTransfers, setConfirmedTransfers] = useState<any[]>([])
+  const [loadingConfirmed, setLoadingConfirmed] = useState(true)
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -100,8 +103,22 @@ export default function NotificacionesPage() {
     }
   }, [])
 
+  const fetchConfirmedTransfers = useCallback(async () => {
+    setLoadingConfirmed(true)
+    try {
+      const res = await fetch('/api/sales/confirmed-transfers')
+      const data = await res.json()
+      if (data.ok) setConfirmedTransfers(data.transfers || [])
+    } catch (e) {
+      console.error('Error fetching confirmed transfers:', e)
+    } finally {
+      setLoadingConfirmed(false)
+    }
+  }, [])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
   useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
+  useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
 
   const openCompleteModal = (order: PaymentOrder) => {
     setCompleting(order)
@@ -142,6 +159,7 @@ export default function NotificacionesPage() {
         toast.success('Pago confirmado. Documentos generados y email enviado al cliente.')
         setConfirmingTransfer(null)
         fetchPendingTransfers()
+        fetchConfirmedTransfers()
         fetchOrders()
       } else {
         toast.error(data.detail || 'Error al confirmar la transferencia')
@@ -287,6 +305,22 @@ export default function NotificacionesPage() {
           Pendientes
         </button>
         <button
+          onClick={() => setActiveTab('received')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'received'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          Recibidos
+          {confirmedTransfers.length > 0 && (
+            <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-1.5 py-0.5 rounded-full">
+              {confirmedTransfers.length}
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('completed')}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'completed'
@@ -299,8 +333,78 @@ export default function NotificacionesPage() {
         </button>
       </div>
 
-      {/* Orders List */}
-      {loading ? (
+      {/* Received Transfers (Recibidos tab) */}
+      {activeTab === 'received' && (
+        <>
+          {loadingConfirmed ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
+            </div>
+          ) : confirmedTransfers.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                <DollarSign className="w-6 h-6 text-emerald-400" />
+              </div>
+              <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                No hay pagos recibidos aun
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                Los pagos confirmados de clientes contado apareceran aqui
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {confirmedTransfers.map((ct: any) => (
+                <div
+                  key={ct.sale_id}
+                  className="bg-white rounded-xl border p-5"
+                  style={{ borderColor: 'var(--sand)' }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
+                          Pago Confirmado - {ct.payment_method || 'Transferencia'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                          Completado
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
+                        <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                          {ct.property_address}{ct.property_city ? `, ${ct.property_city}` : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
+                        <span>Cliente: <strong>{ct.client_name}</strong></span>
+                        {ct.client_email && <span>{ct.client_email}</span>}
+                        {ct.completed_at && (
+                          <span>
+                            Confirmado: {new Date(ct.completed_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
+                        ${ct.sale_price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                        Enviado a contabilidad
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Orders List (pending/completed tabs only) */}
+      {activeTab !== 'received' && (loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
         </div>
@@ -419,7 +523,7 @@ export default function NotificacionesPage() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Complete Payment Modal */}
       {completing && (

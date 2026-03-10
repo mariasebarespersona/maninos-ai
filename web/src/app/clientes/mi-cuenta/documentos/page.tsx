@@ -20,6 +20,7 @@ import {
   FileCheck
 } from 'lucide-react'
 import { useClientAuth } from '@/hooks/useClientAuth'
+import { useToast } from '@/components/ui/Toast'
 import BillOfSaleTemplate from '@/components/BillOfSaleTemplate'
 import TitleApplicationTemplate from '@/components/TitleApplicationTemplate'
 
@@ -146,10 +147,15 @@ function TitleStatusCard({
   }
 
   // In progress / pending
-  const progressLabel =
-    titleStatus === 'in_progress' ? 'En proceso' : 'Pendiente'
-  const progressWidth =
-    titleStatus === 'in_progress' ? 'w-1/2' : 'w-1/6'
+  const isPending = titleStatus === 'pending'
+  const progressLabel = isPending ? 'Pendiente' : 'En proceso'
+  const progressWidth = isPending ? 'w-1/6' : 'w-1/2'
+  const heading = isPending
+    ? 'Cambio de titulo pendiente'
+    : 'Cambio de titulo en proceso'
+  const description = isPending
+    ? 'Estamos procesando tu cambio de titulo. Este proceso toma aproximadamente 1 mes. Te enviaremos un email cuando este listo.'
+    : 'Estamos trabajando en la transferencia de titulo. Te notificaremos cuando este listo.'
 
   return (
     <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl">
@@ -159,10 +165,10 @@ function TitleStatusCard({
         </div>
         <div className="flex-1">
           <h3 className="font-bold text-[#004274] text-lg mb-1">
-            Tu titulo esta en proceso
+            {heading}
           </h3>
           <p className="text-blue-700 text-sm mb-4">
-            Estamos trabajando en la transferencia de titulo. Te notificaremos cuando este listo.
+            {description}
           </p>
           <div className="flex items-center gap-3">
             <div className="flex-1 bg-blue-200 rounded-full h-2.5 overflow-hidden">
@@ -182,7 +188,7 @@ function TitleStatusCard({
 
 // ─── Sale Section ───────────────────────────────────────────────────────────
 
-function ContadoSaleSection({ sale }: { sale: Sale }) {
+function ContadoSaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocument: (saleId: string, docType: string, file: File) => void }) {
   const { property_details: pd, client_info: ci } = sale
   const today = new Date().toISOString().split('T')[0]
 
@@ -237,8 +243,9 @@ function ContadoSaleSection({ sale }: { sale: Sale }) {
       >
         <div className="p-1">
           <BillOfSaleTemplate
-            readOnly={true}
+            readOnly={false}
             transactionType="sale"
+            onSave={(file, data) => onSaveDocument(sale.id, 'bill_of_sale', file)}
             initialData={{
               seller_name: 'MANINOS HOMES',
               buyer_name: ci.name || '',
@@ -277,6 +284,7 @@ function ContadoSaleSection({ sale }: { sale: Sale }) {
           <TitleApplicationTemplate
             readOnly={false}
             transactionType="sale"
+            onSave={(file, data) => onSaveDocument(sale.id, 'title_application', file)}
             initialData={{
               seller_name: 'MANINOS HOMES LLC',
               buyer_name: ci.name || '',
@@ -316,8 +324,10 @@ export default function ClientDocumentsPage() {
   const selectedSaleId = searchParams.get('sale')
 
   const { client, loading: authLoading, error: authError } = useClientAuth()
+  const toast = useToast()
   const [sales, setSales] = useState<Sale[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -341,6 +351,31 @@ export default function ClientDocumentsPage() {
       setError('Error de conexion')
     } finally {
       setDocsLoading(false)
+    }
+  }
+
+  const handleSaveDocument = async (saleId: string, docType: string, file: File) => {
+    if (!client) return
+    setSaving(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('doc_type', docType)
+
+      const res = await fetch(`/api/public/clients/${client.id}/documents/${saleId}/save`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Documento guardado exitosamente')
+      } else {
+        toast.error(data.detail || 'Error al guardar')
+      }
+    } catch (err) {
+      toast.error('Error de conexion')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -473,7 +508,7 @@ export default function ClientDocumentsPage() {
                       : ''
                   }
                 >
-                  <ContadoSaleSection sale={sale} />
+                  <ContadoSaleSection sale={sale} onSaveDocument={handleSaveDocument} />
                 </div>
               ))}
 

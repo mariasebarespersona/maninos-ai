@@ -220,6 +220,55 @@ async def get_pending_transfers():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/confirmed-transfers")
+async def get_confirmed_transfers():
+    """Get recently completed contado transfers (confirmed by Abigail)."""
+    try:
+        # Get completed contado sales from last 90 days
+        from datetime import timedelta
+        cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+
+        sales_result = sb.table("sales") \
+            .select("*") \
+            .eq("status", "completed") \
+            .eq("sale_type", "contado") \
+            .gte("completed_at", cutoff) \
+            .order("completed_at", desc=True) \
+            .execute()
+
+        if not sales_result.data:
+            return {"ok": True, "transfers": []}
+
+        property_ids = list(set(s["property_id"] for s in sales_result.data))
+        client_ids = list(set(s["client_id"] for s in sales_result.data))
+
+        props = sb.table("properties").select("id, address, city").in_("id", property_ids).execute()
+        clients = sb.table("clients").select("id, name, email").in_("id", client_ids).execute()
+
+        props_map = {p["id"]: p for p in (props.data or [])}
+        clients_map = {c["id"]: c for c in (clients.data or [])}
+
+        transfers = []
+        for s in sales_result.data:
+            p = props_map.get(s["property_id"], {})
+            c = clients_map.get(s["client_id"], {})
+            transfers.append({
+                "sale_id": s["id"],
+                "sale_price": float(s["sale_price"]),
+                "completed_at": s.get("completed_at"),
+                "payment_method": s.get("payment_method"),
+                "property_address": p.get("address", "N/A"),
+                "property_city": p.get("city"),
+                "client_name": c.get("name", "N/A"),
+                "client_email": c.get("email"),
+            })
+
+        return {"ok": True, "transfers": transfers}
+    except Exception as e:
+        logger.error(f"Error fetching confirmed transfers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{sale_id}", response_model=SaleResponse)
 async def get_sale(sale_id: str):
     """Get a single sale by ID."""
@@ -432,9 +481,9 @@ async def confirm_transfer(sale_id: str):
                 detail=f"Esta venta no está en estado 'transfer_reported' (status actual: {sale['status']})"
             )
 
-        # 2. Update sale status to paid
+        # 2. Update sale status to completed (skip paid step)
         sb.table("sales").update({
-            "status": "paid",
+            "status": "completed",
             "payment_method": "transferencia",
             "completed_at": datetime.utcnow().isoformat(),
         }).eq("id", sale_id).execute()
@@ -445,9 +494,9 @@ async def confirm_transfer(sale_id: str):
         }).eq("id", sale["property_id"]).execute()
         logger.info(f"[sales] Property {sale['property_id']} marked SOLD (transfer confirmed, sale {sale_id})")
 
-        # 4. Update client status to active
+        # 4. Update client status to completed
         sb.table("clients").update({
-            "status": ClientStatus.ACTIVE.value,
+            "status": ClientStatus.COMPLETED.value,
         }).eq("id", sale["client_id"]).execute()
 
         # 5. Create title_transfers record

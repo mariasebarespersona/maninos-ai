@@ -8,7 +8,7 @@ import logging
 import uuid
 from datetime import datetime, date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from tools.supabase_client import sb
 from api.auth import get_current_user_email, verify_client_ownership
@@ -1016,4 +1016,63 @@ async def client_submit_kyc_documents(client_id: str, data: ClientKYCSubmit, use
     except Exception as e:
         logger.error(f"Error submitting KYC for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# CLIENT DOCUMENT SAVE — client saves edited Bill of Sale / Title Application
+# =============================================================================
+
+@router.post("/{client_id}/documents/{sale_id}/save")
+async def client_save_document(client_id: str, sale_id: str, request: Request):
+    """
+    Client saves an edited document (Bill of Sale or Title Application).
+    Uploads the PDF to Supabase Storage and updates the title_transfers record.
+    """
+    form = await request.form()
+    file = form.get("file")
+    doc_type = form.get("doc_type", "bill_of_sale")  # bill_of_sale or title_application
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Verify sale belongs to client
+    sale = sb.table("sales").select("id, property_id").eq("id", sale_id).eq("client_id", client_id).single().execute()
+    if not sale.data:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+    # Upload to Supabase Storage
+    file_bytes = await file.read()
+    filename = f"{doc_type}_{sale_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
+    storage_path = f"sales/{sale_id}/{filename}"
+
+    sb.storage.from_("transaction-documents").upload(
+        storage_path,
+        file_bytes,
+        {"content-type": "application/pdf", "upsert": "true"}
+    )
+
+    # Get public URL
+    public_url = sb.storage.from_("transaction-documents").get_public_url(storage_path)
+
+    # Update title_transfers documents_checklist
+    transfer = sb.table("title_transfers") \
+        .select("id, documents_checklist") \
+        .eq("sale_id", sale_id) \
+        .eq("transfer_type", "sale") \
+        .single() \
+        .execute()
+
+    if transfer.data:
+        checklist = transfer.data.get("documents_checklist", {})
+        checklist[doc_type] = {
+            "checked": True,
+            "file_url": public_url,
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "uploaded_by": "client",
+        }
+        sb.table("title_transfers").update({
+            "documents_checklist": checklist
+        }).eq("id", transfer.data["id"]).execute()
+
+    return {"ok": True, "file_url": public_url, "message": "Documento guardado"}
 
