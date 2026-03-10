@@ -28,32 +28,47 @@ router = APIRouter()
 @router.get("", response_model=list[ClientWithSale])
 async def list_clients(
     status: Optional[ClientStatus] = Query(None, description="Filter by status"),
+    sale_type: Optional[str] = Query(None, description="Filter by sale type: contado or rto"),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
 ):
     """
     List all clients with their sale information.
-    Used for Client Dashboard.
+    Use sale_type=contado for Homes, sale_type=rto for Capital.
     """
+    # If filtering by sale_type, first find client_ids that have sales of that type
+    filtered_client_ids = None
+    if sale_type:
+        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).execute()
+        filtered_client_ids = list({s["client_id"] for s in (type_sales.data or [])})
+        if not filtered_client_ids:
+            return []
+
     # Get clients
     query = sb.table("clients").select("*")
-    
+
     if status:
         query = query.eq("status", status.value)
-    
+
+    if filtered_client_ids is not None:
+        query = query.in_("id", filtered_client_ids)
+
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
-    
+
     clients_result = query.execute()
-    
+
     if not clients_result.data:
         return []
-    
+
     # Get sales for these clients
     client_ids = [c["id"] for c in clients_result.data]
-    sales_result = sb.table("sales").select(
-        "client_id, status, created_at, property_id"
-    ).in_("client_id", client_ids).execute()
-    
+    sales_query = sb.table("sales").select(
+        "client_id, status, created_at, property_id, sale_type"
+    ).in_("client_id", client_ids)
+    if sale_type:
+        sales_query = sales_query.eq("sale_type", sale_type)
+    sales_result = sales_query.execute()
+
     # Get properties for address info
     if sales_result.data:
         property_ids = [s["property_id"] for s in sales_result.data]
@@ -61,7 +76,7 @@ async def list_clients(
         props_map = {p["id"]: p["address"] for p in (props_result.data or [])}
     else:
         props_map = {}
-    
+
     # Build sales map
     sales_map = {}
     for sale in (sales_result.data or []):
@@ -70,7 +85,7 @@ async def list_clients(
             "date": sale["created_at"],
             "property_address": props_map.get(sale["property_id"]),
         }
-    
+
     # Format response
     return [
         _format_client_with_sale(c, sales_map.get(c["id"]))
@@ -81,13 +96,22 @@ async def list_clients(
 # NOTE: These routes MUST come BEFORE /{client_id} to avoid being captured by the UUID pattern
 @router.get("/summary")
 @router.get("/stats/summary")
-async def get_clients_summary():
+async def get_clients_summary(
+    sale_type: Optional[str] = Query(None, description="Filter by sale type: contado or rto"),
+):
     """
     Get summary statistics for Client Dashboard.
+    Use sale_type=contado for Homes, sale_type=rto for Capital.
     """
+    # If filtering by sale_type, get only client_ids with that sale type
+    filtered_client_ids = None
+    if sale_type:
+        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).execute()
+        filtered_client_ids = {s["client_id"] for s in (type_sales.data or [])}
+
     # Count by status
-    all_clients = sb.table("clients").select("status").execute()
-    
+    all_clients = sb.table("clients").select("id, status").execute()
+
     status_counts = {
         "lead": 0,
         "active": 0,
@@ -97,11 +121,13 @@ async def get_clients_summary():
         "inactive": 0,
         "total": 0,
     }
-    
+
     for client in (all_clients.data or []):
+        if filtered_client_ids is not None and client["id"] not in filtered_client_ids:
+            continue
         status_counts[client["status"]] = status_counts.get(client["status"], 0) + 1
         status_counts["total"] += 1
-    
+
     return status_counts
 
 

@@ -15,8 +15,6 @@ import {
   CheckCircle2,
   Clock,
   UserPlus,
-  FileSignature,
-  Home,
   XCircle,
   ArrowRight,
   Loader2
@@ -64,20 +62,6 @@ const statusConfig: Record<string, { label: string; color: string; cardColor: st
     icon: CheckCircle2,
     description: 'Compra finalizada'
   },
-  rto_applicant: {
-    label: 'Solicitante RTO',
-    color: 'bg-purple-50 text-purple-700 border-purple-300',
-    cardColor: 'from-purple-50 to-purple-100/50 border-purple-200',
-    icon: FileSignature,
-    description: 'Solicitud Rent-to-Own'
-  },
-  rto_active: {
-    label: 'RTO Activo',
-    color: 'bg-indigo-50 text-indigo-700 border-indigo-300',
-    cardColor: 'from-indigo-50 to-indigo-100/50 border-indigo-200',
-    icon: Home,
-    description: 'Contrato RTO activo'
-  },
   inactive: {
     label: 'Inactivo',
     color: 'bg-gray-50 text-gray-700 border-gray-300',
@@ -105,8 +89,9 @@ export default function ClientsPage() {
     setLoading(true)
     try {
       const url = new URL('/api/clients', window.location.origin)
+      url.searchParams.set('sale_type', 'contado')
       if (statusFilter) url.searchParams.set('status', statusFilter)
-      
+
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
@@ -121,7 +106,7 @@ export default function ClientsPage() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/clients/stats/summary')
+      const res = await fetch('/api/clients/stats/summary?sale_type=contado')
       if (res.ok) {
         const data = await res.json()
         setStats(data)
@@ -149,7 +134,7 @@ export default function ClientsPage() {
             Clientes
           </h1>
           <p className="text-navy-500 text-base mt-2">
-            Seguimiento de compradores y potenciales clientes
+            Clientes con compras al contado
           </p>
         </div>
         <Link href="/homes/sales" className="btn-gold text-lg">
@@ -269,18 +254,6 @@ function StatCard({
       border: active ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200',
       icon: 'bg-emerald-500 text-white',
       value: 'text-emerald-700'
-    },
-    rto_applicant: {
-      bg: 'bg-gradient-to-br from-purple-50 to-purple-100/50',
-      border: active ? 'border-purple-400 ring-2 ring-purple-200' : 'border-purple-200',
-      icon: 'bg-purple-500 text-white',
-      value: 'text-purple-700'
-    },
-    rto_active: {
-      bg: 'bg-gradient-to-br from-indigo-50 to-indigo-100/50',
-      border: active ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-indigo-200',
-      icon: 'bg-indigo-500 text-white',
-      value: 'text-indigo-700'
     },
     inactive: {
       bg: 'bg-gradient-to-br from-gray-50 to-gray-100/50',
