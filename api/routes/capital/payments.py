@@ -141,6 +141,43 @@ async def list_overdue_payments():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/client-reported")
+async def get_client_reported_payments():
+    """Get all payments reported by clients pending confirmation."""
+    try:
+        result = sb.table("rto_payments") \
+            .select("*, rto_contracts(id, client_id, property_id, monthly_rent, clients(name, email, phone), properties(address, city))") \
+            .eq("status", "client_reported") \
+            .order("client_reported_at", desc=True) \
+            .execute()
+
+        payments = []
+        for p in (result.data or []):
+            contract = p.get("rto_contracts", {}) or {}
+            client = contract.get("clients", {}) or {}
+            prop = contract.get("properties", {}) or {}
+            payments.append({
+                "payment_id": p["id"],
+                "payment_number": p.get("payment_number"),
+                "amount": float(p.get("amount", 0)),
+                "due_date": p.get("due_date"),
+                "client_reported_at": p.get("client_reported_at"),
+                "client_payment_method": p.get("client_payment_method"),
+                "client_payment_notes": p.get("client_payment_notes"),
+                "client_name": client.get("name", "N/A"),
+                "client_email": client.get("email"),
+                "client_phone": client.get("phone"),
+                "property_address": prop.get("address", "N/A"),
+                "property_city": prop.get("city"),
+                "contract_id": contract.get("id"),
+            })
+
+        return {"ok": True, "reported_payments": payments, "total": len(payments)}
+    except Exception as e:
+        logger.error(f"Error getting client-reported payments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{payment_id}/record")
 async def record_payment(payment_id: str, data: RecordPayment):
     """
@@ -262,14 +299,45 @@ async def record_payment(payment_id: str, data: RecordPayment):
             sb.table("rto_contracts").update({
                 "status": "completed"
             }).eq("id", contract_id).execute()
-            
-            # This triggers Phase 5: Entregar
+
+            # Auto-trigger full RTO completion flow (documents, email, title transfer)
+            rto_completion_result = None
+            try:
+                # Find the sale associated with this contract
+                sale_lookup = sb.table("sales") \
+                    .select("id, status") \
+                    .eq("rto_contract_id", contract_id) \
+                    .execute()
+
+                if not sale_lookup.data:
+                    # Fallback: find via rto_contracts.sale_id
+                    contract_data = sb.table("rto_contracts") \
+                        .select("sale_id") \
+                        .eq("id", contract_id) \
+                        .single() \
+                        .execute()
+                    if contract_data.data and contract_data.data.get("sale_id"):
+                        sale_lookup = sb.table("sales") \
+                            .select("id, status") \
+                            .eq("id", contract_data.data["sale_id"]) \
+                            .execute()
+
+                if sale_lookup.data:
+                    sale_for_rto = sale_lookup.data[0]
+                    if sale_for_rto["status"] in ("rto_active", "rto_approved"):
+                        from api.routes.sales import complete_rto_contract
+                        rto_completion_result = await complete_rto_contract(sale_for_rto["id"])
+                        logger.info(f"[payments] Auto-completed RTO sale {sale_for_rto['id']} after last payment")
+            except Exception as completion_err:
+                logger.warning(f"[payments] Auto-completion of RTO sale failed (contract {contract_id}): {completion_err}")
+
             return {
                 "ok": True,
-                "message": "¡Último pago registrado! El contrato está completado. Proceder a transferencia de título.",
+                "message": "¡Último pago registrado! El contrato está completado. Documentos generados y email enviado.",
                 "late_fee": late_fee,
                 "days_late": days_late,
-                "contract_completed": True
+                "contract_completed": True,
+                "completion_details": rto_completion_result,
             }
         
         partial_msg = ""

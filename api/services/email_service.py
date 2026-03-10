@@ -880,6 +880,79 @@ def process_scheduled_emails() -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _rto_completed_html(
+    client_name: str,
+    property_address: str,
+    documents_url: str = None,
+) -> str:
+    """Congratulations email when all RTO payments are complete."""
+    docs_url = documents_url or f"{APP_URL}/clientes/mi-cuenta/documentos"
+    content = f"""
+    <div class="header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+        <h1>Contrato RTO Completado!</h1>
+        <p>Felicidades, has completado todos tus pagos</p>
+    </div>
+    <div class="body">
+        <p>Hola <strong>{client_name}</strong>,</p>
+        <p>Felicidades! Has completado todos los pagos de tu contrato Rent-to-Own para la propiedad en <strong>{property_address}</strong>.</p>
+
+        <div class="highlight" style="border-left-color: #059669;">
+            <h3>Que significa esto?</h3>
+            <ul>
+                <li>La propiedad esta <strong>oficialmente a tu nombre</strong></li>
+                <li>Tus documentos legales estan listos para descargar</li>
+                <li>El titulo de propiedad sera transferido a tu nombre</li>
+            </ul>
+        </div>
+
+        <h3>Tus documentos estan listos:</h3>
+        <ul>
+            <li>Bill of Sale</li>
+            <li>Aplicacion de Cambio de Titulo</li>
+            <li>Titulo de Propiedad</li>
+        </ul>
+
+        <center>
+            <a href="{docs_url}" class="btn" style="background: #059669;">Ver Mis Documentos</a>
+        </center>
+
+        <h3>Proximos pasos:</h3>
+        <ol>
+            <li>Procesaremos la <strong>transferencia del titulo</strong> a tu nombre</li>
+            <li>Recibiras una notificacion cuando el titulo este listo</li>
+            <li>Disfruta tu hogar!</li>
+        </ol>
+
+        <hr class="divider">
+        <p style="font-size: 13px; color: #718096;">Gracias por confiar en {COMPANY_NAME}. Si tienes preguntas, contactanos al {COMPANY_PHONE}.</p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_rto_completed_email(
+    client_email: str,
+    client_name: str,
+    property_address: str,
+    documents_url: str = None,
+) -> dict:
+    """Send congratulations email when all RTO payments are completed."""
+    try:
+        html = _rto_completed_html(
+            client_name, property_address, documents_url,
+        )
+        result = send_email(
+            to=[client_email],
+            subject=f"Contrato RTO Completado! - {COMPANY_NAME}",
+            html=html,
+        )
+        logger.info(f"[email_service] RTO completed email sent to {client_email}")
+        return {"ok": True, "type": "rto_completed", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send RTO completed email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 def process_rto_reminders() -> dict:
     """
     Process RTO payment reminders.

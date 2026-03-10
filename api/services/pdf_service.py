@@ -79,6 +79,288 @@ def _get_styles():
     return styles
 
 
+def generate_financial_report_pdf(
+    report_type: str,
+    report_data: dict,
+    period_start: str | None = None,
+    period_end: str | None = None,
+    portal: str = "homes",
+) -> bytes:
+    """
+    Generate an immutable PDF for a financial report (Income Statement, Balance Sheet, or Cash Flow).
+
+    Returns: PDF as bytes
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        topMargin=0.75*inch,
+        bottomMargin=0.75*inch,
+    )
+
+    styles = _get_styles()
+    # Add financial-report-specific styles
+    styles.add(ParagraphStyle(
+        name='FinTotal',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica-Bold',
+        alignment=TA_RIGHT,
+    ))
+    styles.add(ParagraphStyle(
+        name='ImmutableFooter',
+        parent=styles['Normal'],
+        fontSize=7,
+        textColor=colors.HexColor('#999999'),
+        alignment=TA_CENTER,
+        spaceBefore=20,
+    ))
+    story = []
+
+    company = "Maninos Capital LLC" if portal == "capital" else "Maninos Homes LLC"
+
+    # ── Report title mapping ──
+    title_map = {
+        "profit_loss": "Estado de Resultados (Profit & Loss)",
+        "income_statement": "Estado de Resultados (Profit & Loss)",
+        "balance_sheet": "Balance General (Balance Sheet)",
+        "cash_flow": "Estado de Flujo de Efectivo (Cash Flow)",
+    }
+    report_title = title_map.get(report_type, report_type.replace("_", " ").title())
+
+    # ── Header ──
+    story.append(Paragraph(company, styles['DocTitle']))
+    story.append(Paragraph(report_title, styles['DocSubtitle']))
+    if period_start and period_end:
+        story.append(Paragraph(f"Periodo: {period_start} — {period_end}", styles['DocSubtitle']))
+    elif report_data.get("as_of_date"):
+        story.append(Paragraph(f"Al: {report_data['as_of_date']}", styles['DocSubtitle']))
+    elif report_data.get("period"):
+        p = report_data["period"]
+        if isinstance(p, dict):
+            story.append(Paragraph(f"Periodo: {p.get('start', '')} — {p.get('end', '')}", styles['DocSubtitle']))
+    story.append(Spacer(1, 20))
+
+    fmt = lambda n: f"${n:,.2f}" if n else "$0.00"
+
+    sections = report_data.get("sections", report_data)
+
+    def _tree_to_table_rows(nodes, depth=0):
+        """Flatten a QB-style tree into table rows with indentation."""
+        rows = []
+        if not isinstance(nodes, list):
+            return rows
+        for node in nodes:
+            indent = "    " * depth
+            name = f"{indent}{node.get('name', '')}"
+            balance = float(node.get('total', 0) or node.get('balance', 0))
+            is_header = node.get('is_header', False)
+            rows.append((name, balance, is_header, depth))
+            children = node.get('children', [])
+            if children:
+                rows.extend(_tree_to_table_rows(children, depth + 1))
+        return rows
+
+    def _render_section(title, tree_nodes, story_list):
+        """Render a section with a header and a table of accounts."""
+        story_list.append(Paragraph(title, styles['SectionHeader']))
+        flat = _tree_to_table_rows(tree_nodes)
+        if not flat:
+            story_list.append(Paragraph("  (sin datos)", styles['SmallText']))
+            story_list.append(Spacer(1, 8))
+            return 0
+        table_data = []
+        for name, balance, is_header, depth in flat:
+            table_data.append([name, fmt(balance)])
+        t = Table(table_data, colWidths=[4.5*inch, 2*inch])
+        style_cmds = [
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('LINEBELOW', (0, -1), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        ]
+        # Bold header rows
+        for i, (name, balance, is_header, depth) in enumerate(flat):
+            if is_header or depth == 0:
+                style_cmds.append(('FONTNAME', (0, i), (0, i), 'Helvetica-Bold'))
+                style_cmds.append(('FONTNAME', (1, i), (1, i), 'Helvetica-Bold'))
+        t.setStyle(TableStyle(style_cmds))
+        story_list.append(t)
+        story_list.append(Spacer(1, 10))
+        total = sum(balance for _, balance, _, depth in flat if depth == 0)
+        return total
+
+    def _render_total_line(label, value, story_list, bold=True, color='#1e3a5f'):
+        """Render a total/summary line."""
+        tbl = Table(
+            [[label, fmt(value)]],
+            colWidths=[4.5*inch, 2*inch],
+        )
+        tbl.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold' if bold else 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor(color)),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story_list.append(tbl)
+        story_list.append(Spacer(1, 6))
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Render by report type
+    # ═══════════════════════════════════════════════════════════════════
+
+    if report_type in ("profit_loss", "income_statement"):
+        # Income
+        _render_section("Ingresos (Income)", sections.get("income", []), story)
+        total_income = sum(n.get("total", 0) for n in sections.get("income", []))
+        _render_total_line("Total Ingresos", total_income, story)
+
+        # COGS
+        cogs = sections.get("cost_of_goods_sold", [])
+        if cogs:
+            _render_section("Costo de Ventas (COGS)", cogs, story)
+            total_cogs = sum(n.get("total", 0) for n in cogs)
+            _render_total_line("Total Costo de Ventas", total_cogs, story)
+            gross_profit = sections.get("gross_profit", total_income - total_cogs)
+            _render_total_line("Utilidad Bruta (Gross Profit)", gross_profit, story, color='#22c55e')
+
+        # Expenses
+        _render_section("Gastos (Expenses)", sections.get("expenses", []), story)
+        total_expenses = sections.get("total_expenses", sum(n.get("total", 0) for n in sections.get("expenses", [])))
+        _render_total_line("Total Gastos", total_expenses, story)
+
+        # Net Operating Income
+        net_operating = sections.get("net_operating_income", total_income - total_expenses)
+        _render_total_line("Ingreso Operativo Neto", net_operating, story, color='#1e3a5f')
+
+        # Other Expenses
+        other = sections.get("other_expenses", [])
+        if other:
+            _render_section("Otros Gastos", other, story)
+            total_other = sections.get("total_other_expenses", sum(n.get("total", 0) for n in other))
+            _render_total_line("Total Otros Gastos", total_other, story)
+
+        # Net Income
+        net_income = sections.get("net_income", 0)
+        story.append(Spacer(1, 8))
+        _render_total_line("UTILIDAD NETA (Net Income)", net_income, story, color='#1e3a5f')
+
+    elif report_type == "balance_sheet":
+        # Assets
+        _render_section("Activos (Assets)", sections.get("assets", []), story)
+        total_assets = sections.get("total_assets", 0)
+        _render_total_line("Total Activos", total_assets, story)
+
+        # Liabilities
+        _render_section("Pasivos (Liabilities)", sections.get("liabilities", []), story)
+        total_liabilities = sections.get("total_liabilities", 0)
+        _render_total_line("Total Pasivos", total_liabilities, story)
+
+        # Equity
+        _render_section("Capital Contable (Equity)", sections.get("equity", []), story)
+        total_equity = sections.get("total_equity", 0)
+        _render_total_line("Total Capital Contable", total_equity, story)
+
+        # Net Income line
+        net_income = sections.get("net_income", 0)
+        if net_income:
+            _render_total_line("Utilidad Neta del Periodo", net_income, story, bold=False)
+
+        # Total L+E
+        total_le = sections.get("total_liabilities_and_equity", total_liabilities + total_equity + net_income)
+        story.append(Spacer(1, 4))
+        _render_total_line("TOTAL PASIVOS + CAPITAL", total_le, story, color='#1e3a5f')
+
+    elif report_type == "cash_flow":
+        # Operating Activities
+        op = sections.get("operating_activities", sections)
+        story.append(Paragraph("Actividades Operativas", styles['SectionHeader']))
+        op_data = [
+            ["Entradas (Inflows)", fmt(op.get("inflows", 0))],
+            ["Salidas (Outflows)", fmt(op.get("outflows", 0))],
+            ["Neto Operativo", fmt(op.get("net", 0))],
+        ]
+        t = Table(op_data, colWidths=[4.5*inch, 2*inch])
+        t.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LINEBELOW', (0, 2), (-1, 2), 0.5, colors.HexColor('#cccccc')),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+        # Investing Activities
+        inv = sections.get("investing_activities", {})
+        story.append(Paragraph("Actividades de Inversion", styles['SectionHeader']))
+        inv_data = [
+            ["Compra de Propiedades", fmt(inv.get("property_purchases", 0))],
+            ["Neto Inversion", fmt(inv.get("net", 0))],
+        ]
+        t = Table(inv_data, colWidths=[4.5*inch, 2*inch])
+        t.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LINEBELOW', (0, -1), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+        # Financing Activities
+        fin = sections.get("financing_activities", {})
+        story.append(Paragraph("Actividades de Financiamiento", styles['SectionHeader']))
+        fin_data = [
+            ["Neto Financiamiento", fmt(fin.get("net", 0))],
+        ]
+        t = Table(fin_data, colWidths=[4.5*inch, 2*inch])
+        t.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LINEBELOW', (0, -1), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+        # Net change
+        net_change = sections.get("net_change_in_cash", 0)
+        if not net_change and isinstance(sections, dict):
+            net_change = report_data.get("net_change_in_cash", 0)
+        _render_total_line("CAMBIO NETO EN EFECTIVO", net_change, story, color='#1e3a5f')
+
+    # ── Footer ──
+    story.append(Spacer(1, 30))
+    story.append(Paragraph(
+        f"{company} &bull; {COMPANY_ADDRESS} &bull; {COMPANY_PHONE}",
+        styles['SmallText']
+    ))
+    story.append(Paragraph(
+        f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        styles['SmallText']
+    ))
+    story.append(Paragraph(
+        "Este reporte es inmutable y no puede ser editado",
+        styles['ImmutableFooter']
+    ))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 def generate_bill_of_sale(
     seller_name: str,
     buyer_name: str,

@@ -5,7 +5,7 @@ Used during Cierre de Venta and for Client Dashboard tracking.
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.models.schemas import (
     ClientCreate,
@@ -103,6 +103,110 @@ async def get_clients_summary():
         status_counts["total"] += 1
     
     return status_counts
+
+
+@router.patch("/{client_id}/assign-employee")
+async def assign_employee(client_id: str, request: Request):
+    """Assign an employee to a client for follow-up tracking."""
+    body = await request.json()
+    employee_id = body.get("employee_id")
+
+    # Allow clearing assignment
+    update_data = {"assigned_employee_id": employee_id if employee_id else None}
+
+    try:
+        result = sb.table("clients").update(update_data).eq("id", client_id).execute()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to assign employee")
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    return {"ok": True, "client": _format_client_full(result.data[0])}
+
+
+@router.get("/{client_id}/notes")
+async def get_client_notes(client_id: str):
+    """Get all notes for a client, ordered newest first."""
+    notes_result = (
+        sb.table("client_notes")
+        .select("*")
+        .eq("client_id", client_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    notes = []
+    for note in (notes_result.data or []):
+        # Resolve author name
+        author_name = "Desconocido"
+        if note.get("author_id"):
+            try:
+                user = sb.table("users").select("name").eq("id", note["author_id"]).single().execute()
+                if user.data:
+                    author_name = user.data["name"]
+            except Exception:
+                pass
+
+        notes.append({
+            "id": note["id"],
+            "client_id": note["client_id"],
+            "author_id": note["author_id"],
+            "author_name": author_name,
+            "note_type": note["note_type"],
+            "content": note["content"],
+            "created_at": note["created_at"],
+        })
+
+    return notes
+
+
+@router.post("/{client_id}/notes")
+async def add_client_note(client_id: str, request: Request):
+    """Add a note to a client."""
+    body = await request.json()
+    author_id = body.get("author_id")
+    note_type = body.get("note_type", "observation")
+    content = body.get("content")
+
+    if not author_id or not content:
+        raise HTTPException(status_code=400, detail="author_id and content are required")
+
+    insert_data = {
+        "client_id": client_id,
+        "author_id": author_id,
+        "note_type": note_type,
+        "content": content,
+    }
+
+    try:
+        result = sb.table("client_notes").insert(insert_data).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add note: {str(e)}")
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to add note")
+
+    note = result.data[0]
+
+    # Resolve author name
+    author_name = "Desconocido"
+    try:
+        user = sb.table("users").select("name").eq("id", author_id).single().execute()
+        if user.data:
+            author_name = user.data["name"]
+    except Exception:
+        pass
+
+    return {
+        "id": note["id"],
+        "client_id": note["client_id"],
+        "author_id": note["author_id"],
+        "author_name": author_name,
+        "note_type": note["note_type"],
+        "content": note["content"],
+        "created_at": note["created_at"],
+    }
 
 
 @router.get("/{client_id}/full")
@@ -308,10 +412,21 @@ async def get_client_history(client_id: str):
             created_by_name = user_result.data["name"] if user_result.data else None
         except Exception:
             pass
-    
+
+    # Resolve assigned employee name
+    assigned_employee_name = None
+    if client.data.get("assigned_employee_id"):
+        try:
+            emp_result = sb.table("users").select("name").eq("id", client.data["assigned_employee_id"]).single().execute()
+            assigned_employee_name = emp_result.data["name"] if emp_result.data else None
+        except Exception:
+            pass
+
     return {
         "client": _format_client_full(client.data),
         "created_by_name": created_by_name,
+        "assigned_employee_id": client.data.get("assigned_employee_id"),
+        "assigned_employee_name": assigned_employee_name,
         "sales": [
             {
                 **s,
@@ -368,6 +483,7 @@ def _format_client_full(data: dict) -> dict:
         "terreno": data.get("terreno"),
         "status": data.get("status", "lead"),
         "created_by_user_id": data.get("created_by_user_id"),
+        "assigned_employee_id": data.get("assigned_employee_id"),
         "created_at": data["created_at"],
         "updated_at": data["updated_at"],
         # Personal info

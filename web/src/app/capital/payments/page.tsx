@@ -6,9 +6,9 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  CreditCard, DollarSign, AlertTriangle, CheckCircle2, 
+  CreditCard, DollarSign, AlertTriangle, CheckCircle2,
   Clock, Filter, Calendar, User, Shield, ChevronRight,
-  Phone, XCircle, Coins, Plus
+  Phone, XCircle, Coins, Plus, Bell
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -88,6 +88,12 @@ export default function PaymentsPage() {
   const [commissions, setCommissions] = useState<Commission[]>([])
   const [commissionsLoading, setCommissionsLoading] = useState(false)
   
+  // Client-reported payments notification
+  const [reportedPayments, setReportedPayments] = useState<any[]>([])
+  const [loadingReported, setLoadingReported] = useState(true)
+  const [confirmingReportedId, setConfirmingReportedId] = useState<string | null>(null)
+  const [confirmingReportedSubmitting, setConfirmingReportedSubmitting] = useState(false)
+
   // Record payment modal
   const [recordingId, setRecordingId] = useState<string | null>(null)
   const [expectedAmount, setExpectedAmount] = useState<number>(0) // scheduled amount for placeholder
@@ -102,6 +108,7 @@ export default function PaymentsPage() {
     fetch('/api/capital/payments/update-statuses', { method: 'POST' }).catch(() => {})
     loadPayments()
     loadMoraSummary()
+    loadReportedPayments()
     if (view === 'commissions') loadCommissions()
   }, [view, statusFilter])
 
@@ -160,6 +167,50 @@ export default function PaymentsPage() {
       if (data.ok) setMoraSummary(data)
     } catch (err) {
       console.error('Error loading mora summary:', err)
+    }
+  }
+
+  const loadReportedPayments = async () => {
+    setLoadingReported(true)
+    try {
+      const res = await fetch('/api/capital/payments/client-reported')
+      const data = await res.json()
+      if (data.ok) setReportedPayments(data.reported_payments || [])
+    } catch (err) {
+      console.error('Error loading reported payments:', err)
+    } finally {
+      setLoadingReported(false)
+    }
+  }
+
+  const handleConfirmReported = async (paymentId: string, amount: number, method: string) => {
+    setConfirmingReportedSubmitting(true)
+    try {
+      const res = await fetch(`/api/capital/payments/${paymentId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method: method || 'bank_transfer',
+          paid_amount: amount,
+          recorded_by: 'abigail',
+        })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Pago confirmado')
+        setConfirmingReportedId(null)
+        loadReportedPayments()
+        loadPayments()
+        if (data.contract_completed) {
+          toast.success('Contrato RTO completado! Documentos generados.')
+        }
+      } else {
+        toast.error(data.detail || 'Error al confirmar pago')
+      }
+    } catch (err) {
+      toast.error('Error al confirmar pago')
+    } finally {
+      setConfirmingReportedSubmitting(false)
     }
   }
 
@@ -284,6 +335,100 @@ export default function PaymentsPage() {
           )}
         </div>
       </div>
+
+      {/* Client Reported Payments - Prominent Notification */}
+      {!loadingReported && reportedPayments.length > 0 && (
+        <div className="card-luxury overflow-hidden" style={{ border: '2px solid #3b82f6' }}>
+          <div className="p-4 flex items-center gap-3" style={{ backgroundColor: '#eff6ff' }}>
+            <Bell className="w-5 h-5" style={{ color: '#2563eb' }} />
+            <div className="flex-1">
+              <h3 className="font-serif text-base font-semibold" style={{ color: '#1e40af' }}>
+                Pagos Reportados por Clientes
+              </h3>
+              <p className="text-xs" style={{ color: '#3b82f6' }}>
+                {reportedPayments.length} pago{reportedPayments.length !== 1 ? 's' : ''} pendiente{reportedPayments.length !== 1 ? 's' : ''} de confirmar
+              </p>
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#dbeafe' }}>
+            {reportedPayments.map((rp: any) => (
+              <div key={rp.payment_id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{rp.client_name}</p>
+                    <span className="badge text-xs" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>
+                      Pago #{rp.payment_number}
+                    </span>
+                    <span className="badge text-xs" style={{ backgroundColor: '#f0fdf4', color: '#16a34a' }}>
+                      {rp.client_payment_method === 'bank_transfer' ? 'Transferencia' : 'Efectivo'}
+                    </span>
+                  </div>
+                  <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>
+                    {rp.property_address}{rp.property_city ? `, ${rp.property_city}` : ''}
+                  </p>
+                  <div className="flex items-center gap-4 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
+                    {rp.client_email && <span>{rp.client_email}</span>}
+                    {rp.client_phone && <span><Phone className="w-3 h-3 inline mr-1" />{rp.client_phone}</span>}
+                    {rp.client_reported_at && (
+                      <span>
+                        <Clock className="w-3 h-3 inline mr-1" />
+                        Reportado: {new Date(rp.client_reported_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  {rp.client_payment_notes && (
+                    <p className="text-xs mt-1 italic" style={{ color: 'var(--slate)' }}>
+                      Nota del cliente: &quot;{rp.client_payment_notes}&quot;
+                    </p>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+                    ${rp.amount?.toLocaleString('en-US') || '0'}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                    Vence: {rp.due_date ? new Date(rp.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : 'N/A'}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  {confirmingReportedId === rp.payment_id ? (
+                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <p className="text-xs font-medium" style={{ color: '#166534' }}>
+                        Confirmar que el pago de ${rp.amount?.toLocaleString('en-US')} ha llegado al banco?
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConfirmReported(rp.payment_id, rp.amount, rp.client_payment_method)}
+                          disabled={confirmingReportedSubmitting}
+                          className="btn-primary btn-sm text-xs"
+                          style={{ backgroundColor: '#16a34a' }}
+                        >
+                          {confirmingReportedSubmitting ? 'Confirmando...' : 'Si, confirmar'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingReportedId(null)}
+                          className="btn-ghost btn-sm text-xs"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingReportedId(rp.payment_id)}
+                      className="btn-primary btn-sm text-xs whitespace-nowrap"
+                      style={{ backgroundColor: '#2563eb' }}
+                    >
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      El pago ha sido recibido
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mora Summary Banner (always visible if there's mora) */}
       {moraSummary && moraSummary.total_clients > 0 && view !== 'mora' && (

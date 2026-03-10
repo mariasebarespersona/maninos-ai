@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  ArrowLeft, 
+import { toast } from '@/components/ui/Toast'
+import {
+  ArrowLeft,
   Users,
   Phone,
   Mail,
@@ -32,6 +33,11 @@ import {
   ChevronUp,
   Award,
   Banknote,
+  ClipboardList,
+  Send,
+  PhoneCall,
+  MessageSquare,
+  StickyNote,
 } from 'lucide-react'
 
 interface ClientFull {
@@ -116,9 +122,28 @@ interface DocItem {
   source?: string
 }
 
+interface ClientNote {
+  id: string
+  client_id: string
+  author_id: string
+  author_name: string
+  note_type: 'observation' | 'comment' | 'follow_up' | 'call_log'
+  content: string
+  created_at: string
+}
+
+interface TeamUser {
+  id: string
+  name: string
+  email?: string
+  role?: string
+}
+
 interface ClientHistory {
   client: ClientFull
   created_by_name?: string
+  assigned_employee_id?: string
+  assigned_employee_name?: string
   sales: Sale[]
   documents: DocItem[]
   kyc_documents: DocItem[]
@@ -143,14 +168,43 @@ const saleStatusConfig: Record<string, { label: string; color: string }> = {
   rto_active: { label: 'RTO - Activa', color: 'bg-purple-100 text-purple-700' },
 }
 
+const noteTypeConfig: Record<string, { label: string; color: string; icon: any }> = {
+  observation: { label: 'Observacion', color: 'bg-blue-100 text-blue-700', icon: StickyNote },
+  comment: { label: 'Comentario', color: 'bg-gray-100 text-gray-700', icon: MessageSquare },
+  follow_up: { label: 'Seguimiento', color: 'bg-amber-100 text-amber-700', icon: ClipboardList },
+  call_log: { label: 'Llamada', color: 'bg-green-100 text-green-700', icon: PhoneCall },
+}
+
 export default function ClientDetailPage() {
   const params = useParams()
   const [data, setData] = useState<ClientHistory | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedSales, setExpandedSales] = useState<Set<string>>(new Set())
 
+  // Tracking / Follow-up state
+  const [notes, setNotes] = useState<ClientNote[]>([])
+  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState<string>('')
+  const [newNoteType, setNewNoteType] = useState<string>('observation')
+  const [newNoteContent, setNewNoteContent] = useState('')
+  const [submittingNote, setSubmittingNote] = useState(false)
+  const [assigningEmployee, setAssigningEmployee] = useState(false)
+
+  // RTO completion state
+  const [rtoCompletionStatus, setRtoCompletionStatus] = useState<Record<string, {
+    can_complete: boolean
+    total_payments: number
+    paid_payments: number
+    remaining_payments: number
+    loading: boolean
+  }>>({})
+  const [completingRto, setCompletingRto] = useState<string | null>(null)
+  const [showRtoConfirm, setShowRtoConfirm] = useState<string | null>(null)
+
   useEffect(() => {
     fetchClientHistory()
+    fetchNotes()
+    fetchTeamUsers()
   }, [params.id])
 
   const fetchClientHistory = async () => {
@@ -159,11 +213,155 @@ export default function ClientDetailPage() {
       if (res.ok) {
         const history = await res.json()
         setData(history)
+        setAssignedEmployeeId(history.assigned_employee_id || '')
       }
     } catch (error) {
       console.error('Error:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchNotes = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/clients/${params.id}/notes`)
+      if (res.ok) {
+        const notesData = await res.json()
+        setNotes(notesData)
+      }
+    } catch (error) {
+      console.error('Error fetching notes:', error)
+    }
+  }, [params.id])
+
+  const fetchTeamUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/team/users')
+      if (res.ok) {
+        const users = await res.json()
+        setTeamUsers(users)
+      }
+    } catch (error) {
+      console.error('Error fetching team users:', error)
+    }
+  }, [])
+
+  const fetchRtoCompletionStatus = useCallback(async (saleId: string) => {
+    setRtoCompletionStatus(prev => ({
+      ...prev,
+      [saleId]: { ...prev[saleId], loading: true, can_complete: false, total_payments: 0, paid_payments: 0, remaining_payments: 0 }
+    }))
+    try {
+      const res = await fetch(`/api/sales/${saleId}/rto-completion-status`)
+      if (res.ok) {
+        const statusData = await res.json()
+        setRtoCompletionStatus(prev => ({
+          ...prev,
+          [saleId]: {
+            can_complete: statusData.can_complete || false,
+            total_payments: statusData.total_payments || 0,
+            paid_payments: statusData.paid_payments || 0,
+            remaining_payments: statusData.remaining_payments || 0,
+            loading: false,
+          }
+        }))
+      }
+    } catch (error) {
+      console.error('Error fetching RTO completion status:', error)
+      setRtoCompletionStatus(prev => ({
+        ...prev,
+        [saleId]: { ...prev[saleId], loading: false }
+      }))
+    }
+  }, [])
+
+  // Auto-check RTO completion status for rto_active sales
+  useEffect(() => {
+    if (data?.sales) {
+      data.sales
+        .filter((s: any) => s.sale_type === 'rto' && s.status === 'rto_active')
+        .forEach((s: any) => fetchRtoCompletionStatus(s.id))
+    }
+  }, [data?.sales, fetchRtoCompletionStatus])
+
+  const handleCompleteRto = async (saleId: string) => {
+    setCompletingRto(saleId)
+    setShowRtoConfirm(null)
+    try {
+      const res = await fetch(`/api/sales/${saleId}/complete-rto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const result = await res.json()
+      if (res.ok && result.ok) {
+        toast.success(result.message || 'Contrato RTO completado exitosamente')
+        fetchClientHistory()
+      } else {
+        toast.error(result.detail || result.message || 'Error al completar contrato RTO')
+      }
+    } catch (error) {
+      console.error('Error completing RTO:', error)
+      toast.error('Error al completar contrato RTO')
+    } finally {
+      setCompletingRto(null)
+    }
+  }
+
+  const handleAssignEmployee = async (employeeId: string) => {
+    setAssigningEmployee(true)
+    try {
+      const res = await fetch(`/api/clients/${params.id}/assign-employee`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: employeeId || null }),
+      })
+      if (res.ok) {
+        setAssignedEmployeeId(employeeId)
+        toast.success('Empleado asignado correctamente')
+      } else {
+        toast.error('Error al asignar empleado')
+      }
+    } catch (error) {
+      console.error('Error assigning employee:', error)
+      toast.error('Error al asignar empleado')
+    } finally {
+      setAssigningEmployee(false)
+    }
+  }
+
+  const handleAddNote = async () => {
+    if (!newNoteContent.trim()) return
+    setSubmittingNote(true)
+    try {
+      // Use the first team user as author (in a real app this would be the logged-in user)
+      const authorId = teamUsers.length > 0 ? teamUsers[0].id : null
+      if (!authorId) {
+        toast.error('No se encontro un usuario para registrar la nota')
+        return
+      }
+      const res = await fetch(`/api/clients/${params.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author_id: authorId,
+          note_type: newNoteType,
+          content: newNoteContent.trim(),
+        }),
+      })
+      if (res.ok) {
+        const note = await res.json()
+        setNotes(prev => [note, ...prev])
+        setNewNoteContent('')
+        setNewNoteType('observation')
+        toast.success('Nota agregada')
+      } else {
+        toast.error('Error al agregar nota')
+      }
+    } catch (error) {
+      console.error('Error adding note:', error)
+      toast.error('Error al agregar nota')
+    } finally {
+      setSubmittingNote(false)
     }
   }
 
@@ -453,6 +651,82 @@ export default function ClientDetailPage() {
                             </div>
                           )}
 
+                          {/* RTO Completion */}
+                          {sale.sale_type === 'rto' && sale.status === 'rto_active' && (() => {
+                            const rtoStatus = rtoCompletionStatus[sale.id]
+                            return (
+                              <div className="space-y-2">
+                                {/* RTO Payment Progress */}
+                                {rtoStatus && !rtoStatus.loading && (
+                                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                                    <p className="text-xs text-indigo-600 font-medium mb-2 flex items-center gap-1">
+                                      <CreditCard className="w-3.5 h-3.5" /> Progreso RTO: {rtoStatus.paid_payments}/{rtoStatus.total_payments} pagos
+                                    </p>
+                                    <div className="h-2 bg-indigo-100 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${rtoStatus.total_payments > 0 ? (rtoStatus.paid_payments / rtoStatus.total_payments * 100) : 0}%` }}
+                                      />
+                                    </div>
+                                    {rtoStatus.remaining_payments > 0 && (
+                                      <p className="text-xs text-indigo-500 mt-1">
+                                        Faltan {rtoStatus.remaining_payments} pago(s) por completar
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Complete RTO Button */}
+                                {rtoStatus?.can_complete && (
+                                  <div>
+                                    {showRtoConfirm === sale.id ? (
+                                      <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+                                        <p className="text-sm font-medium text-emerald-800 mb-3">
+                                          Confirmar: Todos los pagos han sido completados. Al continuar se generaran documentos (Bill of Sale, Titulo) y se enviara email de confirmacion al cliente.
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => handleCompleteRto(sale.id)}
+                                            disabled={completingRto === sale.id}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                          >
+                                            {completingRto === sale.id ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <CheckCircle2 className="w-4 h-4" />
+                                            )}
+                                            Si, Completar Contrato
+                                          </button>
+                                          <button
+                                            onClick={() => setShowRtoConfirm(null)}
+                                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => setShowRtoConfirm(sale.id)}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+                                      >
+                                        <CheckCircle2 className="w-5 h-5" />
+                                        Completar Contrato RTO
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {rtoStatus?.loading && (
+                                  <div className="flex items-center gap-2 text-sm text-indigo-500">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Verificando estado de pagos...
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
+
                           {/* Documents for this sale */}
                           {sale.documents && sale.documents.length > 0 && (
                             <div>
@@ -672,6 +946,122 @@ export default function ClientDetailPage() {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Seguimiento (Tracking) */}
+          <div className="card-luxury p-6">
+            <h2 className="font-semibold text-navy-900 mb-4 flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-amber-500" />
+              Seguimiento
+            </h2>
+
+            {/* Empleado Asignado */}
+            <div className="mb-5">
+              <label className="text-xs font-medium text-navy-500 mb-1.5 block">
+                Empleado Asignado
+              </label>
+              <select
+                value={assignedEmployeeId}
+                onChange={(e) => handleAssignEmployee(e.target.value)}
+                disabled={assigningEmployee}
+                className="w-full px-3 py-2 text-sm border border-navy-200 rounded-lg bg-white text-navy-900 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 disabled:opacity-50"
+              >
+                <option value="">Sin asignar</option>
+                {teamUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-navy-100 my-4" />
+
+            {/* Add Note Form */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-navy-500 mb-1.5 block">
+                Nueva Nota
+              </label>
+              <div className="flex gap-2 mb-2">
+                {Object.entries(noteTypeConfig).map(([key, cfg]) => {
+                  const NoteIcon = cfg.icon
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setNewNoteType(key)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                        newNoteType === key
+                          ? cfg.color + ' ring-2 ring-offset-1 ring-amber-300'
+                          : 'bg-navy-50 text-navy-400 hover:bg-navy-100'
+                      }`}
+                      title={cfg.label}
+                    >
+                      <NoteIcon className="w-3 h-3" />
+                      <span className="hidden sm:inline">{cfg.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <textarea
+                value={newNoteContent}
+                onChange={(e) => setNewNoteContent(e.target.value)}
+                placeholder="Escribe una observación, comentario o seguimiento..."
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-navy-200 rounded-lg bg-white text-navy-900 placeholder-navy-300 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 resize-none"
+              />
+              <button
+                onClick={handleAddNote}
+                disabled={submittingNote || !newNoteContent.trim()}
+                className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submittingNote ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Agregar Nota
+              </button>
+            </div>
+
+            {/* Notes List */}
+            {notes.length > 0 && (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {notes.map((note) => {
+                  const noteConfig = noteTypeConfig[note.note_type] || noteTypeConfig.observation
+                  return (
+                    <div key={note.id} className="p-3 bg-navy-50 rounded-lg border border-navy-100">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${noteConfig.color}`}>
+                          {noteConfig.label}
+                        </span>
+                        <span className="text-xs text-navy-400 ml-auto">
+                          {new Date(note.created_at).toLocaleDateString('es-MX', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-sm text-navy-800 whitespace-pre-wrap">{note.content}</p>
+                      <p className="text-xs text-navy-400 mt-1.5 flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        {note.author_name}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {notes.length === 0 && (
+              <div className="text-center py-4 bg-navy-50 rounded-lg">
+                <StickyNote className="w-6 h-6 text-navy-300 mx-auto mb-1" />
+                <p className="text-xs text-navy-400">Sin notas aun</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

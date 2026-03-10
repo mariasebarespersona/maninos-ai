@@ -1466,7 +1466,7 @@ class SaveStatementRequest(BaseModel):
 
 @router.post("/reports/save")
 async def save_financial_statement(data: SaveStatementRequest):
-    """Save a snapshot of the current Balance Sheet or P&L for Homes."""
+    """Save an immutable snapshot of the current Balance Sheet, P&L, or Cash Flow for Homes."""
     try:
         if data.report_type == "balance_sheet":
             report = await get_balance_sheet()
@@ -1483,6 +1483,8 @@ async def save_financial_statement(data: SaveStatementRequest):
                 "notes": data.notes,
                 "saved_by": data.saved_by,
             }
+            period_start = None
+            period_end = report.get("as_of_date", date.today().isoformat())
         elif data.report_type == "profit_loss":
             report = await get_income_statement()
             sections = report.get("sections", {})
@@ -1499,8 +1501,50 @@ async def save_financial_statement(data: SaveStatementRequest):
                 "notes": data.notes,
                 "saved_by": data.saved_by,
             }
+            period_start = report.get("period", {}).get("start")
+            period_end = report.get("period", {}).get("end")
+        elif data.report_type == "cash_flow":
+            report = await get_cash_flow_statement()
+            record = {
+                "portal": "homes",
+                "report_type": "cash_flow",
+                "name": data.name,
+                "period_start": report.get("period", {}).get("start"),
+                "period_end": report.get("period", {}).get("end"),
+                "report_data": json.dumps(report),
+                "net_income": report.get("net_change_in_cash", 0),
+                "notes": data.notes,
+                "saved_by": data.saved_by,
+            }
+            period_start = report.get("period", {}).get("start")
+            period_end = report.get("period", {}).get("end")
         else:
-            raise HTTPException(status_code=400, detail="report_type must be 'balance_sheet' or 'profit_loss'")
+            raise HTTPException(status_code=400, detail="report_type must be 'balance_sheet', 'profit_loss', or 'cash_flow'")
+
+        # Generate immutable PDF
+        pdf_url = None
+        try:
+            from api.services.pdf_service import generate_financial_report_pdf
+            from api.services.document_service import _upload_to_storage
+            pdf_bytes = generate_financial_report_pdf(
+                report_type=data.report_type,
+                report_data=report,
+                period_start=period_start,
+                period_end=period_end,
+                portal="homes",
+            )
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            filename = f"{data.report_type}_{timestamp}.pdf"
+            pdf_url = _upload_to_storage(pdf_bytes, "financial-reports/homes", filename)
+        except Exception as pdf_err:
+            logger.warning(f"[save-financial-statement-homes] PDF generation failed: {pdf_err}")
+
+        # Add immutability fields
+        record["is_locked"] = True
+        record["locked_at"] = datetime.utcnow().isoformat()
+        record["locked_by"] = data.saved_by or "system"
+        if pdf_url:
+            record["pdf_url"] = pdf_url
 
         record = {k: v for k, v in record.items() if v is not None}
         result = sb.table("saved_financial_statements").insert(record).execute()
@@ -1508,7 +1552,12 @@ async def save_financial_statement(data: SaveStatementRequest):
         if not result.data:
             raise HTTPException(status_code=500, detail="Error saving statement")
 
-        return {"ok": True, "statement": result.data[0], "message": f"Estado financiero '{data.name}' guardado exitosamente"}
+        return {
+            "ok": True,
+            "statement": result.data[0],
+            "pdf_url": pdf_url,
+            "message": f"Estado financiero '{data.name}' guardado exitosamente (inmutable)"
+        }
 
     except HTTPException:
         raise
@@ -1524,7 +1573,7 @@ async def list_saved_statements(report_type: Optional[str] = None):
         q = sb.table("saved_financial_statements") \
             .select("id, portal, report_type, name, as_of_date, period_start, period_end, "
                     "total_assets, total_liabilities, total_equity, total_income, total_expenses, "
-                    "net_income, notes, saved_by, status, created_at") \
+                    "net_income, notes, saved_by, status, created_at, is_locked, pdf_url, locked_at") \
             .eq("portal", "homes") \
             .neq("status", "archived") \
             .order("created_at", desc=True)
@@ -1586,6 +1635,43 @@ async def delete_saved_statement(statement_id: str):
     except Exception as e:
         logger.error(f"[delete-saved-statement-homes] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reports/saved/{statement_id}/pdf")
+async def get_saved_report_pdf(statement_id: str):
+    """Get the PDF URL for a saved financial report."""
+    try:
+        result = sb.table("saved_financial_statements") \
+            .select("id, pdf_url, is_locked, name") \
+            .eq("id", statement_id) \
+            .eq("portal", "homes") \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Saved statement not found")
+
+        stmt = result.data[0]
+        return {
+            "ok": True,
+            "pdf_url": stmt.get("pdf_url"),
+            "is_locked": stmt.get("is_locked", True),
+            "name": stmt.get("name"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[get-saved-report-pdf-homes] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/reports/saved/{statement_id}")
+async def update_saved_report(statement_id: str):
+    """Blocked - saved reports are immutable."""
+    raise HTTPException(
+        status_code=403,
+        detail="Los reportes financieros guardados son inmutables y no pueden ser editados"
+    )
 
 
 # ── CSV Export Helpers ──────────────────────────────────────────────────────

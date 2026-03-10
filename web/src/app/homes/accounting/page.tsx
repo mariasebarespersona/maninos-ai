@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -21,6 +21,7 @@ interface SavedStatement {
   total_assets?: number; total_liabilities?: number; total_equity?: number
   total_income?: number; total_expenses?: number; net_income?: number
   notes?: string; saved_by?: string; status: string; created_at: string
+  is_locked?: boolean; pdf_url?: string; locked_at?: string
 }
 
 // ── Types ──
@@ -986,7 +987,7 @@ function StatementsTab() {
     if (!saveName.trim()) { toast.warning('Ingresa un nombre para el reporte'); return }
     setSaving(true)
     try {
-      const reportType = activeReport === 'income' ? 'profit_loss' : 'balance_sheet'
+      const reportType = activeReport === 'income' ? 'profit_loss' : activeReport === 'cashflow' ? 'cash_flow' : 'balance_sheet'
       const res = await fetch('/api/accounting/reports/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1071,8 +1072,8 @@ function StatementsTab() {
               <Download className="w-3 h-3" /> Exportar CSV
             </a>
           )}
-          {activeReport !== 'cashflow' && !isViewingSaved && (
-            <button onClick={() => { setSaveName(`${activeReport === 'income' ? 'Profit & Loss' : 'Balance Sheet'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
+          {!isViewingSaved && (
+            <button onClick={() => { setSaveName(`${activeReport === 'income' ? 'Profit & Loss' : activeReport === 'cashflow' ? 'Cash Flow' : 'Balance Sheet'} — ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`); setShowSaveModal(true) }}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
               style={{ backgroundColor: 'var(--navy-800)' }}>
               <Download className="w-3 h-3" /> Guardar Reporte
@@ -1142,10 +1143,16 @@ function StatementsTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{ backgroundColor: stmt.report_type === 'balance_sheet' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)', color: stmt.report_type === 'balance_sheet' ? '#3b82f6' : '#10b981' }}>
-                      {stmt.report_type === 'balance_sheet' ? 'Balance' : 'P&L'}
+                      style={{ backgroundColor: stmt.report_type === 'balance_sheet' ? 'rgba(59,130,246,0.1)' : stmt.report_type === 'cash_flow' ? 'rgba(168,85,247,0.1)' : 'rgba(16,185,129,0.1)', color: stmt.report_type === 'balance_sheet' ? '#3b82f6' : stmt.report_type === 'cash_flow' ? '#a855f7' : '#10b981' }}>
+                      {stmt.report_type === 'balance_sheet' ? 'Balance' : stmt.report_type === 'cash_flow' ? 'Cash Flow' : 'P&L'}
                     </span>
                     <span className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{stmt.name}</span>
+                    {stmt.is_locked && (
+                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: 'rgba(234,179,8,0.1)', color: '#92400e' }}>
+                        <Lock className="w-3 h-3" /> Inmutable
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
                     <span>{new Date(stmt.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
@@ -1159,6 +1166,13 @@ function StatementsTab() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 ml-2">
+                  {stmt.pdf_url && (
+                    <button onClick={() => window.open(stmt.pdf_url!, '_blank')} title="Descargar PDF"
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg transition-colors hover:bg-stone-50 border"
+                      style={{ borderColor: 'var(--sand)', color: 'var(--navy-700)' }}>
+                      <Download className="w-3.5 h-3.5" /> PDF
+                    </button>
+                  )}
                   <button onClick={() => handleViewSaved(stmt)} title="Ver reporte"
                     className="p-1.5 rounded-lg transition-colors hover:bg-stone-50">
                     <Eye className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
@@ -1179,7 +1193,7 @@ function StatementsTab() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl mx-4">
             <h3 className="font-serif text-lg font-bold mb-4" style={{ color: 'var(--ink)' }}>
-              Guardar {activeReport === 'income' ? 'Profit & Loss' : 'Balance Sheet'}
+              Guardar {activeReport === 'income' ? 'Profit & Loss' : activeReport === 'cashflow' ? 'Cash Flow' : 'Balance Sheet'}
             </h3>
             <div className="space-y-3">
               <div>
@@ -1193,6 +1207,10 @@ function StatementsTab() {
                 <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} rows={2}
                   className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-400"
                   style={{ borderColor: 'var(--sand)' }} placeholder="Notas adicionales..." />
+              </div>
+              <div className="flex items-center gap-2 p-3 rounded-lg text-xs" style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', color: '#92400e' }}>
+                <Lock className="w-4 h-4 flex-shrink-0" />
+                <span>Este reporte se guardara como <strong>inmutable</strong> con un PDF adjunto que no podra ser editado.</span>
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">

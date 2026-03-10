@@ -19,7 +19,7 @@ from api.models.schemas import (
     ClientStatus,
 )
 from api.services.property_service import PropertyService
-from api.services.email_service import send_sale_completed_email, schedule_post_sale_emails
+from api.services.email_service import send_sale_completed_email, send_rto_completed_email, schedule_post_sale_emails
 from api.services.document_service import auto_generate_sale_documents
 from tools.supabase_client import sb
 
@@ -697,6 +697,289 @@ async def cancel_sale(sale_id: str):
         prop.data["address"] if prop.data else None,
         client.data["name"] if client.data else None,
     )
+
+
+# ============================================================================
+# RTO COMPLETION
+# ============================================================================
+
+@router.get("/{sale_id}/rto-completion-status")
+async def rto_completion_status(sale_id: str):
+    """
+    Check how many payments are done vs total, and if the RTO contract
+    can be completed.
+    """
+    try:
+        # 1. Get sale and verify it's RTO
+        sale = sb.table("sales").select("*, clients(name)").eq("id", sale_id).single().execute()
+        if not sale.data:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+        if sale.data["sale_type"] != "rto":
+            raise HTTPException(status_code=400, detail="Esta venta no es Rent-to-Own")
+
+        # 2. Find the RTO contract
+        contract_id = sale.data.get("rto_contract_id")
+        if not contract_id:
+            # Fallback: find by sale_id
+            fallback = sb.table("rto_contracts").select("id").eq("sale_id", sale_id).execute()
+            if fallback.data:
+                contract_id = fallback.data[0]["id"]
+
+        if not contract_id:
+            return {
+                "ok": True,
+                "can_complete": False,
+                "total_payments": 0,
+                "paid_payments": 0,
+                "remaining_payments": 0,
+                "message": "Contrato RTO no encontrado. Aún en proceso de aprobación.",
+            }
+
+        # 3. Get all payments for this contract
+        payments = sb.table("rto_payments").select("id, status, amount, paid_amount") \
+            .eq("rto_contract_id", contract_id) \
+            .execute()
+
+        all_pmts = payments.data or []
+        paid = [p for p in all_pmts if p["status"] in ("paid", "waived")]
+        remaining = [p for p in all_pmts if p["status"] not in ("paid", "waived")]
+
+        can_complete = len(remaining) == 0 and len(all_pmts) > 0
+
+        total_paid = sum(float(p.get("paid_amount", 0) or 0) for p in paid)
+        total_expected = sum(float(p.get("amount", 0)) for p in all_pmts)
+
+        return {
+            "ok": True,
+            "can_complete": can_complete,
+            "total_payments": len(all_pmts),
+            "paid_payments": len(paid),
+            "remaining_payments": len(remaining),
+            "total_paid": total_paid,
+            "total_expected": total_expected,
+            "remaining_balance": total_expected - total_paid,
+            "sale_status": sale.data["status"],
+            "contract_id": contract_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking RTO completion status for sale {sale_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{sale_id}/complete-rto")
+async def complete_rto_contract(sale_id: str):
+    """
+    Complete an RTO contract when all payments are done.
+
+    Steps:
+    1. Verify sale exists and is rto_active
+    2. Verify all rto_payments are paid/waived
+    3. Update rto_contracts.status = 'completed'
+    4. Update sales.status = 'completed', completed_at = now
+    5. Update properties.status = 'sold'
+    6. Update clients.status = 'completed'
+    7. Create title_transfers record
+    8. Auto-generate documents (Bill of Sale + Title)
+    9. Send RTO completion email
+    10. Create accounting transaction (sale_rto, ventas_rto)
+    """
+    try:
+        # 1. Verify sale exists and is rto_active
+        sale_result = sb.table("sales") \
+            .select("*, clients(*), properties(*)") \
+            .eq("id", sale_id) \
+            .single() \
+            .execute()
+
+        if not sale_result.data:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+        sale = sale_result.data
+
+        if sale["sale_type"] != "rto":
+            raise HTTPException(status_code=400, detail="Esta venta no es Rent-to-Own")
+
+        if sale["status"] not in ("rto_active", "rto_approved"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"La venta no está en estado 'rto_active' (estado actual: {sale['status']})"
+            )
+
+        # 2. Find the RTO contract
+        contract_id = sale.get("rto_contract_id")
+        if not contract_id:
+            fallback = sb.table("rto_contracts").select("id").eq("sale_id", sale_id).execute()
+            if fallback.data:
+                contract_id = fallback.data[0]["id"]
+                # Self-heal
+                sb.table("sales").update({"rto_contract_id": contract_id}).eq("id", sale_id).execute()
+
+        if not contract_id:
+            raise HTTPException(status_code=400, detail="Contrato RTO no encontrado para esta venta")
+
+        # 3. Verify all payments are paid/waived
+        remaining = sb.table("rto_payments") \
+            .select("id, status") \
+            .eq("rto_contract_id", contract_id) \
+            .not_.in_("status", ["paid", "waived"]) \
+            .execute()
+
+        if remaining.data:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Aún hay {len(remaining.data)} pago(s) pendientes. Todos los pagos deben estar completados."
+            )
+
+        # 4. Update rto_contracts.status = 'completed'
+        sb.table("rto_contracts").update({
+            "status": "completed",
+        }).eq("id", contract_id).execute()
+
+        # 5. Update sales.status = 'completed', completed_at = now
+        sb.table("sales").update({
+            "status": "completed",
+            "completed_at": datetime.utcnow().isoformat(),
+        }).eq("id", sale_id).execute()
+
+        # 6. Update properties.status = 'sold'
+        sb.table("properties").update({
+            "status": PropertyStatus.SOLD.value,
+        }).eq("id", sale["property_id"]).execute()
+        logger.info(f"[sales] Property {sale['property_id']} marked SOLD (RTO completed, sale {sale_id})")
+
+        # 7. Update clients.status = 'completed'
+        sb.table("clients").update({
+            "status": ClientStatus.COMPLETED.value,
+        }).eq("id", sale["client_id"]).execute()
+
+        # 8. Create title_transfers record
+        existing_transfer = sb.table("title_transfers") \
+            .select("id") \
+            .eq("sale_id", sale_id) \
+            .execute()
+
+        if not existing_transfer.data:
+            sb.table("title_transfers").insert({
+                "property_id": sale["property_id"],
+                "sale_id": sale_id,
+                "transfer_type": "sale",
+                "from_name": "Maninos Homes LLC",
+                "to_name": sale["clients"]["name"],
+                "to_contact": sale["clients"].get("phone"),
+                "status": "pending",
+                "notes": "Venta RTO - contrato completado, todos los pagos recibidos"
+            }).execute()
+
+        # 9. Auto-generate Bill of Sale + Title PDFs
+        documents = {}
+        try:
+            doc_result = auto_generate_sale_documents(
+                sale_id=sale_id,
+                sale_data=sale,
+                client_data=sale["clients"],
+                property_data=sale["properties"],
+            )
+            if doc_result.get("errors"):
+                logger.warning(f"Document generation had errors: {doc_result['errors']}")
+            else:
+                logger.info(f"Documents auto-generated for RTO sale {sale_id}")
+            documents = {
+                "bill_of_sale": doc_result.get("bill_of_sale"),
+                "title": doc_result.get("title"),
+            }
+        except Exception as doc_error:
+            logger.warning(f"Failed to auto-generate documents for RTO sale: {doc_error}")
+
+        # 10. Send RTO completion email
+        try:
+            send_rto_completed_email(
+                client_email=sale["clients"]["email"],
+                client_name=sale["clients"]["name"],
+                property_address=sale["properties"]["address"],
+            )
+        except Exception as email_error:
+            logger.warning(f"Failed to send RTO completed email: {email_error}")
+
+        # 11. Schedule post-sale emails (review 7d + referral 30d)
+        try:
+            schedule_post_sale_emails(
+                sale_id=sale_id,
+                client_id=sale["client_id"],
+                client_email=sale["clients"]["email"],
+                client_name=sale["clients"]["name"],
+                property_address=sale["properties"]["address"],
+            )
+        except Exception as schedule_error:
+            logger.warning(f"Failed to schedule post-sale emails for RTO: {schedule_error}")
+
+        # 12. Create accounting transaction
+        try:
+            from datetime import date as date_type
+            today = date_type.today()
+            prefix = f"TXN-{today.strftime('%y%m%d')}-"
+            existing_txns = sb.table("accounting_transactions") \
+                .select("transaction_number") \
+                .like("transaction_number", f"{prefix}%") \
+                .execute()
+            txn_count = len(existing_txns.data) if existing_txns.data else 0
+            txn_number = f"{prefix}{txn_count + 1:03d}"
+
+            # Resolve account_id from category "ventas_rto"
+            acct_result = sb.table("accounting_accounts") \
+                .select("id") \
+                .eq("category", "ventas_rto") \
+                .eq("is_active", True) \
+                .limit(1) \
+                .execute()
+            account_id = acct_result.data[0]["id"] if acct_result.data else None
+
+            # Get property yard_id
+            prop_yard = sb.table("properties") \
+                .select("yard_id") \
+                .eq("id", sale["property_id"]) \
+                .single() \
+                .execute()
+            yard_id = prop_yard.data.get("yard_id") if prop_yard.data else None
+
+            txn_insert = {
+                "transaction_number": txn_number,
+                "transaction_date": today.isoformat(),
+                "transaction_type": "sale_rto",
+                "amount": float(sale["sale_price"]),
+                "is_income": True,
+                "account_id": account_id,
+                "entity_type": "sale",
+                "entity_id": sale_id,
+                "property_id": sale["property_id"],
+                "yard_id": yard_id,
+                "payment_method": "rto",
+                "counterparty_name": sale["clients"]["name"],
+                "counterparty_type": "client",
+                "description": f"Venta RTO completada - {sale['properties']['address']} - {sale['clients']['name']}",
+                "status": "confirmed",
+            }
+            txn_insert = {k: v for k, v in txn_insert.items() if v is not None}
+            sb.table("accounting_transactions").insert(txn_insert).execute()
+            logger.info(f"[sales] Accounting transaction {txn_number} created for RTO sale {sale_id}")
+        except Exception as acct_error:
+            logger.warning(f"Failed to create accounting transaction for RTO sale: {acct_error}")
+
+        return {
+            "ok": True,
+            "sale_id": sale_id,
+            "contract_id": contract_id,
+            "documents": documents,
+            "message": "Contrato RTO completado exitosamente. Documentos generados y email enviado.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing RTO contract for sale {sale_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

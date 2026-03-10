@@ -642,6 +642,79 @@ export default function ClientDashboard() {
           {/* ═══════════ SIDEBAR ═══════════ */}
           <div className="space-y-4">
 
+            {/* Saldo Pendiente — RTO Balance Summary */}
+            {hasRto && paymentSummary && (
+              <div className="bg-gradient-to-br from-[#004274] to-[#00233d] rounded-xl p-5 text-white">
+                <h2 className="font-bold text-[14px] mb-4 flex items-center gap-2 opacity-90" style={{ letterSpacing: '-0.015em' }}>
+                  <Banknote className="w-4 h-4" /> Saldo Pendiente
+                </h2>
+
+                {/* Remaining balance - big number */}
+                <div className="mb-4">
+                  <p className="text-[12px] opacity-70 mb-0.5">Balance restante</p>
+                  <p className="text-[28px] font-bold" style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                    ${paymentSummary.remaining_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                {/* Progress bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-[11px] opacity-70 mb-1">
+                    <span>Pagado: ${paymentSummary.total_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>{paymentSummary.percentage_complete}%</span>
+                  </div>
+                  <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-400 rounded-full transition-all duration-500"
+                      style={{ width: `${paymentSummary.percentage_complete}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] opacity-60 mt-1">
+                    Total del contrato: ${paymentSummary.total_expected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white/10 rounded-lg p-3">
+                    <p className="text-[11px] opacity-70">Pagos restantes</p>
+                    <p className="text-[18px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {paymentSummary.total_payments - paymentSummary.payments_made}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-3">
+                    <p className="text-[11px] opacity-70">Pagos hechos</p>
+                    <p className="text-[18px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {paymentSummary.payments_made}/{paymentSummary.total_payments}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Next payment due */}
+                {(() => {
+                  const nextPayment = payments.find(p => ['scheduled', 'pending', 'late', 'partial'].includes(p.status))
+                  if (!nextPayment) return null
+                  const isOverdue = nextPayment.status === 'late' || (nextPayment.due_date && new Date(nextPayment.due_date) < new Date())
+                  return (
+                    <div className={`mt-3 rounded-lg p-3 ${isOverdue ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                      <p className="text-[11px] opacity-70 flex items-center gap-1">
+                        <CalendarClock className="w-3 h-3" />
+                        {isOverdue ? 'Pago vencido' : 'Próximo pago'}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-[16px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          ${nextPayment.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-[12px] opacity-80">
+                          {nextPayment.due_date ? new Date(nextPayment.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
             {/* Profile */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-bold text-[14px] text-[#222] mb-4" style={{ letterSpacing: '-0.015em' }}>Mi Información</h2>
