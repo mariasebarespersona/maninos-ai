@@ -317,27 +317,29 @@ async def get_client_documents(client_id: str, user_email: str = Depends(get_cur
             
             # Get ALL title_transfers for this property
             transfers_result = sb.table("title_transfers") \
-                .select("id, transfer_type, status, documents_checklist, notes") \
+                .select("id, transfer_type, status, documents_checklist, notes, title_name_updated") \
                 .eq("property_id", property_id) \
                 .execute()
             
             all_docs = []
             title_status = "pending"
-            
+            title_name_updated = False
+
             for transfer in transfers_result.data or []:
                 # Sale transfer linked to this specific sale
                 if transfer["transfer_type"] == "sale" and transfer.get("id"):
                     # Check if this sale transfer belongs to this sale
                     sale_transfer = sb.table("title_transfers") \
-                        .select("id, status, documents_checklist") \
+                        .select("id, status, documents_checklist, title_name_updated") \
                         .eq("property_id", property_id) \
                         .eq("transfer_type", "sale") \
                         .eq("sale_id", sale_id) \
                         .execute()
-                    
+
                     if sale_transfer.data:
                         t = sale_transfer.data[0]
                         title_status = t.get("status", "pending")
+                        title_name_updated = bool(t.get("title_name_updated", False))
                         docs = _extract_docs_from_checklist(
                             t.get("documents_checklist", {}),
                             "sale",
@@ -399,6 +401,7 @@ async def get_client_documents(client_id: str, user_email: str = Depends(get_cur
                 },
                 "completed_at": sale["completed_at"],
                 "title_status": title_status,
+                "title_name_updated": title_name_updated,
                 "documents": all_docs,
             })
         

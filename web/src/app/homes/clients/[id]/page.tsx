@@ -22,16 +22,11 @@ import {
   Home,
   XCircle,
   Briefcase,
-  CreditCard,
   Shield,
   Eye,
-  Download,
   ExternalLink,
   User,
   Heart,
-  ChevronDown,
-  ChevronUp,
-  Award,
   Banknote,
   ClipboardList,
   Send,
@@ -179,8 +174,6 @@ export default function ClientDetailPage() {
   const params = useParams()
   const [data, setData] = useState<ClientHistory | null>(null)
   const [loading, setLoading] = useState(true)
-  const [expandedSales, setExpandedSales] = useState<Set<string>>(new Set())
-
   // Tracking / Follow-up state
   const [notes, setNotes] = useState<ClientNote[]>([])
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
@@ -189,18 +182,6 @@ export default function ClientDetailPage() {
   const [newNoteContent, setNewNoteContent] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const [assigningEmployee, setAssigningEmployee] = useState(false)
-
-  // RTO completion state
-  const [rtoCompletionStatus, setRtoCompletionStatus] = useState<Record<string, {
-    can_complete: boolean
-    total_payments: number
-    paid_payments: number
-    remaining_payments: number
-    loading: boolean
-  }>>({})
-  const [completingRto, setCompletingRto] = useState<string | null>(null)
-  const [showRtoConfirm, setShowRtoConfirm] = useState<string | null>(null)
-
   useEffect(() => {
     fetchClientHistory()
     fetchNotes()
@@ -245,67 +226,6 @@ export default function ClientDetailPage() {
       console.error('Error fetching team users:', error)
     }
   }, [])
-
-  const fetchRtoCompletionStatus = useCallback(async (saleId: string) => {
-    setRtoCompletionStatus(prev => ({
-      ...prev,
-      [saleId]: { ...prev[saleId], loading: true, can_complete: false, total_payments: 0, paid_payments: 0, remaining_payments: 0 }
-    }))
-    try {
-      const res = await fetch(`/api/sales/${saleId}/rto-completion-status`)
-      if (res.ok) {
-        const statusData = await res.json()
-        setRtoCompletionStatus(prev => ({
-          ...prev,
-          [saleId]: {
-            can_complete: statusData.can_complete || false,
-            total_payments: statusData.total_payments || 0,
-            paid_payments: statusData.paid_payments || 0,
-            remaining_payments: statusData.remaining_payments || 0,
-            loading: false,
-          }
-        }))
-      }
-    } catch (error) {
-      console.error('Error fetching RTO completion status:', error)
-      setRtoCompletionStatus(prev => ({
-        ...prev,
-        [saleId]: { ...prev[saleId], loading: false }
-      }))
-    }
-  }, [])
-
-  // Auto-check RTO completion status for rto_active sales
-  useEffect(() => {
-    if (data?.sales) {
-      data.sales
-        .filter((s: any) => s.sale_type === 'rto' && s.status === 'rto_active')
-        .forEach((s: any) => fetchRtoCompletionStatus(s.id))
-    }
-  }, [data?.sales, fetchRtoCompletionStatus])
-
-  const handleCompleteRto = async (saleId: string) => {
-    setCompletingRto(saleId)
-    setShowRtoConfirm(null)
-    try {
-      const res = await fetch(`/api/sales/${saleId}/complete-rto`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const result = await res.json()
-      if (res.ok && result.ok) {
-        toast.success(result.message || 'Contrato RTO completado exitosamente')
-        fetchClientHistory()
-      } else {
-        toast.error(result.detail || result.message || 'Error al completar contrato RTO')
-      }
-    } catch (error) {
-      console.error('Error completing RTO:', error)
-      toast.error('Error al completar contrato RTO')
-    } finally {
-      setCompletingRto(null)
-    }
-  }
 
   const handleAssignEmployee = async (employeeId: string) => {
     setAssigningEmployee(true)
@@ -363,15 +283,6 @@ export default function ClientDetailPage() {
     } finally {
       setSubmittingNote(false)
     }
-  }
-
-  const toggleSale = (saleId: string) => {
-    setExpandedSales(prev => {
-      const next = new Set(prev)
-      if (next.has(saleId)) next.delete(saleId)
-      else next.add(saleId)
-      return next
-    })
   }
 
   if (loading) {
@@ -449,15 +360,6 @@ export default function ClientDetailPage() {
               {created_by_name && (
                 <p className="text-xs text-navy-400 mt-1">Creado por: {created_by_name}</p>
               )}
-            </div>
-            <div className="flex gap-2">
-              <Link 
-                href={`/homes/sales/new?client=${client.id}`}
-                className="btn-gold"
-              >
-                <DollarSign className="w-5 h-5" />
-                Nueva Venta
-              </Link>
             </div>
           </div>
         </div>
@@ -543,11 +445,11 @@ export default function ClientDetailPage() {
             </div>
           )}
 
-          {/* Sales History — Detailed */}
+          {/* Compras — Resumen con link a Ventas */}
           <div className="card-luxury p-6">
             <h2 className="font-semibold text-navy-900 mb-4 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-gold-500" />
-              Historial de Compras / Ventas
+              Compras
             </h2>
             {sales.length === 0 ? (
               <div className="text-center py-8 bg-navy-50 rounded-lg">
@@ -555,219 +457,46 @@ export default function ClientDetailPage() {
                 <p className="text-navy-500">Sin compras registradas</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {sales.map((sale) => {
                   const saleStatus = saleStatusConfig[sale.status] || saleStatusConfig.pending
-                  const isExpanded = expandedSales.has(sale.id)
-                  
                   return (
-                    <div key={sale.id} className="border border-navy-100 rounded-xl overflow-hidden">
-                      {/* Sale Header */}
-                      <button
-                        onClick={() => toggleSale(sale.id)}
-                        className="w-full p-4 flex items-center gap-4 hover:bg-navy-50 transition-colors text-left"
-                      >
-                        {/* Property Photo */}
-                        <div className="w-16 h-16 rounded-lg bg-navy-100 overflow-hidden flex-shrink-0">
-                          {sale.property?.photos?.[0] ? (
-                            <img src={sale.property.photos[0]} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Home className="w-6 h-6 text-navy-300" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-navy-900">
-                              ${sale.sale_price?.toLocaleString()}
-                            </p>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${saleStatus.color}`}>
-                              {saleStatus.label}
-                            </span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              sale.sale_type === 'rto' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
-                            }`}>
-                              {sale.sale_type === 'rto' ? '🔑 RTO' : '💵 Contado'}
-                            </span>
+                    <Link
+                      key={sale.id}
+                      href={`/homes/sales`}
+                      className="flex items-center gap-4 p-4 bg-navy-50 rounded-xl hover:bg-navy-100 transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-navy-200 overflow-hidden flex-shrink-0">
+                        {sale.property?.photos?.[0] ? (
+                          <img src={sale.property.photos[0]} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Home className="w-5 h-5 text-navy-400" />
                           </div>
-                          <p className="text-sm text-navy-500 truncate mt-0.5">
-                            {sale.property?.address || 'Propiedad'} • {new Date(sale.created_at).toLocaleDateString('es-MX')}
-                          </p>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-navy-900 text-sm truncate">
+                          {sale.property?.address || 'Propiedad'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-sm font-medium text-navy-700">
+                            ${sale.sale_price?.toLocaleString()}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            sale.sale_type === 'rto' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {sale.sale_type === 'rto' ? 'RTO' : 'Contado'}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${saleStatus.color}`}>
+                            {saleStatus.label}
+                          </span>
                         </div>
-                        {isExpanded ? <ChevronUp className="w-5 h-5 text-navy-400" /> : <ChevronDown className="w-5 h-5 text-navy-400" />}
-                      </button>
-
-                      {/* Expanded Details */}
-                      {isExpanded && (
-                        <div className="border-t border-navy-100 p-4 space-y-4">
-                          {/* Property Details */}
-                          {sale.property && (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                              {sale.property.bedrooms && (
-                                <div className="p-2 bg-navy-50 rounded-lg text-center">
-                                  <p className="text-navy-500 text-xs">Cuartos</p>
-                                  <p className="font-semibold text-navy-900">{sale.property.bedrooms}</p>
-                                </div>
-                              )}
-                              {sale.property.bathrooms && (
-                                <div className="p-2 bg-navy-50 rounded-lg text-center">
-                                  <p className="text-navy-500 text-xs">Baños</p>
-                                  <p className="font-semibold text-navy-900">{sale.property.bathrooms}</p>
-                                </div>
-                              )}
-                              {sale.property.square_feet && (
-                                <div className="p-2 bg-navy-50 rounded-lg text-center">
-                                  <p className="text-navy-500 text-xs">Sq Ft</p>
-                                  <p className="font-semibold text-navy-900">{sale.property.square_feet.toLocaleString()}</p>
-                                </div>
-                              )}
-                              {sale.property.year && (
-                                <div className="p-2 bg-navy-50 rounded-lg text-center">
-                                  <p className="text-navy-500 text-xs">Año</p>
-                                  <p className="font-semibold text-navy-900">{sale.property.year}</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Payment Info */}
-                          {sale.payment_method && (
-                            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                              <p className="text-xs text-emerald-600 font-medium mb-1">💳 Método de Pago</p>
-                              <p className="text-sm font-semibold text-navy-900 capitalize">{sale.payment_method}</p>
-                              {sale.payment_reference && (
-                                <p className="text-xs text-navy-500 mt-0.5">Ref: {sale.payment_reference}</p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Commission */}
-                          {sale.commission_amount != null && sale.commission_amount > 0 && (
-                            <div className="p-3 bg-gold-50 rounded-lg border border-gold-200">
-                              <p className="text-xs text-gold-600 font-medium mb-1 flex items-center gap-1">
-                                <Award className="w-3.5 h-3.5" /> Comisión: ${sale.commission_amount.toLocaleString()}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* RTO Completion */}
-                          {sale.sale_type === 'rto' && sale.status === 'rto_active' && (() => {
-                            const rtoStatus = rtoCompletionStatus[sale.id]
-                            return (
-                              <div className="space-y-2">
-                                {/* RTO Payment Progress */}
-                                {rtoStatus && !rtoStatus.loading && (
-                                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                                    <p className="text-xs text-indigo-600 font-medium mb-2 flex items-center gap-1">
-                                      <CreditCard className="w-3.5 h-3.5" /> Progreso RTO: {rtoStatus.paid_payments}/{rtoStatus.total_payments} pagos
-                                    </p>
-                                    <div className="h-2 bg-indigo-100 rounded-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                                        style={{ width: `${rtoStatus.total_payments > 0 ? (rtoStatus.paid_payments / rtoStatus.total_payments * 100) : 0}%` }}
-                                      />
-                                    </div>
-                                    {rtoStatus.remaining_payments > 0 && (
-                                      <p className="text-xs text-indigo-500 mt-1">
-                                        Faltan {rtoStatus.remaining_payments} pago(s) por completar
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Complete RTO Button */}
-                                {rtoStatus?.can_complete && (
-                                  <div>
-                                    {showRtoConfirm === sale.id ? (
-                                      <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                                        <p className="text-sm font-medium text-emerald-800 mb-3">
-                                          Confirmar: Todos los pagos han sido completados. Al continuar se generaran documentos (Bill of Sale, Titulo) y se enviara email de confirmacion al cliente.
-                                        </p>
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={() => handleCompleteRto(sale.id)}
-                                            disabled={completingRto === sale.id}
-                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-                                          >
-                                            {completingRto === sale.id ? (
-                                              <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                              <CheckCircle2 className="w-4 h-4" />
-                                            )}
-                                            Si, Completar Contrato
-                                          </button>
-                                          <button
-                                            onClick={() => setShowRtoConfirm(null)}
-                                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                                          >
-                                            Cancelar
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={() => setShowRtoConfirm(sale.id)}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-                                      >
-                                        <CheckCircle2 className="w-5 h-5" />
-                                        Completar Contrato RTO
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {rtoStatus?.loading && (
-                                  <div className="flex items-center gap-2 text-sm text-indigo-500">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Verificando estado de pagos...
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()}
-
-                          {/* Documents for this sale */}
-                          {sale.documents && sale.documents.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-navy-600 mb-2 flex items-center gap-1">
-                                <FileText className="w-3.5 h-3.5" /> Documentos de Transacción
-                              </p>
-                              <div className="space-y-1.5">
-                                {sale.documents.map((doc) => (
-                                  <a
-                                    key={doc.id}
-                                    href={doc.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-3 p-2.5 bg-navy-50 rounded-lg hover:bg-navy-100 transition-colors text-sm"
-                                  >
-                                    <FileText className="w-4 h-4 text-navy-400" />
-                                    <span className="flex-1 text-navy-700">{doc.doc_label}</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                      doc.transfer_type === 'purchase' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'
-                                    }`}>
-                                      {doc.transfer_type === 'purchase' ? 'Compra' : 'Venta'}
-                                    </span>
-                                    <ExternalLink className="w-3.5 h-3.5 text-navy-400" />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Link to property */}
-                          {sale.property_id && (
-                            <Link 
-                              href={`/homes/properties/${sale.property_id}`}
-                              className="text-sm text-gold-600 hover:text-gold-700 flex items-center gap-1"
-                            >
-                              Ver propiedad completa →
-                            </Link>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                      <span className="text-xs text-gold-600 font-medium group-hover:underline flex items-center gap-1">
+                        Ver en Ventas <ExternalLink className="w-3 h-3" />
+                      </span>
+                    </Link>
                   )
                 })}
               </div>
@@ -799,42 +528,6 @@ export default function ClientDetailPage() {
             </div>
           )}
 
-          {/* All Transaction Documents */}
-          {documents.length > 0 && (
-            <div className="card-luxury p-6">
-              <h2 className="font-semibold text-navy-900 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gold-500" />
-                Todos los Documentos
-              </h2>
-              <div className="space-y-2">
-                {documents.map((doc) => (
-                  <a
-                    key={doc.id}
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-3 bg-navy-50 rounded-lg hover:bg-navy-100 transition-colors"
-                  >
-                    <FileText className="w-5 h-5 text-navy-500" />
-                    <div className="flex-1">
-                      <span className="text-navy-700">{doc.doc_label}</span>
-                      {doc.uploaded_at && (
-                        <p className="text-xs text-navy-400">
-                          Subido: {new Date(doc.uploaded_at).toLocaleDateString('es-MX')}
-                        </p>
-                      )}
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      doc.transfer_type === 'purchase' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'
-                    }`}>
-                      {doc.transfer_type === 'purchase' ? 'Compra' : 'Venta'}
-                    </span>
-                    <Eye className="w-4 h-4 text-navy-400" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Sidebar */}

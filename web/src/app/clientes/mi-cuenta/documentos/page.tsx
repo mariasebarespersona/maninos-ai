@@ -60,6 +60,7 @@ interface Sale {
   property_details: PropertyDetails
   client_info: ClientInfo
   title_status: string
+  title_name_updated: boolean
   documents: SaleDocument[]
 }
 
@@ -107,16 +108,19 @@ function CollapsibleSection({
 
 function TitleStatusCard({
   titleStatus,
+  titleNameUpdated,
   documents,
 }: {
   titleStatus: string
+  titleNameUpdated: boolean
   documents: SaleDocument[]
 }) {
   const titleDoc = documents.find(
     (d) => d.doc_type === 'title' || d.doc_type === 'titulo'
   )
 
-  if (titleStatus === 'completed') {
+  // Title is truly ready only when the name has been updated in TDHCA
+  if (titleNameUpdated) {
     return (
       <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl">
         <div className="flex items-start gap-4">
@@ -125,10 +129,10 @@ function TitleStatusCard({
           </div>
           <div className="flex-1">
             <h3 className="font-bold text-emerald-900 text-lg mb-1">
-              Tu titulo esta listo
+              Tu titulo esta a tu nombre
             </h3>
             <p className="text-emerald-700 text-sm mb-4">
-              Felicidades, el cambio de titulo de tu casa esta completo. Ya puedes descargar tu titulo oficial.
+              Felicidades! El cambio de titulo se ha completado y la casa ya esta registrada a tu nombre.
             </p>
             {titleDoc && (
               <a
@@ -146,37 +150,49 @@ function TitleStatusCard({
     )
   }
 
-  // In progress / pending
+  // Title not yet transferred to client's name
   const isPending = titleStatus === 'pending'
-  const progressLabel = isPending ? 'Pendiente' : 'En proceso'
-  const progressWidth = isPending ? 'w-1/6' : 'w-1/2'
-  const heading = isPending
-    ? 'Cambio de titulo pendiente'
-    : 'Cambio de titulo en proceso'
-  const description = isPending
-    ? 'Estamos procesando tu cambio de titulo. Este proceso toma aproximadamente 1 mes. Te enviaremos un email cuando este listo.'
-    : 'Estamos trabajando en la transferencia de titulo. Te notificaremos cuando este listo.'
+  const isInProgress = titleStatus === 'in_progress'
+  const progressLabel = isPending ? 'Pendiente' : isInProgress ? 'En proceso' : 'Procesando'
+  const progressWidth = isPending ? 'w-1/6' : isInProgress ? 'w-1/2' : 'w-3/4'
 
   return (
-    <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl">
+    <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl">
       <div className="flex items-start gap-4">
-        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-          <Clock className="w-6 h-6 text-[#004274]" />
+        <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+          <Clock className="w-6 h-6 text-amber-600" />
         </div>
         <div className="flex-1">
-          <h3 className="font-bold text-[#004274] text-lg mb-1">
-            {heading}
+          <h3 className="font-bold text-amber-900 text-lg mb-1">
+            Titulo en proceso de cambio de nombre
           </h3>
-          <p className="text-blue-700 text-sm mb-4">
-            {description}
+          <p className="text-amber-800 text-sm mb-2">
+            El titulo de tu casa actualmente sigue a nombre de <strong>Maninos Homes LLC</strong>.
+            El proceso de cambio de titulo tarda aproximadamente <strong>1 mes</strong>.
           </p>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-blue-200 rounded-full h-2.5 overflow-hidden">
+          <p className="text-amber-700 text-sm mb-4">
+            Te enviaremos un email automaticamente cuando el titulo ya este a tu nombre.
+          </p>
+
+          {titleDoc && (
+            <a
+              href={titleDoc.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-700 transition-colors mb-4"
+            >
+              <FileText className="w-4 h-4" />
+              Ver titulo actual (a nombre de Maninos)
+            </a>
+          )}
+
+          <div className="flex items-center gap-3 mt-2">
+            <div className="flex-1 bg-amber-200 rounded-full h-2.5 overflow-hidden">
               <div
-                className={`${progressWidth} bg-[#004274] h-full rounded-full transition-all`}
+                className={`${progressWidth} bg-amber-600 h-full rounded-full transition-all`}
               />
             </div>
-            <span className="text-xs font-medium text-[#004274] whitespace-nowrap">
+            <span className="text-xs font-medium text-amber-700 whitespace-nowrap">
               {progressLabel}
             </span>
           </div>
@@ -220,10 +236,10 @@ function ContadoSaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocume
             <p className="font-bold text-[#004274] text-lg">
               ${sale.sale_price?.toLocaleString()}
             </p>
-            {sale.title_status === 'completed' ? (
+            {sale.title_name_updated ? (
               <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
                 <CheckCircle className="w-3.5 h-3.5" />
-                Titulo listo
+                Titulo a tu nombre
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-medium">
@@ -304,11 +320,12 @@ function ContadoSaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocume
       <CollapsibleSection
         title="Titulo"
         icon={<ShieldCheck className="w-5 h-5 text-[#004274]" />}
-        defaultOpen={sale.title_status === 'completed'}
+        defaultOpen={sale.title_name_updated}
       >
         <div className="p-5">
           <TitleStatusCard
             titleStatus={sale.title_status}
+            titleNameUpdated={sale.title_name_updated}
             documents={sale.documents || []}
           />
         </div>
@@ -421,7 +438,7 @@ export default function ClientDocumentsPage() {
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const contadoSales = sales.filter((s) => s.sale_type === 'contado')
-  const hasCompletedTitle = sales.some((s) => s.title_status === 'completed')
+  const hasCompletedTitle = sales.some((s) => s.title_name_updated)
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -460,10 +477,10 @@ export default function ClientDocumentsPage() {
               </div>
               <div>
                 <p className="font-semibold text-emerald-900">
-                  Titulo completado
+                  Titulo a tu nombre
                 </p>
                 <p className="text-sm text-emerald-700">
-                  Uno o mas de tus titulos estan listos para descargar. Revisa la seccion de Titulo abajo.
+                  El titulo de tu casa ya esta registrado a tu nombre. Puedes descargarlo en la seccion de Titulo abajo.
                 </p>
               </div>
             </div>

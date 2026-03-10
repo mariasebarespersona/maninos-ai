@@ -52,12 +52,16 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
   const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [pendingOrderCount, setPendingOrderCount] = useState(0)
+  const [pendingNotifCount, setPendingNotifCount] = useState(0)
 
   useEffect(() => {
-    fetch('/api/payment-orders/stats')
+    // Count pending transfer confirmations (contado payments awaiting Abigail)
+    fetch('/api/sales/pending-transfers')
       .then(r => r.json())
-      .then(d => { if (d.ok) setPendingOrderCount(d.data?.pending || 0) })
+      .then(d => {
+        const transfers = d.transfers || d || []
+        setPendingNotifCount(Array.isArray(transfers) ? transfers.length : 0)
+      })
       .catch(() => {})
   }, [pathname])
 
@@ -152,9 +156,9 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
               >
                 <Icon className="w-5 h-5" strokeWidth={1.75} />
                 <span className="text-base flex-1">{item.name}</span>
-                {item.name === 'Notificaciones' && pendingOrderCount > 0 && (
+                {item.name === 'Notificaciones' && pendingNotifCount > 0 && (
                   <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {pendingOrderCount > 9 ? '9+' : pendingOrderCount}
+                    {pendingNotifCount > 9 ? '9+' : pendingNotifCount}
                   </span>
                 )}
               </Link>
@@ -234,6 +238,16 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
           <div className="flex-1">
             <Breadcrumb pathname={pathname} />
           </div>
+
+          {/* Notifications bell */}
+          {pendingNotifCount > 0 && (
+            <Link href="/homes/notificaciones" className="relative p-2 rounded-md hover:bg-sand/50 transition-colors mr-2">
+              <Bell className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {pendingNotifCount > 9 ? '9+' : pendingNotifCount}
+              </span>
+            </Link>
+          )}
 
           {/* User */}
           <div className="flex items-center gap-3">

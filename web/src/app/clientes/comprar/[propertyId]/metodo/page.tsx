@@ -299,39 +299,10 @@ export default function PaymentMethodPage() {
                     ))}
                   </div>
 
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-                    <p className="text-sm text-green-800">
-                      <strong>Importante:</strong> Una vez realizada la transferencia, envíanos el comprobante
-                      por WhatsApp al <strong>(832) 745-9600</strong> para confirmar tu compra.
-                    </p>
-                  </div>
-
-                  <a
-                    href={`https://api.whatsapp.com/send?phone=+18327459600&text=${encodeURIComponent(
-                      `Hola! Acabo de hacer una transferencia para la compra al contado de la casa en ${property.address}. Mi nombre es ${clientData?.client_name || ''}. Adjunto mi comprobante.`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold transition-colors"
-                    style={{ background: '#25d366' }}
-                  >
-                    Enviar comprobante por WhatsApp
-                    <ArrowRight className="w-5 h-5" />
-                  </a>
-
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-gray-200" />
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="bg-white px-3 text-gray-500">o</span>
-                    </div>
-                  </div>
-
                   <button
                     onClick={handleReportTransfer}
                     disabled={reportingTransfer}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-colors bg-navy-900 text-white hover:bg-navy-800 disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-colors bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
                   >
                     {reportingTransfer ? (
                       <>
@@ -345,6 +316,24 @@ export default function PaymentMethodPage() {
                       </>
                     )}
                   </button>
+
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mt-4">
+                    <p className="text-sm text-green-800 mb-3">
+                      <strong>Opcional:</strong> Si deseas, también puedes enviarnos el comprobante
+                      por WhatsApp para agilizar la confirmación.
+                    </p>
+                    <a
+                      href={`https://api.whatsapp.com/send?phone=+18327459600&text=${encodeURIComponent(
+                        `Hola! Acabo de hacer una transferencia para la compra al contado de la casa en ${property.address}. Mi nombre es ${clientData?.client_name || ''}. Adjunto mi comprobante.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-colors border-2 border-green-500 text-green-700 hover:bg-green-100"
+                    >
+                      Enviar comprobante por WhatsApp
+                      <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </div>
                 </>
                 )
               ) : (

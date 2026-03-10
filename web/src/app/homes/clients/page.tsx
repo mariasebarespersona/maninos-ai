@@ -5,10 +5,10 @@ export const dynamic = 'force-dynamic'
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { 
-  Users, 
-  Search, 
-  Plus,
+import {
+  Users,
+  Search,
+  DollarSign,
   Phone,
   Mail,
   Building2,
@@ -152,9 +152,9 @@ export default function ClientsPage() {
             Seguimiento de compradores y potenciales clientes
           </p>
         </div>
-        <Link href="/homes/sales/new" className="btn-gold text-lg">
-          <Plus className="w-6 h-6" />
-          Nueva Venta
+        <Link href="/homes/sales" className="btn-gold text-lg">
+          <DollarSign className="w-6 h-6" />
+          Ir a Ventas
         </Link>
       </div>
 
@@ -211,15 +211,11 @@ export default function ClientsPage() {
           </div>
           <h3 className="font-serif text-2xl text-navy-900 mb-3">No hay clientes</h3>
           <p className="text-navy-500 text-lg mb-8 max-w-md mx-auto">
-            {statusFilter 
+            {statusFilter
               ? `No hay clientes con estado "${statusConfig[statusFilter as keyof typeof statusConfig]?.label}"`
-              : 'Los clientes aparecerán aquí cuando inicies ventas'
+              : 'Los clientes aparecerán aquí cuando se registren ventas'
             }
           </p>
-          <Link href="/homes/sales/new" className="btn-gold text-lg">
-            <Plus className="w-5 h-5" />
-            Iniciar Venta
-          </Link>
         </div>
       ) : (
         <div className="space-y-4">
