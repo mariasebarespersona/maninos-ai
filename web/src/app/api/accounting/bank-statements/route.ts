@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
-    const res = await fetch(`${API}/api/accounting/bank-statements/upload`, {
+    const res = await fetch(`${API}/api/accounting/bank-statements`, {
       method: 'POST',
       body: formData,
     })
