@@ -2539,27 +2539,14 @@ async def upload_bank_statement(
             "account_number_last4": movements[0].get("account_last4") if movements else None,
         }).eq("id", statement_id).execute()
 
-        # ── AUTO-CLASSIFY: AI associates movements to Homes accounts ──
-        classify_message = ""
-        try:
-            logger.info(f"[BankStmt] Auto-classifying {len(movements)} movements...")
-            sb.table("bank_statements").update({"status": "classifying"}).eq("id", statement_id).execute()
-            classify_result = await classify_statement_movements(statement_id)
-            classify_message = f" → AI classified {classify_result.get('classified', 0)} movements"
-            logger.info(f"[BankStmt] Auto-classify done: {classify_message}")
-        except Exception as ce:
-            logger.warning(f"[BankStmt] Auto-classify failed (will require manual): {ce}")
-            sb.table("bank_statements").update({"status": "parsed"}).eq("id", statement_id).execute()
-            classify_message = " → Auto-clasificación falló, usa el botón 'Clasificar con IA'"
-
-        # Refresh statement from DB
+        # Refresh statement from DB (no auto-classify — user drives the 3-step wizard)
         stmt_refresh = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
         mvs = sb.table("statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
 
         return {
             "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
             "movements": mvs.data or [],
-            "message": f"Parsed {len(movements)} movements from statement{classify_message}",
+            "message": f"Extraídos {len(movements)} movimientos del estado de cuenta",
         }
 
     except Exception as e:
@@ -2569,6 +2556,167 @@ async def upload_bank_statement(
             "error_message": str(e)[:500],
         }).eq("id", statement_id).execute()
         raise HTTPException(status_code=500, detail=f"Error parsing statement: {str(e)}")
+
+
+@router.post("/bank-statements/{statement_id}/reconcile")
+async def reconcile_statement_movements(statement_id: str):
+    """Auto-match statement movements against existing unreconciled accounting transactions.
+    Returns matches with confidence scores for user confirmation."""
+    stmt = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
+    if not stmt.data:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    statement = stmt.data[0]
+    bank_account_id = statement.get("bank_account_id")
+
+    # Get pending movements from this statement
+    movements = (sb.table("statement_movements")
+                 .select("*").eq("statement_id", statement_id)
+                 .in_("status", ["pending", "suggested"])
+                 .order("sort_order").execute())
+    if not movements.data:
+        return {"matches": [], "unmatched_count": 0, "message": "No hay movimientos pendientes"}
+
+    # Get unreconciled transactions (confirmed or pending, not yet reconciled)
+    txn_query = sb.table("accounting_transactions").select("*").in_("status", ["confirmed", "pending"])
+    if bank_account_id:
+        txn_query = txn_query.eq("bank_account_id", bank_account_id)
+    txns = txn_query.order("transaction_date", desc=True).execute()
+    unreconciled_txns = txns.data or []
+
+    if not unreconciled_txns:
+        return {
+            "matches": [],
+            "unmatched_count": len(movements.data),
+            "message": "No hay transacciones existentes para conciliar",
+        }
+
+    # Matching algorithm
+    matches = []
+    used_txn_ids = set()
+
+    for mv in movements.data:
+        mv_amount = abs(float(mv.get("amount", 0)))
+        mv_is_credit = mv.get("is_credit", False)
+        mv_date_str = mv.get("movement_date", "")
+        mv_counterparty = (mv.get("counterparty") or "").lower().strip()
+
+        best_match = None
+        best_score = 0
+
+        for txn in unreconciled_txns:
+            if txn["id"] in used_txn_ids:
+                continue
+
+            score = 0
+            txn_amount = abs(float(txn.get("amount", 0)))
+            txn_is_income = txn.get("is_income", False)
+
+            # Amount match (exact = 50 pts, close within 1% = 30 pts)
+            if mv_amount > 0 and txn_amount > 0:
+                if abs(mv_amount - txn_amount) < 0.01:
+                    score += 50
+                elif abs(mv_amount - txn_amount) / max(mv_amount, txn_amount) < 0.01:
+                    score += 30
+
+            # Direction match (credit=income, debit=expense)
+            if mv_is_credit == txn_is_income:
+                score += 5
+            else:
+                continue  # Skip if direction doesn't match
+
+            # Date proximity
+            try:
+                from datetime import datetime as _dt
+                mv_date = _dt.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
+                txn_date_str = txn.get("transaction_date", "")
+                txn_date = _dt.strptime(txn_date_str, "%Y-%m-%d").date() if txn_date_str else None
+                if mv_date and txn_date:
+                    diff = abs((mv_date - txn_date).days)
+                    if diff == 0:
+                        score += 30
+                    elif diff <= 1:
+                        score += 25
+                    elif diff <= 3:
+                        score += 15
+                    elif diff <= 7:
+                        score += 5
+            except Exception:
+                pass
+
+            # Counterparty similarity
+            txn_counterparty = (txn.get("counterparty_name") or "").lower().strip()
+            if mv_counterparty and txn_counterparty:
+                # Simple token overlap
+                mv_tokens = set(mv_counterparty.split())
+                txn_tokens = set(txn_counterparty.split())
+                if mv_tokens and txn_tokens:
+                    overlap = len(mv_tokens & txn_tokens)
+                    total = max(len(mv_tokens), len(txn_tokens))
+                    if overlap > 0:
+                        score += int(15 * overlap / total)
+
+            if score > best_score and score >= 50:
+                best_score = score
+                best_match = txn
+
+        if best_match:
+            used_txn_ids.add(best_match["id"])
+            confidence = "high" if best_score >= 75 else "medium" if best_score >= 60 else "low"
+            matches.append({
+                "movement_id": mv["id"],
+                "transaction_id": best_match["id"],
+                "score": best_score,
+                "confidence": confidence,
+                "movement": mv,
+                "transaction": best_match,
+            })
+
+    unmatched_count = len(movements.data) - len(matches)
+    return {
+        "matches": matches,
+        "unmatched_count": unmatched_count,
+        "message": f"{len(matches)} coincidencias encontradas, {unmatched_count} sin match",
+    }
+
+
+@router.post("/bank-statements/{statement_id}/reconcile/confirm")
+async def confirm_reconciliation(statement_id: str, data: dict):
+    """Confirm matched movement-transaction pairs. Marks both as reconciled."""
+    pairs = data.get("pairs", [])
+    if not pairs:
+        raise HTTPException(status_code=400, detail="No pairs provided")
+
+    now_str = datetime.utcnow().isoformat()
+    reconciled = 0
+
+    for pair in pairs:
+        mv_id = pair.get("movement_id")
+        txn_id = pair.get("transaction_id")
+        if not mv_id or not txn_id:
+            continue
+
+        try:
+            # Update movement: mark as reconciled and link to transaction
+            mv_update: dict = {"status": "reconciled"}
+            try:
+                mv_update["matched_transaction_id"] = txn_id
+                sb.table("statement_movements").update(mv_update).eq("id", mv_id).execute()
+            except Exception:
+                # Column may not exist yet - retry without it
+                sb.table("statement_movements").update({"status": "reconciled"}).eq("id", mv_id).execute()
+
+            # Update transaction: mark as reconciled
+            sb.table("accounting_transactions").update({
+                "status": "reconciled",
+                "reconciled_at": now_str,
+            }).eq("id", txn_id).execute()
+
+            _log_audit("accounting_transactions", txn_id, "reconcile")
+            reconciled += 1
+        except Exception as e:
+            logger.warning(f"[reconcile-confirm] Error for mv={mv_id}, txn={txn_id}: {e}")
+
+    return {"reconciled": reconciled, "message": f"{reconciled} movimientos conciliados"}
 
 
 @router.post("/bank-statements/{statement_id}/classify")

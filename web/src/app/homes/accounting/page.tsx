@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -114,7 +114,7 @@ const STATUS_COLORS: Record<string, string> = {
 const MONTH_NAMES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const PERIOD_LABELS: Record<string, string> = { month: 'Mensual', quarter: 'Trimestral', year: 'Anual', all: 'Todo' }
 
-type TabId = 'overview' | 'transactions' | 'invoices' | 'statements' | 'chart' | 'properties' | 'banks' | 'budget' | 'reconciliation' | 'recurring' | 'audit' | 'estado_cuenta'
+type TabId = 'overview' | 'transactions' | 'invoices' | 'statements' | 'chart' | 'properties' | 'banks' | 'budget' | 'recurring' | 'audit' | 'estado_cuenta'
 
 // ── Main Component ──
 export default function AccountingPage() {
@@ -228,7 +228,6 @@ export default function AccountingPage() {
     { id: 'properties', label: 'Por Propiedad', icon: Home },
     { id: 'banks', label: 'Cuentas Bancarias', icon: Landmark },
     { id: 'budget', label: 'Presupuesto', icon: BarChart3 },
-    { id: 'reconciliation', label: 'Conciliación', icon: ClipboardCheck },
     { id: 'recurring', label: 'Gastos Fijos', icon: Repeat },
     { id: 'audit', label: 'Auditoría', icon: History },
   ]
@@ -325,7 +324,6 @@ export default function AccountingPage() {
       {activeTab === 'properties' && <PropertiesTab properties={dashboard?.property_pnl || []} />}
       {activeTab === 'banks' && <BanksTab banks={dashboard?.bank_accounts || []} onAdd={() => setShowNewBankModal(true)} />}
       {activeTab === 'budget' && <BudgetTab accounts={accounts} />}
-      {activeTab === 'reconciliation' && <ReconciliationTab bankAccounts={dashboard?.bank_accounts || []} />}
       {activeTab === 'recurring' && <RecurringTab onAdd={() => setShowNewRecurringModal(true)} />}
       {activeTab === 'audit' && <AuditTab />}
 
@@ -1787,111 +1785,6 @@ function BudgetTab({ accounts }: { accounts: AccountInfo[] }) {
 // ════════════════════════════════════════════════════════════════════════
 //  RECONCILIATION TAB — NEW
 // ════════════════════════════════════════════════════════════════════════
-function ReconciliationTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
-  const [selectedBank, setSelectedBank] = useState('')
-  const [unreconciled, setUnreconciled] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [reconciling, setReconciling] = useState(false)
-
-  useEffect(() => {
-    if (!selectedBank) return
-    setLoading(true)
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/accounting/reconciliation?bank_account_id=${selectedBank}`)
-        if (res.ok) { const d = await res.json(); setUnreconciled(d.transactions || []) }
-      } catch (e) { /* ignore */ }
-      finally { setLoading(false) }
-    })()
-  }, [selectedBank])
-
-  const toggleSelect = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(Array.from(prev))
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
-
-  const handleReconcile = async () => {
-    if (selected.size === 0) return
-    setReconciling(true)
-    try {
-      const res = await fetch('/api/accounting/reconciliation', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Array.from(selected)),
-      })
-      if (res.ok) {
-        const d = await res.json()
-        alert(`✅ ${d.reconciled} transacciones conciliadas`)
-        setSelected(new Set())
-        setUnreconciled(prev => prev.filter(t => !selected.has(t.id)))
-      }
-    } catch (e) { alert('Error') }
-    finally { setReconciling(false) }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <h3 className="font-semibold" style={{ color: 'var(--ink)' }}>Conciliación Bancaria</h3>
-          <select value={selectedBank} onChange={e => setSelectedBank(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
-            <option value="">Seleccionar cuenta...</option>
-            {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </div>
-        {selected.size > 0 && (
-          <button onClick={handleReconcile} disabled={reconciling}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg bg-emerald-600">
-            <ShieldCheck className="w-4 h-4" /> {reconciling ? 'Conciliando...' : `Conciliar (${selected.size})`}
-          </button>
-        )}
-      </div>
-
-      {!selectedBank ? (
-        <div className="text-center py-12 card-luxury">
-          <ClipboardCheck className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
-          <p className="text-sm" style={{ color: 'var(--ash)' }}>Selecciona una cuenta bancaria para ver transacciones pendientes de conciliar.</p>
-        </div>
-      ) : loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-navy-600" /></div>
-      ) : unreconciled.length === 0 ? (
-        <div className="text-center py-12 card-luxury">
-          <Check className="w-10 h-10 mx-auto mb-2 text-emerald-500" />
-          <p className="text-sm font-medium text-emerald-700">¡Todas las transacciones están conciliadas!</p>
-        </div>
-      ) : (
-        <div className="card-luxury overflow-hidden">
-          <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--ivory)' }}>
-            <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{unreconciled.length} transacciones sin conciliar</p>
-            <button onClick={() => setSelected(selected.size === unreconciled.length ? new Set() : new Set(unreconciled.map(t => t.id)))}
-              className="text-xs font-medium px-3 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--navy-800)' }}>
-              {selected.size === unreconciled.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
-            </button>
-          </div>
-          <div className="max-h-[500px] overflow-y-auto">
-            {unreconciled.map(t => (
-              <div key={t.id} className={`flex items-center gap-4 px-4 py-3 border-b cursor-pointer transition-colors ${selected.has(t.id) ? 'bg-blue-50' : 'hover:bg-sand/20'}`}
-                style={{ borderColor: 'var(--sand)' }} onClick={() => toggleSelect(t.id)}>
-                <input type="checkbox" checked={selected.has(t.id)} onChange={() => {}} className="w-4 h-4 rounded" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
-                  <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_date} · {t.counterparty_name || '—'} · {t.payment_reference || ''}</p>
-                </div>
-                <span className={`text-sm font-bold whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {t.is_income ? '+' : '-'}{fmtFull(t.amount)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ════════════════════════════════════════════════════════════════════════
 //  AUDIT TAB — NEW
@@ -2434,7 +2327,17 @@ const STMT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   review: { label: 'En revisión', color: 'bg-purple-100 text-purple-700' },
   partial: { label: 'Parcialmente importado', color: 'bg-amber-100 text-amber-700' },
   completed: { label: 'Completado', color: 'bg-emerald-100 text-emerald-700' },
+  reconciled: { label: 'Conciliado', color: 'bg-teal-100 text-teal-700' },
   error: { label: 'Error', color: 'bg-red-100 text-red-700' },
+}
+
+interface ReconcileMatch {
+  movement_id: string
+  transaction_id: string
+  score: number
+  confidence: string
+  movement: StatementMovement
+  transaction: Transaction
 }
 
 function EstadoCuentaTab() {
@@ -2453,6 +2356,13 @@ function EstadoCuentaTab() {
   const [newAccountName, setNewAccountName] = useState('')
   const [newAccountBank, setNewAccountBank] = useState('')
   const [creatingAccount, setCreatingAccount] = useState(false)
+  // 3-step wizard state
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
+  const [reconciling, setReconciling] = useState(false)
+  const [reconcileMatches, setReconcileMatches] = useState<ReconcileMatch[]>([])
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(new Set()) // movement_ids
+  const [confirmingReconcile, setConfirmingReconcile] = useState(false)
+  const [reconcileDone, setReconcileDone] = useState(false)
 
   const fetchBankAccounts = useCallback(async () => {
     try {
@@ -2574,6 +2484,9 @@ function EstadoCuentaTab() {
   const openStatement = async (stmtId: string) => {
     setActiveStatement(stmtId)
     setMovementsLoading(true)
+    setWizardStep(1)
+    setReconcileMatches([])
+    setReconcileDone(false)
     try {
       const res = await fetch(`/api/accounting/bank-statements/${stmtId}`)
       if (res.ok) {
@@ -2650,9 +2563,66 @@ function EstadoCuentaTab() {
     } catch (e) { console.error(e) }
   }
 
+  const reconcileMovements = async (stmtId: string) => {
+    setReconciling(true)
+    setReconcileMatches([])
+    setSelectedMatches(new Set())
+    setReconcileDone(false)
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/${stmtId}/reconcile`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        const matches: ReconcileMatch[] = data.matches || []
+        setReconcileMatches(matches)
+        // Auto-select high confidence matches
+        setSelectedMatches(new Set(matches.filter(m => m.confidence === 'high').map(m => m.movement_id)))
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(`Error: ${err.detail || 'Error al buscar coincidencias'}`)
+      }
+    } catch (e) { alert('Error de conexión') }
+    finally { setReconciling(false) }
+  }
+
+  const confirmReconciliation = async (stmtId: string) => {
+    const pairs = reconcileMatches
+      .filter(m => selectedMatches.has(m.movement_id))
+      .map(m => ({ movement_id: m.movement_id, transaction_id: m.transaction_id }))
+    if (pairs.length === 0) {
+      setReconcileDone(true)
+      return
+    }
+    setConfirmingReconcile(true)
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/${stmtId}/reconcile/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`✅ ${data.reconciled} movimientos conciliados`)
+        setReconcileDone(true)
+        // Reload movements to reflect new statuses
+        await openStatement(stmtId)
+        fetchStatements()
+      }
+    } catch (e) { alert('Error de conexión') }
+    finally { setConfirmingReconcile(false) }
+  }
+
+  const toggleMatchSelect = (movementId: string) => {
+    setSelectedMatches(prev => {
+      const next = new Set(Array.from(prev))
+      if (next.has(movementId)) next.delete(movementId); else next.add(movementId)
+      return next
+    })
+  }
+
   const pendingCount = activeMovements.filter(m => m.status === 'pending' || m.status === 'suggested').length
   const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
   const postedCount = activeMovements.filter(m => m.status === 'posted').length
+  const reconciledCount = activeMovements.filter(m => m.status === 'reconciled').length
   const activeStmt = activeStatement ? Object.values(statements).flat().find(s => s.id === activeStatement) : null
 
   return (
@@ -2881,89 +2851,319 @@ function EstadoCuentaTab() {
       </div>
       )}
 
-      {/* Movement Classification Panel */}
+      {/* 3-Step Wizard Panel */}
       {activeStatement && activeStmt && (
         <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)', backgroundColor: 'white' }}>
-          {/* Panel Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b flex-wrap gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
-            <div>
-              <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>
-                {activeStmt.original_filename}
-                <span className="ml-2 font-normal text-xs" style={{ color: 'var(--slate)' }}>
-                  {activeStmt.account_label}
-                </span>
-              </h3>
-              <div className="flex items-center gap-4 mt-1 flex-wrap">
-                <span className="text-xs" style={{ color: 'var(--ash)' }}>
-                  {activeMovements.length} movimientos
-                </span>
-                {pendingCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{pendingCount} sin clasificar</span>}
-                {confirmedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{confirmedCount} confirmados</span>}
-                {postedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{postedCount} publicados</span>}
+          {/* Panel Header with Step Indicator */}
+          <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>
+                  {activeStmt.original_filename}
+                  <span className="ml-2 font-normal text-xs" style={{ color: 'var(--slate)' }}>
+                    {activeStmt.account_label}
+                  </span>
+                </h3>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-xs" style={{ color: 'var(--ash)' }}>{activeMovements.length} movimientos</span>
+                  {reconciledCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">{reconciledCount} conciliados</span>}
+                  {pendingCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{pendingCount} sin clasificar</span>}
+                  {confirmedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{confirmedCount} confirmados</span>}
+                  {postedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{postedCount} publicados</span>}
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {(activeStmt.status === 'parsed' || pendingCount > 0) && (
-                <button
-                  onClick={() => classifyMovements(activeStatement)}
-                  disabled={classifying}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                  style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
-                >
-                  {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  {classifying ? 'Clasificando...' : 'Clasificar con IA'}
-                </button>
-              )}
-              {confirmedCount > 0 && (
-                <button
-                  onClick={() => postMovements(activeStatement)}
-                  disabled={posting}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                  style={{ backgroundColor: posting ? '#9ca3af' : '#059669' }}
-                >
-                  {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  {posting ? 'Publicando...' : `Publicar ${confirmedCount} confirmados`}
-                </button>
-              )}
-              <button onClick={() => { setActiveStatement(null); setActiveMovements([]) }}
+              <button onClick={() => { setActiveStatement(null); setActiveMovements([]); setWizardStep(1); setReconcileMatches([]); setReconcileDone(false) }}
                 className="p-1.5 rounded-lg hover:bg-stone-100 transition-colors">
                 <X className="w-4 h-4 text-stone-400" />
               </button>
             </div>
+
+            {/* Step Indicator */}
+            <div className="flex items-center gap-2 mt-4">
+              {[
+                { step: 1 as const, label: 'Conciliar', icon: ShieldCheck },
+                { step: 2 as const, label: 'Clasificar con IA', icon: Sparkles },
+                { step: 3 as const, label: 'Integrar', icon: CheckCircle2 },
+              ].map(({ step, label, icon: Icon }, i) => (
+                <React.Fragment key={step}>
+                  {i > 0 && <div className="flex-1 h-px" style={{ backgroundColor: wizardStep > i ? '#059669' : 'var(--stone)' }} />}
+                  <button
+                    onClick={() => setWizardStep(step)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      wizardStep === step
+                        ? 'text-white shadow-sm'
+                        : wizardStep > step
+                        ? 'text-emerald-700 bg-emerald-50'
+                        : 'text-stone-400 bg-stone-50'
+                    }`}
+                    style={wizardStep === step ? { backgroundColor: step === 1 ? '#0d9488' : step === 2 ? '#7c3aed' : '#059669' } : {}}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
           </div>
 
-          {/* Movements Table */}
+          {/* Step Content */}
           {movementsLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--navy-800)' }} /></div>
-          ) : activeMovements.length === 0 ? (
-            <div className="text-center py-12 px-6">
-              <p className="text-sm" style={{ color: 'var(--ash)' }}>No se encontraron movimientos</p>
-            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeMovements.map((mv) => (
-                    <MovementRow
-                      key={mv.id}
-                      movement={mv}
-                      accounts={allAccounts}
-                      onUpdate={updateMovement}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* STEP 1: Conciliar */}
+              {wizardStep === 1 && (
+                <div className="p-5 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      Busca coincidencias entre los movimientos del estado de cuenta y las transacciones existentes en la app.
+                    </p>
+                    {!reconcileDone && (
+                      <button
+                        onClick={() => reconcileMovements(activeStatement)}
+                        disabled={reconciling}
+                        className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
+                        style={{ backgroundColor: reconciling ? '#9ca3af' : '#0d9488' }}
+                      >
+                        {reconciling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                        {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Matches List */}
+                  {reconcileMatches.length > 0 && !reconcileDone && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                          {reconcileMatches.length} coincidencia{reconcileMatches.length !== 1 ? 's' : ''} encontrada{reconcileMatches.length !== 1 ? 's' : ''}
+                        </p>
+                        <button
+                          onClick={() => setSelectedMatches(
+                            selectedMatches.size === reconcileMatches.length
+                              ? new Set()
+                              : new Set(reconcileMatches.map(m => m.movement_id))
+                          )}
+                          className="text-xs font-medium px-3 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+                        >
+                          {selectedMatches.size === reconcileMatches.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        {reconcileMatches.map(match => (
+                          <div
+                            key={match.movement_id}
+                            onClick={() => toggleMatchSelect(match.movement_id)}
+                            className={`rounded-lg border p-3 cursor-pointer transition-all ${selectedMatches.has(match.movement_id) ? 'border-teal-400 bg-teal-50/50' : 'border-stone-200 hover:border-stone-300'}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input type="checkbox" checked={selectedMatches.has(match.movement_id)} onChange={() => {}} className="mt-1 w-4 h-4 rounded" />
+                              <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Movement (from bank statement) */}
+                                <div className="rounded-lg bg-stone-50 p-2.5">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 mb-1">Estado de Cuenta</p>
+                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.movement.description}</p>
+                                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                                    {match.movement.movement_date} · {match.movement.counterparty || '—'}
+                                  </p>
+                                  <p className={`text-sm font-bold mt-1 ${match.movement.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {match.movement.is_credit ? '+' : '-'}${Math.abs(match.movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                  </p>
+                                </div>
+                                {/* Transaction (from app) */}
+                                <div className="rounded-lg bg-blue-50 p-2.5">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-1">Transacción App</p>
+                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.transaction.description}</p>
+                                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                                    {match.transaction.transaction_date} · {match.transaction.counterparty_name || '—'}
+                                  </p>
+                                  <p className={`text-sm font-bold mt-1 ${match.transaction.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {match.transaction.is_income ? '+' : '-'}${Number(match.transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`flex-shrink-0 px-2 py-1 rounded-full text-[10px] font-bold ${
+                                match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+                                match.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {match.score}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Confirm button */}
+                      <div className="flex items-center justify-between pt-2">
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                          {selectedMatches.size} seleccionada{selectedMatches.size !== 1 ? 's' : ''} de {reconcileMatches.length}
+                        </p>
+                        <button
+                          onClick={() => confirmReconciliation(activeStatement)}
+                          disabled={confirmingReconcile}
+                          className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 bg-teal-600 hover:bg-teal-700 transition-colors disabled:opacity-50"
+                        >
+                          {confirmingReconcile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                          {confirmingReconcile ? 'Confirmando...' : `Confirmar ${selectedMatches.size} coincidencias`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No matches found */}
+                  {!reconciling && reconcileMatches.length === 0 && reconcileDone && (
+                    <div className="text-center py-8 rounded-lg bg-stone-50">
+                      <ClipboardCheck className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                      <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No se encontraron coincidencias</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Todos los movimientos pasarán a clasificación con IA</p>
+                    </div>
+                  )}
+
+                  {/* After confirmation done */}
+                  {reconcileDone && reconcileMatches.length > 0 && (
+                    <div className="text-center py-6 rounded-lg bg-teal-50">
+                      <Check className="w-8 h-8 mx-auto mb-2 text-teal-500" />
+                      <p className="text-sm font-medium text-teal-700">Conciliación completada</p>
+                      <p className="text-xs mt-1 text-teal-600">
+                        {pendingCount > 0
+                          ? `${pendingCount} movimientos sin conciliar pasarán a clasificación`
+                          : 'Todos los movimientos han sido conciliados'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Next step button */}
+                  {(reconcileDone || (!reconciling && reconcileMatches.length === 0 && pendingCount > 0)) && pendingCount > 0 && (
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => setWizardStep(2)}
+                        className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
+                        style={{ backgroundColor: '#7c3aed' }}
+                      >
+                        Siguiente: Clasificar con IA <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 2: Clasificar con IA */}
+              {wizardStep === 2 && (
+                <div className="space-y-0">
+                  {/* Action bar */}
+                  <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      {pendingCount > 0
+                        ? `${pendingCount} movimientos pendientes de clasificar`
+                        : confirmedCount > 0
+                        ? `${confirmedCount} movimientos confirmados, listos para integrar`
+                        : 'Todos los movimientos han sido procesados'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {pendingCount > 0 && (
+                        <button
+                          onClick={() => classifyMovements(activeStatement)}
+                          disabled={classifying}
+                          className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                          style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
+                        >
+                          {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          {classifying ? 'Clasificando...' : 'Clasificar con IA'}
+                        </button>
+                      )}
+                      {confirmedCount > 0 && (
+                        <button
+                          onClick={() => setWizardStep(3)}
+                          className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                        >
+                          Siguiente: Integrar <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Movements table - only show non-reconciled */}
+                  {activeMovements.filter(m => m.status !== 'reconciled').length === 0 ? (
+                    <div className="text-center py-12 px-6">
+                      <Check className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
+                      <p className="text-sm font-medium text-emerald-700">Todos los movimientos fueron conciliados en el paso anterior</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>No hay movimientos pendientes de clasificar</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
+                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeMovements.filter(m => m.status !== 'reconciled').map((mv) => (
+                            <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 3: Integrar */}
+              {wizardStep === 3 && (
+                <div className="p-5 space-y-4">
+                  <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                    Publica los movimientos confirmados como nuevas transacciones en los estados financieros.
+                  </p>
+
+                  {/* Summary */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg bg-teal-50 p-3 text-center">
+                      <p className="text-2xl font-bold text-teal-700">{reconciledCount}</p>
+                      <p className="text-xs text-teal-600">Conciliados</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 p-3 text-center">
+                      <p className="text-2xl font-bold text-emerald-700">{confirmedCount}</p>
+                      <p className="text-xs text-emerald-600">Listos para publicar</p>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 p-3 text-center">
+                      <p className="text-2xl font-bold text-blue-700">{postedCount}</p>
+                      <p className="text-xs text-blue-600">Ya publicados</p>
+                    </div>
+                  </div>
+
+                  {confirmedCount > 0 ? (
+                    <button
+                      onClick={() => postMovements(activeStatement)}
+                      disabled={posting}
+                      className="w-full px-4 py-3 text-sm font-medium text-white rounded-lg flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    >
+                      {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                      {posting ? 'Publicando...' : `Publicar ${confirmedCount} transacciones en contabilidad`}
+                    </button>
+                  ) : postedCount > 0 ? (
+                    <div className="text-center py-6 rounded-lg bg-emerald-50">
+                      <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
+                      <p className="text-sm font-medium text-emerald-700">Todos los movimientos han sido integrados</p>
+                    </div>
+                  ) : pendingCount > 0 ? (
+                    <div className="text-center py-6 rounded-lg bg-amber-50">
+                      <Sparkles className="w-8 h-8 mx-auto mb-2 text-amber-400" />
+                      <p className="text-sm font-medium text-amber-700">Primero clasifica y confirma los movimientos en el Paso 2</p>
+                      <button onClick={() => setWizardStep(2)} className="text-xs mt-2 text-purple-600 hover:underline font-medium">
+                        Ir al Paso 2
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
