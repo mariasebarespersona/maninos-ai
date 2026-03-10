@@ -210,8 +210,8 @@ export default function ClientDetailPage() {
           setNotes(Array.isArray(notesData) ? notesData : [])
         }
         if (teamRes.ok) {
-          const users = await teamRes.json()
-          const userList = Array.isArray(users) ? users : []
+          const teamData = await teamRes.json()
+          const userList = Array.isArray(teamData) ? teamData : (teamData.users || [])
           setTeamUsers(userList)
           // Find the logged-in user's ID in the team list
           if (authUser?.email && userList.length > 0) {
