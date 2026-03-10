@@ -2481,6 +2481,17 @@ function EstadoCuentaTab() {
     finally { setUploading(null) }
   }
 
+  // Reload only movements without resetting wizard state
+  const reloadMovements = async (stmtId: string) => {
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/${stmtId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setActiveMovements(data.movements || [])
+      }
+    } catch (e) { console.error(e) }
+  }
+
   const openStatement = async (stmtId: string) => {
     setActiveStatement(stmtId)
     setMovementsLoading(true)
@@ -2502,7 +2513,7 @@ function EstadoCuentaTab() {
     try {
       const res = await fetch(`/api/accounting/bank-statements/${stmtId}/classify`, { method: 'POST' })
       if (res.ok) {
-        await openStatement(stmtId)
+        await reloadMovements(stmtId)
         fetchStatements()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -2541,7 +2552,7 @@ function EstadoCuentaTab() {
           msg += `\n\nDetalles:\n` + data.errors.slice(0, 5).map((e: string) => `• ${e}`).join('\n')
         }
         alert(msg)
-        await openStatement(stmtId)
+        await reloadMovements(stmtId)
         fetchStatements()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -2605,8 +2616,8 @@ function EstadoCuentaTab() {
         const data = await res.json()
         alert(`✅ ${data.reconciled} movimientos conciliados`)
         setReconcileDone(true)
-        // Reload movements to reflect new statuses
-        await openStatement(stmtId)
+        // Reload movements without resetting wizard state
+        await reloadMovements(stmtId)
         fetchStatements()
       }
     } catch (e) { alert('Error de conexión') }
@@ -3086,6 +3097,19 @@ function EstadoCuentaTab() {
                     </div>
                   </div>
 
+                  {/* Reconciled movements banner */}
+                  {reconciledCount > 0 && (
+                    <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0fdfa' }}>
+                      <ShieldCheck className="w-4 h-4 text-teal-600" />
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-teal-700">
+                          {reconciledCount} movimiento{reconciledCount !== 1 ? 's' : ''} conciliado{reconciledCount !== 1 ? 's' : ''} con transacciones existentes
+                        </p>
+                      </div>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-teal-100 text-teal-700">✓ Conciliados</span>
+                    </div>
+                  )}
+
                   {/* Movements table - only show non-reconciled */}
                   {activeMovements.filter(m => m.status !== 'reconciled').length === 0 ? (
                     <div className="text-center py-12 px-6">
@@ -3191,6 +3215,7 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
   const isPosted = mv.status === 'posted'
   const isSkipped = mv.status === 'skipped'
   const isConfirmed = mv.status === 'confirmed'
+  const isReconciled = mv.status === 'reconciled'
 
   const filteredAccounts = accountSearch
     ? accounts.filter((a: any) =>
@@ -3221,7 +3246,7 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
   }
 
   return (
-    <tr className={`border-b transition-colors ${isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
+    <tr className={`border-b transition-colors ${isReconciled ? 'bg-teal-50/50' : isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
       style={{ borderColor: '#f0f0f0' }}>
       {/* Date */}
       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -3323,6 +3348,7 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
       {/* Status */}
       <td className="px-3 py-2.5 text-center">
         {mv.status === 'posted' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700 font-medium">Publicado</span>}
+        {mv.status === 'reconciled' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-teal-100 text-teal-700 font-medium">✓ Conciliado</span>}
         {mv.status === 'confirmed' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-100 text-emerald-700 font-medium">Confirmado</span>}
         {mv.status === 'suggested' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-medium">Sugerido</span>}
         {mv.status === 'pending' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-600 font-medium">Pendiente</span>}

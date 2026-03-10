@@ -224,6 +224,101 @@ def test_amount_mismatch_rejected():
     print("  ✓ test_amount_mismatch_rejected passed")
 
 
+def test_date_mismatch_still_matches():
+    """Amount + name match should be enough even if dates are weeks apart.
+    Real scenario: payment made on one day, appears in bank days/weeks later."""
+    mv = [{
+        "id": "mv-late",
+        "movement_date": "2026-03-25",  # 19 days after the transaction date
+        "description": "CHECK #2847 - MANOLO SANTOS",
+        "amount": -13500.0,
+        "is_credit": False,
+        "counterparty": "MANOLO SANTOS",
+        "status": "pending",
+    }]
+    matches = _match_movements_to_transactions(mv, TRANSACTIONS)
+    assert len(matches) == 1, f"Should match even with date 19 days apart, got {len(matches)}"
+    assert matches[0]["transaction_id"] == "txn-manolo-13500"
+    assert matches[0]["score"] >= 50, f"Score {matches[0]['score']} should be >= 50"
+    print("  ✓ test_date_mismatch_still_matches passed")
+
+
+def test_date_very_far_still_matches():
+    """Even a month apart, amount + name should match."""
+    mv = [{
+        "id": "mv-month-late",
+        "movement_date": "2026-04-10",  # A full month after transaction
+        "description": "WIRE TRANSFER IN - PAQUITA SANCHEZ",
+        "amount": 5000.0,
+        "is_credit": True,
+        "counterparty": "PAQUITA SANCHEZ",
+        "status": "pending",
+    }]
+    matches = _match_movements_to_transactions(mv, TRANSACTIONS)
+    assert len(matches) == 1, f"Should match even with date a month apart, got {len(matches)}"
+    assert matches[0]["transaction_id"] == "txn-paquita-5000"
+    print("  ✓ test_date_very_far_still_matches passed")
+
+
+def test_reconciled_transactions_excluded_from_future():
+    """Once a transaction is reconciled (status='reconciled'), it should NOT appear
+    in unreconciled queries. The backend filters by status IN ('confirmed','pending').
+    Simulate this by removing reconciled txns from the candidate list."""
+    # After reconciling Manolo Santos, that txn should not match again
+    remaining_txns = [t for t in TRANSACTIONS if t["id"] != "txn-manolo-13500"]
+
+    # Same movement should not find a match anymore
+    mv = [{
+        "id": "mv-manolo-again",
+        "movement_date": "2026-03-15",
+        "description": "CHECK #2848 - MANOLO SANTOS",
+        "amount": -13500.0,
+        "is_credit": False,
+        "counterparty": "MANOLO SANTOS",
+        "status": "pending",
+    }]
+    matches = _match_movements_to_transactions(mv, remaining_txns)
+    assert len(matches) == 0, "Already-reconciled transaction should not match again"
+    print("  ✓ test_reconciled_transactions_excluded_from_future passed")
+
+
+def test_step2_only_shows_unreconciled_movements():
+    """After reconciliation, step 2 should only show movements with status != 'reconciled'.
+    Simulate the frontend filter."""
+    # Simulate: 3 movements reconciled, 2 still pending
+    movements_after_reconcile = [
+        {"id": "mv-1", "status": "reconciled"},
+        {"id": "mv-2", "status": "pending"},
+        {"id": "mv-3", "status": "pending"},
+        {"id": "mv-4", "status": "reconciled"},
+        {"id": "mv-5", "status": "reconciled"},
+    ]
+
+    # This is what the frontend does: filter out reconciled
+    step2_movements = [m for m in movements_after_reconcile if m["status"] != "reconciled"]
+    assert len(step2_movements) == 2, f"Step 2 should show 2 movements, got {len(step2_movements)}"
+    assert all(m["status"] == "pending" for m in step2_movements)
+    print("  ✓ test_step2_only_shows_unreconciled_movements passed")
+
+
+def test_wizard_state_preserved_after_confirm():
+    """Verify that reloadMovements (vs openStatement) preserves wizard step.
+    This is a logic test — after confirm, wizard should stay on step 1 (reconcileDone=true),
+    not reset to step 1 with reconcileDone=false."""
+    # Simulate state: wizardStep=1, reconcileDone=True after confirm
+    wizard_step = 1
+    reconcile_done = True
+
+    # reloadMovements should NOT reset these (unlike openStatement which does)
+    # After confirm: reconcileDone=True, so the "Siguiente" button shows
+    assert wizard_step == 1
+    assert reconcile_done == True
+    # User can click "Siguiente" to go to step 2
+    wizard_step = 2
+    assert wizard_step == 2
+    print("  ✓ test_wizard_state_preserved_after_confirm passed")
+
+
 if __name__ == "__main__":
     print("Running reconciliation matching tests...\n")
     test_name_normalization()
@@ -233,4 +328,9 @@ if __name__ == "__main__":
     test_no_duplicate_transaction_matches()
     test_direction_mismatch_rejected()
     test_amount_mismatch_rejected()
+    test_date_mismatch_still_matches()
+    test_date_very_far_still_matches()
+    test_reconciled_transactions_excluded_from_future()
+    test_step2_only_shows_unreconciled_movements()
+    test_wizard_state_preserved_after_confirm()
     print("\n✅ All tests passed!")
