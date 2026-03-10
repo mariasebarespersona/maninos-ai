@@ -2576,6 +2576,8 @@ function EstadoCuentaTab() {
         setReconcileMatches(matches)
         // Auto-select high confidence matches
         setSelectedMatches(new Set(matches.filter(m => m.confidence === 'high').map(m => m.movement_id)))
+        // If no matches, mark as done so UI shows the "no matches" message
+        if (matches.length === 0) setReconcileDone(true)
       } else {
         const err = await res.json().catch(() => ({}))
         alert(`Error: ${err.detail || 'Error al buscar coincidencias'}`)
