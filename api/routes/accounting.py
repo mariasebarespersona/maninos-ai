@@ -2577,11 +2577,26 @@ async def reconcile_statement_movements(statement_id: str):
         return {"matches": [], "unmatched_count": 0, "message": "No hay movimientos pendientes"}
 
     # Get unreconciled transactions (confirmed or pending, not yet reconciled)
-    txn_query = sb.table("accounting_transactions").select("*").in_("status", ["confirmed", "pending"])
+    # First try with bank_account_id, if no results fallback to ALL unreconciled
+    unreconciled_txns = []
     if bank_account_id:
-        txn_query = txn_query.eq("bank_account_id", bank_account_id)
-    txns = txn_query.order("transaction_date", desc=True).execute()
-    unreconciled_txns = txns.data or []
+        txns = (sb.table("accounting_transactions").select("*")
+                .in_("status", ["confirmed", "pending"])
+                .eq("bank_account_id", bank_account_id)
+                .order("transaction_date", desc=True).execute())
+        unreconciled_txns = txns.data or []
+
+    # Fallback: also include transactions with NULL bank_account_id (most common case)
+    if not unreconciled_txns or bank_account_id:
+        txns_null = (sb.table("accounting_transactions").select("*")
+                     .in_("status", ["confirmed", "pending"])
+                     .is_("bank_account_id", "null")
+                     .order("transaction_date", desc=True).execute())
+        # Merge, avoiding duplicates
+        existing_ids = {t["id"] for t in unreconciled_txns}
+        for t in (txns_null.data or []):
+            if t["id"] not in existing_ids:
+                unreconciled_txns.append(t)
 
     if not unreconciled_txns:
         return {
@@ -2590,20 +2605,75 @@ async def reconcile_statement_movements(statement_id: str):
             "message": "No hay transacciones existentes para conciliar",
         }
 
-    # Matching algorithm
+    matches = _match_movements_to_transactions(movements.data, unreconciled_txns)
+
+    unmatched_count = len(movements.data) - len(matches)
+    return {
+        "matches": matches,
+        "unmatched_count": unmatched_count,
+        "message": f"{len(matches)} coincidencias encontradas, {unmatched_count} sin match",
+    }
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize a counterparty name for comparison."""
+    import re
+    name = name.lower().strip()
+    # Remove common prefixes/suffixes
+    for noise in ["zelle payment from ", "wire transfer in - ", "wire transfer - ",
+                   "check #", "ach debit - ", "ach credit - ", "transfer from ",
+                   "transfer to ", "payment from ", "payment to ",
+                   "venta contado - ", "compra propiedad: ", "compra: "]:
+        name = name.replace(noise, "")
+    # Remove non-alphanumeric except spaces
+    name = re.sub(r'[^a-záéíóúñü\s]', '', name).strip()
+    return name
+
+
+def _name_similarity(name1: str, name2: str) -> float:
+    """Calculate similarity between two names (0.0 to 1.0)."""
+    n1 = _normalize_name(name1)
+    n2 = _normalize_name(name2)
+    if not n1 or not n2:
+        return 0.0
+
+    # Exact match after normalization
+    if n1 == n2:
+        return 1.0
+
+    # One contains the other
+    if n1 in n2 or n2 in n1:
+        return 0.9
+
+    # Token overlap
+    tokens1 = set(n1.split())
+    tokens2 = set(n2.split())
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    overlap = len(tokens1 & tokens2)
+    total = max(len(tokens1), len(tokens2))
+    return overlap / total if total > 0 else 0.0
+
+
+def _match_movements_to_transactions(movements: list, transactions: list) -> list:
+    """Match bank statement movements against existing accounting transactions.
+    Returns list of match dicts with scores."""
     matches = []
     used_txn_ids = set()
 
-    for mv in movements.data:
+    for mv in movements:
         mv_amount = abs(float(mv.get("amount", 0)))
         mv_is_credit = mv.get("is_credit", False)
         mv_date_str = mv.get("movement_date", "")
-        mv_counterparty = (mv.get("counterparty") or "").lower().strip()
+        mv_counterparty = mv.get("counterparty") or ""
+        # Also check description for counterparty clues
+        mv_description = mv.get("description") or ""
 
         best_match = None
         best_score = 0
 
-        for txn in unreconciled_txns:
+        for txn in transactions:
             if txn["id"] in used_txn_ids:
                 continue
 
@@ -2611,57 +2681,64 @@ async def reconcile_statement_movements(statement_id: str):
             txn_amount = abs(float(txn.get("amount", 0)))
             txn_is_income = txn.get("is_income", False)
 
-            # Amount match (exact = 50 pts, close within 1% = 30 pts)
+            # Direction match — must agree (credit=income, debit=expense)
+            if mv_is_credit != txn_is_income:
+                continue
+
+            # Amount match (exact = 50 pts, within 1% = 35 pts, within 5% = 15 pts)
             if mv_amount > 0 and txn_amount > 0:
+                diff_pct = abs(mv_amount - txn_amount) / max(mv_amount, txn_amount)
                 if abs(mv_amount - txn_amount) < 0.01:
                     score += 50
-                elif abs(mv_amount - txn_amount) / max(mv_amount, txn_amount) < 0.01:
-                    score += 30
+                elif diff_pct < 0.01:
+                    score += 35
+                elif diff_pct < 0.05:
+                    score += 15
+                else:
+                    continue  # Amount too different, skip
 
-            # Direction match (credit=income, debit=expense)
-            if mv_is_credit == txn_is_income:
-                score += 5
-            else:
-                continue  # Skip if direction doesn't match
-
-            # Date proximity
+            # Date proximity (max 30 pts)
             try:
-                from datetime import datetime as _dt
-                mv_date = _dt.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
+                mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
                 txn_date_str = txn.get("transaction_date", "")
-                txn_date = _dt.strptime(txn_date_str, "%Y-%m-%d").date() if txn_date_str else None
+                txn_date = datetime.strptime(txn_date_str, "%Y-%m-%d").date() if txn_date_str else None
                 if mv_date and txn_date:
-                    diff = abs((mv_date - txn_date).days)
-                    if diff == 0:
+                    diff_days = abs((mv_date - txn_date).days)
+                    if diff_days == 0:
                         score += 30
-                    elif diff <= 1:
+                    elif diff_days <= 1:
                         score += 25
-                    elif diff <= 3:
+                    elif diff_days <= 3:
                         score += 15
-                    elif diff <= 7:
-                        score += 5
+                    elif diff_days <= 7:
+                        score += 8
+                    elif diff_days <= 14:
+                        score += 3
             except Exception:
                 pass
 
-            # Counterparty similarity
-            txn_counterparty = (txn.get("counterparty_name") or "").lower().strip()
-            if mv_counterparty and txn_counterparty:
-                # Simple token overlap
-                mv_tokens = set(mv_counterparty.split())
-                txn_tokens = set(txn_counterparty.split())
-                if mv_tokens and txn_tokens:
-                    overlap = len(mv_tokens & txn_tokens)
-                    total = max(len(mv_tokens), len(txn_tokens))
-                    if overlap > 0:
-                        score += int(15 * overlap / total)
+            # Counterparty similarity (max 20 pts)
+            txn_counterparty = txn.get("counterparty_name") or ""
+            txn_description = txn.get("description") or ""
 
-            if score > best_score and score >= 50:
+            # Try matching movement counterparty against transaction counterparty
+            best_name_sim = 0.0
+            for mv_name in [mv_counterparty, mv_description]:
+                for txn_name in [txn_counterparty, txn_description]:
+                    if mv_name and txn_name:
+                        sim = _name_similarity(mv_name, txn_name)
+                        best_name_sim = max(best_name_sim, sim)
+
+            score += int(20 * best_name_sim)
+
+            if score > best_score:
                 best_score = score
                 best_match = txn
 
-        if best_match:
+        # Threshold: amount match (50) alone is enough for a candidate
+        if best_match and best_score >= 50:
             used_txn_ids.add(best_match["id"])
-            confidence = "high" if best_score >= 75 else "medium" if best_score >= 60 else "low"
+            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
             matches.append({
                 "movement_id": mv["id"],
                 "transaction_id": best_match["id"],
@@ -2671,12 +2748,7 @@ async def reconcile_statement_movements(statement_id: str):
                 "transaction": best_match,
             })
 
-    unmatched_count = len(movements.data) - len(matches)
-    return {
-        "matches": matches,
-        "unmatched_count": unmatched_count,
-        "message": f"{len(matches)} coincidencias encontradas, {unmatched_count} sin match",
-    }
+    return matches
 
 
 @router.post("/bank-statements/{statement_id}/reconcile/confirm")
