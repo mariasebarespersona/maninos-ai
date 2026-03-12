@@ -2943,17 +2943,15 @@ function EstadoCuentaTab() {
                     <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
                       Busca coincidencias entre los movimientos del estado de cuenta y las transacciones existentes en la app.
                     </p>
-                    {!reconcileDone && (
-                      <button
-                        onClick={() => reconcileMovements(activeStatement)}
-                        disabled={reconciling}
-                        className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
-                        style={{ backgroundColor: reconciling ? '#9ca3af' : '#0d9488' }}
-                      >
-                        {reconciling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                        {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { setReconcileDone(false); reconcileMovements(activeStatement) }}
+                      disabled={reconciling}
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
+                      style={{ backgroundColor: reconciling ? '#9ca3af' : '#0d9488' }}
+                    >
+                      {reconciling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                      {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
+                    </button>
                   </div>
 
                   {/* Matches List */}
