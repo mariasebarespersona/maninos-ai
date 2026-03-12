@@ -1327,11 +1327,12 @@ async def get_income_statement(
         accounts = (sb.table("accounting_accounts").select("*")
                     .eq("is_active", True).order("code").execute()).data or []
 
-    # Compute balances from transactions in period
+    # Compute balances from transactions in period (only bank_statement source)
     balances = {}
     try:
         q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
             .neq("status", "voided") \
+            .eq("source", "bank_statement") \
             .gte("transaction_date", sd).lte("transaction_date", ed)
         if yard_id:
             q = q.eq("yard_id", yard_id)
@@ -1389,11 +1390,12 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
         accounts = (sb.table("accounting_accounts").select("*")
                     .eq("is_active", True).order("code").execute()).data or []
 
-    # Compute cumulative balances from ALL transactions up to as_of_date
+    # Compute cumulative balances from bank_statement transactions up to as_of_date
     balances = {}
     try:
         q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
             .neq("status", "voided") \
+            .eq("source", "bank_statement") \
             .lte("transaction_date", as_of)
         if yard_id:
             q = q.eq("yard_id", yard_id)
@@ -1402,11 +1404,7 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             aid = t.get("account_id")
             if aid:
                 amt = float(t["amount"])
-                # For assets: debits increase; for liabilities/equity: credits increase
-                if t["is_income"]:
-                    balances[aid] = balances.get(aid, 0) + amt
-                else:
-                    balances[aid] = balances.get(aid, 0) + amt
+                balances[aid] = balances.get(aid, 0) + amt
     except Exception as e:
         logger.warning(f"[balance-sheet] Error fetching transactions: {e}")
 
@@ -1835,7 +1833,8 @@ async def get_cash_flow_statement(
     txns = (sb.table("accounting_transactions")
             .select("*, accounting_accounts(account_type, category)")
             .gte("transaction_date", sd).lte("transaction_date", ed)
-            .neq("status", "voided").execute()).data or []
+            .neq("status", "voided")
+            .eq("source", "bank_statement").execute()).data or []
 
     sales = (sb.table("sales")
              .select("sale_price, sale_type, status, created_at")
@@ -2986,6 +2985,7 @@ async def post_confirmed_movements(statement_id: str):
                 sb.table("accounting_transactions").update({
                     "account_id": account_id,
                     "transaction_type": txn_type,
+                    "source": "bank_statement",
                 }).eq("id", mv["matched_transaction_id"]).execute()
                 sb.table("statement_movements").update({
                     "status": "posted",
@@ -3007,6 +3007,7 @@ async def post_confirmed_movements(statement_id: str):
                     "description": mv.get("description", "")[:500],
                     "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
                     "status": "confirmed",
+                    "source": "bank_statement",
                 }
                 txn_data = {k: v for k, v in txn_data.items() if v is not None}
 
