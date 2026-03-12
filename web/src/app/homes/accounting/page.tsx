@@ -57,6 +57,7 @@ interface BankAccount {
   id: string; name: string; bank_name?: string; account_number_last4?: string
   account_type: string; current_balance: number; is_primary: boolean
   zelle_email?: string; zelle_phone?: string; routing_number?: string
+  accounting_account_id?: string
 }
 
 interface YardBreakdown {
