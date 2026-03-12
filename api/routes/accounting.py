@@ -2773,9 +2773,10 @@ async def confirm_reconciliation(statement_id: str, data: dict):
             continue
 
         try:
-            # Update movement: mark as reconciled
+            # Update movement: mark as reconciled and link to matched transaction
             mv_result = sb.table("statement_movements").update({
                 "status": "reconciled",
+                "matched_transaction_id": txn_id,
             }).eq("id", mv_id).execute()
             logger.info(f"[reconcile-confirm] Movement update result: {len(mv_result.data or [])} rows")
 
