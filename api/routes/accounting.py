@@ -3344,38 +3344,24 @@ Also extract these metadata fields (include them in the FIRST movement only):
 - "beginning_balance": number
 - "ending_balance": number"""
 
-        prompt = f"""You are parsing a bank statement for Maninos Homes LLC ({account_key}).
-
-Extract EVERY financial movement/transaction from this bank statement text chunk.
-
-For EACH movement, return a JSON object with these fields:
-- "date": string in "YYYY-MM-DD" format
-- "description": the full description of the transaction (combine multi-line descriptions)
-- "amount": number (POSITIVE for deposits/credits, NEGATIVE for withdrawals/debits)
-- "is_credit": boolean (true for deposits/money in, false for withdrawals/money out)
-- "reference": confirmation number, check number, wire TRN, etc. (if found)
-- "payment_method": one of "zelle", "wire", "check", "card", "ach", "transfer", "merchant", "other"
-- "counterparty": the name of the person/company involved (if identifiable)
+        prompt = f"""Parse this bank statement for Maninos Homes LLC ({account_key}).
+Extract EVERY transaction as a JSON object:
+- "date": "YYYY-MM-DD"
+- "description": full description (merge multi-line entries)
+- "amount": positive for deposits, negative for withdrawals
+- "is_credit": true for deposits, false for withdrawals
+- "reference": check #, confirmation #, wire TRN (if found)
+- "payment_method": "zelle"|"wire"|"check"|"card"|"ach"|"transfer"|"merchant"|"other"
+- "counterparty": person/company name (if identifiable)
 {metadata_instruction}
 
 RULES:
-- Include ALL movements, don't skip any
-- Amounts for withdrawals/debits MUST be NEGATIVE
-- Amounts for deposits/credits MUST be POSITIVE
-- Skip summary lines, totals, running balance columns, headers, legal/regulatory text, ads — only extract actual transactions
-- If a section says "continued on the next page" or similar, just extract what's on this chunk
+- Extract ALL transactions. Skip totals, running balances, headers, legal text, ads, check images.
+- Normalize any date format to YYYY-MM-DD.
+- Normalize amounts: debits are NEGATIVE, credits are POSITIVE (regardless of bank format — parentheses, D/C codes, separate columns, etc.)
+- Merge multi-line transactions (wire transfers, ACH) into one entry.
 
-BANK STATEMENT FORMAT INTELLIGENCE:
-Different banks format statements differently. You must adapt to ANY format:
-- **Date formats**: MM/DD/YY, MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, "Dec 01, 2025", "01 Dec 25", etc. Always output "YYYY-MM-DD".
-- **Amount formats**: Some banks show positive amounts with a minus sign for debits (-1,500.00). Some use parentheses for debits (1,500.00). Some have separate Debit/Credit columns. Some show all amounts positive and indicate direction with a D/C code or separate sections. Always normalize to signed numbers.
-- **Section layouts**: Bank of America uses "Deposits and other credits" / "Withdrawals and other debits" sections. Chase uses a single chronological list with +/- amounts. Wells Fargo uses "Additions" / "Subtractions". Citi uses "Credits" / "Debits". Capital One uses a running ledger. Adapt to whatever layout you see.
-- **Multi-line transactions**: Wire transfers, ACH payments, and card transactions often span 2-3 lines. Merge them into one description.
-- **Transaction types to detect**: Zelle, wire transfer (in/out), ACH/direct deposit, check (with #), debit card purchase, credit card refund, merchant services, online transfer, mobile deposit, service fee, interest, overdraft fee, ATM.
-- **Running balance column**: Some statements show a running balance after each transaction — do NOT include that as a separate movement.
-- **Check images / daily balances**: Skip these sections entirely.
-
-Return ONLY a valid JSON array. No other text, no markdown fences.
+Return ONLY a valid JSON array. No markdown fences.
 
 BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
 {chunk}"""
@@ -3384,18 +3370,7 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert bank statement parser with deep knowledge of every US bank's statement format "
-                            "(Bank of America, Chase, Wells Fargo, Citi, Capital One, BBVA, PNC, TD Bank, US Bank, Regions, "
-                            "credit unions, etc.). You can parse statements in English or Spanish. "
-                            "You understand that bank statements come in wildly different formats: some use tables, some use "
-                            "running text, some separate debits/credits into sections, some use a single chronological list. "
-                            "You always return valid JSON arrays. Never wrap output in markdown code fences. "
-                            "You never skip transactions and never confuse running balances with transaction amounts."
-                        ),
-                    },
+                    {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, etc.) in English or Spanish. Return valid JSON arrays only."},
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=8192,
@@ -3467,62 +3442,47 @@ async def _ai_classify_movements(
         movements_lines.append(line)
     movements_text = "\n".join(movements_lines)
 
-    prompt = f"""You are an expert accountant for Maninos Homes LLC, a mobile home sales company in Texas.
+    prompt = f"""Classify each bank movement into the correct QuickBooks account for Maninos Homes LLC (mobile home sales, Texas).
 
-For each bank movement below, suggest the most appropriate accounting account from our Chart of Accounts.
+RULES:
+- Use ONLY account codes from the chart below. No other codes.
+- Credits (deposits) → income accounts (4xxxx)
+- Debits (withdrawals) → expense/COGS accounts (5xxxx, 6xxxx, 8xxxx)
+- Bank transfers → transaction_type "bank_transfer", closest expense account.
 
-IMPORTANT RULES:
-- ALWAYS classify to INCOME or EXPENSE accounts (codes starting with 4xxxx, 5xxxx, 6xxxx, or 8xxxx).
-- NEVER classify to Balance Sheet accounts (assets, liabilities, equity — codes 1xxxx, 2xxxx, 3xxxx).
-- Bank statement movements represent revenues earned or expenses incurred, NOT balance sheet changes.
-- Deposits/credits = classify to an INCOME account (code 4xxxx)
-- Withdrawals/debits = classify to an EXPENSE or COGS account (codes 5xxxx, 6xxxx, 8xxxx)
-- For transfers between bank accounts, use transaction_type "bank_transfer" and the closest expense account.
-- Use EXACT account codes from the chart below. Do NOT invent codes.
-- ONLY use accounts from the chart below. NEVER use codes starting with ING-, GAS-, ACT-, PAS-.
-
-CHART OF ACCOUNTS (QuickBooks):
+CHART OF ACCOUNTS:
 {accounts_reference}
 
-RECONCILED MOVEMENTS:
-- Some movements are marked "RECONCILED with app transaction: ..." — this means they matched an existing transaction in our system.
-- The app transaction description is THE MOST RELIABLE source for classification. Use it as primary context.
-- "Venta contado" = cash sale → use 40000 House Sales
-- "Venta RTO" or "Capital" = RTO sale → use 40000 House Sales
-- "Compra propiedad" or "Compra:" = house purchase → use 50020 House Sales - COGS
-- "Renovación" = renovation expense → use 61700 Supplies & materials or 61300 Other Contractors
-- "Depósito" from a client = use 40000 House Sales
+CLASSIFICATION GUIDE FOR RECONCILED MOVEMENTS:
+Movements marked "RECONCILED with app transaction: ..." have a known internal description. Use it as the PRIMARY source:
+- "Venta contado" or "Depósito" → 40000 House Sales
+- "Venta RTO" or "Capital" → 40000 House Sales
+- "Compra propiedad" or "Compra:" → 50020 House Sales - COGS
+- "Renovación" → 61700 Supplies & materials or 61300 Other Contractors
 
-CONTEXT about Maninos Homes:
-- They buy, renovate, and sell mobile homes (manufactured homes)
-- Locations: Conroe, Houston, Dallas
-- Common expenses: house purchases, renovations, moving/transport, commissions, yard rent, insurance, marketing
-- Common income: house sales (cash), RTO sales to Capital, client deposits
-- They use Zelle extensively for payments
-- Wire transfers are often for house purchases from counties (Brazoria County, Liberty County)
-- "Movida" = moving a mobile home to a new location
-- "Comisión" = sales commission to an employee
-- "Semana" / "Quincena" = weekly/biweekly employee payment
+BUSINESS CONTEXT:
+- Buys, renovates, and resells mobile homes (Conroe, Houston, Dallas)
+- Zelle = common payment method
+- Wire transfers often = house purchases from counties
+- "Movida" = moving a house, "Comisión" = sales commission, "Semana"/"Quincena" = payroll
 
-{"HUMAN CORRECTIONS (learn from these — the accountant overrode the AI suggestion, so follow the human's pattern):" + chr(10) + corrections_reference + chr(10) if corrections_reference else ""}MOVEMENTS TO CLASSIFY:
+{f"HUMAN CORRECTIONS (the accountant overrode the AI — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS:
 {movements_text}
 
-For EACH movement (numbered), respond with a JSON array of objects:
+Return a JSON array with one object per movement (in order):
 {{
-  "account_code": "the EXACT QuickBooks account code from the chart above (e.g. 40000, 50020, 60850, 80010). NEVER use ING-xxx or GAS-xxx codes.",
+  "account_code": "exact code from chart above",
   "account_name": "account name",
-  "transaction_type": one of ["sale_cash", "sale_rto_capital", "deposit_received", "other_income", "purchase_house", "renovation", "moving_transport", "commission", "operating_expense", "other_expense", "bank_transfer", "adjustment"],
-  "confidence": 0.0-1.0 (how confident you are),
-  "reasoning": "brief explanation of why this account was chosen",
-  "needs_subcategory": true/false (if more detail is needed from the accountant)
-}}
-
-Return ONLY the JSON array with one object per movement in order. No other text."""
+  "transaction_type": "sale_cash"|"sale_rto_capital"|"deposit_received"|"other_income"|"purchase_house"|"renovation"|"moving_transport"|"commission"|"operating_expense"|"other_expense"|"bank_transfer"|"adjustment",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation",
+  "needs_subcategory": true/false
+}}"""
 
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an expert accountant. Always return valid JSON arrays."},
+            {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
         max_tokens=4096,
