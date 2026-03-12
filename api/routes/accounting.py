@@ -1552,10 +1552,10 @@ async def save_financial_statement(data: SaveStatementRequest):
 
         # Auto-reset: clear bank_statement transactions after saving snapshot
         try:
-            # Unlink statement_movements
+            # Clear ALL FK references on statement_movements
             sb.table("statement_movements") \
-                .update({"transaction_id": None}) \
-                .eq("status", "posted") \
+                .update({"transaction_id": None, "matched_transaction_id": None}) \
+                .neq("status", "pending") \
                 .execute()
             sb.table("statement_movements") \
                 .update({"status": "confirmed"}) \
@@ -1565,7 +1565,7 @@ async def save_financial_statement(data: SaveStatementRequest):
                 .update({"posted_movements": 0, "status": "review"}) \
                 .in_("status", ["completed", "partial"]) \
                 .execute()
-            # Clear linked_transaction_id references before deleting (avoid FK constraint)
+            # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
             sb.table("accounting_transactions") \
                 .update({"linked_transaction_id": None}) \
                 .eq("source", "bank_statement") \
@@ -2414,10 +2414,10 @@ async def reset_homes_account_balances(request: Request):
             reset_count += 1
 
         # 2. Clear bank_statement transactions (the actual data behind reports)
-        # First unlink statement_movements so FK doesn't block delete
+        # Clear ALL FK references on statement_movements that point to transactions
         sb.table("statement_movements") \
-            .update({"transaction_id": None}) \
-            .eq("status", "posted") \
+            .update({"transaction_id": None, "matched_transaction_id": None}) \
+            .neq("status", "pending") \
             .execute()
 
         # Reset posted movements back to confirmed (so they can be re-integrated)
@@ -2432,7 +2432,7 @@ async def reset_homes_account_balances(request: Request):
             .in_("status", ["completed", "partial"]) \
             .execute()
 
-        # Clear linked_transaction_id references before deleting (avoid FK constraint)
+        # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
         sb.table("accounting_transactions") \
             .update({"linked_transaction_id": None}) \
             .eq("source", "bank_statement") \
