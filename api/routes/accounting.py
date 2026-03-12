@@ -1550,11 +1550,35 @@ async def save_financial_statement(data: SaveStatementRequest):
         if not result.data:
             raise HTTPException(status_code=500, detail="Error saving statement")
 
+        # Auto-reset: clear bank_statement transactions after saving snapshot
+        try:
+            # Unlink statement_movements
+            sb.table("statement_movements") \
+                .update({"transaction_id": None}) \
+                .eq("status", "posted") \
+                .execute()
+            sb.table("statement_movements") \
+                .update({"status": "confirmed"}) \
+                .eq("status", "posted") \
+                .execute()
+            sb.table("bank_statements") \
+                .update({"posted_movements": 0, "status": "review"}) \
+                .in_("status", ["completed", "partial"]) \
+                .execute()
+            # Delete bank_statement transactions
+            sb.table("accounting_transactions") \
+                .delete() \
+                .eq("source", "bank_statement") \
+                .execute()
+            logger.info(f"[save-financial-statement-homes] Auto-reset: cleared bank_statement transactions after saving report")
+        except Exception as reset_err:
+            logger.warning(f"[save-financial-statement-homes] Auto-reset failed: {reset_err}")
+
         return {
             "ok": True,
             "statement": result.data[0],
             "pdf_url": pdf_url,
-            "message": f"Estado financiero '{data.name}' guardado exitosamente (inmutable)"
+            "message": f"Estado financiero '{data.name}' guardado. Cifras reseteadas automáticamente."
         }
 
     except HTTPException:
@@ -2354,7 +2378,7 @@ async def get_homes_account_mapping():
 
 @router.post("/accounts/reset-balances")
 async def reset_homes_account_balances(request: Request):
-    """Reset current_balance to 0 for Homes accounting accounts.
+    """Reset financial statements by deleting bank_statement transactions and resetting movements.
 
     Body: { "scope": "all" | "profit_loss" | "balance_sheet" }
     """
@@ -2362,6 +2386,7 @@ async def reset_homes_account_balances(request: Request):
         body = await request.json()
         scope = body.get("scope", "all")
 
+        # 1. Reset current_balance on accounts
         accounts = sb.table("accounting_accounts") \
             .select("id, code, account_type, current_balance") \
             .eq("is_active", True) \
@@ -2372,25 +2397,50 @@ async def reset_homes_account_balances(request: Request):
             bal = float(acc.get("current_balance") or 0)
             if bal == 0:
                 continue
-
             atype = acc.get("account_type", "")
             if scope == "profit_loss" and atype not in ("income", "expense", "cogs"):
                 continue
             if scope == "balance_sheet" and atype not in ("asset", "liability", "equity"):
                 continue
-
             sb.table("accounting_accounts") \
                 .update({"current_balance": 0}) \
                 .eq("id", acc["id"]) \
                 .execute()
             reset_count += 1
 
+        # 2. Clear bank_statement transactions (the actual data behind reports)
+        # First unlink statement_movements so FK doesn't block delete
+        sb.table("statement_movements") \
+            .update({"transaction_id": None}) \
+            .eq("status", "posted") \
+            .execute()
+
+        # Reset posted movements back to confirmed (so they can be re-integrated)
+        sb.table("statement_movements") \
+            .update({"status": "confirmed"}) \
+            .eq("status", "posted") \
+            .execute()
+
+        # Reset bank_statements stats
+        sb.table("bank_statements") \
+            .update({"posted_movements": 0, "status": "review"}) \
+            .in_("status", ["completed", "partial"]) \
+            .execute()
+
+        # Delete bank_statement transactions
+        deleted = sb.table("accounting_transactions") \
+            .delete() \
+            .eq("source", "bank_statement") \
+            .execute()
+        deleted_count = len(deleted.data or [])
+
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
             "ok": True,
             "reset_count": reset_count,
+            "deleted_transactions": deleted_count,
             "scope": scope,
-            "message": f"{reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
+            "message": f"Cifras vaciadas: {deleted_count} transacciones eliminadas, {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
         }
 
     except Exception as e:
