@@ -2840,12 +2840,53 @@ async def classify_statement_movements(statement_id: str):
     # Get chart of accounts for AI context
     accounts = sb.table("accounting_accounts").select("id, code, name, account_type, category, is_header").eq("is_active", True).order("display_order").execute()
     accounts_list = [a for a in (accounts.data or []) if not a.get("is_header")]
+    acct_by_id = {a["id"]: a for a in accounts_list}
 
     # Build accounts reference for the AI
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category','')})"
         for a in accounts_list
     ])
+
+    # --- Learning from human corrections ---
+    # Query past confirmed movements where the human changed the AI suggestion
+    corrections_ref = ""
+    try:
+        confirmed = (sb.table("statement_movements")
+                     .select("description, counterparty, amount, is_credit, suggested_account_code, suggested_account_id, final_account_id")
+                     .eq("status", "confirmed")
+                     .not_.is_("final_account_id", "null")
+                     .not_.is_("suggested_account_id", "null")
+                     .order("updated_at", desc=True)
+                     .limit(200)
+                     .execute())
+        # Filter where human chose a different account than AI
+        corrections = []
+        for cm in (confirmed.data or []):
+            if cm.get("final_account_id") and cm.get("suggested_account_id") and cm["final_account_id"] != cm["suggested_account_id"]:
+                final_acct = acct_by_id.get(cm["final_account_id"])
+                suggested_acct = acct_by_id.get(cm["suggested_account_id"])
+                if final_acct:
+                    corrections.append({
+                        "description": cm.get("description", ""),
+                        "counterparty": cm.get("counterparty", ""),
+                        "amount": cm.get("amount", 0),
+                        "is_credit": cm.get("is_credit", False),
+                        "ai_suggested": f"{suggested_acct['code']} {suggested_acct['name']}" if suggested_acct else cm.get("suggested_account_code", "?"),
+                        "human_corrected": f"{final_acct['code']} {final_acct['name']}",
+                    })
+
+        if corrections:
+            lines = []
+            for c in corrections[:30]:  # Limit to 30 most recent corrections
+                direction = "credit" if c["is_credit"] else "debit"
+                lines.append(
+                    f"- \"{c['description']}\" ({c['counterparty']}, ${c['amount']}, {direction}) → "
+                    f"AI suggested: {c['ai_suggested']} → Human corrected to: {c['human_corrected']}"
+                )
+            corrections_ref = "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Could not load correction history: {e}")
 
     # Classify in batches
     classified = 0
@@ -2854,7 +2895,7 @@ async def classify_statement_movements(statement_id: str):
 
     for batch_start in range(0, len(mvs), batch_size):
         batch = mvs[batch_start:batch_start + batch_size]
-        suggestions = await _ai_classify_movements(batch, accounts_ref, accounts_list)
+        suggestions = await _ai_classify_movements(batch, accounts_ref, accounts_list, corrections_ref)
 
         for mv, suggestion in zip(batch, suggestions):
             update_data = {
@@ -3387,6 +3428,7 @@ async def _ai_classify_movements(
     movements: list,
     accounts_reference: str,
     accounts_list: list,
+    corrections_reference: str = "",
 ) -> list:
     """Use GPT-4 to suggest accounting accounts for a batch of movements."""
     import os
@@ -3444,7 +3486,7 @@ CONTEXT about Maninos Homes:
 - "Comisión" = sales commission to an employee
 - "Semana" / "Quincena" = weekly/biweekly employee payment
 
-MOVEMENTS TO CLASSIFY:
+{"HUMAN CORRECTIONS (learn from these — the accountant overrode the AI suggestion, so follow the human's pattern):" + chr(10) + corrections_reference + chr(10) if corrections_reference else ""}MOVEMENTS TO CLASSIFY:
 {movements_text}
 
 For EACH movement (numbered), respond with a JSON array of objects:
