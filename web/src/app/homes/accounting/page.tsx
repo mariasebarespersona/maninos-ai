@@ -2643,6 +2643,11 @@ function EstadoCuentaTab() {
   const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
   const postedCount = activeMovements.filter(m => m.status === 'posted').length
   const reconciledCount = activeMovements.filter(m => m.status === 'reconciled').length
+  // Movements needing classification: pending, suggested, OR reconciled without a confirmed account
+  const needsClassifyCount = activeMovements.filter(m =>
+    m.status === 'pending' || m.status === 'suggested' ||
+    (m.status === 'reconciled' && !m.final_account_id)
+  ).length
   const activeStmt = activeStatement ? Object.values(statements).flat().find(s => s.id === activeStatement) : null
 
   return (
@@ -3055,7 +3060,7 @@ function EstadoCuentaTab() {
                   )}
 
                   {/* Next step button */}
-                  {(reconcileDone || (!reconciling && reconcileMatches.length === 0 && pendingCount > 0)) && pendingCount > 0 && (
+                  {(reconcileDone || (!reconciling && reconcileMatches.length === 0 && needsClassifyCount > 0)) && needsClassifyCount > 0 && (
                     <div className="flex justify-end pt-2">
                       <button
                         onClick={() => setWizardStep(2)}
@@ -3075,14 +3080,14 @@ function EstadoCuentaTab() {
                   {/* Action bar */}
                   <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
                     <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      {pendingCount > 0
-                        ? `${pendingCount} movimientos pendientes de clasificar`
+                      {needsClassifyCount > 0
+                        ? `${needsClassifyCount} movimientos pendientes de clasificar`
                         : confirmedCount > 0
                         ? `${confirmedCount} movimientos confirmados, listos para integrar`
                         : 'Todos los movimientos han sido procesados'}
                     </p>
                     <div className="flex items-center gap-2">
-                      {pendingCount > 0 && (
+                      {needsClassifyCount > 0 && (
                         <button
                           onClick={() => classifyMovements(activeStatement)}
                           disabled={classifying}
@@ -3110,41 +3115,32 @@ function EstadoCuentaTab() {
                       <ShieldCheck className="w-4 h-4 text-teal-600" />
                       <div className="flex-1">
                         <p className="text-xs font-medium text-teal-700">
-                          {reconciledCount} movimiento{reconciledCount !== 1 ? 's' : ''} conciliado{reconciledCount !== 1 ? 's' : ''} con transacciones existentes
+                          {reconciledCount} movimiento{reconciledCount !== 1 ? 's' : ''} conciliado{reconciledCount !== 1 ? 's' : ''} — aún necesitan cuenta contable
                         </p>
                       </div>
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-teal-100 text-teal-700">✓ Conciliados</span>
                     </div>
                   )}
 
-                  {/* Movements table - only show non-reconciled */}
-                  {activeMovements.filter(m => m.status !== 'reconciled').length === 0 ? (
-                    <div className="text-center py-12 px-6">
-                      <Check className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
-                      <p className="text-sm font-medium text-emerald-700">Todos los movimientos fueron conciliados en el paso anterior</p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>No hay movimientos pendientes de clasificar</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
-                            <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeMovements.filter(m => m.status !== 'reconciled').map((mv) => (
-                            <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} />
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  {/* All movements table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeMovements.map((mv) => (
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 

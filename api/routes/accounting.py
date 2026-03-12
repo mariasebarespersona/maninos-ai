@@ -2812,7 +2812,7 @@ async def classify_statement_movements(statement_id: str):
 
     movements = (sb.table("statement_movements")
                  .select("*").eq("statement_id", statement_id)
-                 .in_("status", ["pending", "suggested"])
+                 .in_("status", ["pending", "suggested", "reconciled"])
                  .order("sort_order").execute())
 
     if not movements.data:
@@ -2845,8 +2845,10 @@ async def classify_statement_movements(statement_id: str):
                 "ai_confidence": suggestion.get("confidence", 0.5),
                 "ai_reasoning": suggestion.get("reasoning", ""),
                 "needs_subcategory": suggestion.get("needs_subcategory", False),
-                "status": "suggested",
             }
+            # Keep 'reconciled' status for reconciled movements, set 'suggested' for others
+            if mv.get("status") != "reconciled":
+                update_data["status"] = "suggested"
             # Try to find account ID
             if suggestion.get("account_code"):
                 acct_match = sb.table("accounting_accounts").select("id").eq("code", suggestion["account_code"]).execute()
