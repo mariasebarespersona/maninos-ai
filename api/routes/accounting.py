@@ -2966,9 +2966,20 @@ async def post_confirmed_movements(statement_id: str):
     if not movements.data:
         return {"message": "No hay movimientos confirmados para publicar. Primero clasifica y confirma los movimientos.", "posted": 0, "skipped": 0, "errors": []}
 
+    # Look up the bank's accounting_account_id for double-entry
+    bank_accounting_account_id = None
+    if statement.get("bank_account_id"):
+        ba = sb.table("bank_accounts").select("accounting_account_id").eq("id", statement["bank_account_id"]).execute()
+        if ba.data and ba.data[0].get("accounting_account_id"):
+            bank_accounting_account_id = ba.data[0]["accounting_account_id"]
+    if not bank_accounting_account_id:
+        logger.warning(f"[BankStmt] No accounting_account_id linked to bank_account — bank-side entries will be skipped")
+
     posted = 0
     skipped = 0
     errors = []
+    stmt_label = f"{statement.get('account_label', '')} - {statement.get('original_filename', '')}"
+
     for mv in movements.data:
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
         txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
@@ -2981,47 +2992,80 @@ async def post_confirmed_movements(statement_id: str):
             continue
 
         try:
-            # Reconciled movements already have a matched transaction — update it instead of creating a new one
+            abs_amount = abs(float(mv["amount"]))
+            # Bank-side amount: positive for deposits (money in), negative for withdrawals (money out)
+            bank_amount = abs_amount if mv["is_credit"] else -abs_amount
+            common_fields = {
+                "transaction_date": mv["movement_date"],
+                "bank_account_id": statement.get("bank_account_id"),
+                "payment_method": mv.get("payment_method"),
+                "payment_reference": mv.get("reference"),
+                "counterparty_name": mv.get("counterparty"),
+                "description": mv.get("description", "")[:500],
+                "source": "bank_statement",
+            }
+            common_fields = {k: v for k, v in common_fields.items() if v is not None}
+
+            pnl_txn_id = None
+
+            # --- Entry 1: P&L side ---
             if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
+                # Reconciled: update existing transaction
                 sb.table("accounting_transactions").update({
                     "account_id": account_id,
                     "transaction_type": txn_type,
                     "source": "bank_statement",
                 }).eq("id", mv["matched_transaction_id"]).execute()
-                sb.table("statement_movements").update({
-                    "status": "posted",
-                }).eq("id", mv["id"]).execute()
-                posted += 1
+                pnl_txn_id = mv["matched_transaction_id"]
             else:
-                # Non-reconciled: create a new transaction
+                # Non-reconciled: create new P&L transaction
                 txn_data = {
+                    **common_fields,
                     "transaction_number": _generate_transaction_number(),
-                    "transaction_date": mv["movement_date"],
                     "transaction_type": txn_type,
-                    "amount": abs(float(mv["amount"])),
+                    "amount": abs_amount,
                     "is_income": mv["is_credit"],
                     "account_id": account_id,
-                    "bank_account_id": statement.get("bank_account_id"),
-                    "payment_method": mv.get("payment_method"),
-                    "payment_reference": mv.get("reference"),
-                    "counterparty_name": mv.get("counterparty"),
-                    "description": mv.get("description", "")[:500],
-                    "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
+                    "notes": f"Importado de estado de cuenta: {stmt_label}",
                     "status": "confirmed",
-                    "source": "bank_statement",
                 }
-                txn_data = {k: v for k, v in txn_data.items() if v is not None}
-
                 txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
                 if txn_result.data:
-                    sb.table("statement_movements").update({
-                        "status": "posted",
-                        "transaction_id": txn_result.data[0]["id"],
-                    }).eq("id", mv["id"]).execute()
-                    posted += 1
+                    pnl_txn_id = txn_result.data[0]["id"]
                 else:
                     skipped += 1
                     errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar transacción")
+                    continue
+
+            # --- Entry 2: Bank/asset side (double-entry) ---
+            bank_txn_id = None
+            if bank_accounting_account_id:
+                bank_data = {
+                    **common_fields,
+                    "transaction_number": _generate_transaction_number(),
+                    "transaction_type": txn_type,
+                    "amount": bank_amount,
+                    "is_income": mv["is_credit"],
+                    "account_id": bank_accounting_account_id,
+                    "linked_transaction_id": pnl_txn_id,
+                    "notes": f"Contrapartida bancaria: {stmt_label}",
+                    "status": "confirmed",
+                }
+                bank_result = sb.table("accounting_transactions").insert(bank_data).execute()
+                if bank_result.data:
+                    bank_txn_id = bank_result.data[0]["id"]
+                    # Link the P&L entry back to the bank entry
+                    sb.table("accounting_transactions").update({
+                        "linked_transaction_id": bank_txn_id,
+                    }).eq("id", pnl_txn_id).execute()
+
+            # Mark movement as posted
+            sb.table("statement_movements").update({
+                "status": "posted",
+                "transaction_id": pnl_txn_id,
+            }).eq("id", mv["id"]).execute()
+            posted += 1
+
         except Exception as e:
             logger.warning(f"[BankStmt] Failed to post movement {mv['id']}: {e}")
             skipped += 1

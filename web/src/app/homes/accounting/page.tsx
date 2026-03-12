@@ -2445,11 +2445,14 @@ function EstadoCuentaTab() {
   }
 
   // Build drawers from bank accounts — use ba.id as drawer key so it matches bank_account_id in statements
+  // QB bank accounts for linking (10100 series)
+  const qbBankAccounts = allAccounts.filter((a: any) => a.account_type === 'asset' && a.code?.match(/^101\d/))
   const accountDrawers = bankAccounts.map((ba, i) => ({
     key: ba.id,       // Use the UUID so grouping by bank_account_id works
     id: ba.id,
     label: ba.name,
     bankName: ba.bank_name,
+    accountingAccountId: ba.accounting_account_id,
     color: DRAWER_COLORS[i % DRAWER_COLORS.length],
     icon: DRAWER_ICONS[i % DRAWER_ICONS.length],
   }))
@@ -2761,6 +2764,9 @@ function EstadoCuentaTab() {
                       {drawerStmts.length === 0 ? 'Sin estados de cuenta' :
                        `${drawerStmts.length} estado${drawerStmts.length > 1 ? 's' : ''} de cuenta`}
                     </p>
+                    {!drawer.accountingAccountId && (
+                      <p className="text-[10px] text-amber-600 font-medium">⚠ Sin cuenta contable vinculada</p>
+                    )}
                   </div>
                 </button>
                 <div className="flex items-center gap-2">
@@ -2785,6 +2791,33 @@ function EstadoCuentaTab() {
               {/* Drawer Content */}
               {isExpanded && (
                 <div className="border-t px-5 py-4 space-y-4" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                  {/* QB Account Link */}
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--slate)' }}>Cuenta contable QB:</label>
+                    <select
+                      value={drawer.accountingAccountId || ''}
+                      onChange={async (e) => {
+                        const val = e.target.value || null
+                        await fetch(`/api/accounting/bank-accounts/${drawer.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ accounting_account_id: val }),
+                        })
+                        fetchBankAccounts()
+                      }}
+                      className="flex-1 max-w-xs px-2 py-1.5 text-xs rounded-lg border"
+                      style={{ borderColor: drawer.accountingAccountId ? 'var(--stone)' : '#f59e0b' }}
+                    >
+                      <option value="">— Sin vincular —</option>
+                      {qbBankAccounts.map((a: any) => (
+                        <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+                      ))}
+                    </select>
+                    {!drawer.accountingAccountId && (
+                      <span className="text-[10px] text-amber-600">Requerido para Balance Sheet</span>
+                    )}
+                  </div>
+
                   {/* Upload Zone */}
                   <label
                     className={`relative flex flex-col items-center justify-center px-6 py-8 border-2 border-dashed rounded-xl cursor-pointer transition-all hover:border-solid ${uploading === drawer.key ? 'opacity-60 pointer-events-none' : ''}`}
