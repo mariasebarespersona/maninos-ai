@@ -1565,6 +1565,11 @@ async def save_financial_statement(data: SaveStatementRequest):
                 .update({"posted_movements": 0, "status": "review"}) \
                 .in_("status", ["completed", "partial"]) \
                 .execute()
+            # Clear linked_transaction_id references before deleting (avoid FK constraint)
+            sb.table("accounting_transactions") \
+                .update({"linked_transaction_id": None}) \
+                .eq("source", "bank_statement") \
+                .execute()
             # Delete bank_statement transactions
             sb.table("accounting_transactions") \
                 .delete() \
@@ -2425,6 +2430,12 @@ async def reset_homes_account_balances(request: Request):
         sb.table("bank_statements") \
             .update({"posted_movements": 0, "status": "review"}) \
             .in_("status", ["completed", "partial"]) \
+            .execute()
+
+        # Clear linked_transaction_id references before deleting (avoid FK constraint)
+        sb.table("accounting_transactions") \
+            .update({"linked_transaction_id": None}) \
+            .eq("source", "bank_statement") \
             .execute()
 
         # Delete bank_statement transactions
