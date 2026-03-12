@@ -2818,6 +2818,25 @@ async def classify_statement_movements(statement_id: str):
     if not movements.data:
         return {"message": "No movements to classify", "classified": 0}
 
+    # For reconciled movements, fetch their matched transaction descriptions
+    reconciled_mvs = [m for m in movements.data if m.get("status") == "reconciled" and m.get("matched_transaction_id")]
+    matched_txn_map = {}  # movement_id -> transaction info
+    if reconciled_mvs:
+        txn_ids = [m["matched_transaction_id"] for m in reconciled_mvs]
+        txns = sb.table("accounting_transactions").select("id, description, counterparty_name, is_income").in_("id", txn_ids).execute()
+        txn_by_id = {t["id"]: t for t in (txns.data or [])}
+        for mv in reconciled_mvs:
+            txn = txn_by_id.get(mv["matched_transaction_id"])
+            if txn:
+                matched_txn_map[mv["id"]] = txn
+
+    # Enrich movements with matched transaction info for AI context
+    for mv in movements.data:
+        if mv["id"] in matched_txn_map:
+            txn = matched_txn_map[mv["id"]]
+            mv["_matched_txn_description"] = txn.get("description", "")
+            mv["_matched_txn_counterparty"] = txn.get("counterparty_name", "")
+
     # Get chart of accounts for AI context
     accounts = sb.table("accounting_accounts").select("id, code, name, account_type, category, is_header").eq("is_active", True).order("display_order").execute()
     accounts_list = [a for a in (accounts.data or []) if not a.get("is_header")]
@@ -3379,10 +3398,14 @@ async def _ai_classify_movements(
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
 
-    movements_text = "\n".join([
-        f"{i+1}. [{mv['movement_date']}] {mv.get('description','')} | ${mv['amount']} | {mv.get('counterparty','')}"
-        for i, mv in enumerate(movements)
-    ])
+    movements_lines = []
+    for i, mv in enumerate(movements):
+        line = f"{i+1}. [{mv['movement_date']}] {mv.get('description','')} | ${mv['amount']} | {mv.get('counterparty','')}"
+        # Add matched transaction context for reconciled movements
+        if mv.get("_matched_txn_description"):
+            line += f" | RECONCILED with app transaction: \"{mv['_matched_txn_description']}\""
+        movements_lines.append(line)
+    movements_text = "\n".join(movements_lines)
 
     prompt = f"""You are an expert accountant for Maninos Homes LLC, a mobile home sales company in Texas.
 
@@ -3396,9 +3419,19 @@ IMPORTANT RULES:
 - Withdrawals/debits = classify to an EXPENSE or COGS account (codes 5xxxx, 6xxxx, 8xxxx)
 - For transfers between bank accounts, use transaction_type "bank_transfer" and the closest expense account.
 - Use EXACT account codes from the chart below. Do NOT invent codes.
+- PREFER our custom accounts (ING-xxx, GAS-xxx) over QuickBooks numeric codes (4xxxx, 5xxxx, 6xxxx) when a custom account fits the transaction.
 
 CHART OF ACCOUNTS:
 {accounts_reference}
+
+RECONCILED MOVEMENTS:
+- Some movements are marked "RECONCILED with app transaction: ..." — this means they matched an existing transaction in our system.
+- The app transaction description is THE MOST RELIABLE source for classification. Use it as primary context.
+- "Venta contado" = cash sale → use ING-100 Ventas Contado (or the 4xxxx income account for sales)
+- "Venta RTO" or "Capital" = RTO sale → use ING-200
+- "Compra propiedad" or "Compra:" = house purchase → use GAS-100 Compra de Casas
+- "Renovación" = renovation → use GAS-200
+- "Depósito" from a client = use ING-300
 
 CONTEXT about Maninos Homes:
 - They buy, renovate, and sell mobile homes (manufactured homes)
