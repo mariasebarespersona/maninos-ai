@@ -2837,15 +2837,20 @@ async def classify_statement_movements(statement_id: str):
             mv["_matched_txn_description"] = txn.get("description", "")
             mv["_matched_txn_counterparty"] = txn.get("counterparty_name", "")
 
-    # Get chart of accounts for AI context
-    accounts = sb.table("accounting_accounts").select("id, code, name, account_type, category, is_header").eq("is_active", True).order("display_order").execute()
-    accounts_list = [a for a in (accounts.data or []) if not a.get("is_header")]
+    # Get chart of accounts for AI context — ONLY QuickBooks accounts (with parent_account_id set)
+    accounts = sb.table("accounting_accounts").select("id, code, name, account_type, category, is_header, parent_account_id").eq("is_active", True).order("display_order").execute()
+    all_accounts = accounts.data or []
+    # Only use accounts that are part of the QuickBooks hierarchy (have a parent, or are QB roots)
+    qb_root_codes = {"PL_INCOME", "PL_COGS", "PL_EXPENSES", "PL_OTHER_EXPENSES", "BS_ASSETS", "BS_LIABILITIES", "BS_EQUITY"}
+    qb_accounts = [a for a in all_accounts if a.get("parent_account_id") or a["code"] in qb_root_codes]
+    accounts_list = [a for a in qb_accounts if not a.get("is_header")]
     acct_by_id = {a["id"]: a for a in accounts_list}
 
-    # Build accounts reference for the AI
+    # Build accounts reference for the AI — only leaf P&L accounts (income/expense/cogs)
+    pl_accounts = [a for a in accounts_list if a["account_type"] in ("income", "expense", "cogs")]
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category','')})"
-        for a in accounts_list
+        for a in pl_accounts
     ])
 
     # --- Learning from human corrections ---
@@ -2951,11 +2956,11 @@ async def post_confirmed_movements(statement_id: str):
         raise HTTPException(status_code=404, detail="Statement not found")
     statement = stmt.data[0]
 
-    # Get confirmed movements that haven't been posted yet
+    # Get confirmed AND reconciled movements that haven't been posted yet
     movements = (sb.table("statement_movements")
                  .select("*")
                  .eq("statement_id", statement_id)
-                 .eq("status", "confirmed")
+                 .in_("status", ["confirmed", "reconciled"])
                  .order("sort_order").execute())
 
     if not movements.data:
@@ -2975,35 +2980,46 @@ async def post_confirmed_movements(statement_id: str):
             logger.warning(f"[BankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
 
-        txn_data = {
-            "transaction_number": _generate_transaction_number(),
-            "transaction_date": mv["movement_date"],
-            "transaction_type": txn_type,
-            "amount": abs(float(mv["amount"])),
-            "is_income": mv["is_credit"],
-            "account_id": account_id,
-            "bank_account_id": statement.get("bank_account_id"),
-            "payment_method": mv.get("payment_method"),
-            "payment_reference": mv.get("reference"),
-            "counterparty_name": mv.get("counterparty"),
-            "description": mv.get("description", "")[:500],
-            "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
-            "status": "confirmed",
-        }
-        txn_data = {k: v for k, v in txn_data.items() if v is not None}
-
         try:
-            txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
-            if txn_result.data:
-                # Update movement as posted
+            # Reconciled movements already have a matched transaction — update it instead of creating a new one
+            if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
+                sb.table("accounting_transactions").update({
+                    "account_id": account_id,
+                    "transaction_type": txn_type,
+                }).eq("id", mv["matched_transaction_id"]).execute()
                 sb.table("statement_movements").update({
                     "status": "posted",
-                    "transaction_id": txn_result.data[0]["id"],
                 }).eq("id", mv["id"]).execute()
                 posted += 1
             else:
-                skipped += 1
-                errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar transacción")
+                # Non-reconciled: create a new transaction
+                txn_data = {
+                    "transaction_number": _generate_transaction_number(),
+                    "transaction_date": mv["movement_date"],
+                    "transaction_type": txn_type,
+                    "amount": abs(float(mv["amount"])),
+                    "is_income": mv["is_credit"],
+                    "account_id": account_id,
+                    "bank_account_id": statement.get("bank_account_id"),
+                    "payment_method": mv.get("payment_method"),
+                    "payment_reference": mv.get("reference"),
+                    "counterparty_name": mv.get("counterparty"),
+                    "description": mv.get("description", "")[:500],
+                    "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
+                    "status": "confirmed",
+                }
+                txn_data = {k: v for k, v in txn_data.items() if v is not None}
+
+                txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
+                if txn_result.data:
+                    sb.table("statement_movements").update({
+                        "status": "posted",
+                        "transaction_id": txn_result.data[0]["id"],
+                    }).eq("id", mv["id"]).execute()
+                    posted += 1
+                else:
+                    skipped += 1
+                    errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar transacción")
         except Exception as e:
             logger.warning(f"[BankStmt] Failed to post movement {mv['id']}: {e}")
             skipped += 1
@@ -3461,19 +3477,19 @@ IMPORTANT RULES:
 - Withdrawals/debits = classify to an EXPENSE or COGS account (codes 5xxxx, 6xxxx, 8xxxx)
 - For transfers between bank accounts, use transaction_type "bank_transfer" and the closest expense account.
 - Use EXACT account codes from the chart below. Do NOT invent codes.
-- PREFER our custom accounts (ING-xxx, GAS-xxx) over QuickBooks numeric codes (4xxxx, 5xxxx, 6xxxx) when a custom account fits the transaction.
+- ONLY use accounts from the chart below. NEVER use codes starting with ING-, GAS-, ACT-, PAS-.
 
-CHART OF ACCOUNTS:
+CHART OF ACCOUNTS (QuickBooks):
 {accounts_reference}
 
 RECONCILED MOVEMENTS:
 - Some movements are marked "RECONCILED with app transaction: ..." — this means they matched an existing transaction in our system.
 - The app transaction description is THE MOST RELIABLE source for classification. Use it as primary context.
-- "Venta contado" = cash sale → use ING-100 Ventas Contado (or the 4xxxx income account for sales)
-- "Venta RTO" or "Capital" = RTO sale → use ING-200
-- "Compra propiedad" or "Compra:" = house purchase → use GAS-100 Compra de Casas
-- "Renovación" = renovation → use GAS-200
-- "Depósito" from a client = use ING-300
+- "Venta contado" = cash sale → use 40000 House Sales
+- "Venta RTO" or "Capital" = RTO sale → use 40000 House Sales
+- "Compra propiedad" or "Compra:" = house purchase → use 50020 House Sales - COGS
+- "Renovación" = renovation expense → use 61700 Supplies & materials or 61300 Other Contractors
+- "Depósito" from a client = use 40000 House Sales
 
 CONTEXT about Maninos Homes:
 - They buy, renovate, and sell mobile homes (manufactured homes)
@@ -3491,7 +3507,7 @@ CONTEXT about Maninos Homes:
 
 For EACH movement (numbered), respond with a JSON array of objects:
 {{
-  "account_code": "the EXACT account code from the chart above (must be an income 4xxxx or expense 5xxxx/6xxxx/8xxxx account)",
+  "account_code": "the EXACT QuickBooks account code from the chart above (e.g. 40000, 50020, 60850, 80010). NEVER use ING-xxx or GAS-xxx codes.",
   "account_name": "account name",
   "transaction_type": one of ["sale_cash", "sale_rto_capital", "deposit_received", "other_income", "purchase_house", "renovation", "moving_transport", "commission", "operating_expense", "other_expense", "bank_transfer", "adjustment"],
   "confidence": 0.0-1.0 (how confident you are),

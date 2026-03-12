@@ -2398,7 +2398,7 @@ function EstadoCuentaTab() {
       const res = await fetch('/api/accounting/accounts/tree')
       if (res.ok) {
         const data = await res.json()
-        setAllAccounts((data.flat || []).filter((a: any) => !a.is_header))
+        setAllAccounts((data.flat || []).filter((a: any) => !a.is_header && a.parent_account_id))
       }
     } catch (e) { /* ignore */ }
   }, [])
@@ -3167,14 +3167,14 @@ function EstadoCuentaTab() {
                     </div>
                   </div>
 
-                  {confirmedCount > 0 ? (
+                  {(confirmedCount + reconciledCount) > 0 ? (
                     <button
                       onClick={() => postMovements(activeStatement)}
                       disabled={posting}
                       className="w-full px-4 py-3 text-sm font-medium text-white rounded-lg flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50"
                     >
                       {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      {posting ? 'Publicando...' : `Publicar ${confirmedCount} transacciones en contabilidad`}
+                      {posting ? 'Publicando...' : `Publicar ${confirmedCount + reconciledCount} transacciones en contabilidad`}
                     </button>
                   ) : postedCount > 0 ? (
                     <div className="text-center py-6 rounded-lg bg-emerald-50">
@@ -3230,7 +3230,8 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
   const handleSelectAccount = (account: any) => {
     onUpdate(mv.id, {
       final_account_id: account.id,
-      status: 'confirmed',
+      // Keep 'reconciled' status for reconciled movements so post endpoint knows to update existing txn
+      status: isReconciled ? 'reconciled' : 'confirmed',
     })
     setShowAccountPicker(false)
     setAccountSearch('')
@@ -3240,7 +3241,8 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
     onUpdate(mv.id, {
       final_account_id: mv.suggested_account_id,
       final_transaction_type: mv.suggested_transaction_type,
-      status: 'confirmed',
+      // Keep 'reconciled' status for reconciled movements
+      status: isReconciled ? 'reconciled' : 'confirmed',
     })
   }
 
@@ -3362,7 +3364,7 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
       <td className="px-3 py-2.5 text-center">
         {!isPosted && !isSkipped && (
           <div className="flex items-center justify-center gap-1">
-            {mv.status === 'suggested' && mv.suggested_account_id && (
+            {(mv.status === 'suggested' || (mv.status === 'reconciled' && !mv.final_account_id)) && mv.suggested_account_id && (
               <button onClick={confirmSuggestion}
                 className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors"
                 title="Confirmar sugerencia">
