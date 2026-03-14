@@ -2637,7 +2637,6 @@ async def post_capital_statement(statement_id: str):
 
         try:
             abs_amount = abs(float(mv["amount"]))
-            bank_amount = abs_amount if mv["is_credit"] else -abs_amount
             common_fields = {
                 "transaction_date": mv["movement_date"],
                 "bank_account_id": statement.get("bank_account_id"),
@@ -2689,7 +2688,7 @@ async def post_capital_statement(statement_id: str):
                 bank_data = {
                     **common_fields,
                     "transaction_type": txn_type,
-                    "amount": bank_amount,
+                    "amount": abs_amount,
                     "is_income": mv["is_credit"],
                     "account_id": bank_accounting_account_id,
                     "linked_transaction_id": pnl_txn_id,
