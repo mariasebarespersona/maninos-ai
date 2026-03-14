@@ -2426,7 +2426,7 @@ async def reset_homes_account_balances(request: Request):
                 .execute()
             reset_count += 1
 
-        # 2. Clear bank_statement transactions (the actual data behind reports)
+        # 2. Clear statement movements & bank_statement transactions
         # Clear ALL FK references on statement_movements that point to transactions
         sb.table("statement_movements") \
             .update({"transaction_id": None, "matched_transaction_id": None}) \
@@ -2445,18 +2445,30 @@ async def reset_homes_account_balances(request: Request):
             .in_("status", ["completed", "partial"]) \
             .execute()
 
-        # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
-        sb.table("accounting_transactions") \
-            .update({"linked_transaction_id": None}) \
-            .eq("source", "bank_statement") \
-            .execute()
+        # 3. Delete transactions for the selected scope
+        scope_types = {
+            "profit_loss": ("income", "expense", "cogs"),
+            "balance_sheet": ("asset", "liability", "equity"),
+            "all": ("income", "expense", "cogs", "asset", "liability", "equity"),
+        }
+        target_types = scope_types.get(scope, scope_types["all"])
 
-        # Delete bank_statement transactions
-        deleted = sb.table("accounting_transactions") \
-            .delete() \
-            .eq("source", "bank_statement") \
-            .execute()
-        deleted_count = len(deleted.data or [])
+        scope_account_ids = [a["id"] for a in accounts if a.get("account_type") in target_types]
+
+        deleted_count = 0
+        if scope_account_ids:
+            # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
+            sb.table("accounting_transactions") \
+                .update({"linked_transaction_id": None}) \
+                .in_("account_id", scope_account_ids) \
+                .execute()
+
+            # Delete ALL transactions for the scoped accounts
+            deleted = sb.table("accounting_transactions") \
+                .delete() \
+                .in_("account_id", scope_account_ids) \
+                .execute()
+            deleted_count = len(deleted.data or [])
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {

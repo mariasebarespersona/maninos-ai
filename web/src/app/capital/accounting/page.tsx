@@ -922,13 +922,12 @@ function StatementsTab() {
         </div>
       )}
 
-      {/* Info: auto-populate + editable */}
+      {/* Info: auto-populate */}
       {!isViewingSaved && (
         <div className="flex items-center gap-2 p-3 rounded-lg text-xs" style={{ backgroundColor: 'var(--ivory)', color: 'var(--slate)' }}>
           <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--gold-600)' }} />
           <span>
             Los balances se calculan automáticamente desde transacciones y movimientos bancarios.
-            <strong className="ml-1">Haz clic en cualquier monto</strong> para ajustarlo manualmente.
           </span>
         </div>
       )}

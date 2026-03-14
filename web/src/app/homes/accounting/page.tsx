@@ -1301,7 +1301,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
       </table>
 
       <div className="flex items-center justify-between px-4 py-2 border-t text-xs" style={{ borderColor: 'var(--sand)', color: 'var(--ash)' }}>
-        <span>Accrual basis · Clic en un monto para editar manualmente</span>
+        <span>Accrual basis</span>
         <span>{today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} {today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>
@@ -1370,7 +1370,7 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
       </table>
 
       <div className="flex items-center justify-between px-4 py-2 border-t text-xs" style={{ borderColor: 'var(--sand)', color: 'var(--ash)' }}>
-        <span>Accrual basis · Clic en un monto para editar manualmente</span>
+        <span>Accrual basis</span>
         <span>{today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} {today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>
