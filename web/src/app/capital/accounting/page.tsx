@@ -1434,7 +1434,7 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
       const res = await fetch('/api/capital/accounting/accounts/tree')
       if (res.ok) {
         const data = await res.json()
-        setQbAccounts((data.flat || []).filter((a: any) => !a.is_header && a.parent_account_id && a.account_type === 'asset' && a.code?.match(/^101\d/)))
+        setQbAccounts((data.flat || []).filter((a: any) => !a.is_header && a.parent_account_id && a.account_type === 'asset'))
       }
     } catch { /* ignore */ }
   }, [])
@@ -2145,6 +2145,45 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                 {/* Drawer Content */}
                 {isExpanded && (
                   <div className="border-t px-5 py-4 space-y-4" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
+                    {/* QB Account Linking */}
+                    {(() => {
+                      const ba = bankAccounts.find(b => b.id === drawer.id)
+                      const assetAccounts = allAccounts.filter((a: any) => a.account_type === 'asset')
+                      return (
+                        <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: 'var(--ivory)' }}>
+                          <Link2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--slate)' }} />
+                          <label className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--slate)' }}>
+                            Cuenta contable QB:
+                          </label>
+                          <select
+                            value={ba?.accounting_account_id || ''}
+                            onChange={async (e) => {
+                              const val = e.target.value || null
+                              try {
+                                await fetch(`/api/capital/accounting/bank-accounts/${drawer.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ accounting_account_id: val }),
+                                })
+                                fetchBankAccounts()
+                                toast.success('Cuenta contable vinculada')
+                              } catch { toast.error('Error al vincular cuenta') }
+                            }}
+                            className="flex-1 max-w-xs px-2 py-1.5 text-xs rounded-lg border"
+                            style={{ borderColor: ba?.accounting_account_id ? 'var(--stone)' : '#f59e0b' }}
+                          >
+                            <option value="">— Sin vincular —</option>
+                            {assetAccounts.map((a: any) => (
+                              <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+                            ))}
+                          </select>
+                          {!ba?.accounting_account_id && (
+                            <span className="text-[10px] text-amber-600 whitespace-nowrap">Requerido para Balance Sheet</span>
+                          )}
+                        </div>
+                      )
+                    })()}
+
                     {/* Upload Zone */}
                     <label
                       className={`relative flex flex-col items-center justify-center px-6 py-8 border-2 border-dashed rounded-xl cursor-pointer transition-all hover:border-solid ${uploading === drawer.key ? 'opacity-60 pointer-events-none' : ''}`}
