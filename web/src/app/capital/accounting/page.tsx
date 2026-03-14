@@ -841,13 +841,13 @@ function StatementsTab() {
   const [resetScope, setResetScope] = useState<'all' | 'profit_loss' | 'balance_sheet'>('all')
   const [resetting, setResetting] = useState(false)
 
-  const handleResetBalances = async () => {
+  const handleResetBalances = async (scope?: string) => {
     setResetting(true)
     try {
       const res = await fetch('/api/capital/accounting/accounts/reset-balances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: resetScope }),
+        body: JSON.stringify({ scope: scope || resetScope }),
       })
       const data = await res.json()
       if (data.ok) {
@@ -1226,42 +1226,34 @@ function StatementsTab() {
 
       {/* ── RESET / VACIAR CIFRAS MODAL ── */}
       {showResetModal && (
-        <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setShowResetModal(false)}>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl p-5 w-[90vw] max-w-sm shadow-xl"
-            onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif text-base font-bold mb-3" style={{ color: 'var(--ink)' }}>
-              <Trash2 className="w-4 h-4 inline-block mr-2" style={{ color: 'var(--danger)' }} />
-              Vaciar Cifras
-            </h3>
-
-            <div className="space-y-1.5 mb-4">
-              {[
-                { value: 'all', label: 'Todas las cuentas' },
-                { value: 'profit_loss', label: 'Solo P&L' },
-                { value: 'balance_sheet', label: 'Solo Balance Sheet' },
-              ].map(opt => (
-                <label key={opt.value}
-                  className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-sm ${resetScope === opt.value ? 'border-red-400 bg-red-50/50' : 'border-stone-200'}`}>
-                  <input type="radio" name="resetScope" value={opt.value}
-                    checked={resetScope === opt.value}
-                    onChange={() => setResetScope(opt.value as typeof resetScope)}
-                    className="accent-red-500" />
-                  <span style={{ color: 'var(--ink)' }}>{opt.label}</span>
-                </label>
-              ))}
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl mx-4">
+            <h3 className="font-serif text-lg font-bold mb-2" style={{ color: 'var(--ink)' }}>Vaciar Cifras</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--slate)' }}>
+              Elimina transacciones importadas y resetea balances a $0.
+            </p>
+            <div className="space-y-2">
+              <button onClick={() => handleResetBalances('all')}
+                disabled={resetting}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Todas las cuentas
+              </button>
+              <button onClick={() => handleResetBalances('profit_loss')}
+                disabled={resetting}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Solo cuentas de P&L (Ingresos/Gastos)
+              </button>
+              <button onClick={() => handleResetBalances('balance_sheet')}
+                disabled={resetting}
+                className="w-full text-left px-4 py-2.5 text-sm rounded-lg border transition-colors hover:bg-red-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                Solo cuentas de Balance Sheet (Activos/Pasivos/Patrimonio)
+              </button>
             </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowResetModal(false)}
-                className="px-3 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>
-                Cancelar
-              </button>
-              <button onClick={handleResetBalances} disabled={resetting}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-                style={{ backgroundColor: 'var(--danger)', color: 'white' }}>
-                {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                {resetting ? 'Vaciando...' : 'Confirmar'}
-              </button>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setShowResetModal(false)} className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>Cancelar</button>
             </div>
           </div>
         </div>
