@@ -9,7 +9,7 @@ import {
   ArrowRightLeft, Clock, X, Check, AlertCircle, Banknote,
   CircleDollarSign, Eye, Settings, History, Repeat,
   ChevronLeft, MoreHorizontal, Upload, Trash2, Image as ImageIcon,
-  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp, Pencil, Link2
+  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp, Pencil, Link2, Lock
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -1131,7 +1131,7 @@ function StatementsTab() {
         ) : (
           <div className="space-y-2">
             {savedReports.map(stmt => (
-              <div key={stmt.id} className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:border-[var(--gold-300)]"
+              <div key={stmt.id} className="group flex items-center justify-between p-3 rounded-lg border transition-colors hover:border-[var(--gold-300)]"
                 style={{ borderColor: viewingSaved?.id === stmt.id ? 'var(--gold-500)' : 'var(--sand)', backgroundColor: viewingSaved?.id === stmt.id ? 'rgba(212,175,55,0.06)' : 'white' }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -1155,7 +1155,7 @@ function StatementsTab() {
                     ) : (
                       <button
                         onClick={() => { setEditingReportId(stmt.id); setEditingReportName(stmt.name) }}
-                        className="text-sm font-medium truncate flex items-center gap-1 hover:text-blue-700 transition-colors group"
+                        className="text-sm font-medium truncate flex items-center gap-1 hover:text-blue-700 transition-colors"
                         style={{ color: 'var(--ink)' }}
                         title="Editar nombre"
                       >
@@ -1211,6 +1211,11 @@ function StatementsTab() {
                   style={{ borderColor: 'var(--sand)' }} placeholder="Notas adicionales..." />
               </div>
             </div>
+            <div className="flex items-center gap-2 p-3 rounded-lg text-xs mt-3"
+              style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', color: '#92400e' }}>
+              <Lock className="w-4 h-4 flex-shrink-0" />
+              <span>Este reporte se guardará como <strong>inmutable</strong> con un PDF adjunto que no podrá ser editado.</span>
+            </div>
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-sm rounded-lg" style={{ color: 'var(--charcoal)' }}>Cancelar</button>
               <button onClick={handleSave} disabled={saving}
@@ -1230,7 +1235,7 @@ function StatementsTab() {
           <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl mx-4">
             <h3 className="font-serif text-lg font-bold mb-2" style={{ color: 'var(--ink)' }}>Vaciar Cifras</h3>
             <p className="text-sm mb-4" style={{ color: 'var(--slate)' }}>
-              Elimina transacciones importadas y resetea balances a $0.
+              Elimina transacciones de estados de cuenta, resetea movimientos y pone balances a $0.
             </p>
             <div className="space-y-2">
               <button onClick={() => handleResetBalances('all')}
