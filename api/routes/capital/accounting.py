@@ -2507,7 +2507,7 @@ async def classify_capital_statement(statement_id: str):
     try:
         confirmed = (sb.table("capital_statement_movements")
                      .select("description, counterparty, amount, is_credit, suggested_account_code, suggested_account_id, final_account_id")
-                     .eq("status", "confirmed")
+                     .in_("status", ["confirmed", "posted"])
                      .not_.is_("final_account_id", "null")
                      .not_.is_("suggested_account_id", "null")
                      .order("updated_at", desc=True)
