@@ -1693,12 +1693,25 @@ async def get_saved_report_pdf(statement_id: str):
 
 
 @router.put("/reports/saved/{statement_id}")
-async def update_saved_report(statement_id: str):
-    """Blocked - saved reports are immutable."""
-    raise HTTPException(
-        status_code=403,
-        detail="Los reportes financieros guardados son inmutables y no pueden ser editados"
-    )
+async def update_saved_report(statement_id: str, request: Request):
+    """Allow renaming saved reports. Report data remains immutable."""
+    try:
+        body = await request.json()
+        name = body.get("name")
+        if not name or not name.strip():
+            raise HTTPException(status_code=400, detail="name is required")
+        result = sb.table("saved_financial_statements") \
+            .update({"name": name.strip()}) \
+            .eq("id", statement_id) \
+            .execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return {"ok": True, "statement": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating saved report name: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── CSV Export Helpers ──────────────────────────────────────────────────────
