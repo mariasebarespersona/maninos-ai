@@ -111,6 +111,7 @@ class BankAccountUpdate(BaseModel):
     zelle_phone: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    accounting_account_id: Optional[str] = None
 
 
 class CapitalBudgetCreate(BaseModel):
