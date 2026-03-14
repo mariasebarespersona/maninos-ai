@@ -9,7 +9,7 @@ import {
   ArrowRightLeft, Clock, X, Check, AlertCircle, Banknote,
   CircleDollarSign, Eye, Settings, History, Repeat,
   ChevronLeft, MoreHorizontal, Upload, Trash2, Image as ImageIcon,
-  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp
+  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp, Pencil, Link2
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -46,6 +46,16 @@ interface BankAccount {
   account_type: string; current_balance: number; is_primary: boolean
   routing_number?: string; zelle_email?: string; zelle_phone?: string
   notes?: string; is_active: boolean
+  accounting_account_id?: string
+}
+
+interface ReconcileMatch {
+  movement_id: string
+  transaction_id: string
+  score: number
+  confidence: string
+  movement: StatementMovement
+  transaction: Transaction
 }
 
 interface AccountNode {
@@ -164,6 +174,7 @@ export default function CapitalAccountingPage() {
   const [showNewTxnModal, setShowNewTxnModal] = useState(false)
   const [showNewBankModal, setShowNewBankModal] = useState(false)
   const [syncing, setSyncing] = useState(false)
+
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true)
@@ -683,6 +694,8 @@ function StatementsTab() {
   const [loadingSaved, setLoadingSaved] = useState(false)
   const [viewingSaved, setViewingSaved] = useState<SavedStatement | null>(null)
   const [viewingSavedData, setViewingSavedData] = useState<any>(null)
+  const [editingReportId, setEditingReportId] = useState<string | null>(null)
+  const [editingReportName, setEditingReportName] = useState('')
 
   const fetchSavedReports = useCallback(async () => {
     setLoadingSaved(true)
@@ -753,27 +766,6 @@ function StatementsTab() {
     loadReport(activeStatement)
   }, [activeStatement, loadReport])
 
-  // Update a single account's manual balance, then refresh the report
-  const handleUpdateBalance = useCallback(async (accountId: string, newBalance: number) => {
-    try {
-      const res = await fetch(`/api/capital/accounting/accounts/${accountId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_balance: newBalance }),
-      })
-      if (res.ok) {
-        toast.success('Balance actualizado')
-        // Silently reload both reports so subtotals recalculate
-        loadReport(activeStatement, { silent: true })
-      } else {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.detail || 'Error al actualizar balance')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    }
-  }, [activeStatement, loadReport, toast])
-
   const handleSave = async () => {
     if (!saveName.trim()) { toast.warning('Ingresa un nombre para el reporte'); return }
     setSaving(true)
@@ -823,6 +815,26 @@ function StatementsTab() {
       }
     } catch (e) { toast.error('Error al archivar reporte') }
   }
+
+  const handleRenameReport = useCallback(async (id: string) => {
+    const name = editingReportName.trim()
+    if (!name) { setEditingReportId(null); return }
+    try {
+      const res = await fetch(`/api/capital/accounting/reports/saved/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        setSavedReports(prev => prev.map(r => r.id === id ? { ...r, name } : r))
+        if (viewingSaved?.id === id) setViewingSaved(prev => prev ? { ...prev, name } : prev)
+        toast.success('Nombre actualizado')
+      } else {
+        toast.error('Error al renombrar')
+      }
+    } catch { toast.error('Error de conexión') }
+    setEditingReportId(null)
+  }, [editingReportName, toast, viewingSaved])
 
   // ── Reset / Vaciar Cifras ──
   const [showResetModal, setShowResetModal] = useState(false)
@@ -954,7 +966,7 @@ function StatementsTab() {
                   {renderBsData.assets.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
                   )}
-                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_assets)}</span>
@@ -970,7 +982,7 @@ function StatementsTab() {
                   {renderBsData.liabilities.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
                   )}
-                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
@@ -981,7 +993,7 @@ function StatementsTab() {
                   {renderBsData.equity.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
                   )}
-                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
@@ -1023,7 +1035,7 @@ function StatementsTab() {
                   {renderPlData.income.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
                   )}
-                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_income)}</span>
@@ -1042,7 +1054,7 @@ function StatementsTab() {
                   {renderPlData.expenses.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
                   )}
-                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
@@ -1059,7 +1071,7 @@ function StatementsTab() {
                 {renderPlData.other_income.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
-                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
@@ -1071,7 +1083,7 @@ function StatementsTab() {
                 {renderPlData.other_expenses.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
-                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onUpdateBalance={handleUpdateBalance} isViewingSaved={isViewingSaved} />)}
+                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
@@ -1127,7 +1139,29 @@ function StatementsTab() {
                       style={{ backgroundColor: stmt.report_type === 'balance_sheet' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)', color: stmt.report_type === 'balance_sheet' ? '#3b82f6' : '#10b981' }}>
                       {stmt.report_type === 'balance_sheet' ? 'Balance' : 'P&L'}
                     </span>
-                    <span className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{stmt.name}</span>
+                    {editingReportId === stmt.id ? (
+                      <input
+                        value={editingReportName}
+                        onChange={e => setEditingReportName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleRenameReport(stmt.id)
+                          if (e.key === 'Escape') setEditingReportId(null)
+                        }}
+                        onBlur={() => handleRenameReport(stmt.id)}
+                        autoFocus
+                        className="text-sm font-medium px-2 py-0.5 border rounded w-48 focus:outline-none focus:ring-2 focus:ring-[var(--gold-400)]"
+                        style={{ borderColor: 'var(--gold-400)', color: 'var(--ink)' }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => { setEditingReportId(stmt.id); setEditingReportName(stmt.name) }}
+                        className="text-sm font-medium truncate flex items-center gap-1 hover:text-blue-700 transition-colors group"
+                        style={{ color: 'var(--ink)' }}
+                        title="Editar nombre"
+                      >
+                        {stmt.name} <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" style={{ color: 'var(--ash)' }} />
+                      </button>
+                    )}
               </div>
                   <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
                     <span>{new Date(stmt.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
@@ -1255,10 +1289,8 @@ function StatementsTab() {
   )
 }
 
-function ReportTreeNode({ node, depth, onUpdateBalance, isViewingSaved }: {
+function ReportTreeNode({ node, depth }: {
   node: ReportNode; depth: number
-  onUpdateBalance?: (accountId: string, newBalance: number) => void
-  isViewingSaved?: boolean
 }) {
   const hasChildren = (node.children || []).length > 0
   const indent = depth * 16
@@ -1266,22 +1298,18 @@ function ReportTreeNode({ node, depth, onUpdateBalance, isViewingSaved }: {
   if (hasChildren) {
     return (
       <>
-        {/* Header row */}
         <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
             {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
             {node.name}
           </span>
           {node.balance !== 0 && !node.is_header && (
-            <EditableBalance value={node.balance} accountId={node.id} onSave={onUpdateBalance} disabled={isViewingSaved} />
+            <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(node.balance)}</span>
           )}
         </div>
-        {/* Children */}
         {node.children!.map(child => (
-          <ReportTreeNode key={child.id} node={child} depth={depth + 1}
-            onUpdateBalance={onUpdateBalance} isViewingSaved={isViewingSaved} />
+          <ReportTreeNode key={child.id} node={child} depth={depth + 1} />
         ))}
-        {/* Subtotal row */}
         <div className="flex justify-between py-0.5 border-t" style={{ paddingLeft: indent, borderColor: '#e5e5e5' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
             Total for {node.code ? `${node.code} ` : ''}{node.name}
@@ -1294,83 +1322,14 @@ function ReportTreeNode({ node, depth, onUpdateBalance, isViewingSaved }: {
     )
   }
 
-  // Leaf account
   return (
     <div className="flex justify-between py-0.5" style={{ paddingLeft: indent }}>
       <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
         {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
         {node.name}
       </span>
-      <EditableBalance value={node.balance} accountId={node.id} onSave={onUpdateBalance} disabled={isViewingSaved} />
+      <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(node.balance)}</span>
     </div>
-  )
-}
-
-
-// ── Inline editable balance for report nodes ──
-function EditableBalance({ value, accountId, onSave, disabled }: {
-  value: number; accountId: string
-  onSave?: (accountId: string, newBalance: number) => void
-  disabled?: boolean
-}) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const startEdit = () => {
-    if (disabled || !onSave) return
-    setDraft(String(value))
-    setEditing(true)
-  }
-
-  const cancel = () => { setEditing(false); setDraft('') }
-
-  const save = async () => {
-    const num = parseFloat(draft)
-    if (isNaN(num)) { cancel(); return }
-    if (num === value) { cancel(); return }
-    setSaving(true)
-    try {
-      onSave?.(accountId, num)
-    } finally {
-      setSaving(false)
-      setEditing(false)
-    }
-  }
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') save()
-    if (e.key === 'Escape') cancel()
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1">
-        <input
-          type="number"
-          step="0.01"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={handleKey}
-          onBlur={save}
-          autoFocus
-          className="w-28 px-2 py-0.5 text-sm font-mono text-right border rounded focus:outline-none focus:ring-1 focus:ring-[var(--gold-400)]"
-          style={{ borderColor: 'var(--gold-400)' }}
-        />
-        {saving && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--gold-600)' }} />}
-      </div>
-    )
-  }
-
-  return (
-    <span
-      onClick={startEdit}
-      className={`text-sm font-mono ${!disabled && onSave ? 'cursor-pointer hover:bg-[var(--pearl)] hover:underline rounded px-1 -mx-1 transition-colors' : ''}`}
-      style={{ color: value < 0 ? 'var(--danger)' : 'var(--ink)' }}
-      title={!disabled && onSave ? 'Clic para editar monto' : undefined}
-    >
-      {fmtFull(value)}
-    </span>
   )
 }
 
@@ -1491,6 +1450,17 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
   const [editingBalance, setEditingBalance] = useState(false)
   const [newBalance, setNewBalance] = useState('')
   const [showTransferModal, setShowTransferModal] = useState(false)
+  const [qbAccounts, setQbAccounts] = useState<any[]>([])
+
+  const fetchQbAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/capital/accounting/accounts/tree')
+      if (res.ok) {
+        const data = await res.json()
+        setQbAccounts((data.flat || []).filter((a: any) => !a.is_header && a.parent_account_id && a.account_type === 'asset' && a.code?.match(/^101\d/)))
+      }
+    } catch { /* ignore */ }
+  }, [])
 
   const fetchBanks = useCallback(async () => {
     setLoading(true)
@@ -1516,7 +1486,7 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
     } catch (e) { console.error(e) }
   }, [])
 
-  useEffect(() => { fetchBanks() }, [fetchBanks])
+  useEffect(() => { fetchBanks(); fetchQbAccounts() }, [fetchBanks, fetchQbAccounts])
 
   const handleUpdateBalance = async () => {
     if (!selectedBank || !newBalance) return
@@ -1701,6 +1671,38 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
                   )}
                 </div>
 
+                {/* QB Account Linking */}
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--slate)' }}>
+                    Cuenta contable QB:
+                  </label>
+                  <select
+                    value={bankDetail.accounting_account_id || ''}
+                    onChange={async (e) => {
+                      const val = e.target.value || null
+                      try {
+                        await fetch(`/api/capital/accounting/bank-accounts/${bankDetail.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ accounting_account_id: val }),
+                        })
+                        fetchBanks()
+                        loadBankDetail(bankDetail.id)
+                      } catch { toast.error('Error al vincular cuenta') }
+                    }}
+                    className="flex-1 max-w-xs px-2 py-1.5 text-xs rounded-lg border"
+                    style={{ borderColor: bankDetail.accounting_account_id ? 'var(--stone)' : '#f59e0b' }}
+                  >
+                    <option value="">— Sin vincular —</option>
+                    {qbAccounts.map((a: any) => (
+                      <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+                    ))}
+                  </select>
+                  {!bankDetail.accounting_account_id && (
+                    <span className="text-[10px] text-amber-600">Requerido para Balance Sheet</span>
+                  )}
+                </div>
+
                 {/* Recent Transactions */}
                 <div>
                   <h4 className="font-semibold text-sm mb-3" style={{ color: 'var(--ink)' }}>Últimos Movimientos</h4>
@@ -1768,6 +1770,14 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
   const [newAccountBank, setNewAccountBank] = useState('')
   const [creatingAccount, setCreatingAccount] = useState(false)
 
+  // Reconciliation wizard state
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
+  const [reconciling, setReconciling] = useState(false)
+  const [reconcileMatches, setReconcileMatches] = useState<ReconcileMatch[]>([])
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(new Set())
+  const [confirmingReconcile, setConfirmingReconcile] = useState(false)
+  const [reconcileDone, setReconcileDone] = useState(false)
+
   const fetchBankAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/capital/accounting/bank-accounts')
@@ -1801,7 +1811,7 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
       const res = await fetch('/api/capital/accounting/accounts/tree')
       if (res.ok) {
         const data = await res.json()
-        setAllAccounts(data.flat || [])
+        setAllAccounts((data.flat || []).filter((a: any) => !a.is_header && a.parent_account_id))
       }
     } catch (e) { /* ignore */ }
   }, [])
@@ -1898,6 +1908,61 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
     finally { setMovementsLoading(false) }
   }
 
+  const reconcileMovements = async (stmtId: string) => {
+    setReconciling(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${stmtId}/reconcile`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        setReconcileMatches(data.matches || [])
+        setSelectedMatches(new Set((data.matches || []).map((m: ReconcileMatch) => m.movement_id)))
+        if ((data.matches || []).length === 0) {
+          toast.info(data.message || 'No se encontraron coincidencias')
+        } else {
+          toast.success(`${data.matches.length} coincidencias encontradas`)
+        }
+      } else {
+        toast.error('Error al conciliar')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setReconciling(false) }
+  }
+
+  const confirmReconciliation = async (stmtId: string) => {
+    const pairs = reconcileMatches
+      .filter(m => selectedMatches.has(m.movement_id))
+      .map(m => ({ movement_id: m.movement_id, transaction_id: m.transaction_id }))
+    if (!pairs.length) return
+    setConfirmingReconcile(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${stmtId}/reconcile/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`${data.reconciled} movimientos conciliados`)
+        setReconcileDone(true)
+        setReconcileMatches([])
+        setSelectedMatches(new Set())
+        await openStatement(stmtId)
+      } else {
+        toast.error('Error al confirmar conciliación')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setConfirmingReconcile(false) }
+  }
+
+  const toggleMatchSelect = (movementId: string) => {
+    setSelectedMatches(prev => {
+      const next = new Set(prev)
+      if (next.has(movementId)) next.delete(movementId)
+      else next.add(movementId)
+      return next
+    })
+  }
+
   const classifyMovements = async (stmtId: string) => {
     setClassifying(true)
     try {
@@ -1966,6 +2031,7 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
 
   const pendingCount = activeMovements.filter(m => m.status === 'pending' || m.status === 'suggested').length
   const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
+  const reconciledCount = activeMovements.filter(m => m.status === 'reconciled').length
   const postedCount = activeMovements.filter(m => m.status === 'posted').length
   const activeStmt = activeStatement ? Object.values(statements).flat().find(s => s.id === activeStatement) : null
 
@@ -2210,39 +2276,171 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                   {activeMovements.length} movimientos
                 </span>
                 {pendingCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{pendingCount} sin clasificar</span>}
+                {reconciledCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">{reconciledCount} conciliados</span>}
                 {confirmedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{confirmedCount} confirmados</span>}
                 {postedCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{postedCount} publicados</span>}
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {(activeStmt.status === 'parsed' || pendingCount > 0) && (
-                <button
-                  onClick={() => classifyMovements(activeStatement)}
-                  disabled={classifying}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                  style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
-                >
-                  {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  {classifying ? 'Clasificando...' : 'Clasificar con IA'}
-                </button>
-              )}
-              {confirmedCount > 0 && (
-                <button
-                  onClick={() => postMovements(activeStatement)}
-                  disabled={posting}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                  style={{ backgroundColor: posting ? '#9ca3af' : '#059669' }}
-                >
-                  {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  {posting ? 'Publicando...' : `Publicar ${confirmedCount} confirmados`}
-                </button>
-              )}
-              <button onClick={() => { setActiveStatement(null); setActiveMovements([]) }}
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setActiveStatement(null); setActiveMovements([]); setWizardStep(1); setReconcileMatches([]); setReconcileDone(false) }}
                 className="p-1.5 rounded-lg hover:bg-stone-100 transition-colors">
                 <X className="w-4 h-4 text-stone-400" />
               </button>
             </div>
           </div>
+
+          {/* ── 3-Step Wizard Indicator ── */}
+          <div className="flex items-center justify-center gap-2 px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: '#fafaf9' }}>
+            {[
+              { step: 1 as const, label: 'Conciliar', icon: <Link2 className="w-3.5 h-3.5" /> },
+              { step: 2 as const, label: 'Clasificar con IA', icon: <Sparkles className="w-3.5 h-3.5" /> },
+              { step: 3 as const, label: 'Integrar', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+            ].map(({ step, label, icon }, i) => (
+              <React.Fragment key={step}>
+                {i > 0 && <ChevronRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />}
+                <button
+                  onClick={() => setWizardStep(step)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    wizardStep === step ? 'text-white' : 'hover:bg-stone-100'
+                  }`}
+                  style={{
+                    backgroundColor: wizardStep === step
+                      ? step === 1 ? '#7c3aed' : step === 2 ? '#2563eb' : '#059669'
+                      : 'transparent',
+                    color: wizardStep === step ? 'white' : 'var(--slate)',
+                  }}
+                >
+                  {icon} {label}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* ── Step 1: Reconciliation ── */}
+          {wizardStep === 1 && (
+            <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Paso 1: Conciliar con transacciones existentes</h4>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Busca coincidencias automáticas entre los movimientos bancarios y las transacciones ya registradas en contabilidad.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {reconcileDone && <span className="text-xs text-emerald-600 font-medium">Conciliación completada</span>}
+                  <button
+                    onClick={() => reconcileMovements(activeStatement)}
+                    disabled={reconciling || pendingCount === 0}
+                    className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5"
+                    style={{ backgroundColor: reconciling ? '#9ca3af' : pendingCount === 0 ? '#d1d5db' : '#7c3aed' }}
+                  >
+                    {reconciling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                    {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
+                  </button>
+                  <button onClick={() => setWizardStep(2)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-stone-50"
+                    style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
+
+              {reconcileMatches.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{reconcileMatches.length} coincidencias encontradas</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setSelectedMatches(new Set(reconcileMatches.map(m => m.movement_id)))}
+                        className="text-[10px] text-blue-600 hover:underline">Seleccionar todas</button>
+                      <button onClick={() => setSelectedMatches(new Set())}
+                        className="text-[10px] text-stone-500 hover:underline">Deseleccionar</button>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto border rounded-lg" style={{ borderColor: 'var(--sand)' }}>
+                    {reconcileMatches.map(match => (
+                      <div key={match.movement_id}
+                        className="flex items-center gap-3 px-3 py-2 border-b last:border-0 hover:bg-stone-50 transition-colors"
+                        style={{ borderColor: 'var(--pearl)' }}>
+                        <input type="checkbox" checked={selectedMatches.has(match.movement_id)}
+                          onChange={() => toggleMatchSelect(match.movement_id)}
+                          className="rounded border-stone-300" />
+                        <div className="flex-1 min-w-0 grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{match.movement.description}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--ash)' }}>{match.movement.movement_date} · ${Math.abs(match.movement.amount).toFixed(2)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{match.transaction.description}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--ash)' }}>{match.transaction.transaction_date} · ${Math.abs(match.transaction.amount).toFixed(2)}</div>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+                          match.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'
+                        }`}>{match.score}pts</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => confirmReconciliation(activeStatement)}
+                      disabled={confirmingReconcile || selectedMatches.size === 0}
+                      className="px-4 py-2 text-xs font-medium text-white rounded-lg flex items-center gap-1.5"
+                      style={{ backgroundColor: confirmingReconcile || selectedMatches.size === 0 ? '#9ca3af' : '#059669' }}
+                    >
+                      {confirmingReconcile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Confirmar {selectedMatches.size} coincidencias
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 2: Classify — Action bar ── */}
+          {wizardStep === 2 && (
+            <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: '#fafaf9' }}>
+              <div>
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Paso 2: Clasificar movimientos con IA</h4>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>La IA sugiere cuentas contables. Revisa y confirma cada clasificación.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => classifyMovements(activeStatement)}
+                  disabled={classifying}
+                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5"
+                  style={{ backgroundColor: classifying ? '#9ca3af' : '#2563eb' }}
+                >
+                  {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {classifying ? 'Clasificando...' : 'Clasificar con IA'}
+                </button>
+                <button onClick={() => setWizardStep(3)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-stone-50"
+                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                  Siguiente →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Post — Action bar ── */}
+          {wizardStep === 3 && (
+            <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: '#fafaf9' }}>
+              <div>
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Paso 3: Integrar a contabilidad</h4>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                  Publica {confirmedCount + reconciledCount} movimientos ({confirmedCount} confirmados, {reconciledCount} conciliados) como transacciones de doble partida.
+                </p>
+              </div>
+              <button
+                onClick={() => postMovements(activeStatement)}
+                disabled={posting || (confirmedCount + reconciledCount) === 0}
+                className="px-4 py-2 text-xs font-medium text-white rounded-lg flex items-center gap-1.5"
+                style={{ backgroundColor: posting || (confirmedCount + reconciledCount) === 0 ? '#9ca3af' : '#059669' }}
+              >
+                {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {posting ? 'Publicando...' : `Integrar ${confirmedCount + reconciledCount} movimientos`}
+              </button>
+            </div>
+          )}
 
           {/* Movements Table */}
           {movementsLoading ? (
@@ -2302,6 +2500,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
   const isPosted = mv.status === 'posted'
   const isSkipped = mv.status === 'skipped'
   const isConfirmed = mv.status === 'confirmed'
+  const isReconciled = mv.status === 'reconciled'
 
   const filteredAccounts = accountSearch
     ? accounts.filter((a: any) =>
@@ -2332,7 +2531,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
   }
 
   return (
-    <tr className={`border-b transition-colors ${isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
+    <tr className={`border-b transition-colors ${isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isReconciled ? 'bg-purple-50/50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
       style={{ borderColor: '#f0f0f0' }}>
       {/* Date */}
       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -2434,8 +2633,9 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
       {/* Status */}
       <td className="px-3 py-2.5 text-center">
         {mv.status === 'posted' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700 font-medium">Publicado</span>}
+        {mv.status === 'reconciled' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-medium">Conciliado</span>}
         {mv.status === 'confirmed' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-100 text-emerald-700 font-medium">Confirmado</span>}
-        {mv.status === 'suggested' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-medium">Sugerido</span>}
+        {mv.status === 'suggested' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-violet-100 text-violet-700 font-medium">Sugerido</span>}
         {mv.status === 'pending' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-600 font-medium">Pendiente</span>}
         {mv.status === 'skipped' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-100 text-stone-500 font-medium">Omitido</span>}
       </td>

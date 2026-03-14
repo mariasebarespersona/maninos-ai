@@ -18,7 +18,7 @@ import logging
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -695,62 +695,80 @@ class ResetBalancesRequest(BaseModel):
 
 
 @router.post("/accounts/reset-balances")
-async def reset_account_balances(data: ResetBalancesRequest):
-    """Reset current_balance to 0 for accounts after closing a period.
+async def reset_account_balances(request: Request):
+    """Reset financial statements by deleting bank_statement transactions and resetting movements.
 
-    scope options:
-      - "all"           → reset ALL active accounts
-      - "profit_loss"   → reset only income / expense / cogs accounts
-      - "balance_sheet" → reset only asset / liability / equity accounts
+    Body: { "scope": "all" | "profit_loss" | "balance_sheet" }
     """
     try:
-        # Fetch active accounts
+        body = await request.json()
+        scope = body.get("scope", "all")
+
+        # 1. Reset current_balance on accounts
         accounts = sb.table("capital_accounts") \
-            .select("id, code, name, account_type, report_section, current_balance") \
+            .select("id, code, account_type, current_balance") \
             .eq("is_active", True) \
             .execute().data or []
 
-        # Filter by scope
-        if data.scope == "profit_loss":
-            targets = [a for a in accounts if a.get("account_type") in ("income", "expense", "cogs")
-                       or a.get("report_section") == "profit_loss"]
-        elif data.scope == "balance_sheet":
-            targets = [a for a in accounts if a.get("account_type") in ("asset", "liability", "equity")
-                       or a.get("report_section") == "balance_sheet"]
-        else:
-            targets = accounts
-
-        # Only reset accounts that actually have a non-zero balance
-        to_reset = [a for a in targets if float(a.get("current_balance") or 0) != 0]
-
-        if not to_reset:
-            return {
-                "ok": True,
-                "message": "No hay cifras manuales que vaciar.",
-                "reset_count": 0,
-            }
-
-        # Reset each account's current_balance to 0
-        for acc in to_reset:
+        reset_count = 0
+        for acc in accounts:
+            bal = float(acc.get("current_balance") or 0)
+            if bal == 0:
+                continue
+            atype = acc.get("account_type", "")
+            if scope == "profit_loss" and atype not in ("income", "expense", "cogs"):
+                continue
+            if scope == "balance_sheet" and atype not in ("asset", "liability", "equity"):
+                continue
             sb.table("capital_accounts") \
                 .update({"current_balance": 0}) \
                 .eq("id", acc["id"]) \
                 .execute()
+            reset_count += 1
 
-        scope_label = {
-            "all": "todas las cuentas",
-            "profit_loss": "cuentas de P&L (ingresos/gastos)",
-            "balance_sheet": "cuentas del Balance (activos/pasivos/patrimonio)",
-        }.get(data.scope, data.scope)
+        # 2. Clear bank_statement transactions (the actual data behind reports)
+        # Clear ALL FK references on statement_movements that point to transactions
+        sb.table("capital_statement_movements") \
+            .update({"transaction_id": None, "matched_transaction_id": None}) \
+            .neq("status", "pending") \
+            .execute()
 
+        # Reset posted movements back to confirmed (so they can be re-integrated)
+        sb.table("capital_statement_movements") \
+            .update({"status": "confirmed"}) \
+            .eq("status", "posted") \
+            .execute()
+
+        # Reset bank_statements stats
+        sb.table("capital_bank_statements") \
+            .update({"posted_movements": 0, "status": "review"}) \
+            .in_("status", ["completed", "partial"]) \
+            .execute()
+
+        # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
+        sb.table("capital_transactions") \
+            .update({"linked_transaction_id": None}) \
+            .eq("source", "bank_statement") \
+            .execute()
+
+        # Delete bank_statement transactions
+        deleted = sb.table("capital_transactions") \
+            .delete() \
+            .eq("source", "bank_statement") \
+            .execute()
+        deleted_count = len(deleted.data or [])
+
+        scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
             "ok": True,
-            "message": f"Cifras vaciadas en {len(to_reset)} de {len(targets)} {scope_label}.",
-            "reset_count": len(to_reset),
-            "accounts_reset": [{"code": a["code"], "name": a["name"]} for a in to_reset],
+            "reset_count": reset_count,
+            "deleted_transactions": deleted_count,
+            "scope": scope,
+            "message": f"Cifras vaciadas: {deleted_count} transacciones eliminadas, {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
         }
+
     except Exception as e:
-        logger.error(f"Error resetting account balances: {e}")
+        logger.error(f"Error resetting Capital account balances: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2017,12 +2035,25 @@ async def get_saved_report_pdf(statement_id: str):
 
 
 @router.put("/reports/saved/{statement_id}")
-async def update_saved_report(statement_id: str):
-    """Blocked - saved reports are immutable."""
-    raise HTTPException(
-        status_code=403,
-        detail="Los reportes financieros guardados son inmutables y no pueden ser editados"
-    )
+async def update_saved_report(statement_id: str, request: Request):
+    """Allow renaming saved reports. Report data remains immutable."""
+    try:
+        body = await request.json()
+        name = body.get("name")
+        if not name or not name.strip():
+            raise HTTPException(status_code=400, detail="name is required")
+        result = sb.table("saved_financial_statements") \
+            .update({"name": name.strip()}) \
+            .eq("id", statement_id) \
+            .execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return {"ok": True, "statement": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating saved report name: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
@@ -2182,6 +2213,229 @@ async def upload_capital_bank_statement(
         raise HTTPException(status_code=500, detail=f"Error parsing statement: {str(e)}")
 
 
+@router.post("/bank-statements/{statement_id}/reconcile")
+async def reconcile_capital_statement_movements(statement_id: str):
+    """Auto-match Capital statement movements against existing unreconciled transactions.
+    Returns matches with confidence scores for user confirmation."""
+    stmt = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
+    if not stmt.data:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    statement = stmt.data[0]
+    bank_account_id = statement.get("bank_account_id")
+
+    # Get pending movements from this statement
+    movements = (sb.table("capital_statement_movements")
+                 .select("*").eq("statement_id", statement_id)
+                 .in_("status", ["pending", "suggested"])
+                 .order("sort_order").execute())
+    if not movements.data:
+        return {"matches": [], "unmatched_count": 0, "message": "No hay movimientos pendientes"}
+
+    # Get unreconciled transactions
+    unreconciled_txns = []
+    if bank_account_id:
+        txns = (sb.table("capital_transactions").select("*")
+                .in_("status", ["confirmed", "pending"])
+                .eq("bank_account_id", bank_account_id)
+                .order("transaction_date", desc=True).execute())
+        unreconciled_txns = txns.data or []
+
+    # Fallback: also include transactions with NULL bank_account_id
+    if not unreconciled_txns or bank_account_id:
+        txns_null = (sb.table("capital_transactions").select("*")
+                     .in_("status", ["confirmed", "pending"])
+                     .is_("bank_account_id", "null")
+                     .order("transaction_date", desc=True).execute())
+        existing_ids = {t["id"] for t in unreconciled_txns}
+        for t in (txns_null.data or []):
+            if t["id"] not in existing_ids:
+                unreconciled_txns.append(t)
+
+    if not unreconciled_txns:
+        return {
+            "matches": [],
+            "unmatched_count": len(movements.data),
+            "message": "No hay transacciones existentes para conciliar",
+        }
+
+    matches = _match_capital_movements_to_transactions(movements.data, unreconciled_txns)
+
+    unmatched_count = len(movements.data) - len(matches)
+    return {
+        "matches": matches,
+        "unmatched_count": unmatched_count,
+        "message": f"{len(matches)} coincidencias encontradas, {unmatched_count} sin match",
+    }
+
+
+def _normalize_capital_name(name: str) -> str:
+    """Normalize a counterparty name for comparison."""
+    import re
+    name = name.lower().strip()
+    for noise in ["zelle payment from ", "wire transfer in - ", "wire transfer - ",
+                   "check #", "ach debit - ", "ach credit - ", "transfer from ",
+                   "transfer to ", "payment from ", "payment to ",
+                   "venta contado - ", "compra propiedad: ", "compra: "]:
+        name = name.replace(noise, "")
+    name = re.sub(r'[^a-záéíóúñü\s]', '', name).strip()
+    return name
+
+
+def _capital_name_similarity(name1: str, name2: str) -> float:
+    """Calculate similarity between two names (0.0 to 1.0)."""
+    n1 = _normalize_capital_name(name1)
+    n2 = _normalize_capital_name(name2)
+    if not n1 or not n2:
+        return 0.0
+    if n1 == n2:
+        return 1.0
+    if n1 in n2 or n2 in n1:
+        return 0.9
+    tokens1 = set(n1.split())
+    tokens2 = set(n2.split())
+    if not tokens1 or not tokens2:
+        return 0.0
+    overlap = len(tokens1 & tokens2)
+    total = max(len(tokens1), len(tokens2))
+    return overlap / total if total > 0 else 0.0
+
+
+def _match_capital_movements_to_transactions(movements: list, transactions: list) -> list:
+    """Match Capital bank statement movements against existing accounting transactions."""
+    matches = []
+    used_txn_ids = set()
+
+    for mv in movements:
+        mv_amount = abs(float(mv.get("amount", 0)))
+        mv_is_credit = mv.get("is_credit", False)
+        mv_date_str = mv.get("movement_date", "")
+        mv_counterparty = mv.get("counterparty") or ""
+        mv_description = mv.get("description") or ""
+
+        best_match = None
+        best_score = 0
+
+        for txn in transactions:
+            if txn["id"] in used_txn_ids:
+                continue
+
+            score = 0
+            txn_amount = abs(float(txn.get("amount", 0)))
+            txn_is_income = txn.get("is_income", False)
+
+            # Direction match
+            if mv_is_credit != txn_is_income:
+                continue
+
+            # Amount match
+            if mv_amount > 0 and txn_amount > 0:
+                diff_pct = abs(mv_amount - txn_amount) / max(mv_amount, txn_amount)
+                if abs(mv_amount - txn_amount) < 0.01:
+                    score += 50
+                elif diff_pct < 0.01:
+                    score += 35
+                elif diff_pct < 0.05:
+                    score += 15
+                else:
+                    continue
+
+            # Date proximity
+            try:
+                mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
+                txn_date_str = txn.get("transaction_date", "")
+                txn_date = datetime.strptime(txn_date_str, "%Y-%m-%d").date() if txn_date_str else None
+                if mv_date and txn_date:
+                    diff_days = abs((mv_date - txn_date).days)
+                    if diff_days == 0:
+                        score += 30
+                    elif diff_days <= 1:
+                        score += 25
+                    elif diff_days <= 3:
+                        score += 15
+                    elif diff_days <= 7:
+                        score += 8
+                    elif diff_days <= 14:
+                        score += 3
+            except Exception:
+                pass
+
+            # Counterparty similarity
+            txn_counterparty = txn.get("counterparty_name") or ""
+            txn_description = txn.get("description") or ""
+            best_name_sim = 0.0
+            for mv_name in [mv_counterparty, mv_description]:
+                for txn_name in [txn_counterparty, txn_description]:
+                    if mv_name and txn_name:
+                        sim = _capital_name_similarity(mv_name, txn_name)
+                        best_name_sim = max(best_name_sim, sim)
+            score += int(20 * best_name_sim)
+
+            if score > best_score:
+                best_score = score
+                best_match = txn
+
+        if best_match and best_score >= 50:
+            used_txn_ids.add(best_match["id"])
+            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
+            matches.append({
+                "movement_id": mv["id"],
+                "transaction_id": best_match["id"],
+                "score": best_score,
+                "confidence": confidence,
+                "movement": mv,
+                "transaction": best_match,
+            })
+
+    return matches
+
+
+@router.post("/bank-statements/{statement_id}/reconcile/confirm")
+async def confirm_capital_reconciliation(statement_id: str, data: dict):
+    """Confirm matched movement-transaction pairs. Marks both as reconciled."""
+    pairs = data.get("pairs", [])
+    logger.info(f"[capital-reconcile-confirm] Received {len(pairs)} pairs for statement {statement_id}")
+
+    if not pairs:
+        raise HTTPException(status_code=400, detail="No pairs provided")
+
+    now_str = datetime.utcnow().isoformat()
+    reconciled = 0
+    errors = []
+
+    for pair in pairs:
+        mv_id = pair.get("movement_id")
+        txn_id = pair.get("transaction_id")
+
+        if not mv_id or not txn_id:
+            errors.append(f"Missing mv_id or txn_id in pair: {pair}")
+            continue
+
+        try:
+            mv_result = sb.table("capital_statement_movements").update({
+                "status": "reconciled",
+                "matched_transaction_id": txn_id,
+            }).eq("id", mv_id).execute()
+            logger.info(f"[capital-reconcile-confirm] Movement update: {len(mv_result.data or [])} rows, mv={mv_id}")
+
+            txn_result = sb.table("capital_transactions").update({
+                "status": "reconciled",
+                "reconciled_at": now_str,
+            }).eq("id", txn_id).execute()
+            logger.info(f"[capital-reconcile-confirm] Transaction update: {len(txn_result.data or [])} rows, txn={txn_id}")
+
+            reconciled += 1
+        except Exception as e:
+            err_msg = f"mv={mv_id}, txn={txn_id}: {e}"
+            logger.error(f"[capital-reconcile-confirm] Error: {err_msg}")
+            errors.append(err_msg)
+
+    return {
+        "reconciled": reconciled,
+        "message": f"{reconciled} movimientos conciliados",
+        "errors": errors[:5] if errors else [],
+    }
+
+
 @router.post("/bank-statements/{statement_id}/classify")
 async def classify_capital_statement(statement_id: str):
     """Use AI to suggest accounting accounts for each Capital statement movement."""
@@ -2191,23 +2445,86 @@ async def classify_capital_statement(statement_id: str):
 
     movements = (sb.table("capital_statement_movements")
                  .select("*").eq("statement_id", statement_id)
-                 .in_("status", ["pending", "suggested"])
+                 .in_("status", ["pending", "suggested", "reconciled"])
                  .order("sort_order").execute())
 
     if not movements.data:
         return {"message": "No movements to classify", "classified": 0}
 
-    # Get Capital chart of accounts for AI context
+    # For reconciled movements, fetch their matched transaction descriptions
+    reconciled_mvs = [m for m in movements.data if m.get("status") == "reconciled" and m.get("matched_transaction_id")]
+    matched_txn_map = {}
+    if reconciled_mvs:
+        txn_ids = [m["matched_transaction_id"] for m in reconciled_mvs]
+        txns = sb.table("capital_transactions").select("id, description, counterparty_name, is_income").in_("id", txn_ids).execute()
+        txn_by_id = {t["id"]: t for t in (txns.data or [])}
+        for mv in reconciled_mvs:
+            txn = txn_by_id.get(mv["matched_transaction_id"])
+            if txn:
+                matched_txn_map[mv["id"]] = txn
+
+    # Enrich movements with matched transaction info for AI context
+    for mv in movements.data:
+        if mv["id"] in matched_txn_map:
+            txn = matched_txn_map[mv["id"]]
+            mv["_matched_txn_description"] = txn.get("description", "")
+            mv["_matched_txn_counterparty"] = txn.get("counterparty_name", "")
+
+    # Get Capital chart of accounts for AI context — ONLY QuickBooks accounts (with parent_account_id set)
     accounts = sb.table("capital_accounts") \
-        .select("id, code, name, account_type, category, is_header") \
+        .select("id, code, name, account_type, category, is_header, parent_account_id") \
         .eq("is_active", True) \
         .order("display_order").execute()
-    accounts_list = [a for a in (accounts.data or []) if not a.get("is_header")]
+    all_accounts = accounts.data or []
+    qb_root_codes = {"PL_INCOME", "PL_COGS", "PL_EXPENSES", "PL_OTHER_EXPENSES", "BS_ASSETS", "BS_LIABILITIES", "BS_EQUITY"}
+    qb_accounts = [a for a in all_accounts if a.get("parent_account_id") or a["code"] in qb_root_codes]
+    accounts_list = [a for a in qb_accounts if not a.get("is_header")]
+    acct_by_id = {a["id"]: a for a in accounts_list}
 
+    # Build accounts reference for the AI — only leaf P&L accounts (income/expense/cogs)
+    pl_accounts = [a for a in accounts_list if a["account_type"] in ("income", "expense", "cogs")]
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category', '')})"
-        for a in accounts_list
+        for a in pl_accounts
     ])
+
+    # --- Learning from human corrections ---
+    corrections_ref = ""
+    try:
+        confirmed = (sb.table("capital_statement_movements")
+                     .select("description, counterparty, amount, is_credit, suggested_account_code, suggested_account_id, final_account_id")
+                     .eq("status", "confirmed")
+                     .not_.is_("final_account_id", "null")
+                     .not_.is_("suggested_account_id", "null")
+                     .order("updated_at", desc=True)
+                     .limit(200)
+                     .execute())
+        corrections = []
+        for cm in (confirmed.data or []):
+            if cm.get("final_account_id") and cm.get("suggested_account_id") and cm["final_account_id"] != cm["suggested_account_id"]:
+                final_acct = acct_by_id.get(cm["final_account_id"])
+                suggested_acct = acct_by_id.get(cm["suggested_account_id"])
+                if final_acct:
+                    corrections.append({
+                        "description": cm.get("description", ""),
+                        "counterparty": cm.get("counterparty", ""),
+                        "amount": cm.get("amount", 0),
+                        "is_credit": cm.get("is_credit", False),
+                        "ai_suggested": f"{suggested_acct['code']} {suggested_acct['name']}" if suggested_acct else cm.get("suggested_account_code", "?"),
+                        "human_corrected": f"{final_acct['code']} {final_acct['name']}",
+                    })
+
+        if corrections:
+            lines = []
+            for c in corrections[:30]:
+                direction = "credit" if c["is_credit"] else "debit"
+                lines.append(
+                    f"- \"{c['description']}\" ({c['counterparty']}, ${c['amount']}, {direction}) → "
+                    f"AI suggested: {c['ai_suggested']} → Human corrected to: {c['human_corrected']}"
+                )
+            corrections_ref = "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Could not load Capital correction history: {e}")
 
     # Classify in batches
     classified = 0
@@ -2216,7 +2533,7 @@ async def classify_capital_statement(statement_id: str):
 
     for batch_start in range(0, len(mvs), batch_size):
         batch = mvs[batch_start:batch_start + batch_size]
-        suggestions = await _ai_classify_capital_movements(batch, accounts_ref, accounts_list)
+        suggestions = await _ai_classify_capital_movements(batch, accounts_ref, accounts_list, corrections_ref)
 
         for mv, suggestion in zip(batch, suggestions):
             update_data = {
@@ -2226,8 +2543,10 @@ async def classify_capital_statement(statement_id: str):
                 "ai_confidence": suggestion.get("confidence", 0.5),
                 "ai_reasoning": suggestion.get("reasoning", ""),
                 "needs_subcategory": suggestion.get("needs_subcategory", False),
-                "status": "suggested",
             }
+            # Keep 'reconciled' status for reconciled movements, set 'suggested' for others
+            if mv.get("status") != "reconciled":
+                update_data["status"] = "suggested"
             # Try to find account ID
             if suggestion.get("account_code"):
                 acct_match = sb.table("capital_accounts").select("id").eq("code", suggestion["account_code"]).execute()
@@ -2261,24 +2580,36 @@ async def update_capital_movement(movement_id: str, data: dict):
 
 @router.post("/bank-statements/{statement_id}/post")
 async def post_capital_statement(statement_id: str):
-    """Create Capital accounting transactions from confirmed movements."""
+    """Create Capital accounting transactions from confirmed movements (double-entry)."""
     stmt = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
     if not stmt.data:
         raise HTTPException(status_code=404, detail="Statement not found")
     statement = stmt.data[0]
 
+    # Get confirmed AND reconciled movements that haven't been posted yet
     movements = (sb.table("capital_statement_movements")
                  .select("*")
                  .eq("statement_id", statement_id)
-                 .eq("status", "confirmed")
+                 .in_("status", ["confirmed", "reconciled"])
                  .order("sort_order").execute())
 
     if not movements.data:
-        return {"message": "No hay movimientos confirmados para publicar.", "posted": 0, "skipped": 0, "errors": []}
+        return {"message": "No hay movimientos confirmados para publicar. Primero clasifica y confirma los movimientos.", "posted": 0, "skipped": 0, "errors": []}
+
+    # Look up the bank's accounting_account_id for double-entry
+    bank_accounting_account_id = None
+    if statement.get("bank_account_id"):
+        ba = sb.table("capital_bank_accounts").select("accounting_account_id").eq("id", statement["bank_account_id"]).execute()
+        if ba.data and ba.data[0].get("accounting_account_id"):
+            bank_accounting_account_id = ba.data[0]["accounting_account_id"]
+    if not bank_accounting_account_id:
+        logger.warning(f"[CapitalBankStmt] No accounting_account_id linked to bank_account — bank-side entries will be skipped")
 
     posted = 0
     skipped = 0
     errors = []
+    stmt_label = f"{statement.get('account_label', '')} - {statement.get('original_filename', '')}"
+
     for mv in movements.data:
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
         txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
@@ -2287,41 +2618,85 @@ async def post_capital_statement(statement_id: str):
             skipped += 1
             desc = mv.get("description", "")[:60]
             errors.append(f"'{desc}' — sin cuenta contable asignada")
+            logger.warning(f"[CapitalBankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
 
-        txn_data = {
-            "transaction_date": mv["movement_date"],
-            "transaction_type": txn_type if txn_type in (
-                'rto_payment', 'down_payment', 'late_fee', 'acquisition',
-                'investor_deposit', 'investor_return', 'commission', 'insurance',
-                'tax', 'operating_expense', 'transfer', 'adjustment',
-                'other_income', 'other_expense'
-            ) else "adjustment",
-            "amount": abs(float(mv["amount"])),
-            "is_income": mv["is_credit"],
-            "account_id": account_id,
-            "bank_account_id": statement.get("bank_account_id"),
-            "payment_method": mv.get("payment_method"),
-            "payment_reference": mv.get("reference"),
-            "counterparty_name": mv.get("counterparty"),
-            "description": mv.get("description", "")[:500],
-            "notes": f"Importado de estado de cuenta: {statement.get('account_label', '')} - {statement.get('original_filename', '')}",
-            "status": "confirmed",
-            "created_by": "bank-import",
-        }
-        txn_data = {k: v for k, v in txn_data.items() if v is not None}
-
         try:
-            txn_result = sb.table("capital_transactions").insert(txn_data).execute()
-            if txn_result.data:
-                sb.table("capital_statement_movements").update({
-                    "status": "posted",
-                    "transaction_id": txn_result.data[0]["id"],
-                }).eq("id", mv["id"]).execute()
-                posted += 1
+            abs_amount = abs(float(mv["amount"]))
+            bank_amount = abs_amount if mv["is_credit"] else -abs_amount
+            common_fields = {
+                "transaction_date": mv["movement_date"],
+                "bank_account_id": statement.get("bank_account_id"),
+                "payment_method": mv.get("payment_method"),
+                "payment_reference": mv.get("reference"),
+                "counterparty_name": mv.get("counterparty"),
+                "description": mv.get("description", "")[:500],
+                "source": "bank_statement",
+            }
+            common_fields = {k: v for k, v in common_fields.items() if v is not None}
+
+            pnl_txn_id = None
+
+            # --- Entry 1: P&L side ---
+            if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
+                # Reconciled: update existing transaction
+                sb.table("capital_transactions").update({
+                    "account_id": account_id,
+                    "transaction_type": txn_type,
+                    "source": "bank_statement",
+                }).eq("id", mv["matched_transaction_id"]).execute()
+                pnl_txn_id = mv["matched_transaction_id"]
             else:
-                skipped += 1
-                errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar")
+                # Non-reconciled: create new P&L transaction
+                txn_data = {
+                    **common_fields,
+                    "transaction_type": txn_type if txn_type in (
+                        'rto_payment', 'down_payment', 'late_fee', 'acquisition',
+                        'investor_deposit', 'investor_return', 'commission', 'insurance',
+                        'tax', 'operating_expense', 'transfer', 'adjustment',
+                        'other_income', 'other_expense'
+                    ) else "adjustment",
+                    "amount": abs_amount,
+                    "is_income": mv["is_credit"],
+                    "account_id": account_id,
+                    "notes": f"Importado de estado de cuenta: {stmt_label}",
+                    "status": "confirmed",
+                }
+                txn_result = sb.table("capital_transactions").insert(txn_data).execute()
+                if txn_result.data:
+                    pnl_txn_id = txn_result.data[0]["id"]
+                else:
+                    skipped += 1
+                    errors.append(f"'{mv.get('description', '')[:60]}' — error al insertar transacción")
+                    continue
+
+            # --- Entry 2: Bank/asset side (double-entry) ---
+            if bank_accounting_account_id:
+                bank_data = {
+                    **common_fields,
+                    "transaction_type": txn_type,
+                    "amount": bank_amount,
+                    "is_income": mv["is_credit"],
+                    "account_id": bank_accounting_account_id,
+                    "linked_transaction_id": pnl_txn_id,
+                    "notes": f"Contrapartida bancaria: {stmt_label}",
+                    "status": "confirmed",
+                }
+                bank_result = sb.table("capital_transactions").insert(bank_data).execute()
+                if bank_result.data:
+                    bank_txn_id = bank_result.data[0]["id"]
+                    # Link the P&L entry back to the bank entry
+                    sb.table("capital_transactions").update({
+                        "linked_transaction_id": bank_txn_id,
+                    }).eq("id", pnl_txn_id).execute()
+
+            # Mark movement as posted
+            sb.table("capital_statement_movements").update({
+                "status": "posted",
+                "transaction_id": pnl_txn_id,
+            }).eq("id", mv["id"]).execute()
+            posted += 1
+
         except Exception as e:
             logger.warning(f"[CapitalBankStmt] Failed to post movement {mv['id']}: {e}")
             skipped += 1
@@ -2341,7 +2716,7 @@ async def post_capital_statement(statement_id: str):
     }).eq("id", statement_id).execute()
 
     return {
-        "message": f"Publicados {posted} transacciones" + (f", {skipped} omitidos" if skipped > 0 else ""),
+        "message": f"Publicados {posted} transacciones" + (f", {skipped} omitidos (sin cuenta asignada)" if skipped > 0 else ""),
         "posted": posted,
         "skipped": skipped,
         "errors": errors[:10],
@@ -2519,6 +2894,7 @@ async def _ai_classify_capital_movements(
     movements: list,
     accounts_reference: str,
     accounts_list: list,
+    corrections_reference: str = "",
 ) -> list:
     """Use GPT-4 to suggest accounting accounts for Capital bank movements."""
     import os
@@ -2530,52 +2906,58 @@ async def _ai_classify_capital_movements(
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
 
-    movements_text = "\n".join([
-        f"{i+1}. [{mv['movement_date']}] {mv.get('description', '')} | ${mv['amount']} | {mv.get('counterparty', '')}"
-        for i, mv in enumerate(movements)
-    ])
+    movements_lines = []
+    for i, mv in enumerate(movements):
+        line = f"{i+1}. [{mv['movement_date']}] {mv.get('description', '')} | ${mv['amount']} | {mv.get('counterparty', '')}"
+        if mv.get("_matched_txn_description"):
+            line += f" | RECONCILED with app transaction: \"{mv['_matched_txn_description']}\""
+        movements_lines.append(line)
+    movements_text = "\n".join(movements_lines)
 
-    prompt = f"""You are an expert accountant for Maninos Homes LLC, a mobile home rent-to-own (RTO) financing company in Texas.
+    prompt = f"""Classify each bank movement into the correct QuickBooks account for Maninos Capital LLC (mobile home RTO financing, Texas).
 
-For each bank movement below, suggest the most appropriate accounting account from our Chart of Accounts.
-
-IMPORTANT RULES:
-- For INCOME movements (deposits/credits), classify to INCOME accounts (codes 4xxxx, 7xxxx).
-- For EXPENSE movements (withdrawals/debits), classify to EXPENSE accounts (codes 6xxxx, 71xxx).
-- For balance-sheet related items (loans, transfers), use the appropriate asset/liability account.
-- Use EXACT account codes from the chart below. Do NOT invent codes.
+RULES:
+- Use ONLY account codes from the chart below. No other codes.
+- Credits (deposits) → income accounts (4xxxx)
+- Debits (withdrawals) → expense/COGS accounts (5xxxx, 6xxxx, 8xxxx)
+- Bank transfers → transaction_type "transfer", closest expense account.
 
 CHART OF ACCOUNTS:
 {accounts_reference}
 
-CONTEXT about Maninos Homes:
-- They finance mobile homes through rent-to-own (RTO) contracts
+CLASSIFICATION GUIDE FOR RECONCILED MOVEMENTS:
+Movements marked "RECONCILED with app transaction: ..." have a known internal description. Use it as the PRIMARY source:
+- "Venta contado" or "Depósito" → income (House Sales or equivalent)
+- "Venta RTO" or "Capital" → income (House Sales or equivalent)
+- "Compra propiedad" or "Compra:" → COGS (House Sales - COGS or equivalent)
+- "Renovación" → Supplies & materials or Contractors
+
+BUSINESS CONTEXT:
+- Finances mobile homes through rent-to-own (RTO) contracts
 - Main income: interest earned on RTO loans, down payments
-- They have investors who lend money (VALTO, SGZ entities)
-- Common expenses: consulting services, legal fees, office expenses, commissions, interest paid to investors
+- Investors who lend money (VALTO, SGZ entities)
+- Common expenses: consulting, legal, office, commissions, interest paid to investors
 - Related parties: Maninos Homes, SGZ, La Agustedad
 - Banks: Bank of America, BOA Capital 9197, PNC, Monex Bank
-- They use Zelle extensively for payments
+- Zelle = common payment method
 
-MOVEMENTS TO CLASSIFY:
+{f"HUMAN CORRECTIONS (the accountant overrode the AI — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS:
 {movements_text}
 
-For EACH movement (numbered), respond with a JSON array of objects:
+Return a JSON array with one object per movement (in order):
 {{
-  "account_code": "the EXACT account code",
+  "account_code": "exact code from chart above",
   "account_name": "account name",
-  "transaction_type": one of ["rto_payment", "down_payment", "late_fee", "investor_deposit", "investor_return", "commission", "operating_expense", "other_income", "other_expense", "transfer", "adjustment"],
+  "transaction_type": "rto_payment"|"down_payment"|"late_fee"|"investor_deposit"|"investor_return"|"commission"|"operating_expense"|"other_income"|"other_expense"|"transfer"|"adjustment",
   "confidence": 0.0-1.0,
   "reasoning": "brief explanation",
   "needs_subcategory": true/false
-}}
-
-Return ONLY the JSON array with one object per movement in order. No other text."""
+}}"""
 
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an expert accountant. Always return valid JSON arrays."},
+            {"role": "system", "content": "You are an expert accountant for a mobile home RTO financing company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
         max_tokens=4096,
@@ -2592,15 +2974,12 @@ Return ONLY the JSON array with one object per movement in order. No other text.
 
     try:
         suggestions = json.loads(content)
+        if not isinstance(suggestions, list):
+            suggestions = [suggestions]
+        while len(suggestions) < len(movements):
+            suggestions.append({"account_code": "", "confidence": 0, "reasoning": "AI did not classify"})
+        return suggestions[:len(movements)]
     except json.JSONDecodeError:
         logger.error(f"[CapitalClassify] Invalid JSON response: {content[:500]}")
-        suggestions = [{"account_code": "", "account_name": "", "transaction_type": "adjustment",
-                        "confidence": 0, "reasoning": "Error parsing AI response"}] * len(movements)
-
-    # Ensure we have one suggestion per movement
-    while len(suggestions) < len(movements):
-        suggestions.append({"account_code": "", "account_name": "", "transaction_type": "adjustment",
-                            "confidence": 0, "reasoning": "No suggestion"})
-
-    return suggestions[:len(movements)]
+        return [{"account_code": "", "confidence": 0, "reasoning": "AI parse error"}] * len(movements)
 

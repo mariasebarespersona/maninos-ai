@@ -24,3 +24,18 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const res = await fetch(`${API}/api/capital/accounting/reports/saved/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await request.json()),
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: 'Backend unavailable' }, { status: 500 })
+  }
+}
+
