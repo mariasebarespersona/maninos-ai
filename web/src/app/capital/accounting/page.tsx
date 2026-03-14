@@ -9,7 +9,7 @@ import {
   ArrowRightLeft, Clock, X, Check, AlertCircle, Banknote,
   CircleDollarSign, Eye, Settings, History, Repeat,
   ChevronLeft, MoreHorizontal, Upload, Trash2, Image as ImageIcon,
-  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp, Pencil, Link2, Lock
+  FileUp, Sparkles, CheckCircle2, SkipForward, Brain, ChevronUp, Pencil, Link2, Lock, Scissors, MessageSquare
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -105,6 +105,7 @@ interface StatementMovement {
   ai_confidence?: number; ai_reasoning?: string; needs_subcategory?: boolean
   final_account_id?: string; final_transaction_type?: string; final_notes?: string
   status: string; transaction_id?: string
+  parent_movement_id?: string; is_split_parent?: boolean
 }
 
 const DRAWER_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#be185d', '#4f46e5', '#ca8a04', '#15803d']
@@ -1971,6 +1972,24 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
     } catch (e) { console.error(e) }
   }
 
+  const splitMovement = async (mvId: string, parts: { amount: number; description: string }[]) => {
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/movements/${mvId}/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`Movimiento dividido en ${data.children?.length || parts.length} partes`)
+        if (activeStatement) await openStatement(activeStatement)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al dividir movimiento')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+  }
+
   const postMovements = async (stmtId: string) => {
     setPosting(true)
     try {
@@ -2485,6 +2504,7 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                       movement={mv}
                       accounts={allAccounts}
                       onUpdate={updateMovement}
+                      onSplit={splitMovement}
                     />
                   ))}
                 </tbody>
@@ -2499,13 +2519,24 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
 
 
 // ── Movement Row for Capital Bank Statement ──
-function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
+function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
   movement: StatementMovement
   accounts: any[]
   onUpdate: (id: string, data: Record<string, any>) => void
+  onSplit: (id: string, parts: { amount: number; description: string }[]) => void
 }) {
+  const toast = useToast()
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [accountSearch, setAccountSearch] = useState('')
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState(mv.description)
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notesDraft, setNotesDraft] = useState(mv.final_notes || '')
+  const [showSplit, setShowSplit] = useState(false)
+  const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([
+    { amount: '', description: '' },
+    { amount: '', description: '' },
+  ])
 
   const displayAccount = mv.final_account_id
     ? accounts.find((a: any) => a.id === mv.final_account_id)
@@ -2515,8 +2546,11 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
 
   const isPosted = mv.status === 'posted'
   const isSkipped = mv.status === 'skipped'
+  const isSplit = mv.status === 'split' || mv.is_split_parent
+  const isChild = !!mv.parent_movement_id
   const isConfirmed = mv.status === 'confirmed'
   const isReconciled = mv.status === 'reconciled'
+  const canEdit = !isPosted && !isSkipped && !isSplit
 
   const filteredAccounts = accountSearch
     ? accounts.filter((a: any) =>
@@ -2526,10 +2560,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
     : accounts
 
   const handleSelectAccount = (account: any) => {
-    onUpdate(mv.id, {
-      final_account_id: account.id,
-      status: 'confirmed',
-    })
+    onUpdate(mv.id, { final_account_id: account.id, status: 'confirmed' })
     setShowAccountPicker(false)
     setAccountSearch('')
   }
@@ -2542,22 +2573,75 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
     })
   }
 
-  const skipMovement = () => {
-    onUpdate(mv.id, { status: 'skipped' })
+  const skipMovement = () => { onUpdate(mv.id, { status: 'skipped' }) }
+
+  const saveDescription = () => {
+    if (descDraft !== mv.description) onUpdate(mv.id, { description: descDraft })
+    setEditingDesc(false)
+  }
+
+  const saveNotes = () => {
+    onUpdate(mv.id, { final_notes: notesDraft || null })
+    setEditingNotes(false)
+  }
+
+  const handleSplit = () => {
+    const parts = splitParts
+      .filter(p => p.amount && parseFloat(p.amount) > 0)
+      .map(p => ({ amount: parseFloat(p.amount), description: p.description || mv.description }))
+    const total = parts.reduce((s, p) => s + p.amount, 0)
+    if (Math.abs(total - mv.amount) > 0.01) {
+      toast.error(`Las partes suman $${total.toFixed(2)} pero el movimiento es $${mv.amount.toFixed(2)}`)
+      return
+    }
+    if (parts.length < 2) { toast.error('Necesitas al menos 2 partes'); return }
+    onSplit(mv.id, parts)
+    setShowSplit(false)
+  }
+
+  if (isSplit && !isChild) {
+    // Split parent: show greyed out with "Dividido" badge
+    return (
+      <tr className="border-b bg-stone-50/50 opacity-60" style={{ borderColor: '#f0f0f0' }}>
+        <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs font-mono" style={{ color: 'var(--ash)' }}>{mv.movement_date}</span></td>
+        <td className="px-3 py-2 max-w-md"><p className="text-xs line-through" style={{ color: 'var(--ash)' }}>{mv.description}</p></td>
+        <td className="px-3 py-2 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">{fmtFull(mv.amount)}</span></td>
+        <td className="px-3 py-2"><span className="text-xs text-stone-400">—</span></td>
+        <td className="px-3 py-2 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-200 text-stone-600 font-medium">Dividido</span></td>
+        <td className="px-3 py-2"></td>
+      </tr>
+    )
   }
 
   return (
     <tr className={`border-b transition-colors ${isPosted ? 'bg-blue-50/50' : isSkipped ? 'bg-stone-50 opacity-50' : isReconciled ? 'bg-purple-50/50' : isConfirmed ? 'bg-emerald-50/50' : 'hover:bg-stone-50'}`}
       style={{ borderColor: '#f0f0f0' }}>
       {/* Date */}
-      <td className="px-3 py-2.5 whitespace-nowrap">
-        <span className="text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{mv.movement_date}</span>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${isChild ? 'pl-6' : ''}`}>
+        <span className="text-xs font-mono" style={{ color: 'var(--charcoal)' }}>
+          {isChild && <span className="text-stone-300 mr-1">↳</span>}
+          {mv.movement_date}
+        </span>
       </td>
 
-      {/* Description */}
+      {/* Description — editable */}
       <td className="px-3 py-2.5 max-w-md">
         <div>
-          <p className="text-xs leading-snug" style={{ color: 'var(--charcoal)' }}>{mv.description}</p>
+          {editingDesc ? (
+            <div className="flex items-center gap-1">
+              <input autoFocus value={descDraft} onChange={e => setDescDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveDescription(); if (e.key === 'Escape') { setEditingDesc(false); setDescDraft(mv.description) } }}
+                className="flex-1 text-xs px-1.5 py-1 rounded border outline-none" style={{ borderColor: 'var(--gold-600)' }} />
+              <button onClick={saveDescription} className="text-emerald-600"><Check className="w-3.5 h-3.5" /></button>
+              <button onClick={() => { setEditingDesc(false); setDescDraft(mv.description) }} className="text-red-400"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
+            <p className="text-xs leading-snug group/desc cursor-pointer" style={{ color: 'var(--charcoal)' }}
+              onClick={() => canEdit && setEditingDesc(true)} title={canEdit ? 'Clic para editar' : ''}>
+              {mv.description}
+              {canEdit && <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover/desc:opacity-50" />}
+            </p>
+          )}
           {mv.counterparty && (
             <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
               {mv.counterparty}
@@ -2569,6 +2653,26 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
               <Brain className="w-3 h-3" /> {mv.ai_reasoning}
             </p>
           )}
+          {/* Notes display/edit */}
+          {editingNotes ? (
+            <div className="mt-1 flex items-start gap-1">
+              <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)}
+                rows={2} className="flex-1 text-[10px] px-1.5 py-1 rounded border outline-none resize-none"
+                style={{ borderColor: 'var(--gold-600)' }} placeholder="Añadir notas..." autoFocus />
+              <button onClick={saveNotes} className="text-emerald-600 mt-0.5"><Check className="w-3 h-3" /></button>
+              <button onClick={() => { setEditingNotes(false); setNotesDraft(mv.final_notes || '') }} className="text-red-400 mt-0.5"><X className="w-3 h-3" /></button>
+            </div>
+          ) : mv.final_notes ? (
+            <p className="text-[10px] mt-1 italic cursor-pointer hover:underline" style={{ color: 'var(--slate)' }}
+              onClick={() => canEdit && setEditingNotes(true)}>
+              <MessageSquare className="w-2.5 h-2.5 inline mr-0.5" />{mv.final_notes}
+            </p>
+          ) : canEdit ? (
+            <button onClick={() => setEditingNotes(true)}
+              className="text-[10px] mt-0.5 hover:underline flex items-center gap-0.5" style={{ color: 'var(--ash)' }}>
+              <MessageSquare className="w-2.5 h-2.5" /> Añadir nota
+            </button>
+          ) : null}
         </div>
       </td>
 
@@ -2589,41 +2693,24 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
           <div className="absolute z-20 top-0 left-0 w-80 bg-white border rounded-lg shadow-xl p-2" style={{ borderColor: 'var(--stone)' }}>
             <div className="flex items-center gap-2 mb-2">
               <Search className="w-3.5 h-3.5 text-stone-400" />
-              <input
-                autoFocus
-                type="text"
-                value={accountSearch}
-                onChange={e => setAccountSearch(e.target.value)}
-                placeholder="Buscar cuenta Capital..."
-                className="flex-1 text-xs outline-none"
-              />
-              <button onClick={() => { setShowAccountPicker(false); setAccountSearch('') }}>
-                <X className="w-3.5 h-3.5 text-stone-400" />
-              </button>
+              <input autoFocus type="text" value={accountSearch} onChange={e => setAccountSearch(e.target.value)}
+                placeholder="Buscar cuenta Capital..." className="flex-1 text-xs outline-none" />
+              <button onClick={() => { setShowAccountPicker(false); setAccountSearch('') }}><X className="w-3.5 h-3.5 text-stone-400" /></button>
             </div>
             <div className="max-h-48 overflow-y-auto space-y-0.5">
               {filteredAccounts.slice(0, 30).map((a: any) => (
-                <button
-                  key={a.id}
-                  onClick={() => handleSelectAccount(a)}
-                  className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2 ${a.is_header ? 'font-semibold bg-stone-50' : ''}`}
-                >
+                <button key={a.id} onClick={() => handleSelectAccount(a)}
+                  className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2 ${a.is_header ? 'font-semibold bg-stone-50' : ''}`}>
                   <span className="font-mono text-[10px] text-stone-400 w-14 shrink-0">{a.code}</span>
                   <span style={{ color: 'var(--charcoal)' }}>{a.name}{a.is_header ? ' (grupo)' : ''}</span>
                   <span className="ml-auto text-[10px] text-stone-400">{a.account_type}</span>
                 </button>
               ))}
-              {filteredAccounts.length === 0 && (
-                <p className="text-xs text-center py-2" style={{ color: 'var(--ash)' }}>Sin resultados</p>
-              )}
+              {filteredAccounts.length === 0 && <p className="text-xs text-center py-2" style={{ color: 'var(--ash)' }}>Sin resultados</p>}
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setShowAccountPicker(true)}
-            className="text-left w-full group"
-            disabled={isPosted || isSkipped}
-          >
+          <button onClick={() => setShowAccountPicker(true)} className="text-left w-full group" disabled={isPosted || isSkipped}>
             {displayAccount ? (
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-stone-100 text-stone-500">{displayAccount.code}</span>
@@ -2637,9 +2724,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
             ) : (
               <div className="flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-xs italic group-hover:underline text-amber-600">
-                  Sin cuenta — clic para asignar
-                </span>
+                <span className="text-xs italic group-hover:underline text-amber-600">Sin cuenta — clic para asignar</span>
               </div>
             )}
           </button>
@@ -2658,28 +2743,56 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate }: {
 
       {/* Actions */}
       <td className="px-3 py-2.5 text-center">
-        {!isPosted && !isSkipped && (
+        {canEdit && (
           <div className="flex items-center justify-center gap-1">
             {mv.status === 'suggested' && mv.suggested_account_id && (
-              <button onClick={confirmSuggestion}
-                className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors"
-                title="Confirmar sugerencia">
+              <button onClick={confirmSuggestion} className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors" title="Confirmar sugerencia">
                 <Check className="w-3.5 h-3.5" />
               </button>
             )}
-            <button onClick={() => setShowAccountPicker(true)}
-              className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
-              title="Cambiar cuenta">
+            <button onClick={() => setShowAccountPicker(true)} className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors" title="Cambiar cuenta">
               <Settings className="w-3.5 h-3.5" />
             </button>
-            <button onClick={skipMovement}
-              className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors"
-              title="Omitir">
+            {!isChild && (
+              <button onClick={() => setShowSplit(!showSplit)} className="p-1 rounded hover:bg-amber-100 text-amber-600 transition-colors" title="Dividir monto">
+                <Scissors className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button onClick={skipMovement} className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors" title="Omitir">
               <SkipForward className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
         {isPosted && <CheckCircle2 className="w-4 h-4 text-blue-500 mx-auto" />}
+
+        {/* Split inline form */}
+        {showSplit && (
+          <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir ${mv.amount.toFixed(2)}</p>
+            {splitParts.map((part, i) => (
+              <div key={i} className="flex items-center gap-1 mb-1.5">
+                <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
+                <input type="number" step="0.01" placeholder="Monto" value={part.amount}
+                  onChange={e => { const p = [...splitParts]; p[i].amount = e.target.value; setSplitParts(p) }}
+                  className="w-20 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                <input type="text" placeholder="Descripción" value={part.description}
+                  onChange={e => { const p = [...splitParts]; p[i].description = e.target.value; setSplitParts(p) }}
+                  className="flex-1 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                {splitParts.length > 2 && (
+                  <button onClick={() => setSplitParts(splitParts.filter((_, j) => j !== i))} className="text-red-400"><X className="w-3 h-3" /></button>
+                )}
+              </div>
+            ))}
+            <div className="flex items-center justify-between mt-2">
+              <button onClick={() => setSplitParts([...splitParts, { amount: '', description: '' }])}
+                className="text-[10px] text-blue-600 hover:underline">+ Añadir parte</button>
+              <div className="flex gap-1">
+                <button onClick={() => setShowSplit(false)} className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+                <button onClick={handleSplit} className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: 'var(--gold-600)' }}>Dividir</button>
+              </div>
+            </div>
+          </div>
+        )}
       </td>
     </tr>
   )

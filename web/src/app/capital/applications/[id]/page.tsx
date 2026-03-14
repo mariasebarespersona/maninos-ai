@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
-import AmortizationTable from '@/components/capital/AmortizationTable'
+
 
 interface ApplicationDetail {
   id: string
@@ -1435,18 +1435,6 @@ export default function ApplicationDetailPage() {
                 </p>
             </div>
 
-              {/* Amortization Table */}
-              {liveRTO.financeAmount > 0 && liveTM > 0 && liveMonthly > 0 && (
-                <div className="mb-6">
-                  <AmortizationTable
-                    principal={liveRTO.financeAmount}
-                    monthlyPayment={liveMonthly}
-                    termMonths={liveTM}
-                    annualRate={annualRatePct / 100}
-                    title={`${app.clients?.name || 'Cliente'} — ${prop?.address || 'Propiedad'}`}
-                  />
-              </div>
-            )}
 
           {/* Review Notes */}
           <div className="mb-6">
