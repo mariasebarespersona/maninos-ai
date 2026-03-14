@@ -226,6 +226,22 @@ def _job_refresh_partner_listings():
         return {"ok": False, "error": str(e)}
 
 
+def _job_promissory_maturity_alerts():
+    """Job: Check for promissory notes maturing within 90 days and alert admin."""
+    from api.services.email_service import process_promissory_maturity_alerts
+    try:
+        result = process_promissory_maturity_alerts()
+        _log_job("promissory_maturity_alerts", result)
+        alerts = result.get("alerts_sent", 0)
+        if alerts > 0:
+            logger.info(f"[scheduler] Sent promissory maturity alerts for {alerts} notes")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in promissory_maturity_alerts: {e}")
+        _log_job("promissory_maturity_alerts", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def _job_title_monitor():
     """Job: Check TDHCA for title name updates on pending transfers."""
     try:
@@ -323,8 +339,18 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Job 7: Promissory note maturity alerts - daily at 9:30 AM CT
+    # Checks for notes maturing within 90 days, skips if alerted in last 7 days
+    _scheduler.add_job(
+        _job_promissory_maturity_alerts,
+        trigger=CronTrigger(hour=9, minute=30),
+        id="promissory_maturity_alerts",
+        name="Promissory Note Maturity Alerts (90/60/30 day)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("[scheduler] ✅ Scheduler started with 6 jobs")
+    logger.info("[scheduler] ✅ Scheduler started with 7 jobs")
     return _scheduler
 
 

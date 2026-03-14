@@ -278,6 +278,7 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 
 ---
 
+
 ## Notas
 
 - Los datos bancarios son placeholder (000000000) hasta que se proporcionen los reales
@@ -286,3 +287,179 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 - La reconciliacion permite que haya movimientos sin match con el banco (no es obligatorio)
 - Los reportes financieros guardados son inmutables (no se pueden editar, solo descargar PDF)
 - Cada pago confirmado (contado o RTO) crea automaticamente una transaccion contable para conciliacion
+
+
+---
+---
+
+# Tests Bloque 1 Capital — Marzo 14, 2026
+
+**Prerequisito:** Ejecutar `migrations/062_capital_bloque1_improvements.sql` en Supabase antes de probar.
+
+---
+
+## B1.1 Dividir Movimientos Bancarios
+
+### B1.1.1 Dividir un movimiento en 2 partes
+- [ ] Ir a `/capital/accounting` → tab "Estado de Cuenta"
+- [ ] Subir un estado de cuenta PDF o usar uno existente
+- [ ] En un movimiento pendiente/sugerido, hacer clic en el icono de tijeras (Scissors)
+- [ ] Verificar que aparece el formulario de division con 2 filas por defecto
+- [ ] Rellenar: Parte 1 = $500 "Consulting", Parte 2 = $89 "Office supplies" (total debe ser = monto original)
+- [ ] Clic "+ Añadir parte" → verificar que aparece una tercera fila
+- [ ] Quitar la tercera fila con X → verificar que vuelve a 2
+- [ ] Intentar dividir con montos que NO suman al total → verificar mensaje de error
+- [ ] Rellenar con montos correctos → clic "Dividir"
+- [ ] Verificar toast de éxito "Movimiento dividido en 2 partes"
+- [ ] Verificar que el movimiento original aparece tachado con badge "Dividido" (gris)
+- [ ] Verificar que aparecen 2 nuevos sub-movimientos debajo con "↳" y las descripciones/montos correctos
+- [ ] Verificar que los sub-movimientos se pueden clasificar individualmente (asignar cuentas)
+
+### B1.1.2 Sub-movimientos no se pueden dividir
+- [ ] En un sub-movimiento (tiene ↳), verificar que NO aparece el botón de tijeras
+
+---
+
+## B1.2 Editar Descripciones de Movimientos
+
+### B1.2.1 Editar descripción
+- [ ] En un movimiento pendiente/sugerido/confirmado, hacer clic sobre la descripción
+- [ ] Verificar que aparece un input editable con el texto actual
+- [ ] Cambiar el texto → presionar Enter (o clic ✓)
+- [ ] Verificar que la descripción se actualiza sin recargar la página
+- [ ] Hacer clic en la descripción de nuevo → presionar Escape
+- [ ] Verificar que se cancela la edición sin guardar
+
+### B1.2.2 No se puede editar si está publicado
+- [ ] En un movimiento con status "Publicado" (azul), verificar que al hacer clic NO se abre el editor
+- [ ] Verificar que no aparece el icono del lápiz al hacer hover
+
+---
+
+## B1.3 Notas en Movimientos
+
+### B1.3.1 Añadir nota
+- [ ] En un movimiento editable, verificar que aparece el link "Añadir nota" debajo de la descripción
+- [ ] Clic → verificar que aparece un textarea
+- [ ] Escribir "Verificar con Abi si es gasto recurrente" → clic ✓
+- [ ] Verificar que la nota aparece en itálica debajo de la descripción con icono 💬
+- [ ] Verificar que la nota se mantiene al recargar la página
+
+### B1.3.2 Editar nota existente
+- [ ] Hacer clic sobre una nota existente
+- [ ] Verificar que se abre el textarea para editar
+- [ ] Cambiar el texto → guardar
+- [ ] Verificar actualización
+
+### B1.3.3 Nota no editable si publicado
+- [ ] En un movimiento "Publicado", verificar que no aparece "Añadir nota" ni se puede editar
+
+---
+
+## B1.4 Tabla Amortización Eliminada
+
+- [ ] Ir a `/capital/applications` → abrir cualquier aplicación RTO
+- [ ] Verificar que NO aparece la tabla de amortización en la página
+- [ ] Verificar que la página carga sin errores en consola
+
+---
+
+## B1.5 Down Payment Divisible
+
+### B1.5.1 Crear plan de cuotas
+- [ ] Ir a un contrato RTO en Capital que tenga down payment > 0
+- [ ] Verificar que aparece la sección "Enganche" con el monto total
+- [ ] Clic "Dividir Enganche" (si hay botón)
+- [ ] Crear 3 cuotas: $2000, $1500, $1500 con fechas distintas
+- [ ] Verificar que se muestra el plan con cada cuota y su fecha
+
+### B1.5.2 Registrar pago de cuota
+- [ ] En una cuota "scheduled", clic "Registrar Pago"
+- [ ] Seleccionar método de pago y referencia
+- [ ] Verificar que la cuota cambia a "paid" con la fecha de hoy
+- [ ] Verificar que el saldo pendiente del enganche se actualiza
+
+### B1.5.3 Backend: GET /contracts/{id}/down-payment
+- [ ] Llamar al endpoint directamente
+- [ ] Verificar que devuelve: total, paid, remaining, installments[]
+
+---
+
+## B1.6 Alertas Promissory Notes
+
+### B1.6.1 Banner de alertas
+- [ ] Ir a `/capital` (dashboard principal)
+- [ ] Si hay promissory notes con vencimiento en < 90 días, verificar que aparece un banner de alerta
+- [ ] Verificar colores: rojo (< 30 días), naranja (< 60 días), amarillo (< 90 días)
+- [ ] Si no hay notas próximas a vencer, verificar que no aparece el banner
+
+### B1.6.2 Scheduler (backend)
+- [ ] Verificar en logs del backend que el job `_job_promissory_maturity_alerts` está registrado
+- [ ] Crear una promissory note con `maturity_date` = hoy + 30 días
+- [ ] Ejecutar el job manualmente o esperar a que corra
+- [ ] Verificar que se envía email de alerta
+- [ ] Verificar que `last_maturity_alert_at` se actualiza en la DB
+- [ ] Verificar que no se envía otro email si se ejecuta de nuevo antes de 7 días
+
+---
+
+## B1.7 Pagos RTO en Capital
+
+### B1.7.1 Registrar pago RTO manualmente
+- [ ] Ir a `/capital/accounting`
+- [ ] Usar el endpoint POST /accounting/rto-payments/register (o la UI si se añadió)
+- [ ] Registrar un pago con: nombre cliente, monto, método, referencia, fecha, cuenta bancaria
+- [ ] Verificar que se crea una transacción tipo "rto_payment" en Capital
+- [ ] Verificar que aparece en el listado de transacciones
+
+### B1.7.2 Listar pagos RTO
+- [ ] Llamar GET /accounting/rto-payments
+- [ ] Verificar que devuelve la lista de pagos RTO registrados
+- [ ] Verificar que incluye info de cliente y estado de conciliación
+
+### B1.7.3 Conciliar pago RTO con estado de cuenta
+- [ ] Subir un estado de cuenta que incluya el depósito del pago RTO
+- [ ] Ejecutar "Buscar coincidencias" (paso 1 del wizard)
+- [ ] Verificar que el pago RTO aparece como match con el movimiento del banco
+- [ ] Confirmar la conciliación → verificar que el movimiento pasa a "conciliado"
+
+---
+
+## B1.8 Flujo Completo: Estado de Cuenta → Reportes (verificación post-fixes)
+
+### B1.8.1 Doble partida cuadra
+- [ ] Subir un estado de cuenta nuevo en Capital
+- [ ] Clasificar con IA (verificar que few-shot learning funciona si hay correcciones previas)
+- [ ] Verificar cuenta contable QB vinculada al banco (dropdown en Estado de Cuenta)
+- [ ] Publicar → verificar toast éxito
+- [ ] Ir a P&L → anotar Net Income
+- [ ] Ir a Balance Sheet → verificar que el banco muestra el mismo monto que Net Income
+- [ ] Si no cuadra, reportar la diferencia exacta
+
+### B1.8.2 Vaciar cifras y re-publicar
+- [ ] Vaciar todas las cifras
+- [ ] Verificar que P&L y Balance Sheet quedan en $0
+- [ ] Re-clasificar → re-publicar
+- [ ] Verificar que vuelven los montos correctos y siguen cuadrando
+
+### B1.8.3 Reportes read-only
+- [ ] Verificar que NO aparece el mensaje "clic en un monto para editar" (ni en Capital ni en Homes)
+- [ ] Verificar que los montos en P&L y Balance Sheet no son clickeables
+
+### B1.8.4 Renombrar reporte guardado
+- [ ] Guardar un reporte financiero
+- [ ] Hacer hover sobre el nombre → verificar que aparece icono lápiz
+- [ ] Clic → editar nombre → Enter
+- [ ] Verificar que el nombre se actualiza
+- [ ] Recargar página → verificar que persiste
+
+---
+
+## Notas Bloque 1
+
+- Migración 062 debe ejecutarse ANTES de probar splits y down payment installments
+- El scheduler de alertas requiere que el backend esté corriendo (Railway)
+- Los fixes de doble partida (bank_is_income basado en account_type) ya están en producción
+- El few-shot learning ahora busca correcciones en movimientos "confirmed" Y "posted"
+
+

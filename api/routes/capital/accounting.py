@@ -114,6 +114,18 @@ class BankAccountUpdate(BaseModel):
     accounting_account_id: Optional[str] = None
 
 
+class RTOPaymentRegister(BaseModel):
+    """Manually register an RTO payment in Capital accounting."""
+    client_name: str
+    amount: float
+    payment_method: str = "transfer"  # transfer, zelle, cash, check, stripe
+    payment_reference: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    transaction_date: Optional[str] = None  # YYYY-MM-DD, defaults to today
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class CapitalBudgetCreate(BaseModel):
     account_id: str
     period_month: int
@@ -2967,6 +2979,108 @@ async def delete_capital_budget(budget_id: str):
         sb.table("capital_budgets").delete().eq("id", budget_id).execute()
         return {"ok": True, "message": "Budget deleted"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# RTO PAYMENTS (accounting view)
+# ============================================================================
+
+@router.get("/rto-payments")
+async def list_rto_payment_transactions(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=10, le=200),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    """List RTO payment transactions from capital_transactions with reconciliation status."""
+    try:
+        q = sb.table("capital_transactions") \
+            .select("*, capital_accounts(code, name), capital_bank_accounts(name, bank_name)") \
+            .eq("transaction_type", "rto_payment") \
+            .neq("status", "voided") \
+            .order("transaction_date", desc=True)
+
+        if start_date:
+            q = q.gte("transaction_date", start_date)
+        if end_date:
+            q = q.lte("transaction_date", end_date)
+        if search:
+            q = q.or_(f"description.ilike.%{search}%,counterparty_name.ilike.%{search}%,notes.ilike.%{search}%")
+
+        offset = (page - 1) * per_page
+        result = q.range(offset, offset + per_page - 1).execute()
+        txns = result.data or []
+
+        # Check reconciliation status: is each transaction_id referenced
+        # by any capital_statement_movements.matched_transaction_id?
+        txn_ids = [t["id"] for t in txns]
+        reconciled_ids: set[str] = set()
+        if txn_ids:
+            try:
+                matched = sb.table("capital_statement_movements") \
+                    .select("matched_transaction_id") \
+                    .in_("matched_transaction_id", txn_ids) \
+                    .execute()
+                reconciled_ids = {m["matched_transaction_id"] for m in (matched.data or []) if m.get("matched_transaction_id")}
+            except Exception:
+                pass  # Table might not exist yet — gracefully degrade
+
+        for t in txns:
+            t["is_reconciled"] = t["id"] in reconciled_ids
+
+        return {
+            "ok": True,
+            "transactions": txns,
+            "page": page,
+            "per_page": per_page,
+            "total_reconciled": sum(1 for t in txns if t["is_reconciled"]),
+        }
+    except Exception as e:
+        logger.error(f"Error listing RTO payment transactions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/rto-payments/register")
+async def register_rto_payment(data: RTOPaymentRegister):
+    """Manually register an RTO payment in Capital accounting.
+
+    Creates a capital_transaction with transaction_type='rto_payment' and
+    auto-assigns the RTO Rental Income account (code 41000).
+    """
+    try:
+        txn_date = data.transaction_date or date.today().isoformat()
+        account_id = _resolve_account_id("rto_payment")
+        description = data.description or f"Pago RTO — {data.client_name}"
+
+        record: dict = {
+            "transaction_date": txn_date,
+            "transaction_type": "rto_payment",
+            "amount": abs(data.amount),
+            "is_income": True,
+            "account_id": account_id,
+            "description": description,
+            "counterparty_name": data.client_name,
+            "payment_method": data.payment_method,
+            "status": "confirmed",
+            "created_by": "admin",
+        }
+
+        # Add optional fields
+        if data.bank_account_id:
+            record["bank_account_id"] = data.bank_account_id
+        if data.payment_reference:
+            record["payment_reference"] = data.payment_reference
+        if data.notes:
+            record["notes"] = data.notes
+
+        result = sb.table("capital_transactions").insert(record).execute()
+        txn = result.data[0] if result.data else None
+
+        return {"ok": True, "transaction": txn}
+    except Exception as e:
+        logger.error(f"Error registering RTO payment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

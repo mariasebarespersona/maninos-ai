@@ -74,6 +74,24 @@ class ContractActivate(BaseModel):
     signed_by_company: str = "Maninos Homes LLC"
 
 
+class DownPaymentInstallment(BaseModel):
+    """Single installment in a down payment split."""
+    amount: float
+    due_date: str  # YYYY-MM-DD
+
+
+class DownPaymentSplit(BaseModel):
+    """Create a down payment installment plan."""
+    installments: list[DownPaymentInstallment]
+
+
+class InstallmentPayment(BaseModel):
+    """Record payment on a down payment installment."""
+    payment_method: str
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class DTIRequest(BaseModel):
     """Calculate DTI for a client."""
     client_id: str
@@ -738,6 +756,142 @@ async def regenerate_all_contract_pdfs():
 
     except Exception as e:
         logger.error(f"Error in bulk PDF regeneration: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{contract_id}/down-payment")
+async def get_down_payment_plan(contract_id: str):
+    """Get the down payment installment plan for a contract."""
+    try:
+        # Get contract's down_payment total
+        contract_result = sb.table("rto_contracts") \
+            .select("down_payment") \
+            .eq("id", contract_id) \
+            .execute()
+
+        if not contract_result.data:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+        total = float(contract_result.data[0].get("down_payment", 0))
+
+        # Get installments
+        installments_result = sb.table("capital_down_payment_installments") \
+            .select("*") \
+            .eq("contract_id", contract_id) \
+            .order("installment_number") \
+            .execute()
+
+        installments = installments_result.data or []
+        paid = sum(float(i["amount"]) for i in installments if i["status"] == "paid")
+
+        return {
+            "ok": True,
+            "total": total,
+            "paid": paid,
+            "remaining": round(total - paid, 2),
+            "installments": installments,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting down payment plan for {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{contract_id}/down-payment/split")
+async def create_down_payment_split(contract_id: str, data: DownPaymentSplit):
+    """Create or replace the down payment installment plan for a contract."""
+    try:
+        # Get contract's down_payment total
+        contract_result = sb.table("rto_contracts") \
+            .select("down_payment") \
+            .eq("id", contract_id) \
+            .execute()
+
+        if not contract_result.data:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+        total = float(contract_result.data[0].get("down_payment", 0))
+
+        # Validate amounts sum to total
+        amounts_sum = round(sum(i.amount for i in data.installments), 2)
+        if amounts_sum != round(total, 2):
+            raise HTTPException(
+                status_code=400,
+                detail=f"La suma de los montos ({amounts_sum}) no coincide con el enganche total ({total})"
+            )
+
+        # Delete existing installments
+        sb.table("capital_down_payment_installments") \
+            .delete() \
+            .eq("contract_id", contract_id) \
+            .execute()
+
+        # Insert new installments
+        rows = []
+        for idx, inst in enumerate(data.installments, start=1):
+            rows.append({
+                "contract_id": contract_id,
+                "installment_number": idx,
+                "amount": inst.amount,
+                "due_date": inst.due_date,
+                "status": "pending",
+            })
+
+        result = sb.table("capital_down_payment_installments").insert(rows).execute()
+
+        return {
+            "ok": True,
+            "message": f"{len(rows)} cuotas de enganche creadas",
+            "installments": result.data or [],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating down payment split for {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{contract_id}/down-payment/installments/{installment_id}/pay")
+async def pay_down_payment_installment(contract_id: str, installment_id: str, data: InstallmentPayment):
+    """Record payment on a down payment installment."""
+    try:
+        # Verify installment exists and belongs to this contract
+        inst_result = sb.table("capital_down_payment_installments") \
+            .select("*") \
+            .eq("id", installment_id) \
+            .eq("contract_id", contract_id) \
+            .execute()
+
+        if not inst_result.data:
+            raise HTTPException(status_code=404, detail="Cuota no encontrada")
+
+        if inst_result.data[0]["status"] == "paid":
+            raise HTTPException(status_code=400, detail="Esta cuota ya fue pagada")
+
+        # Update installment
+        update_data = {
+            "status": "paid",
+            "paid_date": date.today().isoformat(),
+            "payment_method": data.payment_method,
+            "payment_reference": data.payment_reference,
+            "notes": data.notes,
+        }
+
+        result = sb.table("capital_down_payment_installments") \
+            .update(update_data) \
+            .eq("id", installment_id) \
+            .execute()
+
+        return {
+            "ok": True,
+            "message": "Pago registrado",
+            "installment": result.data[0] if result.data else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error paying installment {installment_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

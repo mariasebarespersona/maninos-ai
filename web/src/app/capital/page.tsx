@@ -10,6 +10,27 @@ import {
   AlertCircle, ChevronRight, Phone
 } from 'lucide-react'
 
+interface MaturityAlert {
+  id: string
+  loan_amount: number
+  total_due: number
+  maturity_date: string
+  days_until_maturity: number
+  investors?: {
+    id: string
+    name: string
+    email: string
+    phone: string
+  }
+}
+
+interface MaturityAlerts {
+  overdue: MaturityAlert[]
+  this_week: MaturityAlert[]
+  this_month: MaturityAlert[]
+  total_alerts: number
+}
+
 interface DashboardKPIs {
   active_contracts: number
   total_contracts: number
@@ -67,6 +88,7 @@ export default function CapitalDashboardPage() {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [cartera, setCartera] = useState<CarteraHealth | null>(null)
+  const [maturityAlerts, setMaturityAlerts] = useState<MaturityAlerts | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -77,19 +99,22 @@ export default function CapitalDashboardPage() {
 
   const loadDashboard = async () => {
     try {
-      const [summaryRes, activityRes, carteraRes] = await Promise.all([
+      const [summaryRes, activityRes, carteraRes, maturityRes] = await Promise.all([
         fetch(`/api/capital/dashboard/summary`),
         fetch(`/api/capital/dashboard/recent-activity`),
         fetch(`/api/capital/dashboard/cartera-health`),
+        fetch(`/api/capital/promissory-notes/alerts/upcoming?days=90`),
       ])
-      
+
       const summaryData = await summaryRes.json()
       const activityData = await activityRes.json()
       const carteraData = await carteraRes.json()
-      
+      const maturityData = await maturityRes.json()
+
       if (summaryData.ok) setKpis(summaryData.kpis)
       if (activityData.ok) setActivities(activityData.activities)
       if (carteraData.ok) setCartera(carteraData.cartera)
+      if (maturityData.ok && maturityData.total_alerts > 0) setMaturityAlerts(maturityData)
     } catch (err) {
       console.error('Error loading dashboard:', err)
     } finally {
@@ -118,6 +143,86 @@ export default function CapitalDashboardPage() {
           Gestión de contratos Rent-to-Own y cartera de pagos
         </p>
       </div>
+
+      {/* Promissory Note Maturity Alert Banner */}
+      {maturityAlerts && maturityAlerts.total_alerts > 0 && (
+        <div className="space-y-2">
+          {maturityAlerts.overdue.length > 0 && (
+            <Link
+              href="/capital/promissory-notes"
+              className="flex items-center gap-3 p-4 rounded-xl border-l-4 transition-colors hover:opacity-90"
+              style={{ backgroundColor: '#fef2f2', borderLeftColor: '#dc2626' }}
+            >
+              <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: '#dc2626' }} />
+              <div className="flex-1">
+                <p className="font-semibold text-sm" style={{ color: '#991b1b' }}>
+                  {maturityAlerts.overdue.length} nota{maturityAlerts.overdue.length !== 1 ? 's' : ''} promisoria{maturityAlerts.overdue.length !== 1 ? 's' : ''} VENCIDA{maturityAlerts.overdue.length !== 1 ? 'S' : ''}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
+                  {maturityAlerts.overdue.map(n => `${n.investors?.name || 'Investor'} ($${(n.total_due || n.loan_amount).toLocaleString()})`).join(' · ')}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: '#dc2626' }} />
+            </Link>
+          )}
+          {maturityAlerts.this_week.length > 0 && (
+            <Link
+              href="/capital/promissory-notes"
+              className="flex items-center gap-3 p-4 rounded-xl border-l-4 transition-colors hover:opacity-90"
+              style={{ backgroundColor: '#fef2f2', borderLeftColor: '#ea580c' }}
+            >
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#ea580c' }} />
+              <div className="flex-1">
+                <p className="font-semibold text-sm" style={{ color: '#9a3412' }}>
+                  {maturityAlerts.this_week.length} nota{maturityAlerts.this_week.length !== 1 ? 's' : ''} vence{maturityAlerts.this_week.length !== 1 ? 'n' : ''} esta semana
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#c2410c' }}>
+                  {maturityAlerts.this_week.map(n => `${n.investors?.name || 'Investor'} (${n.days_until_maturity}d)`).join(' · ')}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: '#ea580c' }} />
+            </Link>
+          )}
+          {maturityAlerts.this_month.length > 0 && (
+            <Link
+              href="/capital/promissory-notes"
+              className="flex items-center gap-3 p-4 rounded-xl border-l-4 transition-colors hover:opacity-90"
+              style={{ backgroundColor: (() => {
+                const minDays = Math.min(...maturityAlerts.this_month.map(n => n.days_until_maturity))
+                if (minDays <= 30) return '#fff7ed'
+                if (minDays <= 60) return '#fffbeb'
+                return '#fefce8'
+              })(), borderLeftColor: (() => {
+                const minDays = Math.min(...maturityAlerts.this_month.map(n => n.days_until_maturity))
+                if (minDays <= 30) return '#ea580c'
+                if (minDays <= 60) return '#d97706'
+                return '#ca8a04'
+              })() }}
+            >
+              <Clock className="w-5 h-5 flex-shrink-0" style={{ color: (() => {
+                const minDays = Math.min(...maturityAlerts.this_month.map(n => n.days_until_maturity))
+                if (minDays <= 30) return '#ea580c'
+                if (minDays <= 60) return '#d97706'
+                return '#ca8a04'
+              })() }} />
+              <div className="flex-1">
+                <p className="font-semibold text-sm" style={{ color: (() => {
+                  const minDays = Math.min(...maturityAlerts.this_month.map(n => n.days_until_maturity))
+                  if (minDays <= 30) return '#9a3412'
+                  if (minDays <= 60) return '#92400e'
+                  return '#854d0e'
+                })() }}>
+                  {maturityAlerts.this_month.length} nota{maturityAlerts.this_month.length !== 1 ? 's' : ''} vence{maturityAlerts.this_month.length !== 1 ? 'n' : ''} en los proximos {Math.max(...maturityAlerts.this_month.map(n => n.days_until_maturity))} dias
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>
+                  {maturityAlerts.this_month.map(n => `${n.investors?.name || 'Investor'} (${n.days_until_maturity}d)`).join(' · ')}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

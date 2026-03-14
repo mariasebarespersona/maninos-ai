@@ -1115,3 +1115,206 @@ def process_rto_overdue_alerts(admin_email: str = "info@maninoscapital.com") -> 
         logger.error(f"[email_service] Error processing overdue alerts: {e}")
         return {"ok": False, "error": str(e)}
 
+
+# =============================================================================
+# PROMISSORY NOTE MATURITY ALERTS
+# =============================================================================
+
+def _promissory_maturity_alert_html(notes_summary: list, total_amount: float) -> str:
+    """HTML template for promissory note maturity alert."""
+    rows = ""
+    for n in notes_summary:
+        days = n["days_remaining"]
+        if days < 0:
+            urgency_color = "#991b1b"
+            urgency_label = f"{abs(days)}d OVERDUE"
+        elif days <= 30:
+            urgency_color = "#dc2626"
+            urgency_label = f"{days}d remaining"
+        elif days <= 60:
+            urgency_color = "#ea580c"
+            urgency_label = f"{days}d remaining"
+        else:
+            urgency_color = "#ca8a04"
+            urgency_label = f"{days}d remaining"
+
+        rows += f"""
+        <tr>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">{n['investor_name']}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">${n['loan_amount']:,.2f}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">${n['total_due']:,.2f}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">{n['maturity_date']}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: {urgency_color}; font-weight: 600;">{urgency_label}</td>
+        </tr>
+        """
+
+    content = f"""
+    <div class="header">
+        <h1>Promissory Note Maturity Alert</h1>
+        <p>{len(notes_summary)} note{'s' if len(notes_summary) != 1 else ''} approaching maturity</p>
+    </div>
+    <div class="body">
+        <p>The following promissory notes are maturing within the next 90 days and require attention:</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+            <thead>
+                <tr style="background: #283242; color: white;">
+                    <th style="padding: 10px; text-align: left;">Investor</th>
+                    <th style="padding: 10px; text-align: right;">Principal</th>
+                    <th style="padding: 10px; text-align: right;">Total Due</th>
+                    <th style="padding: 10px; text-align: left;">Maturity</th>
+                    <th style="padding: 10px; text-align: left;">Urgency</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+
+        <div class="highlight">
+            <strong>Total amount due across all maturing notes: ${total_amount:,.2f}</strong>
+        </div>
+
+        <p>Please review these notes and plan for upcoming payments or renewals.</p>
+
+        <center>
+            <a href="{APP_URL}/capital/promissory-notes" class="btn">View Promissory Notes</a>
+        </center>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_promissory_maturity_alert(
+    investor_name: str,
+    note_amount: float,
+    maturity_date: str,
+    days_remaining: int,
+    admin_email: str = "info@maninoscapital.com",
+) -> dict:
+    """Send a single promissory note maturity alert to Capital admin."""
+    try:
+        notes_summary = [{
+            "investor_name": investor_name,
+            "loan_amount": note_amount,
+            "total_due": note_amount,
+            "maturity_date": maturity_date,
+            "days_remaining": days_remaining,
+        }]
+        html = _promissory_maturity_alert_html(notes_summary, note_amount)
+
+        if days_remaining < 0:
+            urgency = "OVERDUE"
+        elif days_remaining <= 30:
+            urgency = "URGENT"
+        elif days_remaining <= 60:
+            urgency = "WARNING"
+        else:
+            urgency = "NOTICE"
+
+        subject = f"[{urgency}] Promissory note maturing — {investor_name} (${note_amount:,.0f})"
+
+        result = send_email(to=[admin_email], subject=subject, html=html)
+        logger.info(f"[email_service] Maturity alert sent for {investor_name} ({days_remaining}d remaining)")
+        return {"ok": True, "type": "promissory_maturity_alert", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send maturity alert: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def process_promissory_maturity_alerts(admin_email: str = "info@maninoscapital.com") -> dict:
+    """
+    Check for promissory notes maturing within 90 days and send alerts.
+    Skips notes that were already alerted in the last 7 days.
+    Called daily by scheduler job.
+    """
+    from datetime import date as date_type
+
+    try:
+        today = date_type.today()
+        cutoff = today + timedelta(days=90)
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+
+        # Get active notes maturing within 90 days
+        result = sb.table("promissory_notes") \
+            .select("*, investors(id, name, email, phone)") \
+            .eq("status", "active") \
+            .lte("maturity_date", cutoff.isoformat()) \
+            .order("maturity_date") \
+            .execute()
+
+        if not result.data:
+            return {"ok": True, "alerts_sent": 0, "message": "No maturing notes found"}
+
+        # Filter out recently alerted notes
+        notes_to_alert = []
+        for note in result.data:
+            last_alert = note.get("last_maturity_alert_at")
+            if last_alert and last_alert > seven_days_ago:
+                continue  # Already alerted recently
+            notes_to_alert.append(note)
+
+        if not notes_to_alert:
+            return {"ok": True, "alerts_sent": 0, "message": "All maturing notes already alerted recently"}
+
+        # Build summary for batch email
+        notes_summary = []
+        total_amount = 0
+        for note in notes_to_alert:
+            investor = note.get("investors") or {}
+            mat = date_type.fromisoformat(str(note["maturity_date"]))
+            days_remaining = (mat - today).days
+            total_due = float(note.get("total_due", 0) or note.get("loan_amount", 0))
+
+            notes_summary.append({
+                "investor_name": investor.get("name", "Unknown"),
+                "loan_amount": float(note.get("loan_amount", 0)),
+                "total_due": total_due,
+                "maturity_date": note["maturity_date"],
+                "days_remaining": days_remaining,
+            })
+            total_amount += total_due
+
+        # Send a single batch email with all maturing notes
+        html = _promissory_maturity_alert_html(notes_summary, total_amount)
+        count = len(notes_summary)
+
+        # Pick urgency based on most urgent note
+        min_days = min(n["days_remaining"] for n in notes_summary)
+        if min_days < 0:
+            urgency = "OVERDUE"
+        elif min_days <= 30:
+            urgency = "URGENT"
+        elif min_days <= 60:
+            urgency = "WARNING"
+        else:
+            urgency = "NOTICE"
+
+        subject = f"[{urgency}] {count} promissory note{'s' if count != 1 else ''} maturing soon — ${total_amount:,.0f} total"
+        email_result = send_email(to=[admin_email], subject=subject, html=html)
+
+        # Update last_maturity_alert_at on each note
+        now_iso = datetime.utcnow().isoformat()
+        updated = 0
+        for note in notes_to_alert:
+            try:
+                sb.table("promissory_notes") \
+                    .update({"last_maturity_alert_at": now_iso}) \
+                    .eq("id", note["id"]) \
+                    .execute()
+                updated += 1
+            except Exception as upd_err:
+                logger.warning(f"[email_service] Failed to update last_maturity_alert_at for note {note['id']}: {upd_err}")
+
+        logger.info(f"[email_service] Promissory maturity alerts: {count} notes, email sent={email_result.get('ok', False)}, updated={updated}")
+        return {
+            "ok": True,
+            "alerts_sent": count,
+            "total_amount": total_amount,
+            "email_sent": email_result.get("ok", False),
+            "updated": updated,
+        }
+    except Exception as e:
+        logger.error(f"[email_service] Error processing promissory maturity alerts: {e}")
+        return {"ok": False, "error": str(e)}
+
