@@ -1226,8 +1226,8 @@ function StatementsTab() {
 
       {/* ── RESET / VACIAR CIFRAS MODAL ── */}
       {showResetModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl mx-4">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl my-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(220,38,38,0.1)' }}>
                 <Trash2 className="w-5 h-5" style={{ color: 'var(--danger)' }} />
