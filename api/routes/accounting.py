@@ -3066,6 +3066,10 @@ async def post_confirmed_movements(statement_id: str):
     errors = []
     stmt_label = f"{statement.get('account_label', '')} - {statement.get('original_filename', '')}"
 
+    # Pre-load account types for determining bank-side direction
+    all_accts = sb.table("accounting_accounts").select("id, account_type").eq("is_active", True).execute().data or []
+    acct_type_map = {a["id"]: a.get("account_type", "") for a in all_accts}
+
     for mv in movements.data:
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
         txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
@@ -3076,6 +3080,10 @@ async def post_confirmed_movements(statement_id: str):
             errors.append(f"'{desc}' — sin cuenta contable asignada")
             logger.warning(f"[BankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
+
+        # Determine bank direction from account type, not is_credit
+        pnl_acct_type = acct_type_map.get(account_id, "")
+        bank_is_income = pnl_acct_type in ("income",)
 
         try:
             abs_amount = abs(float(mv["amount"]))
@@ -3129,7 +3137,7 @@ async def post_confirmed_movements(statement_id: str):
                     "transaction_number": _generate_transaction_number(),
                     "transaction_type": txn_type,
                     "amount": abs_amount,
-                    "is_income": mv["is_credit"],
+                    "is_income": bank_is_income,
                     "account_id": bank_accounting_account_id,
                     "linked_transaction_id": pnl_txn_id,
                     "notes": f"Contrapartida bancaria: {stmt_label}",
