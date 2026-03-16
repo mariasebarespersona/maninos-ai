@@ -178,6 +178,107 @@ async def get_client_reported_payments():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/down-payment/client-reported")
+async def get_client_reported_dp_installments():
+    """Get all down payment installments reported by clients pending confirmation."""
+    try:
+        result = sb.table("capital_down_payment_installments") \
+            .select("*, rto_contracts(id, client_id, property_id, down_payment, clients(name, email, phone), properties(address, city))") \
+            .eq("status", "client_reported") \
+            .order("client_reported_at", desc=True) \
+            .execute()
+
+        installments = []
+        for inst in (result.data or []):
+            contract = inst.get("rto_contracts", {}) or {}
+            client = contract.get("clients", {}) or {}
+            prop = contract.get("properties", {}) or {}
+            installments.append({
+                "installment_id": inst["id"],
+                "installment_number": inst.get("installment_number"),
+                "amount": float(inst.get("amount", 0)),
+                "due_date": inst.get("due_date"),
+                "client_reported_at": inst.get("client_reported_at"),
+                "client_payment_method": inst.get("client_payment_method"),
+                "notes": inst.get("notes"),
+                "client_name": client.get("name", "N/A"),
+                "client_email": client.get("email"),
+                "client_phone": client.get("phone"),
+                "property_address": prop.get("address", "N/A"),
+                "property_city": prop.get("city"),
+                "contract_id": contract.get("id"),
+                "total_down_payment": float(contract.get("down_payment", 0)),
+            })
+
+        return {"ok": True, "reported_installments": installments, "total": len(installments)}
+    except Exception as e:
+        logger.error(f"Error getting client-reported dp installments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/down-payment/{installment_id}/confirm")
+async def confirm_dp_installment(installment_id: str):
+    """
+    Confirm a client-reported down payment installment.
+    Sets status to 'paid', records date, and creates a capital_transaction for reconciliation.
+    """
+    try:
+        inst_result = sb.table("capital_down_payment_installments") \
+            .select("*, rto_contracts(id, client_id, down_payment, clients(name), properties(address))") \
+            .eq("id", installment_id) \
+            .single() \
+            .execute()
+
+        if not inst_result.data:
+            raise HTTPException(status_code=404, detail="Cuota no encontrada")
+
+        inst = inst_result.data
+        if inst["status"] != "client_reported":
+            raise HTTPException(status_code=400, detail=f"Estado inválido: {inst['status']}")
+
+        contract = inst.get("rto_contracts", {}) or {}
+        client_name = (contract.get("clients", {}) or {}).get("name", "Cliente")
+        prop_address = (contract.get("properties", {}) or {}).get("address", "")
+        amount = float(inst["amount"])
+
+        # Mark as paid
+        now = datetime.utcnow().isoformat()
+        sb.table("capital_down_payment_installments").update({
+            "status": "paid",
+            "paid_date": date.today().isoformat(),
+            "payment_method": inst.get("client_payment_method", "bank_transfer"),
+            "updated_at": now,
+        }).eq("id", installment_id).execute()
+
+        # Create capital_transaction for reconciliation with bank statements
+        txn_data = {
+            "date": date.today().isoformat(),
+            "description": f"Enganche cuota #{inst['installment_number']} - {client_name} - {prop_address}".strip(),
+            "amount": amount,
+            "type": "down_payment",
+            "is_income": True,
+            "source": "down_payment",
+            "notes": f"Confirmado desde reporte de cliente. Método: {inst.get('client_payment_method', 'N/A')}",
+        }
+        txn_result = sb.table("capital_transactions").insert(txn_data).execute()
+
+        # Link transaction to installment
+        if txn_result.data:
+            sb.table("capital_down_payment_installments").update({
+                "transaction_id": txn_result.data[0]["id"],
+            }).eq("id", installment_id).execute()
+
+        return {
+            "ok": True,
+            "message": f"Enganche cuota #{inst['installment_number']} confirmada — ${amount:,.2f}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming dp installment {installment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{payment_id}/record")
 async def record_payment(payment_id: str, data: RecordPayment):
     """

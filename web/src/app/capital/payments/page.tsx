@@ -90,9 +90,12 @@ export default function PaymentsPage() {
   
   // Client-reported payments notification
   const [reportedPayments, setReportedPayments] = useState<any[]>([])
+  const [reportedDpInstallments, setReportedDpInstallments] = useState<any[]>([])
   const [loadingReported, setLoadingReported] = useState(true)
   const [confirmingReportedId, setConfirmingReportedId] = useState<string | null>(null)
   const [confirmingReportedSubmitting, setConfirmingReportedSubmitting] = useState(false)
+  const [confirmingDpId, setConfirmingDpId] = useState<string | null>(null)
+  const [confirmingDpSubmitting, setConfirmingDpSubmitting] = useState(false)
 
   // Record payment modal
   const [recordingId, setRecordingId] = useState<string | null>(null)
@@ -109,6 +112,7 @@ export default function PaymentsPage() {
     loadPayments()
     loadMoraSummary()
     loadReportedPayments()
+    loadReportedDpInstallments()
     if (view === 'commissions') loadCommissions()
   }, [view, statusFilter])
 
@@ -180,6 +184,38 @@ export default function PaymentsPage() {
       console.error('Error loading reported payments:', err)
     } finally {
       setLoadingReported(false)
+    }
+  }
+
+  const loadReportedDpInstallments = async () => {
+    try {
+      const res = await fetch('/api/capital/payments/down-payment/client-reported')
+      const data = await res.json()
+      if (data.ok) setReportedDpInstallments(data.reported_installments || [])
+    } catch (err) {
+      console.error('Error loading reported dp installments:', err)
+    }
+  }
+
+  const handleConfirmDpInstallment = async (installmentId: string) => {
+    setConfirmingDpSubmitting(true)
+    try {
+      const res = await fetch(`/api/capital/payments/down-payment/${installmentId}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Enganche confirmado')
+        setConfirmingDpId(null)
+        loadReportedDpInstallments()
+      } else {
+        toast.error(data.detail || 'Error al confirmar')
+      }
+    } catch (err) {
+      toast.error('Error al confirmar enganche')
+    } finally {
+      setConfirmingDpSubmitting(false)
     }
   }
 
@@ -421,6 +457,100 @@ export default function PaymentsPage() {
                     >
                       <CheckCircle2 className="w-3 h-3 mr-1" />
                       El pago ha sido recibido
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Client Reported Down Payment Installments */}
+      {reportedDpInstallments.length > 0 && (
+        <div className="card-luxury overflow-hidden" style={{ border: '2px solid #8b5cf6' }}>
+          <div className="p-4 flex items-center gap-3" style={{ backgroundColor: '#f5f3ff' }}>
+            <Bell className="w-5 h-5" style={{ color: '#7c3aed' }} />
+            <div className="flex-1">
+              <h3 className="font-serif text-base font-semibold" style={{ color: '#5b21b6' }}>
+                Enganches Reportados por Clientes
+              </h3>
+              <p className="text-xs" style={{ color: '#7c3aed' }}>
+                {reportedDpInstallments.length} cuota{reportedDpInstallments.length !== 1 ? 's' : ''} de enganche pendiente{reportedDpInstallments.length !== 1 ? 's' : ''} de confirmar
+              </p>
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#ede9fe' }}>
+            {reportedDpInstallments.map((inst: any) => (
+              <div key={inst.installment_id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{inst.client_name}</p>
+                    <span className="badge text-xs" style={{ backgroundColor: '#f5f3ff', color: '#7c3aed' }}>
+                      Enganche #{inst.installment_number}
+                    </span>
+                    <span className="badge text-xs" style={{ backgroundColor: '#f0fdf4', color: '#16a34a' }}>
+                      {inst.client_payment_method === 'bank_transfer' ? 'Transferencia' : 'Efectivo'}
+                    </span>
+                  </div>
+                  <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>
+                    {inst.property_address}{inst.property_city ? `, ${inst.property_city}` : ''}
+                  </p>
+                  <div className="flex items-center gap-4 mt-1 text-xs" style={{ color: 'var(--ash)' }}>
+                    {inst.client_email && <span>{inst.client_email}</span>}
+                    {inst.client_phone && <span><Phone className="w-3 h-3 inline mr-1" />{inst.client_phone}</span>}
+                    {inst.client_reported_at && (
+                      <span>
+                        <Clock className="w-3 h-3 inline mr-1" />
+                        Reportado: {new Date(inst.client_reported_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  {inst.notes && (
+                    <p className="text-xs mt-1 italic" style={{ color: 'var(--slate)' }}>
+                      Nota: &quot;{inst.notes}&quot;
+                    </p>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+                    ${inst.amount?.toLocaleString('en-US') || '0'}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                    de {inst.total_down_payment ? `$${inst.total_down_payment.toLocaleString('en-US')}` : 'N/A'} total
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  {confirmingDpId === inst.installment_id ? (
+                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <p className="text-xs font-medium" style={{ color: '#166534' }}>
+                        Confirmar que el enganche de ${inst.amount?.toLocaleString('en-US')} ha llegado?
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConfirmDpInstallment(inst.installment_id)}
+                          disabled={confirmingDpSubmitting}
+                          className="btn-primary btn-sm text-xs"
+                          style={{ backgroundColor: '#16a34a' }}
+                        >
+                          {confirmingDpSubmitting ? 'Confirmando...' : 'Sí, confirmar'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingDpId(null)}
+                          className="btn-ghost btn-sm text-xs"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingDpId(inst.installment_id)}
+                      className="btn-primary btn-sm text-xs whitespace-nowrap"
+                      style={{ backgroundColor: '#7c3aed' }}
+                    >
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Confirmar enganche
                     </button>
                   )}
                 </div>

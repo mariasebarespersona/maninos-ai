@@ -536,14 +536,17 @@ export default function ContractDetailPage() {
                     <td>{new Date(inst.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                     <td>
                       <span className="badge text-xs" style={{
-                        backgroundColor: inst.status === 'paid' ? 'var(--success-light)' : 'var(--warning-light)',
-                        color: inst.status === 'paid' ? 'var(--success)' : 'var(--warning)',
+                        backgroundColor: inst.status === 'paid' ? 'var(--success-light)' :
+                          inst.status === 'client_reported' ? '#dbeafe' : 'var(--warning-light)',
+                        color: inst.status === 'paid' ? 'var(--success)' :
+                          inst.status === 'client_reported' ? '#1d4ed8' : 'var(--warning)',
                       }}>
-                        {inst.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                        {inst.status === 'paid' ? 'Pagado' :
+                         inst.status === 'client_reported' ? 'Reportado por cliente' : 'Pendiente'}
                       </span>
                     </td>
                     <td>
-                      {inst.status !== 'paid' && (
+                      {inst.status === 'scheduled' && (
                         <button
                           onClick={() => handlePayInstallment(inst.id)}
                           className="btn-ghost btn-sm text-xs"
@@ -551,6 +554,11 @@ export default function ContractDetailPage() {
                           <Check className="w-3 h-3 inline mr-1" />
                           Registrar Pago
                         </button>
+                      )}
+                      {inst.status === 'client_reported' && (
+                        <span className="text-xs font-medium" style={{ color: '#1d4ed8' }}>
+                          Confirmar en Pagos
+                        </span>
                       )}
                       {inst.status === 'paid' && inst.paid_date && (
                         <span className="text-xs" style={{ color: 'var(--slate)' }}>

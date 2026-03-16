@@ -394,14 +394,19 @@ export default function ClientRTOPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                          inst.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                          inst.status === 'paid' ? 'bg-green-100 text-green-600' :
+                          inst.status === 'client_reported' ? 'bg-blue-100 text-blue-600' :
+                          'bg-amber-100 text-amber-600'
                         }`}>
                           {inst.status === 'paid' && <CheckCircle className="w-3 h-3" />}
-                          {inst.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                          {inst.status === 'client_reported' && <Clock className="w-3 h-3" />}
+                          {inst.status === 'paid' ? 'Pago recibido' :
+                           inst.status === 'client_reported' ? 'Reportado — pendiente confirmar' :
+                           'Pendiente'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {inst.status !== 'paid' && (
+                        {inst.status === 'scheduled' && (
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleReportDpPayment(inst.id, 'cash_office')}
@@ -419,9 +424,14 @@ export default function ClientRTOPage() {
                             </button>
                           </div>
                         )}
+                        {inst.status === 'client_reported' && (
+                          <span className="text-[12px] text-blue-600 font-medium">
+                            Maninos está verificando tu pago
+                          </span>
+                        )}
                         {inst.status === 'paid' && inst.paid_date && (
                           <span className="text-[12px] text-[#717171]">
-                            {new Date(inst.paid_date).toLocaleDateString('es-MX')}
+                            Confirmado: {new Date(inst.paid_date).toLocaleDateString('es-MX')}
                           </span>
                         )}
                       </td>

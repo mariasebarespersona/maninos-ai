@@ -841,15 +841,17 @@ async def client_report_dp_installment(client_id: str, installment_id: str, data
 
         if inst["status"] == "paid":
             return {"ok": False, "error": "Esta cuota ya fue pagada."}
+        if inst["status"] == "client_reported":
+            return {"ok": False, "error": "Ya reportaste este pago. Espera la confirmación de Maninos."}
 
         if data.payment_method not in ("cash_office", "bank_transfer"):
             raise HTTPException(status_code=400, detail="Método de pago inválido.")
 
         now = datetime.utcnow().isoformat()
         sb.table("capital_down_payment_installments").update({
-            "status": "paid",
-            "paid_date": date.today().isoformat(),
-            "payment_method": data.payment_method,
+            "status": "client_reported",
+            "client_payment_method": data.payment_method,
+            "client_reported_at": now,
             "notes": data.notes,
             "updated_at": now,
         }).eq("id", installment_id).execute()
@@ -857,7 +859,7 @@ async def client_report_dp_installment(client_id: str, installment_id: str, data
         method_label = "Efectivo en oficina" if data.payment_method == "cash_office" else "Transferencia bancaria"
         return {
             "ok": True,
-            "message": f"¡Cuota #{inst['installment_number']} reportada! Método: {method_label}.",
+            "message": f"¡Cuota #{inst['installment_number']} reportada! Método: {method_label}. Maninos confirmará tu pago pronto.",
         }
     except HTTPException:
         raise
