@@ -103,7 +103,7 @@ export default function CapitalDashboardPage() {
         fetch(`/api/capital/dashboard/summary`),
         fetch(`/api/capital/dashboard/recent-activity`),
         fetch(`/api/capital/dashboard/cartera-health`),
-        fetch(`/api/capital/promissory-notes/alerts/upcoming?days=90`),
+        fetch(`/api/capital/promissory-notes/alerts?days=90`),
       ])
 
       const summaryData = await summaryRes.json()

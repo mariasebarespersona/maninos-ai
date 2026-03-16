@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { 
-  ArrowLeft, FileSignature, User, MapPin, DollarSign, 
-  Calendar, Clock, CheckCircle2, AlertTriangle, 
-  Percent, TrendingUp, Play, Gift, Award, Download, Shield
+import {
+  ArrowLeft, FileSignature, User, MapPin, DollarSign,
+  Calendar, Clock, CheckCircle2, AlertTriangle,
+  Percent, TrendingUp, Play, Gift, Award, Download, Shield,
+  Scissors, Check, X, Plus
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -79,6 +80,14 @@ export default function ContractDetailPage() {
   const [activating, setActivating] = useState(false)
   const [delivering, setDelivering] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  // Down payment split
+  const [dpInstallments, setDpInstallments] = useState<any[]>([])
+  const [dpPaidTotal, setDpPaidTotal] = useState(0)
+  const [showDpSplit, setShowDpSplit] = useState(false)
+  const [dpParts, setDpParts] = useState<{ amount: string; due_date: string }[]>([
+    { amount: '', due_date: '' }, { amount: '', due_date: '' }
+  ])
+  const [savingDp, setSavingDp] = useState(false)
 
   useEffect(() => { loadContract() }, [id])
 
@@ -90,11 +99,82 @@ export default function ContractDetailPage() {
         setContract(data.contract)
         setPayments(data.payments)
         setProgress(data.progress)
+        loadDownPayment()
       }
     } catch (err) {
       console.error('Error loading contract:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadDownPayment = async () => {
+    try {
+      const res = await fetch(`/api/capital/contracts/${id}/down-payment`)
+      const data = await res.json()
+      if (data.ok !== false) {
+        setDpInstallments(data.installments || [])
+        setDpPaidTotal(data.paid_total || 0)
+      }
+    } catch (err) {
+      console.error('Error loading down payment:', err)
+    }
+  }
+
+  const handleSaveDpSplit = async () => {
+    if (!contract) return
+    const installments = dpParts
+      .filter(p => p.amount && parseFloat(p.amount) > 0 && p.due_date)
+      .map(p => ({ amount: parseFloat(p.amount), due_date: p.due_date }))
+    if (installments.length < 2) {
+      toast.error('Necesitas al menos 2 parcialidades con monto y fecha')
+      return
+    }
+    const total = installments.reduce((s, p) => s + p.amount, 0)
+    if (Math.abs(total - contract.down_payment) > 0.01) {
+      toast.error(`Las parcialidades suman $${total.toFixed(2)} pero el enganche es $${contract.down_payment.toFixed(2)}`)
+      return
+    }
+    setSavingDp(true)
+    try {
+      const res = await fetch(`/api/capital/contracts/${id}/down-payment/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ installments }),
+      })
+      const data = await res.json()
+      if (data.ok !== false && !data.detail) {
+        toast.success('Enganche dividido correctamente')
+        setShowDpSplit(false)
+        loadDownPayment()
+      } else {
+        toast.error(data.detail || 'Error al dividir enganche')
+      }
+    } catch (err) {
+      toast.error('Error al dividir enganche')
+    } finally {
+      setSavingDp(false)
+    }
+  }
+
+  const handlePayInstallment = async (installmentId: string) => {
+    const method = window.prompt('Método de pago (cash, check, transfer, zelle, cashapp):')
+    if (!method) return
+    try {
+      const res = await fetch(`/api/capital/contracts/${id}/down-payment/installments/${installmentId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_method: method }),
+      })
+      const data = await res.json()
+      if (data.ok !== false && !data.detail) {
+        toast.success('Pago registrado')
+        loadDownPayment()
+      } else {
+        toast.error(data.detail || 'Error al registrar pago')
+      }
+    } catch (err) {
+      toast.error('Error al registrar pago')
     }
   }
 
@@ -346,6 +426,151 @@ export default function ContractDetailPage() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Down Payment Split */}
+      <div className="card-luxury p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+            <DollarSign className="w-5 h-5 inline mr-1" />
+            Enganche: {fmt(contract.down_payment)}
+          </h3>
+          {dpInstallments.length === 0 && (
+            <button
+              onClick={() => setShowDpSplit(!showDpSplit)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm font-semibold text-white transition-all"
+              style={{ backgroundColor: 'var(--gold-600)' }}
+            >
+              <Scissors className="w-4 h-4" />
+              Dividir Enganche
+            </button>
+          )}
+        </div>
+
+        {/* Split form */}
+        {showDpSplit && dpInstallments.length === 0 && (
+          <div className="p-4 rounded-lg mb-4" style={{ backgroundColor: 'var(--cream)' }}>
+            <p className="text-sm font-semibold mb-3" style={{ color: 'var(--ink)' }}>
+              Dividir ${contract.down_payment.toFixed(2)} en parcialidades
+            </p>
+            {dpParts.map((part, i) => (
+              <div key={i} className="flex items-center gap-2 mb-2">
+                <span className="text-xs w-6 text-center" style={{ color: 'var(--slate)' }}>{i + 1}</span>
+                <input
+                  type="number"
+                  placeholder="Monto"
+                  value={part.amount}
+                  onChange={e => { const p = [...dpParts]; p[i].amount = e.target.value; setDpParts(p) }}
+                  className="input text-sm w-32"
+                  step="0.01"
+                />
+                <input
+                  type="date"
+                  value={part.due_date}
+                  onChange={e => { const p = [...dpParts]; p[i].due_date = e.target.value; setDpParts(p) }}
+                  className="input text-sm"
+                />
+                {dpParts.length > 2 && (
+                  <button onClick={() => setDpParts(dpParts.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={() => setDpParts([...dpParts, { amount: '', due_date: '' }])}
+                className="text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-stone-200 transition-colors"
+                style={{ color: 'var(--slate)' }}
+              >
+                <Plus className="w-3 h-3" /> Agregar parcialidad
+              </button>
+              <div className="flex-1" />
+              <span className="text-xs" style={{ color: 'var(--slate)' }}>
+                Total: ${dpParts.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0).toFixed(2)}
+              </span>
+              <button
+                onClick={handleSaveDpSplit}
+                disabled={savingDp}
+                className="text-xs px-3 py-1.5 rounded text-white font-semibold"
+                style={{ backgroundColor: 'var(--gold-600)' }}
+              >
+                {savingDp ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Existing installments */}
+        {dpInstallments.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm" style={{ color: 'var(--slate)' }}>
+                Pagado: {fmt(dpPaidTotal)} de {fmt(contract.down_payment)}
+              </span>
+              <div className="flex-1 h-2 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                <div
+                  className="h-2 rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (dpPaidTotal / contract.down_payment) * 100)}%`,
+                    backgroundColor: dpPaidTotal >= contract.down_payment ? 'var(--success)' : 'var(--gold-500)',
+                  }}
+                />
+              </div>
+            </div>
+            <table className="table text-sm">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Monto</th>
+                  <th>Fecha Límite</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dpInstallments.map((inst: any) => (
+                  <tr key={inst.id}>
+                    <td>{inst.installment_number}</td>
+                    <td>{fmt(inst.amount)}</td>
+                    <td>{new Date(inst.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    <td>
+                      <span className="badge text-xs" style={{
+                        backgroundColor: inst.status === 'paid' ? 'var(--success-light)' : 'var(--warning-light)',
+                        color: inst.status === 'paid' ? 'var(--success)' : 'var(--warning)',
+                      }}>
+                        {inst.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                      </span>
+                    </td>
+                    <td>
+                      {inst.status !== 'paid' && (
+                        <button
+                          onClick={() => handlePayInstallment(inst.id)}
+                          className="btn-ghost btn-sm text-xs"
+                        >
+                          <Check className="w-3 h-3 inline mr-1" />
+                          Registrar Pago
+                        </button>
+                      )}
+                      {inst.status === 'paid' && inst.paid_date && (
+                        <span className="text-xs" style={{ color: 'var(--slate)' }}>
+                          {new Date(inst.paid_date).toLocaleDateString('es-MX')}
+                          {inst.payment_method && ` · ${inst.payment_method}`}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {dpInstallments.length === 0 && !showDpSplit && (
+          <p className="text-sm" style={{ color: 'var(--slate)' }}>
+            El enganche no ha sido dividido en parcialidades.
+          </p>
+        )}
       </div>
 
       {/* Delivery Status */}
