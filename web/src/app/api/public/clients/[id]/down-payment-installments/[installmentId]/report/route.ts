@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-export const dynamic = 'force-dynamic'
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { getAuthHeaders } from '@/lib/api-auth'
+
+const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function POST(
   request: NextRequest,
@@ -9,19 +10,33 @@ export async function POST(
   try {
     const { id, installmentId } = await params
     const body = await request.json()
-    const token = request.cookies.get('client_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '')
-    const res = await fetch(`${API}/api/public/clients/${id}/down-payment-installments/${installmentId}/report`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    })
+    const authHeaders = await getAuthHeaders()
+
+    const res = await fetch(
+      `${API_URL}/api/public/clients/${id}/down-payment-installments/${installmentId}/report`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+      }
+    )
+
     const data = await res.json()
+
+    if (!res.ok && !('ok' in data)) {
+      return NextResponse.json(
+        { ok: false, error: data.detail || 'Error del servidor' },
+        { status: res.status }
+      )
+    }
+
     return NextResponse.json(data, { status: res.status })
-  } catch (e) {
-    console.error('dp installment report proxy error', e)
-    return NextResponse.json({ detail: 'API error' }, { status: 500 })
+  } catch (error) {
+    console.error('Error proxying dp installment report:', error)
+    return NextResponse.json(
+      { ok: false, error: 'No se pudo conectar con el servidor' },
+      { status: 500 }
+    )
   }
 }

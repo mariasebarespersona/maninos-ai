@@ -301,19 +301,19 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 ## B1.1 Dividir Movimientos Bancarios
 
 ### B1.1.1 Dividir un movimiento en 2 partes
-- [ ] Ir a `/capital/accounting` → tab "Estado de Cuenta"
-- [ ] Subir un estado de cuenta PDF o usar uno existente
-- [ ] En un movimiento pendiente/sugerido, hacer clic en el icono de tijeras (Scissors)
-- [ ] Verificar que aparece el formulario de division con 2 filas por defecto
-- [ ] Rellenar: Parte 1 = $500 "Consulting", Parte 2 = $89 "Office supplies" (total debe ser = monto original)
-- [ ] Clic "+ Añadir parte" → verificar que aparece una tercera fila
-- [ ] Quitar la tercera fila con X → verificar que vuelve a 2
-- [ ] Intentar dividir con montos que NO suman al total → verificar mensaje de error
-- [ ] Rellenar con montos correctos → clic "Dividir"
-- [ ] Verificar toast de éxito "Movimiento dividido en 2 partes"
-- [ ] Verificar que el movimiento original aparece tachado con badge "Dividido" (gris)
-- [ ] Verificar que aparecen 2 nuevos sub-movimientos debajo con "↳" y las descripciones/montos correctos
-- [ ] Verificar que los sub-movimientos se pueden clasificar individualmente (asignar cuentas)
+- [X] Ir a `/capital/accounting` → tab "Estado de Cuenta"
+- [X] Subir un estado de cuenta PDF o usar uno existente
+- [X] En un movimiento pendiente/sugerido, hacer clic en el icono de tijeras (Scissors)
+- [X] Verificar que aparece el formulario de division con 2 filas por defecto
+- [X] Rellenar: Parte 1 = $500 "Consulting", Parte 2 = $89 "Office supplies" (total debe ser = monto original)
+- [X] Clic "+ Añadir parte" → verificar que aparece una tercera fila
+- [X] Quitar la tercera fila con X → verificar que vuelve a 2
+- [X] Intentar dividir con montos que NO suman al total → verificar mensaje de error
+- [X] Rellenar con montos correctos → clic "Dividir"
+- [X] Verificar toast de éxito "Movimiento dividido en 2 partes"
+- [X] Verificar que el movimiento original aparece tachado con badge "Dividido" (gris)
+- [X] Verificar que aparecen 2 nuevos sub-movimientos debajo con "↳" y las descripciones/montos correctos
+- [X] Verificar que los sub-movimientos se pueden clasificar individualmente (asignar cuentas)
 
 ### B1.1.2 Sub-movimientos no se pueden dividir
 - [ ] En un sub-movimiento (tiene ↳), verificar que NO aparece el botón de tijeras
@@ -461,5 +461,175 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 - El scheduler de alertas requiere que el backend esté corriendo (Railway)
 - Los fixes de doble partida (bank_is_income basado en account_type) ya están en producción
 - El few-shot learning ahora busca correcciones en movimientos "confirmed" Y "posted"
+
+
+---
+---
+
+# Tests Bloque 2 Capital — Marzo 16, 2026
+
+**Prerequisitos:**
+- Ejecutar `migrations/063_capital_split_status.sql` en Supabase
+- Ejecutar `migrations/064_dp_installment_client_reported.sql` en Supabase
+
+---
+
+## B2.1 Notificaciones en Capital (Abigail)
+
+### B2.1.1 Navegación
+- [ ] Ir a `/capital`
+- [ ] Verificar que en el sidebar aparece "Notificaciones" con icono de campana
+- [ ] Verificar que el sidebar dice "Maninos Capital" (NO "Maninos Homes")
+- [ ] Verificar que el dashboard dice "Panel Maninos Capital"
+- [ ] Clic "Notificaciones" → verificar que carga `/capital/notificaciones`
+
+### B2.1.2 Secciones de notificaciones
+- [ ] Verificar que la página muestra hasta 3 secciones:
+  - **Azul**: "Pagos RTO Reportados por Clientes" (pagos mensuales)
+  - **Morada**: "Cuotas de Enganche Reportadas por Clientes"
+  - **Dorada**: "Transacciones Pendientes de Confirmar" (inversiones, pagares, comisiones, etc.)
+- [ ] Si no hay pendientes en alguna sección, verificar que no aparece esa sección
+- [ ] Si no hay nada pendiente, verificar mensaje "No hay notificaciones pendientes"
+
+---
+
+## B2.2 Flujo Completo: Cliente Reporta Pago RTO → Notificación → Confirmación
+
+### B2.2.1 Cliente reporta pago mensual
+- [ ] Como cliente RTO, ir a `/clientes/mi-cuenta/rto/[saleId]`
+- [ ] En un pago pendiente, clic "Pagar"
+- [ ] Elegir "Transferencia" o "Efectivo en oficina"
+- [ ] Clic "Reportar Pago"
+- [ ] Verificar toast de confirmación
+- [ ] Verificar que el pago aparece como "Reportado — pendiente confirmar" (badge azul)
+
+### B2.2.2 Abigail ve notificación en Capital
+- [ ] Ir a `/capital/notificaciones`
+- [ ] Verificar que aparece el pago en la sección azul "Pagos RTO Reportados"
+- [ ] Verificar que muestra: nombre cliente, número de pago, propiedad, monto, método, contacto
+
+### B2.2.3 Abigail confirma
+- [ ] Clic "El pago ha sido recibido"
+- [ ] Verificar diálogo de confirmación → clic "Sí, confirmar"
+- [ ] Verificar que la notificación desaparece de la lista
+- [ ] Verificar que el pago aparece como "paid" en la tabla de pagos del contrato
+
+### B2.2.4 Transacción creada para conciliación
+- [ ] Ir a `/capital/accounting` → tab "Transacciones"
+- [ ] Verificar que existe una transacción tipo "rto_payment" con status "confirmed"
+- [ ] Verificar monto, cliente y fecha correctos
+- [ ] Esta transacción se puede conciliar cuando se suba el estado de cuenta del banco
+
+### B2.2.5 Portal cliente actualizado
+- [ ] Como cliente, volver a `/clientes/mi-cuenta/rto/[saleId]`
+- [ ] Verificar que el pago ahora muestra "Pago recibido" (badge verde)
+
+---
+
+## B2.3 Flujo Completo: Enganche Divisible → Pago → Notificación → Confirmación
+
+### B2.3.1 Dividir enganche en Capital
+- [ ] Ir a un contrato RTO en `/capital/contracts/[id]`
+- [ ] Verificar que aparece sección "Enganche" con el monto total
+- [ ] Clic "Dividir Enganche"
+- [ ] Crear 3 cuotas con fechas futuras (ej: $2000, $1500, $1500)
+- [ ] Clic "Guardar Plan de Cuotas"
+- [ ] Verificar toast de éxito
+- [ ] Verificar que aparece tabla de cuotas con barra de progreso
+
+### B2.3.2 Cliente ve cuotas en su portal
+- [ ] Como cliente, ir a `/clientes/mi-cuenta/rto/[saleId]`
+- [ ] Verificar que aparece sección "Cuotas del Enganche" ANTES de la tabla de pagos
+- [ ] Verificar que muestra barra de progreso del enganche
+- [ ] Verificar que cada cuota muestra fecha, monto y status "Pendiente" (ámbar)
+
+### B2.3.3 Cliente reporta pago de cuota
+- [ ] En una cuota con status "Pendiente", verificar que aparecen botones "Pagué en efectivo" y "Transferencia"
+- [ ] Clic en uno de los botones
+- [ ] Verificar que la cuota cambia a "Reportado — pendiente confirmar" (badge azul)
+- [ ] Verificar que aparece mensaje "Maninos está verificando tu pago"
+- [ ] Verificar que los botones de pago desaparecen para esa cuota
+
+### B2.3.4 Abigail ve notificación de enganche
+- [ ] Ir a `/capital/notificaciones`
+- [ ] Verificar que aparece en la sección morada "Cuotas de Enganche Reportadas"
+- [ ] Verificar que muestra: nombre cliente, propiedad, monto cuota, método, fecha
+
+### B2.3.5 Abigail confirma cuota de enganche
+- [ ] Clic "Confirmar Recibido"
+- [ ] Verificar diálogo → confirmar
+- [ ] Verificar que desaparece de la lista
+
+### B2.3.6 Transacción creada
+- [ ] Ir a `/capital/accounting` → tab "Transacciones"
+- [ ] Verificar que existe transacción tipo "down_payment" con status "confirmed"
+- [ ] Esta transacción se puede conciliar con el estado de cuenta del banco
+
+### B2.3.7 Portal cliente actualizado
+- [ ] Como cliente, verificar que la cuota ahora muestra "Pago recibido" (badge verde)
+
+---
+
+## B2.4 Inversiones → Notificación → Confirmación
+
+### B2.4.1 Crear inversión
+- [ ] Ir a `/capital/investors` → crear nueva inversión (o usar endpoint directamente)
+- [ ] Verificar que se crea correctamente
+
+### B2.4.2 Notificación generada
+- [ ] Ir a `/capital/notificaciones`
+- [ ] Verificar que aparece en la sección dorada "Transacciones Pendientes"
+- [ ] Verificar tipo "investor_deposit" con el monto correcto
+
+### B2.4.3 Confirmar
+- [ ] Clic "Confirmar" → verificar que desaparece
+- [ ] Verificar transacción "confirmed" en accounting para conciliación
+
+---
+
+## B2.5 Pagarés → Notificación → Confirmación
+
+### B2.5.1 Crear pagaré (recibir dinero)
+- [ ] Ir a `/capital/promissory-notes` → crear nuevo pagaré
+- [ ] Verificar notificación tipo "investor_deposit" en `/capital/notificaciones`
+
+### B2.5.2 Registrar pago de pagaré (devolver dinero)
+- [ ] En un pagaré activo, registrar un pago
+- [ ] Verificar notificación tipo "investor_return" (is_income=false)
+
+### B2.5.3 Confirmar ambos
+- [ ] Confirmar cada notificación
+- [ ] Verificar que ambas transacciones quedan "confirmed" para conciliación
+
+---
+
+## B2.6 Conciliación: Transacciones de Capital con Estado de Cuenta
+
+### B2.6.1 Verificar transacciones disponibles
+- [ ] Después de confirmar varios pagos/inversiones en Notificaciones
+- [ ] Ir a `/capital/accounting` → subir estado de cuenta bancario
+- [ ] Ejecutar "Buscar coincidencias" (wizard paso 1)
+- [ ] Verificar que las transacciones confirmadas (RTO payments, dp payments, inversiones, pagarés) aparecen como posibles matches
+- [ ] Confirmar las coincidencias → verificar que se concilian correctamente
+
+---
+
+## B2.7 Branding Capital (verificación rápida)
+
+- [ ] `/capital` → header dice "Maninos Capital" (NO Homes)
+- [ ] `/capital` → sidebar dice "Maninos Capital"
+- [ ] `/capital` → dashboard dice "Panel Maninos Capital"
+- [ ] `/capital/accounting` → subtítulo dice "Maninos Capital LLC"
+- [ ] `/capital/notificaciones` → título dice "Notificaciones Capital"
+
+---
+
+## Notas Bloque 2
+
+- Migraciones 063 y 064 deben ejecutarse ANTES de probar
+- El flujo de notificaciones es: evento → `record_txn()` crea transacción `pending_confirmation` → Abigail confirma → `confirmed` → disponible para conciliación bancaria
+- Todos los pagos de Capital (RTO, enganche, inversiones, pagarés, comisiones) pasan por este flujo
+- En el portal cliente, los pagos pasan por: `scheduled` → `client_reported` → `paid`
+- Las notificaciones en Homes son solo para ventas al contado; todo lo RTO/Capital va a `/capital/notificaciones`
 
 
