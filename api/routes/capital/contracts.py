@@ -105,16 +105,48 @@ class DTIRequest(BaseModel):
 
 @router.get("")
 async def list_contracts(status: Optional[str] = None):
-    """List all RTO contracts."""
+    """List all RTO contracts with payment progress summary."""
     try:
         query = sb.table("rto_contracts") \
             .select("*, clients(id, name, email, phone), properties(id, address, city, state, photos)")
-        
+
         if status:
             query = query.eq("status", status)
-        
+
         result = query.order("created_at", desc=True).execute()
-        return {"ok": True, "contracts": result.data or []}
+        contracts = result.data or []
+
+        # Enrich each contract with payment progress
+        contract_ids = [c["id"] for c in contracts]
+        if contract_ids:
+            all_payments = sb.table("rto_payments") \
+                .select("rto_contract_id, amount, paid_amount, status") \
+                .in_("rto_contract_id", contract_ids) \
+                .execute()
+
+            # Group payments by contract
+            payments_by_contract: dict = {}
+            for p in (all_payments.data or []):
+                cid = p["rto_contract_id"]
+                if cid not in payments_by_contract:
+                    payments_by_contract[cid] = []
+                payments_by_contract[cid].append(p)
+
+            for c in contracts:
+                plist = payments_by_contract.get(c["id"], [])
+                paid_count = sum(1 for p in plist if p["status"] == "paid")
+                total_paid = sum(float(p.get("paid_amount", 0)) for p in plist if p["status"] == "paid")
+                total_expected = sum(float(p.get("amount", 0)) for p in plist)
+                c["progress"] = {
+                    "payments_made": paid_count,
+                    "total_payments": len(plist),
+                    "total_paid": total_paid,
+                    "total_expected": total_expected,
+                    "remaining_balance": round(total_expected - total_paid, 2),
+                    "percentage": round((paid_count / len(plist) * 100), 1) if plist else 0,
+                }
+
+        return {"ok": True, "contracts": contracts}
     except Exception as e:
         logger.error(f"Error listing contracts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -149,6 +181,8 @@ async def get_contract(contract_id: str):
         total_paid = sum(float(p.get("paid_amount", 0)) for p in payments_data if p["status"] == "paid")
         total_expected = sum(float(p.get("amount", 0)) for p in payments_data)
         
+        remaining_balance = round(total_expected - total_paid, 2)
+
         return {
             "ok": True,
             "contract": contract.data,
@@ -158,6 +192,7 @@ async def get_contract(contract_id: str):
                 "total_payments": len(payments_data),
                 "total_paid": total_paid,
                 "total_expected": total_expected,
+                "remaining_balance": remaining_balance,
                 "percentage": round((paid_count / len(payments_data) * 100), 1) if payments_data else 0
             }
         }
@@ -581,12 +616,40 @@ async def deliver_title(contract_id: str):
             "status": "rto_completed"
         }).eq("id", c["client_id"]).execute()
 
-        # Send email to client
+        # Send email to client with document links
         try:
             from api.services.email_service import email_service
+            frontend_url = os.environ.get('FRONTEND_URL') or os.environ.get('APP_URL', 'http://localhost:3000')
+            docs_url = f"{frontend_url}/clientes/mi-cuenta/documentos"
+            account_url = f"{frontend_url}/clientes/mi-cuenta"
+
+            # Fetch generated documents for the email
+            doc_links_html = ""
+            try:
+                sale_docs = sb.table("sale_documents") \
+                    .select("document_type, file_url") \
+                    .eq("sale_id", c["sale_id"]) \
+                    .execute()
+                if sale_docs.data:
+                    doc_items = ""
+                    doc_labels = {"bill_of_sale": "Bill of Sale", "titulo": "Título", "title_application": "Aplicación Cambio de Título"}
+                    for d in sale_docs.data:
+                        label = doc_labels.get(d["document_type"], d["document_type"])
+                        doc_items += f'<li style="margin: 4px 0;">{label}</li>'
+                    doc_links_html = f"""
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                        <p style="margin: 0 0 8px; font-weight: bold; color: #166534;">Tus documentos están listos:</p>
+                        <ul style="margin: 0; padding-left: 20px; color: #15803d;">{doc_items}</ul>
+                        <p style="margin: 8px 0 0; font-size: 14px; color: #166534;">
+                            Descárgalos desde tu cuenta.
+                        </p>
+                    </div>"""
+            except Exception:
+                pass
+
             await email_service.send_email(
                 to_email=c["clients"]["email"],
-                subject="🎉 ¡Felicidades! Tu casa ya es tuya - Maninos Homes",
+                subject="¡Felicidades! Tu casa ya es tuya — Maninos Homes",
                 html=f"""
                 <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                     <h1 style="color: #1a2744; font-size: 28px;">¡Felicidades, {c['clients']['name']}!</h1>
@@ -595,16 +658,20 @@ async def deliver_title(contract_id: str):
                         <strong>Tu casa ya es oficialmente tuya.</strong>
                     </p>
                     <div style="background: #f7f3ed; border-radius: 8px; padding: 20px; margin: 24px 0;">
-                        <p style="margin: 0;"><strong>Propiedad:</strong> {c['properties'].get('address', 'N/A')}</p>
+                        <p style="margin: 0;"><strong>Propiedad:</strong> {c['properties'].get('address', 'N/A')}, {c['properties'].get('city', '')}</p>
                         <p style="margin: 8px 0 0;"><strong>Título transferido a:</strong> {c['clients']['name']}</p>
                     </div>
+                    {doc_links_html}
                     <p style="color: #4a5568; font-size: 16px;">
-                        Ingresa a tu cuenta para ver y descargar tus documentos (Bill of Sale y Título).
+                        Ingresa a tu cuenta para ver y descargar tus documentos.
                     </p>
-                    <a href="{os.environ.get('FRONTEND_URL') or os.environ.get('APP_URL', 'http://localhost:3000')}/clientes/mi-cuenta"
+                    <a href="{docs_url}"
                        style="display: inline-block; background: #b8960c; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 16px;">
-                        Ver Mi Cuenta
+                        Ver Mis Documentos
                     </a>
+                    <p style="color: #718096; font-size: 14px; margin-top: 24px;">
+                        Si tienes preguntas, contáctanos al 832-745-9600.
+                    </p>
                 </div>
                 """
             )

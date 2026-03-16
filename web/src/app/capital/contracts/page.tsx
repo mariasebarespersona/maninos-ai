@@ -16,6 +16,14 @@ interface RTOContract {
   created_at: string
   clients: { id: string; name: string; email: string; phone: string }
   properties: { id: string; address: string; city: string; state: string; photos?: string[] }
+  progress?: {
+    payments_made: number
+    total_payments: number
+    total_paid: number
+    total_expected: number
+    remaining_balance: number
+    percentage: number
+  }
 }
 
 // Uses Next.js proxy routes (/api/capital/...)
@@ -150,10 +158,34 @@ export default function ContractsPage() {
                       <span className="badge" style={{ backgroundColor: s.bg, color: s.color }}>
                         {s.label}
                       </span>
-                      <div className="flex items-center gap-1 mt-2 justify-end" style={{ color: 'var(--gold-600)' }}>
-                        <Eye className="w-4 h-4" />
-                        <span className="text-xs font-medium">Ver detalle</span>
-                      </div>
+                      {contract.progress && contract.status === 'active' && (
+                        <div className="mt-2">
+                          <p className="text-lg font-bold" style={{ color: 'var(--ink)' }}>
+                            {fmt(contract.progress.remaining_balance)}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--slate)' }}>
+                            Saldo pendiente
+                          </p>
+                          <div className="w-24 h-1.5 rounded-full mt-1 ml-auto" style={{ backgroundColor: 'var(--sand)' }}>
+                            <div
+                              className="h-1.5 rounded-full"
+                              style={{
+                                width: `${contract.progress.percentage}%`,
+                                backgroundColor: contract.progress.percentage >= 100 ? 'var(--success)' : 'var(--gold-500)',
+                              }}
+                            />
+                          </div>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                            {contract.progress.payments_made}/{contract.progress.total_payments} pagos
+                          </p>
+                        </div>
+                      )}
+                      {(!contract.progress || contract.status !== 'active') && (
+                        <div className="flex items-center gap-1 mt-2 justify-end" style={{ color: 'var(--gold-600)' }}>
+                          <Eye className="w-4 h-4" />
+                          <span className="text-xs font-medium">Ver detalle</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -64,6 +64,7 @@ interface Progress {
   total_payments: number
   total_paid: number
   total_expected: number
+  remaining_balance: number
   percentage: number
 }
 
@@ -382,6 +383,14 @@ export default function ContractDetailPage() {
             <span>{progress.payments_made} de {progress.total_payments} pagos</span>
             <span>{fmt(progress.total_paid)} de {fmt(progress.total_expected)}</span>
           </div>
+          {progress.remaining_balance > 0 && (
+            <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--gold-50, #fffbeb)', border: '1px solid var(--gold-200, #fde68a)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Saldo Pendiente</span>
+                <span className="text-xl font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(progress.remaining_balance)}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
