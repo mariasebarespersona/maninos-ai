@@ -54,17 +54,18 @@ async def lookup_client(email: str = Query(..., description="Client email")):
         result = sb.table("clients") \
             .select("id, name, email, phone, terreno, status") \
             .eq("email", email.lower()) \
-            .single() \
+            .order("created_at", desc=True) \
+            .limit(1) \
             .execute()
-        
+
         if not result.data:
             return {"ok": False, "error": "Client not found"}
-        
+
         return {
             "ok": True,
-            "client": result.data
+            "client": result.data[0]
         }
-        
+
     except Exception as e:
         logger.error(f"Error looking up client: {e}")
         return {"ok": False, "error": "Client not found"}
