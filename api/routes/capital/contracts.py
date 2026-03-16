@@ -835,7 +835,7 @@ async def create_down_payment_split(contract_id: str, data: DownPaymentSplit):
                 "installment_number": idx,
                 "amount": inst.amount,
                 "due_date": inst.due_date,
-                "status": "pending",
+                "status": "scheduled",
             })
 
         result = sb.table("capital_down_payment_installments").insert(rows).execute()
