@@ -204,7 +204,7 @@ function TitleStatusCard({
 
 // ─── Sale Section ───────────────────────────────────────────────────────────
 
-function ContadoSaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocument: (saleId: string, docType: string, file: File) => void }) {
+function SaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocument: (saleId: string, docType: string, file: File) => void }) {
   const { property_details: pd, client_info: ci } = sale
   const today = new Date().toISOString().split('T')[0]
 
@@ -230,6 +230,7 @@ function ContadoSaleSection({ sale, onSaveDocument }: { sale: Sale; onSaveDocume
             <p className="text-sm text-gray-500">
               {pd.city && `${pd.city}, `}
               {pd.state || 'TX'}
+              {sale.sale_type === 'rto' && ' · Rent-to-Own'}
             </p>
           </div>
           <div className="text-right flex-shrink-0">
@@ -437,7 +438,6 @@ export default function ClientDocumentsPage() {
   }
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  const contadoSales = sales.filter((s) => s.sale_type === 'contado')
   const hasCompletedTitle = sales.some((s) => s.title_name_updated)
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -516,7 +516,7 @@ export default function ClientDocumentsPage() {
             </div>
           ) : (
             <div className="space-y-10">
-              {contadoSales.map((sale) => (
+              {sales.map((sale) => (
                 <div
                   key={sale.id}
                   className={
@@ -525,65 +525,9 @@ export default function ClientDocumentsPage() {
                       : ''
                   }
                 >
-                  <ContadoSaleSection sale={sale} onSaveDocument={handleSaveDocument} />
+                  <SaleSection sale={sale} onSaveDocument={handleSaveDocument} />
                 </div>
               ))}
-
-              {/* Non-contado sales - show a simple card with existing documents */}
-              {sales
-                .filter((s) => s.sale_type !== 'contado')
-                .map((sale) => (
-                  <div
-                    key={sale.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-5"
-                  >
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-                        <Home className="w-6 h-6 text-[#004274]" />
-                      </div>
-                      <div className="flex-1">
-                        <h2 className="font-bold text-[#004274]">
-                          {sale.property_details?.address || 'Propiedad'}
-                        </h2>
-                        <p className="text-sm text-gray-500">
-                          {sale.sale_type === 'rto'
-                            ? 'Renta con opcion a compra'
-                            : sale.sale_type}
-                        </p>
-                      </div>
-                    </div>
-                    {sale.documents?.length > 0 ? (
-                      <div className="divide-y border rounded-lg overflow-hidden">
-                        {sale.documents.map((doc, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <FileText className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm font-medium text-gray-700">
-                                {doc.name}
-                              </span>
-                            </div>
-                            {doc.file_url && (
-                              <a
-                                href={doc.file_url}
-                                download
-                                className="p-2 text-gray-400 hover:text-[#004274] transition-colors"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 text-center py-4">
-                        Los documentos apareceran aqui cuando esten listos.
-                      </p>
-                    )}
-                  </div>
-                ))}
             </div>
           )}
 
