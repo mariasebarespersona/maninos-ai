@@ -252,13 +252,18 @@ async def confirm_dp_installment(installment_id: str):
 
         # Create capital_transaction for reconciliation with bank statements
         txn_data = {
-            "date": date.today().isoformat(),
+            "transaction_date": date.today().isoformat(),
             "description": f"Enganche cuota #{inst['installment_number']} - {client_name} - {prop_address}".strip(),
             "amount": amount,
-            "type": "down_payment",
+            "transaction_type": "down_payment",
             "is_income": True,
             "source": "down_payment",
+            "status": "confirmed",
+            "client_id": contract.get("client_id"),
+            "rto_contract_id": contract.get("id"),
+            "payment_method": inst.get("client_payment_method", "bank_transfer"),
             "notes": f"Confirmado desde reporte de cliente. Método: {inst.get('client_payment_method', 'N/A')}",
+            "created_by": "abigail",
         }
         txn_result = sb.table("capital_transactions").insert(txn_data).execute()
 
