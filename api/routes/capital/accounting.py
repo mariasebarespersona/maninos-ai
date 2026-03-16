@@ -2621,13 +2621,15 @@ async def split_capital_movement(movement_id: str, data: dict):
         raise HTTPException(status_code=404, detail="Movement not found")
     parent = parent_result.data[0]
 
-    # Validate amounts sum
+    # Validate amounts sum (frontend sends positive amounts; compare absolute values)
     parent_amount = float(parent["amount"])
-    parts_total = sum(float(p["amount"]) for p in parts)
-    if abs(parts_total - parent_amount) > 0.01:
+    abs_parent = abs(parent_amount)
+    sign = -1 if parent_amount < 0 else 1
+    parts_total = sum(abs(float(p["amount"])) for p in parts)
+    if abs(parts_total - abs_parent) > 0.01:
         raise HTTPException(
             status_code=400,
-            detail=f"Parts total ({parts_total:.2f}) does not match movement amount ({parent_amount:.2f})",
+            detail=f"Parts total ({parts_total:.2f}) does not match movement amount ({abs_parent:.2f})",
         )
 
     # Mark parent as split
@@ -2645,7 +2647,7 @@ async def split_capital_movement(movement_id: str, data: dict):
             "statement_id": parent["statement_id"],
             "movement_date": parent["movement_date"],
             "description": part.get("description", parent.get("description", ""))[:500],
-            "amount": float(part["amount"]),
+            "amount": sign * abs(float(part["amount"])),
             "is_credit": parent["is_credit"],
             "reference": parent.get("reference"),
             "counterparty": part.get("counterparty", parent.get("counterparty")),

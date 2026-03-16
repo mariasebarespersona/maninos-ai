@@ -2586,12 +2586,13 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
   }
 
   const handleSplit = () => {
+    const absTotal = Math.abs(mv.amount)
     const parts = splitParts
-      .filter(p => p.amount && parseFloat(p.amount) > 0)
-      .map(p => ({ amount: parseFloat(p.amount), description: p.description || mv.description }))
+      .filter(p => p.amount && parseFloat(p.amount) !== 0)
+      .map(p => ({ amount: Math.abs(parseFloat(p.amount)), description: p.description || mv.description }))
     const total = parts.reduce((s, p) => s + p.amount, 0)
-    if (Math.abs(total - mv.amount) > 0.01) {
-      toast.error(`Las partes suman $${total.toFixed(2)} pero el movimiento es $${mv.amount.toFixed(2)}`)
+    if (Math.abs(total - absTotal) > 0.01) {
+      toast.error(`Las partes suman $${total.toFixed(2)} pero el movimiento es $${absTotal.toFixed(2)}`)
       return
     }
     if (parts.length < 2) { toast.error('Necesitas al menos 2 partes'); return }
@@ -2768,7 +2769,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
         {/* Split inline form */}
         {showSplit && (
           <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir ${mv.amount.toFixed(2)}</p>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir ${Math.abs(mv.amount).toFixed(2)}</p>
             {splitParts.map((part, i) => (
               <div key={i} className="flex items-center gap-1 mb-1.5">
                 <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
