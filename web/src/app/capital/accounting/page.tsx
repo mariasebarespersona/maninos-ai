@@ -267,7 +267,7 @@ export default function CapitalAccountingPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl font-bold" style={{ color: 'var(--ink)' }}>Contabilidad Capital</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>Gestión financiera · Maninos Homes LLC</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>Gestión financiera · Maninos Capital LLC</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={handleSync} disabled={syncing}

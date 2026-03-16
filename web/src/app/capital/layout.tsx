@@ -20,6 +20,7 @@ import {
   FileText,
   Users,
   BookOpen,
+  Bell,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -44,6 +45,7 @@ const navigationSections: NavSection[] = [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
       { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
+      { name: 'Notificaciones', href: '/capital/notificaciones', icon: Bell },
     ],
   },
   {
@@ -126,7 +128,7 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
             </div>
             <div>
               <h1 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>
-                Maninos Homes
+                Maninos Capital
               </h1>
               <span className="text-xs" style={{ color: 'var(--ash)' }}>Rent-to-Own</span>
             </div>
@@ -306,7 +308,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
   if (segments.length <= 1) {
     return (
       <h1 className="font-serif text-xl" style={{ color: 'var(--ink)' }}>
-        Panel Maninos Homes
+        Panel Maninos Capital
       </h1>
     )
   }
