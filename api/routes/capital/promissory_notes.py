@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.routes.capital._accounting_hooks import record_txn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/promissory-notes", tags=["Capital - Promissory Notes"])
@@ -322,6 +323,17 @@ async def create_promissory_note(data: PromissoryNoteCreate):
         if not result.data:
             raise HTTPException(status_code=500, detail="Error al crear nota promisoria")
         
+        # Record capital_transaction for reconciliation (money received from investor)
+        record_txn(
+            txn_type="investor_deposit",
+            amount=data.loan_amount,
+            is_income=True,
+            description=f"Pagaré recibido — {lender_name} — ${data.loan_amount:,.2f} al {data.annual_rate}%",
+            investor_id=data.investor_id,
+            counterparty_name=lender_name,
+            notes=f"Pagaré {data.term_months} meses, vence {maturity.isoformat()}",
+        )
+
         return {
             "ok": True,
             "note": result.data[0],
@@ -448,6 +460,19 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
             })
         except Exception as flow_err:
             logger.warning(f"Could not record capital flow for note payment: {flow_err}")
+
+        # Record capital_transaction for reconciliation
+        record_txn(
+            txn_type="investor_return",
+            amount=data.amount,
+            is_income=False,
+            description=f"Pago pagaré — {n['investors']['name']} — cuota ${data.amount:,.2f}",
+            investor_id=n["investor_id"],
+            counterparty_name=n["investors"]["name"],
+            payment_method=data.payment_method,
+            payment_reference=data.reference,
+            notes=data.notes,
+        )
         
         return {
             "ok": True,

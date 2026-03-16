@@ -279,6 +279,68 @@ async def confirm_dp_installment(installment_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/pending-confirmations")
+async def get_pending_confirmations():
+    """Get all capital_transactions with status='pending_confirmation' for admin review."""
+    try:
+        result = sb.table("capital_transactions") \
+            .select("*") \
+            .eq("status", "pending_confirmation") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        transactions = []
+        for t in (result.data or []):
+            transactions.append({
+                "id": t["id"],
+                "transaction_type": t.get("transaction_type"),
+                "amount": float(t.get("amount", 0)),
+                "is_income": t.get("is_income"),
+                "description": t.get("description", ""),
+                "transaction_date": t.get("transaction_date"),
+                "payment_method": t.get("payment_method"),
+                "counterparty_name": t.get("counterparty_name"),
+                "notes": t.get("notes"),
+                "created_at": t.get("created_at"),
+            })
+
+        return {"ok": True, "transactions": transactions, "total": len(transactions)}
+    except Exception as e:
+        logger.error(f"Error getting pending confirmations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/confirm-transaction/{transaction_id}")
+async def confirm_transaction(transaction_id: str):
+    """Confirm a pending capital_transaction — sets status to 'confirmed'."""
+    try:
+        txn = sb.table("capital_transactions") \
+            .select("id, status, transaction_type, amount, description") \
+            .eq("id", transaction_id) \
+            .single() \
+            .execute()
+
+        if not txn.data:
+            raise HTTPException(status_code=404, detail="Transacción no encontrada")
+
+        if txn.data["status"] != "pending_confirmation":
+            raise HTTPException(status_code=400, detail=f"Estado inválido: {txn.data['status']}")
+
+        sb.table("capital_transactions").update({
+            "status": "confirmed",
+        }).eq("id", transaction_id).execute()
+
+        return {
+            "ok": True,
+            "message": f"Confirmado: {txn.data['description'][:80]} — ${float(txn.data['amount']):,.2f}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming transaction {transaction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{payment_id}/record")
 async def record_payment(payment_id: str, data: RecordPayment):
     """

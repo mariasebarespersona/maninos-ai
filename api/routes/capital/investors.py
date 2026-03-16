@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.routes.capital._accounting_hooks import record_txn
 import logging
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,24 @@ async def create_investment(data: InvestmentCreate):
                 "available_capital": max(0, float(investor.data["available_capital"] or 0) - data.amount),
             }).eq("id", data.investor_id).execute()
         
+        # Record capital_transaction for reconciliation
+        inv_name = ""
+        try:
+            inv_info = sb.table("investors").select("name").eq("id", data.investor_id).single().execute()
+            inv_name = inv_info.data.get("name", "") if inv_info.data else ""
+        except Exception:
+            pass
+        record_txn(
+            txn_type="investor_deposit",
+            amount=data.amount,
+            is_income=True,
+            description=f"Depósito inversión — {inv_name}".strip(),
+            investor_id=data.investor_id,
+            property_id=data.property_id,
+            rto_contract_id=data.rto_contract_id,
+            notes=data.notes,
+        )
+
         return {"ok": True, "investment": result.data[0]}
     except Exception as e:
         logger.error(f"Error creating investment: {e}")

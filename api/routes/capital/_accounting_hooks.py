@@ -54,9 +54,14 @@ def record_txn(
     counterparty_name: Optional[str] = None,
     notes: Optional[str] = None,
     created_by: str = "auto",
+    status: str = "pending_confirmation",
 ) -> Optional[dict]:
     """
     Insert a row into capital_transactions.
+
+    By default, transactions start as 'pending_confirmation' and must be
+    confirmed by an admin via the Notificaciones page. Pass status='confirmed'
+    to skip the confirmation step (e.g. for bank-statement-generated entries).
 
     Returns the inserted row dict, or None on failure (non-blocking).
     Failures are logged but never raise — the calling endpoint should
@@ -69,7 +74,7 @@ def record_txn(
             "amount": abs(amount),
             "is_income": is_income,
             "description": description,
-            "status": "confirmed",
+            "status": status,
             "created_by": created_by,
         }
 
