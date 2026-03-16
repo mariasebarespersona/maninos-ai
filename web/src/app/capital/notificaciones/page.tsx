@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import {
   Bell, CheckCircle2, Clock, DollarSign, Phone, Loader2,
-  ArrowDownCircle, ArrowUpCircle
+  ArrowDownCircle, ArrowUpCircle, AlertCircle, AlertTriangle
 } from 'lucide-react'
+import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -27,6 +28,8 @@ export default function CapitalNotificacionesPage() {
   const [reportedDpInstallments, setReportedDpInstallments] = useState<any[]>([])
   // All pending capital_transactions
   const [pendingTxns, setPendingTxns] = useState<any[]>([])
+  // Promissory note maturity alerts
+  const [maturityAlerts, setMaturityAlerts] = useState<{ overdue: any[]; this_week: any[]; this_month: any[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -36,17 +39,21 @@ export default function CapitalNotificacionesPage() {
   const loadAll = async () => {
     setLoading(true)
     try {
-      const [rtRes, dpRes, txnRes] = await Promise.all([
+      const [rtRes, dpRes, txnRes, alertsRes] = await Promise.all([
         fetch('/api/capital/payments/client-reported'),
         fetch('/api/capital/payments/down-payment/client-reported'),
         fetch('/api/capital/payments/pending-confirmations'),
+        fetch('/api/capital/promissory-notes/alerts?days=90'),
       ])
       const rtData = await rtRes.json()
       const dpData = await dpRes.json()
       const txnData = await txnRes.json()
+      const alertsData = await alertsRes.json()
       if (rtData.ok) setReportedPayments(rtData.reported_payments || [])
       if (dpData.ok) setReportedDpInstallments(dpData.reported_installments || [])
       if (txnData.ok) setPendingTxns(txnData.transactions || [])
+      if (alertsData.ok && alertsData.total_alerts > 0) setMaturityAlerts(alertsData)
+      else setMaturityAlerts(null)
     } catch (err) {
       console.error('Error loading notifications:', err)
     } finally {
@@ -91,7 +98,8 @@ export default function CapitalNotificacionesPage() {
     finally { setSubmitting(false) }
   }
 
-  const totalPending = reportedPayments.length + reportedDpInstallments.length + pendingTxns.length
+  const maturityCount = maturityAlerts ? (maturityAlerts.overdue.length + maturityAlerts.this_week.length + maturityAlerts.this_month.length) : 0
+  const totalPending = reportedPayments.length + reportedDpInstallments.length + pendingTxns.length + maturityCount
 
   if (loading) {
     return (
@@ -125,6 +133,73 @@ export default function CapitalNotificacionesPage() {
           <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>
             Cuando se registre un pago o transacción, aparecerá aquí para confirmar.
           </p>
+        </div>
+      )}
+
+      {/* Promissory Note Maturity Alerts */}
+      {maturityAlerts && maturityCount > 0 && (
+        <div className="card-luxury overflow-hidden" style={{ border: '2px solid #ef4444' }}>
+          <div className="p-4 flex items-center gap-3" style={{ backgroundColor: '#fef2f2' }}>
+            <AlertCircle className="w-5 h-5" style={{ color: '#dc2626' }} />
+            <div className="flex-1">
+              <h3 className="font-serif text-base font-semibold" style={{ color: '#991b1b' }}>
+                Alertas de Vencimiento — Pagarés
+              </h3>
+              <p className="text-xs" style={{ color: '#dc2626' }}>
+                {maturityCount} pagaré{maturityCount !== 1 ? 's' : ''} próximo{maturityCount !== 1 ? 's' : ''} a vencer o vencido{maturityCount !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#fecaca' }}>
+            {maturityAlerts.overdue.map((n: any) => (
+              <Link key={n.id} href={`/capital/promissory-notes/${n.id}`} className="p-4 flex items-center gap-3 hover:bg-red-50 transition-colors">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: '#dc2626' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm" style={{ color: '#991b1b' }}>{n.investors?.name || 'Inversor'}</p>
+                    <span className="badge text-xs" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>VENCIDO</span>
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
+                    Venció hace {Math.abs(n.days_until_maturity)} día{Math.abs(n.days_until_maturity) !== 1 ? 's' : ''} — {new Date(n.maturity_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+                <p className="text-lg font-bold flex-shrink-0" style={{ color: '#dc2626' }}>${Number(n.total_due || n.loan_amount).toLocaleString('en-US')}</p>
+              </Link>
+            ))}
+            {maturityAlerts.this_week.map((n: any) => (
+              <Link key={n.id} href={`/capital/promissory-notes/${n.id}`} className="p-4 flex items-center gap-3 hover:bg-orange-50 transition-colors">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#ea580c' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm" style={{ color: '#9a3412' }}>{n.investors?.name || 'Inversor'}</p>
+                    <span className="badge text-xs" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>Vence esta semana</span>
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: '#c2410c' }}>
+                    En {n.days_until_maturity} día{n.days_until_maturity !== 1 ? 's' : ''} — {new Date(n.maturity_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+                <p className="text-lg font-bold flex-shrink-0" style={{ color: '#ea580c' }}>${Number(n.total_due || n.loan_amount).toLocaleString('en-US')}</p>
+              </Link>
+            ))}
+            {maturityAlerts.this_month.map((n: any) => {
+              const color = n.days_until_maturity <= 30 ? '#d97706' : '#ca8a04'
+              return (
+                <Link key={n.id} href={`/capital/promissory-notes/${n.id}`} className="p-4 flex items-center gap-3 hover:bg-amber-50 transition-colors">
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{n.investors?.name || 'Inversor'}</p>
+                      <span className="badge text-xs" style={{ backgroundColor: '#fffbeb', color }}>Vence en {n.days_until_maturity} días</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color }}>
+                      {new Date(n.maturity_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <p className="text-lg font-bold flex-shrink-0" style={{ color }}>${Number(n.total_due || n.loan_amount).toLocaleString('en-US')}</p>
+                </Link>
+              )
+            })}
+          </div>
         </div>
       )}
 
