@@ -40,12 +40,17 @@ interface NavSection {
 
 const navigationSections: NavSection[] = [
   {
+    title: 'General',
+    items: [
+      { name: 'Notificaciones', href: '/capital/notificaciones', icon: Bell },
+    ],
+  },
+  {
     title: 'Clientes',
     items: [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
       { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
-      { name: 'Notificaciones', href: '/capital/notificaciones', icon: Bell },
     ],
   },
   {
@@ -301,6 +306,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     flows: 'Flujo Capital',
     reports: 'Reportes',
     accounting: 'Contabilidad',
+    notificaciones: 'Notificaciones',
     new: 'Nuevo',
     review: 'Revisar',
   }
