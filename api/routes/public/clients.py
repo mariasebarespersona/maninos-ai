@@ -218,6 +218,20 @@ async def get_client_rto_contract(client_id: str, sale_id: str, user_email: str 
             "contract_pdf_url": c.get("contract_pdf_url"),
         }
         
+        # Get down payment installments (if split)
+        dp_installments = []
+        try:
+            dp_result = sb.table("capital_down_payment_installments") \
+                .select("id, installment_number, amount, due_date, paid_date, status, payment_method") \
+                .eq("contract_id", contract_id) \
+                .order("installment_number") \
+                .execute()
+            dp_installments = dp_result.data or []
+        except Exception:
+            pass  # Table may not exist yet
+
+        dp_paid = sum(float(i["amount"]) for i in dp_installments if i["status"] == "paid")
+
         return {
             "ok": True,
             "contract": safe_contract,
@@ -229,7 +243,9 @@ async def get_client_rto_contract(client_id: str, sale_id: str, user_email: str 
                 "total_expected": total_expected,
                 "remaining_balance": total_expected - total_paid,
                 "percentage": round((len(paid) / len(payments_data) * 100), 1) if payments_data else 0,
-            }
+            },
+            "down_payment_installments": dp_installments,
+            "down_payment_paid": dp_paid,
         }
     except HTTPException:
         raise
@@ -797,6 +813,56 @@ async def client_report_payment(client_id: str, payment_id: str, data: ClientRep
         raise
     except Exception as e:
         logger.error(f"Error reporting payment {payment_id} for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# CLIENT DOWN PAYMENT INSTALLMENT REPORTING
+# =============================================================================
+
+@router.post("/{client_id}/down-payment-installments/{installment_id}/report")
+async def client_report_dp_installment(client_id: str, installment_id: str, data: ClientReportPayment, user_email: str = Depends(get_current_user_email)):
+    """Client reports they've paid a down payment installment."""
+    verify_client_ownership(client_id, user_email)
+    try:
+        # Verify installment exists and belongs to a contract owned by this client
+        inst_result = sb.table("capital_down_payment_installments") \
+            .select("*, rto_contracts!inner(client_id)") \
+            .eq("id", installment_id) \
+            .single() \
+            .execute()
+
+        if not inst_result.data:
+            raise HTTPException(status_code=404, detail="Cuota de enganche no encontrada")
+
+        inst = inst_result.data
+        if inst.get("rto_contracts", {}).get("client_id") != client_id:
+            raise HTTPException(status_code=403, detail="No autorizado")
+
+        if inst["status"] == "paid":
+            return {"ok": False, "error": "Esta cuota ya fue pagada."}
+
+        if data.payment_method not in ("cash_office", "bank_transfer"):
+            raise HTTPException(status_code=400, detail="Método de pago inválido.")
+
+        now = datetime.utcnow().isoformat()
+        sb.table("capital_down_payment_installments").update({
+            "status": "paid",
+            "paid_date": date.today().isoformat(),
+            "payment_method": data.payment_method,
+            "notes": data.notes,
+            "updated_at": now,
+        }).eq("id", installment_id).execute()
+
+        method_label = "Efectivo en oficina" if data.payment_method == "cash_office" else "Transferencia bancaria"
+        return {
+            "ok": True,
+            "message": f"¡Cuota #{inst['installment_number']} reportada! Método: {method_label}.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reporting dp installment {installment_id} for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

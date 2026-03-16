@@ -41,6 +41,16 @@ interface RTOPayment {
   status: string
 }
 
+interface DPInstallment {
+  id: string
+  installment_number: number
+  amount: number
+  due_date: string
+  paid_date: string | null
+  status: string
+  payment_method: string | null
+}
+
 interface Progress {
   payments_made: number
   total_payments: number
@@ -55,10 +65,13 @@ export default function ClientRTOPage() {
   const { client, loading: authLoading, error: authError } = useClientAuth()
   const [contract, setContract] = useState<RTOContract | null>(null)
   const [payments, setPayments] = useState<RTOPayment[]>([])
+  const [dpInstallments, setDpInstallments] = useState<DPInstallment[]>([])
+  const [dpPaidTotal, setDpPaidTotal] = useState(0)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [reportingDp, setReportingDp] = useState<string | null>(null)
 
   useEffect(() => {
     if (authLoading) return // Still loading auth, wait
@@ -85,6 +98,8 @@ export default function ClientRTOPage() {
       if (data.ok) {
         setContract(data.contract)
         setPayments(data.payments || [])
+        setDpInstallments(data.down_payment_installments || [])
+        setDpPaidTotal(data.down_payment_paid || 0)
         setProgress(data.progress)
         if (data.message) setMessage(data.message)
       } else {
@@ -97,6 +112,26 @@ export default function ClientRTOPage() {
       setFetchError('Error de conexión. Por favor intenta de nuevo.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleReportDpPayment = async (installmentId: string, method: 'cash_office' | 'bank_transfer') => {
+    if (!client) return
+    setReportingDp(installmentId)
+    try {
+      const res = await fetch(`/api/public/clients/${client.id}/down-payment-installments/${installmentId}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_method: method }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        loadRTOContract()
+      }
+    } catch (err) {
+      console.error('Error reporting dp installment:', err)
+    } finally {
+      setReportingDp(null)
     }
   }
 
@@ -312,6 +347,91 @@ export default function ClientRTOPage() {
         )}
 
         {/* Contract Terms removed — client only sees the PDF document */}
+
+        {/* Down Payment Installments */}
+        {dpInstallments.length > 0 && contract.down_payment > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="font-bold text-[#222] flex items-center gap-2 text-[15px]">
+                <DollarSign className="w-5 h-5 text-[#004274]" />
+                Enganche: {fmt(contract.down_payment)}
+              </h3>
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-[13px] text-[#717171]">
+                  Pagado: {fmt(dpPaidTotal)} de {fmt(contract.down_payment)}
+                </span>
+                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, (dpPaidTotal / contract.down_payment) * 100)}%`,
+                      background: dpPaidTotal >= contract.down_payment
+                        ? 'linear-gradient(90deg, #22c55e, #16a34a)'
+                        : 'linear-gradient(90deg, #004274, #0068b7)',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-[11px] text-[#717171] uppercase tracking-wider">
+                    <th className="px-6 py-3 font-semibold">#</th>
+                    <th className="px-6 py-3 font-semibold">Monto</th>
+                    <th className="px-6 py-3 font-semibold">Fecha Límite</th>
+                    <th className="px-6 py-3 font-semibold">Estado</th>
+                    <th className="px-6 py-3 font-semibold">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {dpInstallments.map((inst) => (
+                    <tr key={inst.id} className={inst.status === 'paid' ? 'bg-green-50/40' : ''}>
+                      <td className="px-6 py-4 text-[14px] font-medium text-[#222]">{inst.installment_number}</td>
+                      <td className="px-6 py-4 text-[14px] font-medium text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(inst.amount)}</td>
+                      <td className="px-6 py-4 text-[14px] text-[#484848]">
+                        {inst.due_date ? new Date(inst.due_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                          inst.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                        }`}>
+                          {inst.status === 'paid' && <CheckCircle className="w-3 h-3" />}
+                          {inst.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {inst.status !== 'paid' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleReportDpPayment(inst.id, 'cash_office')}
+                              disabled={reportingDp === inst.id}
+                              className="text-[12px] px-3 py-1.5 rounded-lg bg-[#004274] text-white font-semibold hover:bg-[#003560] transition-colors disabled:opacity-50"
+                            >
+                              {reportingDp === inst.id ? '...' : 'Pagué en efectivo'}
+                            </button>
+                            <button
+                              onClick={() => handleReportDpPayment(inst.id, 'bank_transfer')}
+                              disabled={reportingDp === inst.id}
+                              className="text-[12px] px-3 py-1.5 rounded-lg border border-[#004274] text-[#004274] font-semibold hover:bg-blue-50 transition-colors disabled:opacity-50"
+                            >
+                              {reportingDp === inst.id ? '...' : 'Transferencia'}
+                            </button>
+                          </div>
+                        )}
+                        {inst.status === 'paid' && inst.paid_date && (
+                          <span className="text-[12px] text-[#717171]">
+                            {new Date(inst.paid_date).toLocaleDateString('es-MX')}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Payment Schedule */}
         {payments.length > 0 && (
