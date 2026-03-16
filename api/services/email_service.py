@@ -559,7 +559,6 @@ def _rto_payment_reminder_html(
     payment_number: int,
     total_payments: int,
     days_until_due: int,
-    zelle_phone: str = "832-745-9600",
 ) -> str:
     """Payment reminder email for RTO clients."""
     if days_until_due > 0:
@@ -582,33 +581,64 @@ def _rto_payment_reminder_html(
     content = f"""
     <div class="header" style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8e 100%);">
         <h1>{urgency_icon} {subject_prefix} - Pago RTO</h1>
-        <p>Contrato Rent-to-Own</p>
+        <p>Maninos Capital — Rent-to-Own</p>
     </div>
     <div class="body">
         <p>Hola <strong>{client_name}</strong>,</p>
         <p>{urgency_text} para tu contrato de Rent-to-Own.</p>
-        
+
         <div class="highlight" style="border-left-color: {urgency_color};">
-            <h3>💰 Detalles del Pago</h3>
-            <p><strong>Propiedad:</strong> {property_address}</p>
-            <p><strong>Pago #{payment_number}</strong> de {total_payments}</p>
-            <p><strong>Monto:</strong> <span style="font-size: 22px; color: {urgency_color}; font-weight: bold;">${monthly_rent:,.2f}</span></p>
-            <p><strong>Fecha límite:</strong> {due_date}</p>
+            <h3 style="margin-top: 0;">Detalles del Pago</h3>
+            <p style="margin: 5px 0;"><strong>Propiedad:</strong> {property_address}</p>
+            <p style="margin: 5px 0;"><strong>Pago #{payment_number}</strong> de {total_payments}</p>
+            <p style="margin: 5px 0;"><strong>Monto:</strong> <span style="font-size: 22px; color: {urgency_color}; font-weight: bold;">${monthly_rent:,.2f}</span></p>
+            <p style="margin: 5px 0;"><strong>Fecha límite:</strong> {due_date}</p>
         </div>
-        
-        <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <h4 style="margin-top: 0; color: #166534;">📱 ¿Cómo pagar?</h4>
-            <p style="margin: 5px 0; color: #333;">Envía tu pago por <strong>Zelle</strong> al: <strong>{zelle_phone}</strong></p>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h4 style="margin-top: 0; color: #166534;">Formas de pago</h4>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 10px 0; border-bottom: 1px solid #d1fae5; vertical-align: top; width: 30px;">
+                        <span style="font-size: 20px;">🏦</span>
+                    </td>
+                    <td style="padding: 10px 0; border-bottom: 1px solid #d1fae5;">
+                        <strong style="color: #166534;">Transferencia bancaria</strong><br>
+                        <span style="color: #333; font-size: 14px;">
+                            Banco: Chase Bank<br>
+                            Nombre: Maninos Capital LLC<br>
+                            Reporta tu transferencia desde tu cuenta en la app.
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px 0; vertical-align: top;">
+                        <span style="font-size: 20px;">💵</span>
+                    </td>
+                    <td style="padding: 10px 0;">
+                        <strong style="color: #166534;">Efectivo en oficina</strong><br>
+                        <span style="color: #333; font-size: 14px;">
+                            Visítanos en nuestra oficina para pagar en efectivo.<br>
+                            Llámanos al <strong>{COMPANY_PHONE}</strong> para coordinar.
+                        </span>
+                    </td>
+                </tr>
+            </table>
         </div>
-        
+
+        <p style="color: #4a5568;">Una vez hayas hecho tu pago, repórtalo desde tu cuenta para que lo confirmemos:</p>
+
         <center>
-            <a href="{APP_URL}/clientes/mi-cuenta" class="btn">Ver Mi Cuenta</a>
+            <a href="{APP_URL}/clientes/mi-cuenta" class="btn">Reportar mi pago</a>
         </center>
-        
+
         <hr class="divider">
         <p style="font-size: 13px; color: #718096;">
-            Recuerda: pagos después del día 20 generan un recargo de $15/día.
-            Si ya realizaste el pago, ignora este mensaje.
+            Pagos después de la fecha límite generan un recargo de $15/día.
+            Si ya realizaste el pago y lo reportaste, ignora este mensaje.
+        </p>
+        <p style="font-size: 13px; color: #718096;">
+            ¿Preguntas? Llámanos al {COMPANY_PHONE}
         </p>
     </div>
     """
