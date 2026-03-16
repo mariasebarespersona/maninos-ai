@@ -618,7 +618,7 @@ async def deliver_title(contract_id: str):
 
         # Send email to client with document links
         try:
-            from api.services.email_service import email_service
+            from tools.email_tool import send_email as send_email_fn
             frontend_url = os.environ.get('FRONTEND_URL') or os.environ.get('APP_URL', 'http://localhost:3000')
             docs_url = f"{frontend_url}/clientes/mi-cuenta/documentos"
             account_url = f"{frontend_url}/clientes/mi-cuenta"
@@ -647,8 +647,8 @@ async def deliver_title(contract_id: str):
             except Exception:
                 pass
 
-            await email_service.send_email(
-                to_email=c["clients"]["email"],
+            send_email_fn(
+                to=[c["clients"]["email"]],
                 subject="¡Felicidades! Tu casa ya es tuya — Maninos Homes",
                 html=f"""
                 <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
