@@ -182,14 +182,21 @@ async def get_upcoming_maturities(days: int = 30):
         today = date.today()
         cutoff = today + timedelta(days=days)
         
+        logger.info(f"[alerts] Querying promissory_notes: status in [active,overdue], maturity_date <= {cutoff.isoformat()}")
+
+        # Debug: check all notes first
+        all_notes = sb.table("promissory_notes").select("id, status, maturity_date").execute()
+        logger.info(f"[alerts] ALL notes in DB: {[(n.get('id','?')[:8], n.get('status'), n.get('maturity_date')) for n in (all_notes.data or [])]}")
+
         result = sb.table("promissory_notes") \
             .select("*, investors(id, name, email, phone)") \
             .in_("status", ["active", "overdue"]) \
             .lte("maturity_date", cutoff.isoformat()) \
             .order("maturity_date") \
             .execute()
-        
+
         notes = result.data or []
+        logger.info(f"[alerts] Found {len(notes)} notes matching criteria")
         
         # Categorize
         overdue = []
