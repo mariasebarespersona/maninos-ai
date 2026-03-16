@@ -471,6 +471,7 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 **Prerequisitos:**
 - Ejecutar `migrations/063_capital_split_status.sql` en Supabase
 - Ejecutar `migrations/064_dp_installment_client_reported.sql` en Supabase
+- Ejecutar `migrations/065_capital_txn_pending_confirmation_status.sql` en Supabase
 
 ---
 
@@ -478,18 +479,26 @@ La conciliacion conecta los movimientos que la app registra automaticamente con 
 
 ### B2.1.1 Navegación
 - [ ] Ir a `/capital`
-- [ ] Verificar que en el sidebar aparece "Notificaciones" con icono de campana
+- [ ] Verificar que en el sidebar "Notificaciones" aparece en sección propia "General" (arriba de todo, NO dentro de "Clientes")
 - [ ] Verificar que el sidebar dice "Maninos Capital" (NO "Maninos Homes")
 - [ ] Verificar que el dashboard dice "Panel Maninos Capital"
 - [ ] Clic "Notificaciones" → verificar que carga `/capital/notificaciones`
 
 ### B2.1.2 Secciones de notificaciones
-- [ ] Verificar que la página muestra hasta 3 secciones:
+- [ ] Verificar que la página muestra hasta 4 secciones:
+  - **Roja**: "Alertas de Vencimiento — Pagarés" (vencidos, esta semana, próximos 90 días)
   - **Azul**: "Pagos RTO Reportados por Clientes" (pagos mensuales)
   - **Morada**: "Cuotas de Enganche Reportadas por Clientes"
   - **Dorada**: "Transacciones Pendientes de Confirmar" (inversiones, pagares, comisiones, etc.)
 - [ ] Si no hay pendientes en alguna sección, verificar que no aparece esa sección
 - [ ] Si no hay nada pendiente, verificar mensaje "No hay notificaciones pendientes"
+
+### B2.1.3 Alertas de pagarés en notificaciones
+- [ ] Crear un pagaré con vencimiento dentro de 90 días
+- [ ] Ir a `/capital/notificaciones`
+- [ ] Verificar que aparece la sección roja con la alerta
+- [ ] Verificar colores: rojo (vencido), naranja (≤7 días), ámbar (≤90 días)
+- [ ] Clic en la alerta → verificar que navega al detalle del pagaré
 
 ---
 
