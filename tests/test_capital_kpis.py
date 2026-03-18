@@ -111,14 +111,14 @@ def test_strategic_kpis_with_data():
     ]
 
     investments = [
-        {"id": "i1", "investor_id": "inv1", "amount": "50000", "created_at": (today - timedelta(days=60)).isoformat()},
-        {"id": "i2", "investor_id": "inv1", "amount": "50000", "created_at": today.strftime("%Y-%m") + "-05"},
-        {"id": "i3", "investor_id": "inv2", "amount": "50000", "created_at": (today - timedelta(days=90)).isoformat()},
+        {"id": "i1", "investor_id": "inv1", "amount": "50000", "invested_at": (today - timedelta(days=60)).isoformat()},
+        {"id": "i2", "investor_id": "inv1", "amount": "50000", "invested_at": today.strftime("%Y-%m") + "-05"},
+        {"id": "i3", "investor_id": "inv2", "amount": "50000", "invested_at": (today - timedelta(days=90)).isoformat()},
     ]
 
     promissory_notes = [
-        {"id": "pn1", "investor_id": "inv1", "interest_rate": "10", "status": "active"},
-        {"id": "pn2", "investor_id": "inv2", "interest_rate": "12", "status": "active"},
+        {"id": "pn1", "investor_id": "inv1", "annual_rate": "10", "status": "active"},
+        {"id": "pn2", "investor_id": "inv2", "annual_rate": "12", "status": "active"},
     ]
 
     properties = [

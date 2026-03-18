@@ -321,13 +321,13 @@ async def get_strategic_kpis():
 
         investments = safe_query("investments", lambda:
             sb.table("investments")
-            .select("id, investor_id, amount, created_at")
+            .select("id, investor_id, amount, invested_at")
             .execute()
         ).data or []
 
         promissory_notes = safe_query("promissory_notes", lambda:
             sb.table("promissory_notes")
-            .select("id, investor_id, interest_rate, status")
+            .select("id, investor_id, annual_rate, status")
             .execute()
         ).data or []
 
@@ -375,14 +375,14 @@ async def get_strategic_kpis():
         monthly_target = 100000
         month_investments = [
             inv for inv in investments
-            if inv.get("created_at", "")[:7] == today.strftime("%Y-%m")
+            if (inv.get("invested_at") or inv.get("created_at") or "")[:7] == today.strftime("%Y-%m")
         ]
         raised_this_month = sum(float(inv.get("amount", 0)) for inv in month_investments)
         funding_success = round(raised_this_month / monthly_target * 100, 1) if monthly_target > 0 else 0
 
         # 2. Cost of Capital: avg interest rate on active promissory notes
         active_notes = [n for n in promissory_notes if n.get("status") == "active"]
-        rates = [float(n.get("interest_rate", 0)) for n in active_notes if n.get("interest_rate")]
+        rates = [float(n.get("annual_rate", 0)) for n in active_notes if n.get("annual_rate")]
         avg_cost_capital = round(sum(rates) / len(rates), 1) if rates else 0
 
         # 3. Investor Retention: investors with >1 investment / total investors
