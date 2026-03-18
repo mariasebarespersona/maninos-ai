@@ -281,11 +281,21 @@ async def get_strategic_kpis():
             .execute()
         ).data or []
 
-        clients = safe_query("clients", lambda:
-            sb.table("clients")
-            .select("id, status, kyc_verified")
-            .execute()
-        ).data or []
+        # Try with KPI columns (migration 068), fallback to basic columns
+        try:
+            clients = (sb.table("clients")
+                .select("id, status, kyc_verified, nps_score, referred_by")
+                .execute()).data or []
+        except Exception as col_err:
+            if "42703" in str(col_err) or "does not exist" in str(col_err):
+                logger.info("KPI columns not yet migrated (068), using basic client fields")
+                clients = safe_query("clients", lambda:
+                    sb.table("clients")
+                    .select("id, status, kyc_verified")
+                    .execute()
+                ).data or []
+            else:
+                raise
 
         payments_due = safe_query("rto_payments", lambda:
             sb.table("rto_payments")
@@ -345,8 +355,9 @@ async def get_strategic_kpis():
                             break
         avg_onboarding = round(sum(onboarding_days) / len(onboarding_days), 1) if onboarding_days else 0
 
-        # 2. Customer Satisfaction (NPS) - not yet tracked in DB, placeholder
-        avg_nps = None
+        # 2. Customer Satisfaction (NPS) - from clients with nps_score (migration 068)
+        nps_scores = [c.get("nps_score") for c in clients if c.get("nps_score") is not None]
+        avg_nps = round(sum(nps_scores) / len(nps_scores), 1) if nps_scores else None
 
         # 3. KYC Compliance Rate
         rto_clients = [c for c in clients if c.get("status") in ("rto_applicant", "rto_active", "completed")]
@@ -429,8 +440,9 @@ async def get_strategic_kpis():
         total_clients_with_contracts = len(client_contract_count)
         customer_retention = round(repeat_clients / total_clients_with_contracts * 100, 1) if total_clients_with_contracts > 0 else 0
 
-        # 3. Referral Rate: not yet tracked in DB, placeholder
-        referral_rate = 0
+        # 3. Referral Rate: clients with referred_by (migration 068)
+        referred = len([c for c in clients if c.get("referred_by")])
+        referral_rate = round(referred / len(clients) * 100, 1) if clients else 0
 
         # 4. Compliance Rate (Texas/Federal) - manual/static
         compliance_rate_legal = 100.0
