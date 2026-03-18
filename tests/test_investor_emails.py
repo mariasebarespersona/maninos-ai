@@ -65,8 +65,11 @@ def test_welcome_email_html():
     assert "$56,000.00" in html
     assert "2026-03-01" in html
     assert "2027-03-01" in html
-    assert "note-123" in html
     assert "Bienvenido a Maninos Capital" in html
+    assert "Calendario de Pagos" in html
+    assert "Maninos Capital LLC" in html  # subscriber
+    # No portal links
+    assert "/capital/" not in html
     print("PASS test_welcome_email_html")
 
 
@@ -115,7 +118,9 @@ def test_followup_email_html():
     assert "$76,000.00" in html
     assert "2 activas" in html
     assert "Activa" in html
-    assert "Reporte de Inversion" in html
+    assert "Reporte Mensual de Inversion" in html
+    # No portal links
+    assert "/capital/" not in html
     print("PASS test_followup_email_html")
 
 
@@ -152,6 +157,8 @@ def test_completion_email_html():
     assert "Nota Promisoria Completada" in html
     assert "pagada en su totalidad" in html
     assert "2025-03-01" in html
+    # No portal links
+    assert "/capital/" not in html
     print("PASS test_completion_email_html")
 
 

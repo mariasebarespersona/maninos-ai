@@ -1365,7 +1365,26 @@ def _investor_welcome_html(
     total_interest = float(note_data.get("total_interest", 0))
     start_date = note_data.get("start_date", "")
     maturity_date = note_data.get("maturity_date", "")
-    note_id = note_data.get("id", "")
+    monthly_interest = round(total_interest / term_months, 2) if term_months > 0 else 0
+    subscriber = note_data.get("subscriber_name", "Maninos Capital LLC")
+    lender = note_data.get("lender_name", investor_name)
+
+    # Build monthly schedule rows
+    schedule_rows = ""
+    for month in range(1, term_months + 1):
+        schedule_rows += f"""
+        <tr>
+            <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">{month}</td>
+            <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${monthly_interest:,.2f}</td>
+        </tr>
+        """
+    # Final row for principal return at maturity
+    schedule_rows += f"""
+    <tr style="background: #fef9e7;">
+        <td style="padding: 8px 10px; font-weight: 700; border-top: 2px solid #c9a227;">Vencimiento</td>
+        <td style="padding: 8px 10px; text-align: right; font-weight: 700; border-top: 2px solid #c9a227;">${loan_amount:,.2f} (principal)</td>
+    </tr>
+    """
 
     content = f"""
     <div class="header">
@@ -1376,14 +1395,23 @@ def _investor_welcome_html(
         <p>Estimado/a <strong>{investor_name}</strong>,</p>
 
         <p>Le damos la bienvenida a Maninos Capital. Su nota promisoria ha sido creada exitosamente.
-        A continuacion encontrara los detalles de su inversion:</p>
+        A continuacion encontrara todos los detalles de su inversion.</p>
 
         <div class="highlight">
-            <h3 style="margin-top: 0; color: #1e3a5f;">Resumen de la Nota Promisoria</h3>
+            <h3 style="margin-top: 0; color: #1e3a5f;">Nota Promisoria — Terminos</h3>
             <table style="width: 100%; font-size: 15px; border-collapse: collapse;">
                 <tr>
+                    <td style="padding: 8px 0; color: #718096;">Prestamista (Lender)</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{lender}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Prestatario (Subscriber)</td>
+                    <td style="padding: 8px 0; text-align: right;">{subscriber}</td>
+                </tr>
+                <tr><td colspan="2"><hr style="border: none; border-top: 1px solid #e2e8f0; margin: 4px 0;"></td></tr>
+                <tr>
                     <td style="padding: 8px 0; color: #718096;">Principal</td>
-                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">${loan_amount:,.2f}</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 17px;">${loan_amount:,.2f}</td>
                 </tr>
                 <tr>
                     <td style="padding: 8px 0; color: #718096;">Tasa de Interes Anual</td>
@@ -1392,6 +1420,10 @@ def _investor_welcome_html(
                 <tr>
                     <td style="padding: 8px 0; color: #718096;">Plazo</td>
                     <td style="padding: 8px 0; text-align: right; font-weight: 600;">{term_months} meses</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Interes Mensual</td>
+                    <td style="padding: 8px 0; text-align: right;">${monthly_interest:,.2f}/mes</td>
                 </tr>
                 <tr>
                     <td style="padding: 8px 0; color: #718096;">Interes Total</td>
@@ -1407,19 +1439,29 @@ def _investor_welcome_html(
                 </tr>
                 <tr>
                     <td style="padding: 8px 0; color: #718096;">Fecha de Vencimiento</td>
-                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{maturity_date}</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #c9a227;">{maturity_date}</td>
                 </tr>
             </table>
         </div>
 
-        <p>Puede descargar el PDF de su nota promisoria y consultar el estado de su inversion
-        en cualquier momento desde nuestro portal:</p>
-
-        <center>
-            <a href="{APP_URL}/capital/promissory-notes/{note_id}" class="btn">Ver Mi Nota Promisoria</a>
-        </center>
+        <h3 style="color: #1e3a5f;">Calendario de Pagos (Interes Simple)</h3>
+        <p style="font-size: 14px; color: #718096;">Interes mensual fijo de ${monthly_interest:,.2f}. El principal de ${loan_amount:,.2f} se devuelve al vencimiento.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px;">
+            <thead>
+                <tr style="background: #283242; color: white;">
+                    <th style="padding: 8px 10px; text-align: center;">Mes</th>
+                    <th style="padding: 8px 10px; text-align: right;">Pago</th>
+                </tr>
+            </thead>
+            <tbody>
+                {schedule_rows}
+            </tbody>
+        </table>
 
         <hr class="divider">
+
+        <p>Recibira reportes mensuales por correo electronico con el estado de su inversion.
+        Le enviaremos una copia del documento de la nota promisoria por separado.</p>
 
         <p style="font-size: 14px; color: #718096;">
             Si tiene alguna pregunta, no dude en contactarnos al <strong>{COMPANY_PHONE}</strong>
@@ -1463,55 +1505,67 @@ def _investor_followup_html(
     outstanding = float(summary.get("outstanding", 0))
     active_notes = int(summary.get("active_notes", 0))
     notes_detail = summary.get("notes", [])
+    report_date = datetime.utcnow().strftime("%d/%m/%Y")
 
     rows = ""
     for n in notes_detail:
         status_color = "#16a34a" if n["status"] == "paid" else "#c9a227" if n["status"] == "active" else "#dc2626"
         status_label = "Pagada" if n["status"] == "paid" else "Activa" if n["status"] == "active" else n["status"].capitalize()
+        loan = float(n.get("loan_amount", 0))
+        total_due = float(n.get("total_due", 0))
+        paid = float(n.get("paid_amount", 0) or 0)
+        remaining = max(0, total_due - paid)
         rows += f"""
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${float(n.get('loan_amount', 0)):,.2f}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${loan:,.2f}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">{n.get('annual_rate', 12)}%</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${total_due:,.2f}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #16a34a;">${paid:,.2f}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${remaining:,.2f}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">{n.get('maturity_date', 'N/A')}</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${float(n.get('paid_amount', 0)):,.2f}</td>
             <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: {status_color}; font-weight: 600;">{status_label}</td>
         </tr>
         """
 
     content = f"""
     <div class="header">
-        <h1>Reporte de Inversion</h1>
-        <p>Maninos Capital — Estado de su portafolio</p>
+        <h1>Reporte Mensual de Inversion</h1>
+        <p>Maninos Capital — {report_date}</p>
     </div>
     <div class="body">
         <p>Estimado/a <strong>{investor_name}</strong>,</p>
 
-        <p>Le compartimos el estado actual de su inversion con Maninos Capital:</p>
+        <p>Le compartimos el estado actual de su inversion con Maninos Capital al {report_date}:</p>
 
-        <div style="display: flex; gap: 12px; margin: 20px 0;">
-            <div style="flex: 1; background: #f0fdf4; border-radius: 8px; padding: 16px; text-align: center;">
-                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Total Invertido</p>
-                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #1e3a5f;">${total_invested:,.2f}</p>
-            </div>
-            <div style="flex: 1; background: #fef9e7; border-radius: 8px; padding: 16px; text-align: center;">
-                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Retornos Pagados</p>
-                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #16a34a;">${total_returned:,.2f}</p>
-            </div>
-            <div style="flex: 1; background: #eff6ff; border-radius: 8px; padding: 16px; text-align: center;">
-                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Saldo Pendiente</p>
-                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #c9a227;">${outstanding:,.2f}</p>
-            </div>
-        </div>
+        <!-- Summary boxes using table for email compatibility -->
+        <table style="width: 100%; border-collapse: separate; border-spacing: 8px; margin: 16px 0;">
+            <tr>
+                <td style="background: #eff6ff; border-radius: 8px; padding: 16px; text-align: center; width: 33%;">
+                    <p style="margin: 0; font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px;">Total Invertido</p>
+                    <p style="margin: 4px 0 0; font-size: 20px; font-weight: 700; color: #1e3a5f;">${total_invested:,.2f}</p>
+                </td>
+                <td style="background: #f0fdf4; border-radius: 8px; padding: 16px; text-align: center; width: 33%;">
+                    <p style="margin: 0; font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px;">Retornos Pagados</p>
+                    <p style="margin: 4px 0 0; font-size: 20px; font-weight: 700; color: #16a34a;">${total_returned:,.2f}</p>
+                </td>
+                <td style="background: #fef9e7; border-radius: 8px; padding: 16px; text-align: center; width: 33%;">
+                    <p style="margin: 0; font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px;">Saldo Pendiente</p>
+                    <p style="margin: 4px 0 0; font-size: 20px; font-weight: 700; color: #c9a227;">${outstanding:,.2f}</p>
+                </td>
+            </tr>
+        </table>
 
-        <h3 style="color: #1e3a5f;">Notas Promisorias ({active_notes} activa{'s' if active_notes != 1 else ''})</h3>
+        <h3 style="color: #1e3a5f; margin-top: 24px;">Detalle de Notas Promisorias ({active_notes} activa{'s' if active_notes != 1 else ''})</h3>
 
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <table style="width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px;">
             <thead>
                 <tr style="background: #283242; color: white;">
                     <th style="padding: 10px; text-align: left;">Principal</th>
                     <th style="padding: 10px; text-align: center;">Tasa</th>
-                    <th style="padding: 10px; text-align: left;">Vencimiento</th>
+                    <th style="padding: 10px; text-align: right;">Total Adeudado</th>
                     <th style="padding: 10px; text-align: right;">Pagado</th>
+                    <th style="padding: 10px; text-align: right;">Pendiente</th>
+                    <th style="padding: 10px; text-align: left;">Vencimiento</th>
                     <th style="padding: 10px; text-align: left;">Estado</th>
                 </tr>
             </thead>
@@ -1520,15 +1574,11 @@ def _investor_followup_html(
             </tbody>
         </table>
 
-        <center>
-            <a href="{APP_URL}/capital/investors" class="btn">Ver Portal de Inversiones</a>
-        </center>
-
         <hr class="divider">
 
         <p style="font-size: 14px; color: #718096;">
             Este reporte se genera automaticamente de forma mensual. Para cualquier consulta,
-            contactenos al <strong>{COMPANY_PHONE}</strong>.
+            contactenos al <strong>{COMPANY_PHONE}</strong> o responda directamente a este correo.
         </p>
     </div>
     """
@@ -1607,18 +1657,14 @@ def _investor_completion_html(
             </table>
         </div>
 
-        <p>Agradecemos profundamente su confianza. Si desea reinvertir o explorar nuevas
-        oportunidades de inversion, estamos a su disposicion.</p>
-
-        <center>
-            <a href="{APP_URL}/capital/investors" class="btn" style="background: #166534;">Explorar Nuevas Oportunidades</a>
-        </center>
+        <p>Agradecemos profundamente su confianza en Maninos Capital. Si desea reinvertir
+        o explorar nuevas oportunidades de inversion, no dude en contactarnos.</p>
 
         <hr class="divider">
 
         <p style="font-size: 14px; color: #718096;">
             Gracias por ser parte de Maninos Capital. Para cualquier consulta, contactenos
-            al <strong>{COMPANY_PHONE}</strong>.
+            al <strong>{COMPANY_PHONE}</strong> o responda directamente a este correo.
         </p>
     </div>
     """
