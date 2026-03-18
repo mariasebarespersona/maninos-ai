@@ -247,13 +247,15 @@ export default function PropertyDetailPage() {
   }
 
   const handleSmsProvider = async (providerId: string, move?: any) => {
+    const moveType = move?.move_type || newMove.move_type || 'purchase'
     const originAddr = move?.origin_address || newMove.origin_address || ''
     const originCity = move?.origin_city || newMove.origin_city || ''
     const origin = originAddr ? `${originAddr}, ${originCity}` : originCity
     const destAddr = move?.destination_address || newMove.destination_address || ''
     const destCity = move?.destination_city || newMove.destination_city || ''
     const dest = destAddr ? `${destAddr}, ${destCity}` : destCity
-    const addr = property?.address || ''
+    // For "sale" (Yard→Cliente), the house is at the yard, not the property address
+    const addr = moveType === 'sale' ? `${originAddr || '15891 Old Houston Rd'}, ${originCity || 'Conroe'}` : (property?.address || '')
     try {
       const params = new URLSearchParams({
         provider_id: providerId,
