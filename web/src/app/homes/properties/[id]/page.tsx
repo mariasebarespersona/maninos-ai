@@ -1034,7 +1034,7 @@ ${price}
                   </Link>
                 )}
                 <button
-                  onClick={() => setShowNewMoveModal(true)}
+                  onClick={() => { setNewMove(prev => ({ ...prev, move_type: 'purchase', origin_address: property?.address || '', origin_city: property?.city || '' })); setShowNewMoveModal(true) }}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg font-medium hover:bg-orange-100 transition-colors"
                 >
                   <Truck className="w-5 h-5" />
@@ -1598,7 +1598,7 @@ ${price}
                           })()}
 
                           {/* Request payment to Abigail */}
-                          {move.payment_status !== 'paid' && (move.quoted_cost > 0 || move.final_cost > 0) && (
+                          {move.payment_status !== 'paid' && move.payment_status !== 'pending' && (
                             <button
                               onClick={() => handleRequestPayment(move.id)}
                               disabled={requestingPayment === move.id}
@@ -1653,7 +1653,7 @@ ${price}
               })}
             </div>
             <button
-              onClick={() => setShowNewMoveModal(true)}
+              onClick={() => { setNewMove(prev => ({ ...prev, move_type: 'purchase', origin_address: property?.address || '', origin_city: property?.city || '' })); setShowNewMoveModal(true) }}
               className="mt-3 flex items-center gap-2 text-sm text-orange-600 hover:text-orange-800 font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -1899,7 +1899,16 @@ ${price}
                 <label className="block text-sm font-medium text-navy-700 mb-1">Tipo de movida</label>
                 <select
                   value={newMove.move_type}
-                  onChange={e => setNewMove({...newMove, move_type: e.target.value})}
+                  onChange={e => {
+                    const type = e.target.value
+                    if (type === 'purchase') {
+                      setNewMove(prev => ({ ...prev, move_type: type, origin_address: property?.address || '', origin_city: property?.city || '' }))
+                    } else if (type === 'sale') {
+                      setNewMove(prev => ({ ...prev, move_type: type, origin_address: '15891 Old Houston Rd', origin_city: 'Conroe' }))
+                    } else {
+                      setNewMove(prev => ({ ...prev, move_type: type }))
+                    }
+                  }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400"
                 >
                   <option value="purchase">Compra → Yard (del vendedor al patio)</option>
