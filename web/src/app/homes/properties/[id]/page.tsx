@@ -182,6 +182,16 @@ export default function PropertyDetailPage() {
     warning?: string | null
   } | null>(null)
 
+  // Post-renovation price breakdown
+  const [postRenoPrice, setPostRenoPrice] = useState<{
+    margin: number
+    purchase_price: number
+    commission: number
+    renovation_cost: number
+    move_cost: number
+    recommended_sale_price: number
+  } | null>(null)
+
   // Helper: save document data to property's document_data JSONB
   // Returns true if save succeeded, false otherwise
   const saveDocumentData = async (key: string, docFormData: BillOfSaleData | TitleApplicationData): Promise<boolean> => {
@@ -1016,8 +1026,18 @@ ${price}
                   <Paintbrush className="w-5 h-5" />
                   Gestionar Renovación
                 </Link>
-                <button 
-                  onClick={openPublishModal}
+                <button
+                  onClick={async () => {
+                    // Fetch post-renovation price breakdown
+                    try {
+                      const res = await fetch(`/api/properties/${property.id}/post-renovation-price`)
+                      if (res.ok) {
+                        const data = await res.json()
+                        if (data.ok) setPostRenoPrice(data)
+                      }
+                    } catch (err) { /* silent */ }
+                    setShowRenovationPriceModal(true)
+                  }}
                   disabled={actionLoading}
                   className="btn-gold"
                 >
@@ -1852,20 +1872,24 @@ ${price}
         confirmText="Publicar"
       />
 
-      {/* Modal: Completar Renovación */}
+      {/* Modal: Completar Renovación con precio auto-calculado */}
       <InputModal
         isOpen={showRenovationPriceModal}
         onClose={() => setShowRenovationPriceModal(false)}
         onConfirm={handleCompleteRenovation}
-        title="Completar Renovación"
-        label="Nuevo precio de venta (opcional)"
-        placeholder="Dejar vacío para mantener precio actual"
-        defaultValue={property?.sale_price?.toString() || ''}
+        title="Publicar Post-Renovacion"
+        label="Precio de venta (USD)"
+        placeholder="Precio calculado automaticamente"
+        defaultValue={postRenoPrice ? Math.round(postRenoPrice.recommended_sale_price).toString() : (property?.sale_price?.toString() || '')}
         type="number"
         min={0}
         required={false}
-        helpText="Puedes ajustar el precio de venta después de la renovación"
-        confirmText="Completar"
+        helpText={
+          postRenoPrice
+            ? `$9,500 margen + $${postRenoPrice.purchase_price.toLocaleString()} compra + $${postRenoPrice.commission.toLocaleString()} comision + $${postRenoPrice.renovation_cost.toLocaleString()} reparacion + $${postRenoPrice.move_cost.toLocaleString()} movida = $${postRenoPrice.recommended_sale_price.toLocaleString()}`
+            : 'Dejar vacio para auto-calcular: 9500 + compra + comision + reparacion + movida'
+        }
+        confirmText="Publicar"
       />
 
       {/* Modal: Confirmar Eliminar */}
