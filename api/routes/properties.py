@@ -37,6 +37,50 @@ from tools.supabase_client import sb
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+MARGIN_FIXED = 9500  # Fixed margin per business rule
+COMMISSION_MAX = 1500  # Max commission (contado = $1500, RTO = $1000)
+
+
+def _calculate_post_renovation_price(property_id: str, purchase_price: float) -> dict:
+    """
+    Calculate the recommended sale price post-renovation.
+    Formula: 9500 + purchase_price + commission + renovation_cost + move_cost
+    """
+    # Renovation cost
+    reno_cost = 0.0
+    try:
+        reno = sb.table("renovations").select("total_cost, status") \
+            .eq("property_id", property_id) \
+            .order("created_at", desc=True).limit(1).execute()
+        if reno.data:
+            reno_cost = float(reno.data[0].get("total_cost", 0) or 0)
+    except Exception as e:
+        logger.warning(f"[price_calc] Could not fetch renovation cost: {e}")
+
+    # Move cost (sum of all completed or quoted moves for this property)
+    move_cost = 0.0
+    try:
+        moves = sb.table("moves").select("quoted_cost, final_cost, status") \
+            .eq("property_id", property_id).execute()
+        for m in (moves.data or []):
+            cost = float(m.get("final_cost") or m.get("quoted_cost") or 0)
+            if cost > 0:
+                move_cost += cost
+    except Exception as e:
+        logger.warning(f"[price_calc] Could not fetch move cost: {e}")
+
+    commission = COMMISSION_MAX
+    total = MARGIN_FIXED + purchase_price + commission + reno_cost + move_cost
+
+    return {
+        "margin": MARGIN_FIXED,
+        "purchase_price": purchase_price,
+        "commission": commission,
+        "renovation_cost": round(reno_cost, 2),
+        "move_cost": round(move_cost, 2),
+        "recommended_sale_price": round(total, 2),
+    }
+
 
 # ============================================================================
 # PROPERTIES CRUD
@@ -652,13 +696,39 @@ async def complete_renovation(
         "status": PropertyStatus.PUBLISHED.value,
         "is_renovated": True,
     }
-    
+
     if new_sale_price:
         update_data["sale_price"] = new_sale_price
-    
+    else:
+        # Auto-calculate price using formula: 9500 + compra + comision + reparacion + movida
+        purchase_price = float(current.data.get("purchase_price", 0) or 0)
+        if purchase_price > 0:
+            calc = _calculate_post_renovation_price(property_id, purchase_price)
+            update_data["sale_price"] = calc["recommended_sale_price"]
+            logger.info(f"[properties] Auto-calculated post-renovation price for {property_id}: ${calc['recommended_sale_price']:,.2f}")
+
     result = sb.table("properties").update(update_data).eq("id", property_id).execute()
-    
+
     return _format_property(result.data[0])
+
+
+@router.get("/{property_id}/post-renovation-price")
+async def get_post_renovation_price(property_id: str):
+    """
+    Get the calculated post-renovation sale price breakdown.
+    Formula: 9500 + purchase_price + commission ($1,500) + renovation_cost + move_cost
+    """
+    prop = sb.table("properties").select("id, purchase_price, sale_price, address, city") \
+        .eq("id", property_id).single().execute()
+    if not prop.data:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    purchase_price = float(prop.data.get("purchase_price", 0) or 0)
+    calc = _calculate_post_renovation_price(property_id, purchase_price)
+    calc["current_sale_price"] = float(prop.data.get("sale_price", 0) or 0)
+    calc["property_address"] = f"{prop.data.get('address', '')}, {prop.data.get('city', '')}"
+
+    return {"ok": True, **calc}
 
 
 @router.get("/{property_id}/actions")
