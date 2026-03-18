@@ -362,6 +362,10 @@ async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., descri
 
     accounting_txn_id = None
     try:
+        # Resolve the accounting account for commissions
+        from api.routes.accounting import _resolve_homes_account_id
+        account_id = _resolve_homes_account_id("commission")
+
         txn_data = {
             "transaction_date": date.today().isoformat(),
             "transaction_type": "commission",
@@ -372,9 +376,11 @@ async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., descri
             "counterparty_name": emp_name,
             "counterparty_type": "employee",
             "description": f"Comisión {sale_type} - {emp_name} ({payment.data['role']}) - {prop_address}",
-            "status": "completed",
+            "status": "pending",
             "source": "commission_payment",
         }
+        if account_id:
+            txn_data["account_id"] = account_id
         txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
         if txn_result.data:
             accounting_txn_id = txn_result.data[0]["id"]
