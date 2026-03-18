@@ -55,14 +55,17 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
   const [pendingNotifCount, setPendingNotifCount] = useState(0)
 
   useEffect(() => {
-    // Count pending transfer confirmations (contado payments awaiting Abigail)
-    fetch('/api/sales/pending-transfers')
-      .then(r => r.json())
-      .then(d => {
-        const transfers = d.transfers || d || []
-        setPendingNotifCount(Array.isArray(transfers) ? transfers.length : 0)
-      })
-      .catch(() => {})
+    // Count all pending notifications: transfers + payment orders
+    Promise.all([
+      fetch('/api/sales/pending-transfers').then(r => r.json()).catch(() => ({})),
+      fetch('/api/payment-orders?status=pending').then(r => r.json()).catch(() => ({})),
+    ]).then(([transfersData, ordersData]) => {
+      const transfers = transfersData.transfers || transfersData || []
+      const transferCount = Array.isArray(transfers) ? transfers.length : 0
+      const orders = ordersData.data || []
+      const orderCount = Array.isArray(orders) ? orders.length : 0
+      setPendingNotifCount(transferCount + orderCount)
+    }).catch(() => {})
   }, [pathname])
 
   const isActive = (href: string) => {
