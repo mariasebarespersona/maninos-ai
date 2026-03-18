@@ -24,11 +24,15 @@ interface Investor {
 }
 
 interface InvestmentsSummary {
-  total_investments: number
+  total_captado: number
+  total_invertido: number
+  total_disponible: number
+  total_retornado_capital: number
+  total_retornado_interes: number
+  tasa_fondeo: number
   active_investments: number
-  total_invested: number
-  total_returned: number
-  net_outstanding: number
+  total_investments: number
+  period: string
 }
 
 interface AlertNote {
@@ -65,6 +69,7 @@ export default function InvestorsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [showAlerts, setShowAlerts] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [period, setPeriod] = useState<string>('all')
 
   // Create form
   const [name, setName] = useState('')
@@ -74,13 +79,13 @@ export default function InvestorsPage() {
   const [capital, setCapital] = useState('')
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, [period])
 
   const loadData = async () => {
     try {
       const [investorsRes, summaryRes, alertsRes] = await Promise.all([
         fetch(`/api/capital/investors`),
-        fetch(`/api/capital/investors/investments/summary`),
+        fetch(`/api/capital/investors/investments/summary${period !== 'all' ? `?period=${period}` : ''}`),
         fetch(`/api/capital/promissory-notes/alerts?days=30`),
       ])
 
@@ -253,29 +258,73 @@ export default function InvestorsPage() {
 
       {/* Summary KPIs */}
       {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="stat-card">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-              <span className="stat-label" style={{ margin: 0 }}>Total Invertido</span>
-            </div>
-            <div className="stat-value text-2xl">{fmt(summary.total_invested)}</div>
+        <div className="space-y-3">
+          {/* Period filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Periodo:</span>
+            {[
+              { key: 'all', label: 'Todo' },
+              { key: 'month', label: 'Este Mes' },
+              { key: 'quarter', label: 'Trimestre' },
+              { key: 'year', label: 'Este Ano' },
+            ].map(p => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+                style={{
+                  backgroundColor: period === p.key ? 'var(--gold-100)' : 'transparent',
+                  color: period === p.key ? 'var(--gold-700)' : 'var(--slate)',
+                  border: `1px solid ${period === p.key ? 'var(--gold-400)' : 'var(--stone)'}`,
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-5 h-5" style={{ color: 'var(--success)' }} />
-              <span className="stat-label" style={{ margin: 0 }}>Retornado</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Captado</span>
+              </div>
+              <div className="stat-value text-xl">{fmt(summary.total_captado)}</div>
             </div>
-            <div className="stat-value text-2xl" style={{ color: 'var(--success)' }}>
-              {fmt(summary.total_returned)}
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <Briefcase className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Invertido</span>
+              </div>
+              <div className="stat-value text-xl">{fmt(summary.total_invertido)}</div>
             </div>
-          </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-2 mb-2">
-              <Landmark className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="stat-label" style={{ margin: 0 }}>Pendiente</span>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark className="w-4 h-4" style={{ color: 'var(--info)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Disponible</span>
+              </div>
+              <div className="stat-value text-xl">{fmt(summary.total_disponible)}</div>
             </div>
-            <div className="stat-value text-2xl">{fmt(summary.net_outstanding)}</div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Retornado Capital</span>
+              </div>
+              <div className="stat-value text-xl" style={{ color: 'var(--success)' }}>{fmt(summary.total_retornado_capital)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Retornado Interes</span>
+              </div>
+              <div className="stat-value text-xl" style={{ color: 'var(--gold-700)' }}>{fmt(summary.total_retornado_interes)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark className="w-4 h-4" style={{ color: 'var(--charcoal)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Tasa Fondeo</span>
+              </div>
+              <div className="stat-value text-xl">{summary.tasa_fondeo}%</div>
+            </div>
           </div>
         </div>
       )}
@@ -347,17 +396,23 @@ export default function InvestorsPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="grid grid-cols-3 gap-2 mt-4">
                     <div className="card-flat py-2 px-3 text-center">
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Invertido</p>
-                      <p className="font-serif font-semibold" style={{ color: 'var(--charcoal)' }}>
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Total Captado</p>
+                      <p className="font-serif font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>
                         {fmt(inv.total_invested)}
                       </p>
                     </div>
                     <div className="card-flat py-2 px-3 text-center">
-                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Disponible</p>
-                      <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>
-                        {fmt(inv.available_capital)}
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Tasa Interes</p>
+                      <p className="font-serif font-semibold text-sm" style={{ color: 'var(--gold-700)' }}>
+                        {(inv as any).tasa_fondeo || 0}%
+                      </p>
+                    </div>
+                    <div className="card-flat py-2 px-3 text-center">
+                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Plazo</p>
+                      <p className="font-serif font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>
+                        {(inv as any).avg_term || 0}m
                       </p>
                     </div>
                   </div>

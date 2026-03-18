@@ -56,6 +56,14 @@ interface PromissoryNote {
 }
 
 interface Metrics {
+  total_captado: number
+  total_invertido: number
+  total_disponible: number
+  total_retornado_capital: number
+  total_retornado_interes: number
+  tasa_fondeo: number
+  avg_term_months: number
+  // Legacy
   total_invested: number
   total_returned: number
   net_outstanding: number
@@ -343,13 +351,14 @@ export default function InvestorDetailPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Total Invertido', value: fmt(totalInvested), icon: DollarSign, color: 'var(--navy-800)' },
-          { label: 'Capital Disponible', value: fmt(investor.available_capital), icon: Landmark, color: 'var(--gold-600)' },
-          { label: 'Retornos', value: fmt(totalReturned), icon: TrendingUp, color: 'var(--success)' },
-          { label: 'Inversiones Activas', value: String(metrics?.active_investments || 0), icon: PieChart, color: 'var(--info)' },
-          { label: 'Notas Activas', value: String(metrics?.active_notes || 0), icon: FileText, color: 'var(--gold-700)' },
+          { label: 'Total Captado', value: fmt(metrics?.total_captado || 0), icon: DollarSign, color: 'var(--gold-600)' },
+          { label: 'Total Invertido', value: fmt(metrics?.total_invertido || totalInvested), icon: Briefcase, color: 'var(--navy-800)' },
+          { label: 'Total Disponible', value: fmt(metrics?.total_disponible || investor.available_capital), icon: Landmark, color: 'var(--info)' },
+          { label: 'Retornado Capital', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
+          { label: 'Retornado Interes', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
+          { label: 'Tasa Fondeo', value: `${metrics?.tasa_fondeo || 0}%`, icon: PieChart, color: 'var(--charcoal)' },
         ].map((kpi) => (
           <div key={kpi.label} className="card-luxury p-4">
             <div className="flex items-center gap-2 mb-2">
