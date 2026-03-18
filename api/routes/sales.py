@@ -408,6 +408,9 @@ async def create_sale(data: SaleCreate):
             logger.error(f"[sales] Failed to create RTO application: {e}")
             # Don't fail the sale - the application can be created manually
     
+    # Auto-generate commission_payments rows
+    _create_commission_payments(sale_record)
+
     return _format_sale(
         sale_record,
         prop["address"],
@@ -1203,4 +1206,154 @@ async def commission_report(
         "total_commission": float(total_commission),
         "employees": employee_list,
     }
+
+
+# ============================================================================
+# COMMISSION PAYMENTS
+# ============================================================================
+
+def _create_commission_payments(sale: dict):
+    """Auto-generate commission_payments rows when a sale is created."""
+    found_by = sale.get("found_by_employee_id")
+    sold_by = sale.get("sold_by_employee_id")
+    comm_found = float(sale.get("commission_found_by") or 0)
+    comm_sold = float(sale.get("commission_sold_by") or 0)
+
+    rows = []
+    if found_by and comm_found > 0:
+        rows.append({
+            "sale_id": sale["id"],
+            "employee_id": found_by,
+            "role": "found_by",
+            "amount": comm_found,
+            "status": "pending",
+        })
+    if sold_by and comm_sold > 0 and sold_by != found_by:
+        rows.append({
+            "sale_id": sale["id"],
+            "employee_id": sold_by,
+            "role": "sold_by",
+            "amount": comm_sold,
+            "status": "pending",
+        })
+
+    for row in rows:
+        try:
+            sb.table("commission_payments").insert(row).execute()
+        except Exception as e:
+            logger.warning(f"[commissions] Failed to create commission_payment: {e}")
+
+
+@router.get("/commission-payments")
+async def list_commission_payments(
+    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    employee_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    """List commission payments with optional filters by month/year, employee, status."""
+    from datetime import date
+
+    query = sb.table("commission_payments").select(
+        "*, sales(id, sale_type, sale_price, created_at, property_id, properties(address)), users!commission_payments_employee_id_fkey(name, email, role)"
+    )
+
+    if status:
+        query = query.eq("status", status)
+    if employee_id:
+        query = query.eq("employee_id", employee_id)
+
+    # Filter by month/year via join on sales.created_at
+    if month or year:
+        today = date.today()
+        m = month or today.month
+        y = year or today.year
+        start = f"{y}-{m:02d}-01"
+        end = f"{y}-{m + 1:02d}-01" if m < 12 else f"{y + 1}-01-01"
+        # We need to filter by sale creation date
+        query = query.gte("created_at", start).lt("created_at", end)
+
+    query = query.order("created_at", desc=True)
+    result = query.execute()
+
+    payments = result.data or []
+    # Flatten nested data for frontend
+    for p in payments:
+        sale = p.pop("sales", None) or {}
+        user = p.pop("users", None) or {}
+        p["employee_name"] = user.get("name", "Desconocido")
+        p["employee_email"] = user.get("email", "")
+        p["employee_role"] = user.get("role", "")
+        p["sale_type"] = sale.get("sale_type", "")
+        p["sale_price"] = sale.get("sale_price", 0)
+        p["sale_created_at"] = sale.get("created_at", "")
+        props = sale.get("properties", {}) or {}
+        p["property_address"] = props.get("address", "")
+
+    return {"ok": True, "payments": payments}
+
+
+@router.patch("/commission-payments/{payment_id}/pay")
+async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., description="User ID of who is marking as paid")):
+    """
+    Mark a commission payment as paid.
+    Creates an accounting transaction for the expense.
+    """
+    from datetime import date
+
+    # Get the payment
+    payment = sb.table("commission_payments").select("*").eq("id", payment_id).single().execute()
+    if not payment.data:
+        raise HTTPException(status_code=404, detail="Pago de comisión no encontrado")
+
+    if payment.data["status"] == "paid":
+        raise HTTPException(status_code=400, detail="Esta comisión ya fue pagada")
+
+    # Get employee name for accounting description
+    emp_name = _resolve_employee_name(payment.data["employee_id"]) or "Empleado"
+
+    # Get sale info
+    sale = sb.table("sales").select("sale_type, properties(address)").eq("id", payment.data["sale_id"]).single().execute()
+    sale_type = sale.data.get("sale_type", "") if sale.data else ""
+    prop_address = ""
+    if sale.data and sale.data.get("properties"):
+        prop_address = sale.data["properties"].get("address", "")
+
+    # Create accounting transaction
+    accounting_txn_id = None
+    try:
+        txn_data = {
+            "transaction_date": date.today().isoformat(),
+            "transaction_type": "commission",
+            "amount": float(payment.data["amount"]),
+            "is_income": False,  # expense
+            "entity_type": "sale",
+            "entity_id": payment.data["sale_id"],
+            "counterparty_name": emp_name,
+            "counterparty_type": "employee",
+            "description": f"Comisión {sale_type} - {emp_name} ({payment.data['role']}) - {prop_address}",
+            "status": "completed",
+            "source": "commission_payment",
+        }
+        txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
+        if txn_result.data:
+            accounting_txn_id = txn_result.data[0]["id"]
+    except Exception as e:
+        logger.error(f"[commissions] Failed to create accounting transaction: {e}")
+
+    # Update payment
+    now = datetime.utcnow().isoformat()
+    update = {
+        "status": "paid",
+        "paid_at": now,
+        "paid_by": paid_by,
+    }
+    if accounting_txn_id:
+        update["accounting_transaction_id"] = accounting_txn_id
+
+    result = sb.table("commission_payments").update(update).eq("id", payment_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Error al actualizar pago")
+
+    return {"ok": True, "payment": result.data[0], "accounting_transaction_id": accounting_txn_id}
 

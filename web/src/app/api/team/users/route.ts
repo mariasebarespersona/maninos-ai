@@ -21,3 +21,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const res = await fetch(`${API_URL}/api/team/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    console.error('Error proxying create employee:', error)
+    return NextResponse.json({ ok: false }, { status: 500 })
+  }
+}
+

@@ -54,11 +54,20 @@ class UserRoleUpdate(BaseModel):
     department: Optional[str] = None
 
 
+class UserCreateRequest(BaseModel):
+    """Create a new employee (no Supabase Auth account needed)."""
+    name: str
+    email: str
+    phone: Optional[str] = None
+    role: str = "operations"
+
+
 class UserSyncRequest(BaseModel):
     """Sync auth user → custom users table."""
     auth_id: str          # Supabase Auth UUID
     email: str
     name: Optional[str] = None
+    role: Optional[str] = None  # From signup metadata
 
 
 # ============================================================================
@@ -68,13 +77,16 @@ class UserSyncRequest(BaseModel):
 @router.get("/users")
 async def list_team_users(
     role: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
     limit: int = Query(50, le=100),
 ):
     """List all team members with optional role filter."""
     query = sb.table("users").select("*")
     if role:
         query = query.eq("role", role)
-    query = query.eq("is_active", True).order("name").limit(limit)
+    if not include_inactive:
+        query = query.eq("is_active", True)
+    query = query.order("name").limit(limit)
     result = query.execute()
     return {"ok": True, "users": result.data or []}
 
@@ -106,11 +118,12 @@ async def sync_auth_user(data: UserSyncRequest):
         pass  # auth_id may not be a valid UUID format
 
     # Create new user — use the auth_id as the id so they match
+    sync_role = data.role if data.role and data.role in VALID_ROLES else "operations"
     new_user = {
         "id": data.auth_id,
         "email": data.email,
         "name": data.name or data.email.split("@")[0],
-        "role": "admin",   # default for first user; can be changed later
+        "role": sync_role,
         "is_active": True,
     }
     try:
@@ -136,6 +149,46 @@ async def update_user_role(user_id: str, data: UserRoleUpdate):
     result = sb.table("users").update(update).eq("id", user_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {"ok": True, "user": result.data[0]}
+
+
+@router.post("/users")
+async def create_employee(data: UserCreateRequest):
+    """Create a new employee in the users table."""
+    if data.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Rol inválido: {data.role}")
+
+    # Check if email already exists
+    existing = sb.table("users").select("id").eq("email", data.email).limit(1).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
+
+    new_user = {
+        "email": data.email,
+        "name": data.name,
+        "phone": data.phone,
+        "role": data.role,
+        "is_active": True,
+    }
+    try:
+        result = sb.table("users").insert(new_user).execute()
+        if result.data:
+            logger.info(f"[Team] Created employee: {data.email} ({data.role})")
+            return {"ok": True, "user": result.data[0]}
+    except Exception as e:
+        logger.error(f"[Team] Create employee error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creando empleado: {e}")
+    raise HTTPException(status_code=500, detail="No se pudo crear el empleado")
+
+
+@router.patch("/users/{user_id}/active")
+async def toggle_user_active(user_id: str, is_active: bool = Query(...)):
+    """Activate or deactivate an employee."""
+    result = sb.table("users").update({"is_active": is_active}).eq("id", user_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    status = "activado" if is_active else "desactivado"
+    logger.info(f"[Team] User {user_id} {status}")
     return {"ok": True, "user": result.data[0]}
 
 

@@ -12,6 +12,8 @@ import { Loader2 } from 'lucide-react'
 function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [selectedRole, setSelectedRole] = useState('operations')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
@@ -54,7 +56,10 @@ function LoginForm() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${getAppBaseUrl()}/auth/callback` },
+      options: {
+        emailRedirectTo: `${getAppBaseUrl()}/auth/callback`,
+        data: { full_name: fullName, role: selectedRole },
+      },
     })
 
     if (error) {
@@ -178,10 +183,24 @@ function LoginForm() {
                   </div>
                 )}
 
+                {mode === 'signup' && (
+                  <div>
+                    <label className="label">Nombre Completo</label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="input"
+                      placeholder="Tu nombre"
+                      required
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="label">Correo Electrónico</label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="input"
@@ -193,8 +212,8 @@ function LoginForm() {
                 {mode !== 'forgot' && (
                   <div>
                     <label className="label">Contraseña</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="input"
@@ -205,6 +224,29 @@ function LoginForm() {
                     {mode === 'signup' && (
                       <p className="help-text">Mínimo 6 caracteres</p>
                     )}
+                  </div>
+                )}
+
+                {mode === 'signup' && (
+                  <div>
+                    <label className="label">Tu Rol en el Equipo</label>
+                    <select
+                      value={selectedRole}
+                      onChange={(e) => setSelectedRole(e.target.value)}
+                      className="input"
+                      required
+                    >
+                      <option value="operations">Operaciones (Compras y Ventas)</option>
+                      <option value="treasury">Tesorería (Pagos y Contabilidad)</option>
+                      <option value="yard_manager">Encargado de Yard</option>
+                      <option value="admin">Administrador</option>
+                    </select>
+                    <p className="help-text">
+                      {selectedRole === 'operations' && 'Buscar, comprar, renovar y vender casas. Gana comisiones por ventas.'}
+                      {selectedRole === 'treasury' && 'Gestionar pagos, contabilidad y supervisar comisiones.'}
+                      {selectedRole === 'yard_manager' && 'Administrar yards y propiedades asignadas.'}
+                      {selectedRole === 'admin' && 'Acceso total a todos los portales.'}
+                    </p>
                   </div>
                 )}
 

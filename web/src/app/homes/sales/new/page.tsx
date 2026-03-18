@@ -139,33 +139,11 @@ function NewSaleContent() {
   const [clientSearch, setClientSearch] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
 
-  // On mount: sync current auth user to the users table, then fetch data
+  // On mount: fetch data (user sync now handled by AuthProvider)
   useEffect(() => {
-    const init = async () => {
-      // First ensure the logged-in user exists in the custom users table
-      if (authUser?.email) {
-        try {
-          await fetch('/api/team/users/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              auth_id: authUser.id,
-              email: authUser.email,
-              name: authUser.user_metadata?.full_name
-                || authUser.user_metadata?.name
-                || authUser.email.split('@')[0],
-            }),
-          })
-        } catch (err) {
-          console.error('Error syncing user:', err)
-        }
-      }
-      // Then fetch all data
     fetchProperties()
     fetchClients()
-      fetchTeamUsers()
-    }
-    init()
+    fetchTeamUsers()
   }, [authUser])
 
   // Detect current user's team ID once teamUsers load (for display only, no auto-assign)

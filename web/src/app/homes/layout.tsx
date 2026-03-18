@@ -48,7 +48,7 @@ const externalLinks = [
 export default function HomesLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, loading: authLoading, signOut } = useAuth()
+  const { user, loading: authLoading, signOut, teamUser } = useAuth()
   const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -188,8 +188,16 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
                 Sesión activa
               </p>
               <p className="text-sm font-medium truncate mt-1" style={{ color: 'var(--charcoal)' }}>
-                {user.email}
+                {teamUser?.name || user.email}
               </p>
+              {teamUser?.role && (
+                <p className="text-xs mt-0.5 capitalize" style={{ color: 'var(--ash)' }}>
+                  {teamUser.role === 'operations' ? 'Operaciones' :
+                   teamUser.role === 'treasury' ? 'Tesorería' :
+                   teamUser.role === 'yard_manager' ? 'Enc. Yard' :
+                   teamUser.role === 'admin' ? 'Admin' : teamUser.role}
+                </p>
+              )}
             </div>
           )}
           
@@ -260,7 +268,7 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
               <>
                 <div className="hidden sm:block text-right">
                   <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                    {user?.email?.split('@')[0] || 'Usuario'}
+                    {teamUser?.name || user?.email?.split('@')[0] || 'Usuario'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-md flex items-center justify-center"
