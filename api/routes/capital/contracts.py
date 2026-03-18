@@ -1021,3 +1021,109 @@ async def calculate_dti(data: DTIRequest):
         logger.error(f"Error calculating DTI: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/{contract_id}/customer-options")
+async def get_customer_options(contract_id: str):
+    """
+    Customer Options for completed/delivered RTO contracts.
+    Returns available post-completion options and loyalty programs.
+    """
+    try:
+        # Get contract with client and property info
+        result = sb.table("rto_contracts").select(
+            "id, client_id, property_id, status, purchase_price, monthly_rent, "
+            "term_months, down_payment, start_date, end_date, "
+            "clients(id, name, email, phone, status), "
+            "properties(id, address, city, status)"
+        ).eq("id", contract_id).single().execute()
+
+        contract = result.data
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+        # Calculate total paid
+        payments_result = sb.table("rto_payments").select(
+            "id, paid_amount, status"
+        ).eq("rto_contract_id", contract_id).eq("status", "paid").execute()
+        total_rent_paid = sum(float(p.get("paid_amount", 0)) for p in (payments_result.data or []))
+        total_paid = total_rent_paid + float(contract.get("down_payment", 0))
+
+        purchase_price = float(contract.get("purchase_price", 0))
+        loyalty_discount_pct = 5
+        loyalty_discount = round(purchase_price * loyalty_discount_pct / 100, 2)
+        credit_pct = 20
+        credit_amount = round(total_paid * credit_pct / 100, 2)
+
+        is_eligible = contract.get("status") in ("completed", "delivered")
+
+        options = {
+            "ok": True,
+            "contract_id": contract_id,
+            "contract_status": contract.get("status"),
+            "client": contract.get("clients"),
+            "property": contract.get("properties"),
+            "is_eligible": is_eligible,
+            "financial_summary": {
+                "purchase_price": purchase_price,
+                "total_paid": round(total_paid, 2),
+                "total_rent_paid": round(total_rent_paid, 2),
+                "down_payment": float(contract.get("down_payment", 0)),
+            },
+            "options": [
+                {
+                    "key": "repurchase",
+                    "title": "Opcion 1: Recompra de la Casa",
+                    "description": "Ofrecer recompra de la casa a valor de mercado menos descuento de lealtad.",
+                    "details": [
+                        f"Recompra a valor de mercado menos {loyalty_discount_pct}% de descuento por lealtad (ahorro estimado: ${loyalty_discount:,.2f})",
+                        "Reventa o re-alquiler de la propiedad a un nuevo inquilino",
+                    ],
+                    "estimated_discount": loyalty_discount,
+                    "discount_pct": loyalty_discount_pct,
+                    "available": is_eligible,
+                },
+                {
+                    "key": "upgrade",
+                    "title": "Opcion 2: Upgrade a Nueva Casa",
+                    "description": "Programa trade-in donde el cliente intercambia su casa actual por una nueva bajo un nuevo contrato RTO.",
+                    "details": [
+                        "Intercambiar casa actual por una nueva mobile home con nuevo contrato RTO",
+                        f"Credito del {credit_pct}% de pagos anteriores hacia el nuevo contrato (credito estimado: ${credit_amount:,.2f})",
+                    ],
+                    "credit_amount": credit_amount,
+                    "credit_pct": credit_pct,
+                    "available": is_eligible,
+                },
+            ],
+            "loyalty_programs": {
+                "title": "Programas de Lealtad",
+                "programs": [
+                    {
+                        "key": "referral_bonus",
+                        "title": "Bono por Referido",
+                        "description": "Bonos de $500-$1,000 por referir nuevos inquilinos",
+                        "min_bonus": 500,
+                        "max_bonus": 1000,
+                    },
+                    {
+                        "key": "repeat_discount",
+                        "title": "Descuento Repeat Customer",
+                        "description": "Descuentos en contratos futuros para clientes recurrentes",
+                    },
+                    {
+                        "key": "satisfaction_survey",
+                        "title": "Encuesta de Satisfaccion",
+                        "description": "Encuestas anuales de satisfaccion del cliente para recopilar feedback",
+                    },
+                ],
+            },
+        }
+
+        return options
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting customer options: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

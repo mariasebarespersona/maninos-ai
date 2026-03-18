@@ -257,6 +257,377 @@ async def get_cartera_health():
         return {"ok": False, "error": str(e), "cartera": {}}
 
 
+@router.get("/kpis")
+async def get_strategic_kpis():
+    """
+    Strategic KPIs across 4 categories: Clients, Investors, Portfolio, Purchase.
+    Calculates actual values from DB and compares against targets.
+    """
+    try:
+        today = date.today()
+        today_str = today.isoformat()
+        month_start = today.replace(day=1).isoformat()
+
+        # ── Fetch all needed data ──
+        applications = safe_query("rto_applications", lambda:
+            sb.table("rto_applications")
+            .select("id, status, created_at")
+            .execute()
+        ).data or []
+
+        contracts = safe_query("rto_contracts", lambda:
+            sb.table("rto_contracts")
+            .select("id, client_id, status, created_at, signed_at, start_date, purchase_price")
+            .execute()
+        ).data or []
+
+        clients = safe_query("clients", lambda:
+            sb.table("clients")
+            .select("id, status, kyc_verified, nps_score, referred_by")
+            .execute()
+        ).data or []
+
+        payments_due = safe_query("rto_payments", lambda:
+            sb.table("rto_payments")
+            .select("id, amount, status, due_date, paid_date, days_late")
+            .gte("due_date", month_start)
+            .lte("due_date", today_str)
+            .execute()
+        ).data or []
+
+        all_overdue = safe_query("rto_payments", lambda:
+            sb.table("rto_payments")
+            .select("id, amount, status, due_date, days_late")
+            .in_("status", ["pending", "late"])
+            .lt("due_date", today_str)
+            .execute()
+        ).data or []
+
+        investors = safe_query("investors", lambda:
+            sb.table("investors")
+            .select("id, status, total_invested, created_at")
+            .execute()
+        ).data or []
+
+        investments = safe_query("investments", lambda:
+            sb.table("investments")
+            .select("id, investor_id, amount, created_at")
+            .execute()
+        ).data or []
+
+        promissory_notes = safe_query("promissory_notes", lambda:
+            sb.table("promissory_notes")
+            .select("id, investor_id, interest_rate, status")
+            .execute()
+        ).data or []
+
+        properties = safe_query("properties", lambda:
+            sb.table("properties")
+            .select("id, status")
+            .execute()
+        ).data or []
+
+        # ── CLIENT KPIs ──
+
+        # 1. Onboarding Time: avg days from application to contract signing
+        onboarding_days = []
+        contract_map = {c.get("client_id"): c for c in contracts if c.get("signed_at")}
+        for app in applications:
+            if app.get("status") == "approved":
+                app_date = _safe_date(app.get("created_at"))
+                # Find matching contract
+                for c in contracts:
+                    signed = _safe_date(c.get("signed_at") or c.get("start_date"))
+                    if signed and app_date:
+                        days = (signed - app_date).days
+                        if 0 <= days <= 90:  # reasonable range
+                            onboarding_days.append(days)
+                            break
+        avg_onboarding = round(sum(onboarding_days) / len(onboarding_days), 1) if onboarding_days else 0
+
+        # 2. Customer Satisfaction (NPS) - from clients with nps_score
+        nps_scores = [c.get("nps_score") for c in clients if c.get("nps_score") is not None]
+        avg_nps = round(sum(nps_scores) / len(nps_scores), 1) if nps_scores else None
+
+        # 3. KYC Compliance Rate
+        rto_clients = [c for c in clients if c.get("status") in ("rto_applicant", "rto_active", "completed")]
+        kyc_verified = len([c for c in rto_clients if c.get("kyc_verified")])
+        kyc_rate = round(kyc_verified / len(rto_clients) * 100, 1) if rto_clients else 100.0
+
+        # 4. Conversion Rate: approved / total applications
+        total_apps = len(applications)
+        approved_apps = len([a for a in applications if a.get("status") == "approved"])
+        conversion_rate = round(approved_apps / total_apps * 100, 1) if total_apps > 0 else 0
+
+        # ── INVESTOR KPIs ──
+
+        # 1. Funding Success Rate: actual raised this month vs target ($100K)
+        monthly_target = 100000
+        month_investments = [
+            inv for inv in investments
+            if inv.get("created_at", "")[:7] == today.strftime("%Y-%m")
+        ]
+        raised_this_month = sum(float(inv.get("amount", 0)) for inv in month_investments)
+        funding_success = round(raised_this_month / monthly_target * 100, 1) if monthly_target > 0 else 0
+
+        # 2. Cost of Capital: avg interest rate on active promissory notes
+        active_notes = [n for n in promissory_notes if n.get("status") == "active"]
+        rates = [float(n.get("interest_rate", 0)) for n in active_notes if n.get("interest_rate")]
+        avg_cost_capital = round(sum(rates) / len(rates), 1) if rates else 0
+
+        # 3. Investor Retention: investors with >1 investment / total investors
+        investor_inv_count = {}
+        for inv in investments:
+            iid = inv.get("investor_id")
+            if iid:
+                investor_inv_count[iid] = investor_inv_count.get(iid, 0) + 1
+        repeat_investors = len([k for k, v in investor_inv_count.items() if v > 1])
+        total_with_investments = len(investor_inv_count)
+        investor_retention = round(repeat_investors / total_with_investments * 100, 1) if total_with_investments > 0 else 0
+
+        # 4. Compliance Rate (SEC) - manual/static for now
+        compliance_rate_investors = 100.0
+
+        # ── PORTFOLIO KPIs ──
+
+        # 1. Collection Rate (already calculated-style)
+        due_amount = sum(float(p.get("amount", 0)) for p in payments_due)
+        paid_amount = sum(float(p.get("amount", 0)) for p in payments_due if p.get("status") == "paid")
+        collection_rate = round(paid_amount / due_amount * 100, 1) if due_amount > 0 else 100.0
+
+        # 2. Delinquency Rate: % of tenants >30 days late
+        active_contracts = [c for c in contracts if c.get("status") == "active"]
+        clients_with_overdue_30 = set()
+        for p in all_overdue:
+            due = _safe_date(p.get("due_date"))
+            if due and (today - due).days > 30:
+                # find contract for this payment
+                clients_with_overdue_30.add(p.get("client_id"))
+        delinquency_rate_30 = round(len(clients_with_overdue_30) / len(active_contracts) * 100, 1) if active_contracts else 0
+
+        # 3. Portfolio Occupancy: properties with active RTO / total sold+rto properties
+        rto_properties = len([p for p in properties if p.get("status") == "sold"])
+        total_sellable = len([p for p in properties if p.get("status") in ("published", "sold", "reserved")])
+        occupancy = round(rto_properties / total_sellable * 100, 1) if total_sellable > 0 else 0
+
+        # 4. System Uptime - static (monitored externally)
+        system_uptime = 99.9
+
+        # ── PURCHASE KPIs ──
+
+        # 1. Purchase Completion Rate: delivered contracts / total activated
+        delivered = len([c for c in contracts if c.get("status") == "delivered"])
+        activated = len([c for c in contracts if c.get("status") in ("active", "completed", "delivered")])
+        purchase_completion = round(delivered / activated * 100, 1) if activated > 0 else 0
+
+        # 2. Customer Retention: clients with >1 contract / total clients with contracts
+        client_contract_count = {}
+        for c in contracts:
+            cid = c.get("client_id")
+            if cid:
+                client_contract_count[cid] = client_contract_count.get(cid, 0) + 1
+        repeat_clients = len([k for k, v in client_contract_count.items() if v > 1])
+        total_clients_with_contracts = len(client_contract_count)
+        customer_retention = round(repeat_clients / total_clients_with_contracts * 100, 1) if total_clients_with_contracts > 0 else 0
+
+        # 3. Referral Rate: clients with referred_by / total
+        referred = len([c for c in clients if c.get("referred_by")])
+        referral_rate = round(referred / len(clients) * 100, 1) if clients else 0
+
+        # 4. Compliance Rate (Texas/Federal) - manual/static
+        compliance_rate_legal = 100.0
+
+        return {
+            "ok": True,
+            "kpis": {
+                "client": {
+                    "title": "KPIs Clientes",
+                    "metrics": [
+                        {
+                            "key": "onboarding_time",
+                            "label": "Tiempo de Onboarding",
+                            "description": "Promedio dias desde solicitud hasta firma de contrato",
+                            "value": avg_onboarding,
+                            "target": 5,
+                            "unit": "dias",
+                            "direction": "lower_is_better",
+                            "status": "on_target" if avg_onboarding <= 5 else ("warning" if avg_onboarding <= 10 else "off_target"),
+                        },
+                        {
+                            "key": "nps",
+                            "label": "Satisfaccion del Cliente (NPS)",
+                            "description": "Net Promoter Score promedio",
+                            "value": avg_nps,
+                            "target": 80,
+                            "unit": "puntos",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if (avg_nps or 0) >= 80 else ("warning" if (avg_nps or 0) >= 60 else "off_target"),
+                        },
+                        {
+                            "key": "kyc_compliance",
+                            "label": "KYC Compliance Rate",
+                            "description": "Clientes verificados segun requisitos regulatorios",
+                            "value": kyc_rate,
+                            "target": 100,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if kyc_rate >= 100 else ("warning" if kyc_rate >= 80 else "off_target"),
+                        },
+                        {
+                            "key": "conversion_rate",
+                            "label": "Tasa de Conversion",
+                            "description": "Solicitudes aprobadas para contratos RTO",
+                            "value": conversion_rate,
+                            "target": 70,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if conversion_rate >= 70 else ("warning" if conversion_rate >= 50 else "off_target"),
+                        },
+                    ],
+                },
+                "investor": {
+                    "title": "KPIs Inversionistas",
+                    "metrics": [
+                        {
+                            "key": "funding_success",
+                            "label": "Tasa de Fondeo",
+                            "description": f"Porcentaje del objetivo mensual (${monthly_target:,.0f}) alcanzado",
+                            "value": funding_success,
+                            "target": 90,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if funding_success >= 90 else ("warning" if funding_success >= 60 else "off_target"),
+                            "extra": {"raised": raised_this_month, "target_amount": monthly_target},
+                        },
+                        {
+                            "key": "cost_of_capital",
+                            "label": "Costo de Capital",
+                            "description": "Tasa de interes promedio anual en notas promisorias",
+                            "value": avg_cost_capital,
+                            "target": 12,
+                            "unit": "%",
+                            "direction": "lower_is_better",
+                            "status": "on_target" if avg_cost_capital <= 12 else ("warning" if avg_cost_capital <= 15 else "off_target"),
+                        },
+                        {
+                            "key": "investor_retention",
+                            "label": "Retencion de Inversores",
+                            "description": "Inversores que reinvierten en rondas subsecuentes",
+                            "value": investor_retention,
+                            "target": 80,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if investor_retention >= 80 else ("warning" if investor_retention >= 50 else "off_target"),
+                        },
+                        {
+                            "key": "sec_compliance",
+                            "label": "Compliance SEC",
+                            "description": "Adherencia a regulaciones SEC",
+                            "value": compliance_rate_investors,
+                            "target": 100,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if compliance_rate_investors >= 100 else "off_target",
+                        },
+                    ],
+                },
+                "portfolio": {
+                    "title": "KPIs Portfolio",
+                    "metrics": [
+                        {
+                            "key": "collection_rate",
+                            "label": "Tasa de Cobro",
+                            "description": "Rentas cobradas a tiempo este mes",
+                            "value": collection_rate,
+                            "target": 95,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if collection_rate >= 95 else ("warning" if collection_rate >= 80 else "off_target"),
+                        },
+                        {
+                            "key": "delinquency_rate",
+                            "label": "Tasa de Morosidad",
+                            "description": "Inquilinos con mas de 30 dias de atraso",
+                            "value": delinquency_rate_30,
+                            "target": 5,
+                            "unit": "%",
+                            "direction": "lower_is_better",
+                            "status": "on_target" if delinquency_rate_30 <= 5 else ("warning" if delinquency_rate_30 <= 10 else "off_target"),
+                        },
+                        {
+                            "key": "portfolio_occupancy",
+                            "label": "Ocupacion del Portfolio",
+                            "description": "Propiedades con RTO activo",
+                            "value": occupancy,
+                            "target": 90,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if occupancy >= 90 else ("warning" if occupancy >= 70 else "off_target"),
+                        },
+                        {
+                            "key": "system_uptime",
+                            "label": "Disponibilidad del Sistema",
+                            "description": "Uptime de la plataforma",
+                            "value": system_uptime,
+                            "target": 99.9,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target",
+                        },
+                    ],
+                },
+                "purchase": {
+                    "title": "KPIs Compra/Retencion",
+                    "metrics": [
+                        {
+                            "key": "purchase_completion",
+                            "label": "Tasa de Completacion de Compra",
+                            "description": "Inquilinos que completan la opcion de compra",
+                            "value": purchase_completion,
+                            "target": 80,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if purchase_completion >= 80 else ("warning" if purchase_completion >= 50 else "off_target"),
+                        },
+                        {
+                            "key": "customer_retention",
+                            "label": "Retencion de Clientes",
+                            "description": "Clientes que inician un segundo contrato RTO",
+                            "value": customer_retention,
+                            "target": 20,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if customer_retention >= 20 else ("warning" if customer_retention >= 10 else "off_target"),
+                        },
+                        {
+                            "key": "referral_rate",
+                            "label": "Tasa de Referidos",
+                            "description": "Nuevos clientes por referidos",
+                            "value": referral_rate,
+                            "target": 10,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if referral_rate >= 10 else ("warning" if referral_rate >= 5 else "off_target"),
+                        },
+                        {
+                            "key": "legal_compliance",
+                            "label": "Compliance Legal",
+                            "description": "Adherencia a regulaciones de Texas y federales",
+                            "value": compliance_rate_legal,
+                            "target": 100,
+                            "unit": "%",
+                            "direction": "higher_is_better",
+                            "status": "on_target" if compliance_rate_legal >= 100 else "off_target",
+                        },
+                    ],
+                },
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting strategic KPIs: {e}")
+        return {"ok": False, "error": str(e), "kpis": {}}
+
+
 @router.get("/recent-activity")
 async def get_recent_activity():
     """Get recent activity for the dashboard feed."""

@@ -6,7 +6,7 @@ import {
   ArrowLeft, FileSignature, User, MapPin, DollarSign,
   Calendar, Clock, CheckCircle2, AlertTriangle,
   Percent, TrendingUp, Play, Gift, Award, Download, Shield,
-  Scissors, Check, X, Plus
+  Scissors, Check, X, Plus, Home, ArrowUpRight, Heart, Star
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -89,6 +89,8 @@ export default function ContractDetailPage() {
     { amount: '', due_date: '' }, { amount: '', due_date: '' }
   ])
   const [savingDp, setSavingDp] = useState(false)
+  // Customer Options
+  const [customerOptions, setCustomerOptions] = useState<any>(null)
 
   useEffect(() => { loadContract() }, [id])
 
@@ -101,6 +103,10 @@ export default function ContractDetailPage() {
         setPayments(data.payments)
         setProgress(data.progress)
         loadDownPayment()
+        // Load customer options for completed/delivered contracts
+        if (['completed', 'delivered'].includes(data.contract?.status)) {
+          loadCustomerOptions()
+        }
       }
     } catch (err) {
       console.error('Error loading contract:', err)
@@ -119,6 +125,16 @@ export default function ContractDetailPage() {
       }
     } catch (err) {
       console.error('Error loading down payment:', err)
+    }
+  }
+
+  const loadCustomerOptions = async () => {
+    try {
+      const res = await fetch(`/api/capital/contracts/${id}/customer-options`)
+      const data = await res.json()
+      if (data.ok) setCustomerOptions(data)
+    } catch (err) {
+      console.error('Error loading customer options:', err)
     }
   }
 
@@ -609,6 +625,112 @@ export default function ContractDetailPage() {
                 Los documentos (Bill of Sale y Título) están disponibles en el portal del cliente.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Options — for completed/delivered contracts */}
+      {customerOptions && customerOptions.is_eligible && (
+        <div className="card-luxury">
+          <div className="p-5 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)' }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--gold-100)' }}>
+              <Star className="w-5 h-5" style={{ color: 'var(--gold-700)' }} />
+            </div>
+            <div>
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Opciones Post-Compra</h3>
+              <p className="text-xs" style={{ color: 'var(--slate)' }}>Opciones disponibles para el cliente tras completar el contrato</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            {/* Financial Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Precio Compra</p>
+                <p className="text-lg font-bold mt-1" style={{ color: 'var(--charcoal)' }}>
+                  {fmt(customerOptions.financial_summary?.purchase_price || 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Total Pagado</p>
+                <p className="text-lg font-bold mt-1" style={{ color: 'var(--success)' }}>
+                  {fmt(customerOptions.financial_summary?.total_paid || 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Enganche</p>
+                <p className="text-lg font-bold mt-1" style={{ color: 'var(--charcoal)' }}>
+                  {fmt(customerOptions.financial_summary?.down_payment || 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Rentas Pagadas</p>
+                <p className="text-lg font-bold mt-1" style={{ color: 'var(--charcoal)' }}>
+                  {fmt(customerOptions.financial_summary?.total_rent_paid || 0)}
+                </p>
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {customerOptions.options?.map((option: any) => (
+                <div key={option.key} className="p-4 rounded-xl border" style={{ borderColor: 'var(--stone)' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{
+                      backgroundColor: option.key === 'repurchase' ? 'var(--info-light)' : 'var(--success-light)',
+                    }}>
+                      {option.key === 'repurchase' ? (
+                        <Home className="w-4.5 h-4.5" style={{ color: 'var(--info)' }} />
+                      ) : (
+                        <ArrowUpRight className="w-4.5 h-4.5" style={{ color: 'var(--success)' }} />
+                      )}
+                    </div>
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{option.title}</h4>
+                  </div>
+                  <p className="text-sm mb-3" style={{ color: 'var(--slate)' }}>{option.description}</p>
+                  <ul className="space-y-2">
+                    {option.details?.map((detail: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--success)' }} />
+                        <span>{detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {option.estimated_discount && (
+                    <div className="mt-3 p-2 rounded-md text-sm font-medium text-center" style={{ backgroundColor: 'var(--info-light)', color: 'var(--info)' }}>
+                      Descuento estimado: {fmt(option.estimated_discount)}
+                    </div>
+                  )}
+                  {option.credit_amount && (
+                    <div className="mt-3 p-2 rounded-md text-sm font-medium text-center" style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
+                      Credito estimado: {fmt(option.credit_amount)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Loyalty Programs */}
+            {customerOptions.loyalty_programs && (
+              <div className="mt-2">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                  <Heart className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                  {customerOptions.loyalty_programs.title}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {customerOptions.loyalty_programs.programs?.map((program: any) => (
+                    <div key={program.key} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
+                      <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{program.title}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>{program.description}</p>
+                      {program.min_bonus && (
+                        <p className="text-xs font-semibold mt-2" style={{ color: 'var(--gold-700)' }}>
+                          ${program.min_bonus.toLocaleString()} - ${program.max_bonus.toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
