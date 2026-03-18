@@ -314,7 +314,7 @@ function NewSaleContent() {
 
   // Only operations roles can earn commissions
   const COMMISSION_ROLES = ['operations', 'comprador', 'vendedor']
-  const commissionEligible = teamUsers.filter(u => COMMISSION_ROLES.includes(u.role))
+  const commissionEligible = teamUsers.filter(u => u.role && COMMISSION_ROLES.includes(u.role))
   const filteredEmployees = commissionEligible.filter(u =>
     u.name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
     u.email?.toLowerCase().includes(employeeSearch.toLowerCase())
