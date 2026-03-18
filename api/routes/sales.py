@@ -1254,41 +1254,62 @@ async def list_commission_payments(
     """List commission payments with optional filters by month/year, employee, status."""
     from datetime import date
 
-    query = sb.table("commission_payments").select(
-        "*, sales(id, sale_type, sale_price, created_at, property_id, properties(address)), users!commission_payments_employee_id_fkey(name, email, role)"
-    )
+    query = sb.table("commission_payments").select("*")
 
     if status:
         query = query.eq("status", status)
     if employee_id:
         query = query.eq("employee_id", employee_id)
 
-    # Filter by month/year via join on sales.created_at
     if month or year:
         today = date.today()
         m = month or today.month
         y = year or today.year
         start = f"{y}-{m:02d}-01"
         end = f"{y}-{m + 1:02d}-01" if m < 12 else f"{y + 1}-01-01"
-        # We need to filter by sale creation date
         query = query.gte("created_at", start).lt("created_at", end)
 
     query = query.order("created_at", desc=True)
     result = query.execute()
 
     payments = result.data or []
-    # Flatten nested data for frontend
+
+    # Resolve employee and sale info manually (avoids complex join issues)
     for p in payments:
-        sale = p.pop("sales", None) or {}
-        user = p.pop("users", None) or {}
-        p["employee_name"] = user.get("name", "Desconocido")
-        p["employee_email"] = user.get("email", "")
-        p["employee_role"] = user.get("role", "")
-        p["sale_type"] = sale.get("sale_type", "")
-        p["sale_price"] = sale.get("sale_price", 0)
-        p["sale_created_at"] = sale.get("created_at", "")
-        props = sale.get("properties", {}) or {}
-        p["property_address"] = props.get("address", "")
+        # Employee info
+        try:
+            emp = sb.table("users").select("name, email, role").eq("id", p["employee_id"]).single().execute()
+            p["employee_name"] = emp.data["name"] if emp.data else "Desconocido"
+            p["employee_email"] = emp.data.get("email", "") if emp.data else ""
+            p["employee_role"] = emp.data.get("role", "") if emp.data else ""
+        except Exception:
+            p["employee_name"] = "Desconocido"
+            p["employee_email"] = ""
+            p["employee_role"] = ""
+
+        # Sale info
+        try:
+            sale = sb.table("sales").select("sale_type, sale_price, created_at, property_id").eq("id", p["sale_id"]).single().execute()
+            if sale.data:
+                p["sale_type"] = sale.data.get("sale_type", "")
+                p["sale_price"] = sale.data.get("sale_price", 0)
+                p["sale_created_at"] = sale.data.get("created_at", "")
+                # Property address
+                try:
+                    prop = sb.table("properties").select("address").eq("id", sale.data["property_id"]).single().execute()
+                    p["property_address"] = prop.data["address"] if prop.data else ""
+                except Exception:
+                    p["property_address"] = ""
+            else:
+                p["sale_type"] = ""
+                p["sale_price"] = 0
+                p["sale_created_at"] = ""
+                p["property_address"] = ""
+        except Exception:
+            p["sale_type"] = ""
+            p["sale_price"] = 0
+            p["sale_created_at"] = ""
+            p["property_address"] = ""
 
     return {"ok": True, "payments": payments}
 
