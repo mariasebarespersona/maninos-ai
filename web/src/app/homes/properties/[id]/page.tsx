@@ -247,8 +247,12 @@ export default function PropertyDetailPage() {
   }
 
   const handleSmsProvider = async (providerId: string, move?: any) => {
-    const origin = move?.origin_city || newMove.origin_city || ''
-    const dest = move?.destination_city || newMove.destination_city || ''
+    const originAddr = move?.origin_address || newMove.origin_address || ''
+    const originCity = move?.origin_city || newMove.origin_city || ''
+    const origin = originAddr ? `${originAddr}, ${originCity}` : originCity
+    const destAddr = move?.destination_address || newMove.destination_address || ''
+    const destCity = move?.destination_city || newMove.destination_city || ''
+    const dest = destAddr ? `${destAddr}, ${destCity}` : destCity
     const addr = property?.address || ''
     try {
       const params = new URLSearchParams({
