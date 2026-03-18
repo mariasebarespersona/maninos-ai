@@ -230,11 +230,34 @@ export default function PropertyDetailPage() {
     }
   }
 
+  // Cost breakdown for the financial card
+  const [costBreakdown, setCostBreakdown] = useState<{
+    purchase_price: number
+    commission: number
+    renovation_cost: number
+    move_cost: number
+    margin: number
+    recommended_sale_price: number
+  } | null>(null)
+
+  const fetchCostBreakdown = async () => {
+    try {
+      const res = await fetch(`/api/properties/${params.id}/post-renovation-price`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ok) setCostBreakdown(data)
+      }
+    } catch (err) {
+      // Non-critical, don't block the page
+    }
+  }
+
   useEffect(() => {
     fetchProperty()
     fetchTransfers()
     fetchMoves()
     fetchMoverProviders()
+    fetchCostBreakdown()
   }, [params.id])
 
   const fetchMoverProviders = async () => {
@@ -1222,25 +1245,62 @@ ${price}
                 <DollarSign className="w-5 h-5 text-gold-500" />
                 Financiero
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center">
-                  <span className="text-navy-500">Precio de compra</span>
+                  <span className="text-navy-500">Compra</span>
                   <span className="font-semibold text-navy-900">
                     ${property.purchase_price?.toLocaleString() || '—'}
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-navy-500">Precio de venta</span>
-                  <span className="font-semibold text-gold-600">
-                    ${property.sale_price?.toLocaleString() || '—'}
-                  </span>
-                </div>
-                {property.purchase_price && property.sale_price && (
-                  <div className="pt-3 border-t border-navy-100">
+                {costBreakdown && (
+                  <>
+                    {costBreakdown.renovation_cost > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-navy-500">Renovación</span>
+                        <span className="text-navy-700">${costBreakdown.renovation_cost.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {costBreakdown.move_cost > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-navy-500">Movida</span>
+                        <span className="text-navy-700">${costBreakdown.move_cost.toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
-                      <span className="text-navy-500">Ganancia potencial</span>
-                      <span className="font-semibold text-emerald-600">
-                        ${(property.sale_price - property.purchase_price).toLocaleString()}
+                      <span className="text-navy-500">Comisión</span>
+                      <span className="text-navy-700">${costBreakdown.commission.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-navy-500">Margen</span>
+                      <span className="text-navy-700">${costBreakdown.margin.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-2 border-t border-navy-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-navy-500 font-medium">Precio mínimo venta</span>
+                        <span className="font-bold text-amber-600">
+                          ${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="pt-2 border-t border-navy-100">
+                  <div className="flex justify-between items-center">
+                    <span className="text-navy-500 font-medium">Precio de venta</span>
+                    <span className="font-bold text-gold-600">
+                      ${property.sale_price?.toLocaleString() || '—'}
+                    </span>
+                  </div>
+                </div>
+                {property.purchase_price && property.sale_price && costBreakdown && (
+                  <div className="pt-2 border-t border-navy-100">
+                    <div className="flex justify-between items-center">
+                      <span className="text-navy-500">Ganancia real</span>
+                      <span className={`font-bold ${
+                        property.sale_price - costBreakdown.recommended_sale_price + costBreakdown.margin >= 0
+                          ? 'text-emerald-600' : 'text-red-600'
+                      }`}>
+                        ${(property.sale_price - costBreakdown.recommended_sale_price + costBreakdown.margin).toLocaleString()}
                       </span>
                     </div>
                   </div>
