@@ -77,7 +77,7 @@ const ROLE_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
 }
 
-const COMMISSION_ELIGIBLE_ROLES = ['operations', 'admin', 'comprador', 'vendedor']
+const COMMISSION_ELIGIBLE_ROLES = ['operations', 'comprador', 'vendedor']
 
 // Roles that can see ALL commissions (admin + treasury)
 const FULL_VIEW_ROLES = ['admin', 'treasury']

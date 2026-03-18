@@ -312,7 +312,10 @@ function NewSaleContent() {
     c.email?.toLowerCase().includes(clientSearch.toLowerCase())
   )
 
-  const filteredEmployees = teamUsers.filter(u =>
+  // Only operations roles can earn commissions
+  const COMMISSION_ROLES = ['operations', 'comprador', 'vendedor']
+  const commissionEligible = teamUsers.filter(u => COMMISSION_ROLES.includes(u.role))
+  const filteredEmployees = commissionEligible.filter(u =>
     u.name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
     u.email?.toLowerCase().includes(employeeSearch.toLowerCase())
   )
@@ -717,9 +720,9 @@ function NewSaleContent() {
                   className="w-full mt-2 p-2.5 rounded-lg border border-blue-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                 >
                   <option value="">— Sin asignar —</option>
-                  {teamUsers.map((u) => (
+                  {commissionEligible.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name}{u.email ? ` (${u.email})` : ''}{u.id === currentTeamUserId ? ' ← tú' : ''}
+                      {u.name}{u.email ? ` (${u.email})` : ''}
                     </option>
                   ))}
                 </select>
@@ -734,9 +737,9 @@ function NewSaleContent() {
                   className="w-full mt-2 p-2.5 rounded-lg border border-emerald-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
                 >
                   <option value="">— Sin asignar —</option>
-                  {teamUsers.map((u) => (
+                  {commissionEligible.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name}{u.email ? ` (${u.email})` : ''}{u.id === currentTeamUserId ? ' ← tú' : ''}
+                      {u.name}{u.email ? ` (${u.email})` : ''}
                     </option>
                   ))}
                 </select>
