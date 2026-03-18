@@ -238,15 +238,15 @@ export default function PropertyDetailPage() {
   }
 
   const handleSelectProvider = (provider: any) => {
-    setNewMove({
-      ...newMove,
+    setNewMove(prev => ({
+      ...prev,
       moving_company: provider.company || provider.name,
       driver_name: provider.name,
       driver_phone: provider.phone,
-    })
+    }))
   }
 
-  const handleWhatsAppProvider = async (providerId: string, move?: any) => {
+  const handleSmsProvider = async (providerId: string, move?: any) => {
     const origin = move?.origin_city || newMove.origin_city || ''
     const dest = move?.destination_city || newMove.destination_city || ''
     const addr = property?.address || ''
@@ -257,13 +257,13 @@ export default function PropertyDetailPage() {
         origin,
         destination: dest,
       })
-      const res = await fetch(`/api/moves/providers/whatsapp-url?${params}`)
+      const res = await fetch(`/api/moves/providers/sms-url?${params}`)
       if (res.ok) {
         const data = await res.json()
         if (data.ok) window.open(data.url, '_blank')
       }
     } catch (err) {
-      toast.error('Error generando link WhatsApp')
+      toast.error('Error generando link SMS')
     }
   }
 
@@ -1579,18 +1579,18 @@ ${price}
                           )}
                         </div>
 
-                        {/* WhatsApp + Payment actions */}
+                        {/* SMS + Payment actions */}
                         <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
-                          {/* WhatsApp to provider */}
+                          {/* SMS to provider */}
                           {move.driver_phone && moverProviders.length > 0 && (() => {
                             const matchedProvider = moverProviders.find((p: any) => p.phone === move.driver_phone || p.name === move.driver_name)
                             if (matchedProvider) {
                               return (
                                 <button
-                                  onClick={() => handleWhatsAppProvider(matchedProvider.id, move)}
+                                  onClick={() => handleSmsProvider(matchedProvider.id, move)}
                                   className="text-xs px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1"
                                 >
-                                  💬 WhatsApp a {matchedProvider.name.split(' ')[0]}
+                                  📱 Mensaje a {matchedProvider.name.split(' ')[0]}
                                 </button>
                               )
                             }
@@ -1931,10 +1931,10 @@ ${price}
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleWhatsAppProvider(prov.id)}
+                          onClick={() => handleSmsProvider(prov.id)}
                           className="text-xs px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1"
                         >
-                          💬 WhatsApp
+                          📱 Mensaje
                         </button>
                       </div>
                     ))}

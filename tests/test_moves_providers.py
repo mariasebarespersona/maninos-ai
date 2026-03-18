@@ -1,9 +1,9 @@
 """
-Test script for Moves Providers, WhatsApp, and Payment Request features.
+Test script for Moves Providers, SMS, and Payment Request features.
 
 Tests verify:
 1. Mover providers list returns correct data
-2. WhatsApp URL generation with message
+2. SMS URL generation with message
 3. Payment request creates payment_order and updates move
 4. Payment request fails for already-paid moves
 5. Payment request fails for moves with no cost
@@ -60,45 +60,45 @@ def test_list_providers():
     print("PASS test_list_providers")
 
 
-# ── TEST: WhatsApp URL generation ──
-def test_whatsapp_url():
-    result = asyncio.run(moves_mod.get_whatsapp_url(
+# ── TEST: SMS URL generation ──
+def test_sms_url():
+    result = asyncio.run(moves_mod.get_sms_url(
         provider_id="trujillo",
         property_address="123 Main St",
         origin="Conroe",
         destination="Houston",
     ))
     assert result["ok"] is True
-    assert "wa.me/19367183321" in result["url"]
-    assert "text=" in result["url"]
+    assert "sms:19367183321" in result["url"]
+    assert "body=" in result["url"]
     assert result["provider"]["name"] == "Angel Trujillo"
     assert "123 Main St" in result["message"]
     assert "Conroe" in result["message"]
     assert "Houston" in result["message"]
-    print("PASS test_whatsapp_url")
+    print("PASS test_sms_url")
 
 
-# ── TEST: WhatsApp URL with custom message ──
-def test_whatsapp_url_custom_message():
-    result = asyncio.run(moves_mod.get_whatsapp_url(
+# ── TEST: SMS URL with custom message ──
+def test_sms_url_custom_message():
+    result = asyncio.run(moves_mod.get_sms_url(
         provider_id="koko",
         message="Hola Josue, necesitamos mover una casa manana",
     ))
     assert result["ok"] is True
-    assert "wa.me/18323586264" in result["url"]
+    assert "sms:18323586264" in result["url"]
     assert "manana" in result["message"]
-    print("PASS test_whatsapp_url_custom_message")
+    print("PASS test_sms_url_custom_message")
 
 
-# ── TEST: WhatsApp invalid provider ──
-def test_whatsapp_url_invalid_provider():
+# ── TEST: SMS invalid provider ──
+def test_sms_url_invalid_provider():
     from fastapi import HTTPException
     try:
-        asyncio.run(moves_mod.get_whatsapp_url(provider_id="nonexistent"))
+        asyncio.run(moves_mod.get_sms_url(provider_id="nonexistent"))
         assert False, "Should have raised"
     except HTTPException as e:
         assert e.status_code == 404
-    print("PASS test_whatsapp_url_invalid_provider")
+    print("PASS test_sms_url_invalid_provider")
 
 
 # ── TEST: Request payment creates order ──
@@ -200,9 +200,9 @@ def test_movers_data():
 # ── Run all tests ──
 if __name__ == "__main__":
     test_list_providers()
-    test_whatsapp_url()
-    test_whatsapp_url_custom_message()
-    test_whatsapp_url_invalid_provider()
+    test_sms_url()
+    test_sms_url_custom_message()
+    test_sms_url_invalid_provider()
     test_request_payment()
     test_request_payment_already_paid()
     test_request_payment_no_cost()

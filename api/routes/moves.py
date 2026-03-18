@@ -340,15 +340,15 @@ async def list_mover_providers():
     return {"ok": True, "providers": MOVERS}
 
 
-@router.get("/providers/whatsapp-url")
-async def get_whatsapp_url(
+@router.get("/providers/sms-url")
+async def get_sms_url(
     provider_id: str = Query(...),
     property_address: str = "",
     origin: str = "",
     destination: str = "",
     message: Optional[str] = None,
 ):
-    """Generate a WhatsApp URL to contact a mover provider."""
+    """Generate an SMS URL to contact a mover provider."""
     provider = next((p for p in MOVERS if p["id"] == provider_id), None)
     if not provider:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -366,11 +366,12 @@ async def get_whatsapp_url(
             text += f" desde {origin} hasta {destination}"
         elif destination:
             text += f" hacia {destination}"
-        text += ". ¿Tiene disponibilidad? ¿Cual seria el costo?"
+        text += ". Tiene disponibilidad? Cual seria el costo?"
 
     import urllib.parse
     encoded = urllib.parse.quote(str(text))
-    url = f"https://wa.me/{provider['phone_raw']}?text={encoded}"
+    phone = provider["phone_raw"]
+    url = f"sms:{phone}&body={encoded}"
 
     return {"ok": True, "url": url, "provider": provider, "message": text}
 
