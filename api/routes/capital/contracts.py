@@ -678,6 +678,70 @@ async def deliver_title(contract_id: str):
         except Exception as email_err:
             logger.warning(f"Could not send delivery email: {email_err}")
 
+        # Send post-purchase options email to client
+        try:
+            from api.services.email_service import send_client_post_purchase_email
+
+            # Calculate options data (same as customer-options endpoint)
+            payments_for_options = sb.table("rto_payments").select(
+                "id, paid_amount, status"
+            ).eq("rto_contract_id", contract_id).eq("status", "paid").execute()
+            total_rent_paid = sum(float(p.get("paid_amount", 0)) for p in (payments_for_options.data or []))
+            total_paid = total_rent_paid + float(c.get("down_payment", 0))
+            purchase_price = float(c.get("purchase_price", 0))
+            loyalty_discount = round(purchase_price * 5 / 100, 2)
+            credit_amount = round(total_paid * 20 / 100, 2)
+
+            options_data = {
+                "financial_summary": {
+                    "purchase_price": purchase_price,
+                    "total_paid": round(total_paid, 2),
+                },
+                "options": [
+                    {
+                        "key": "repurchase",
+                        "title": "Opcion 1: Recompra de la Casa",
+                        "description": "Te ofrecemos recomprar tu casa a valor de mercado con un descuento especial por lealtad.",
+                        "details": [
+                            f"Recompra a valor de mercado menos 5% de descuento por lealtad (ahorro estimado: ${loyalty_discount:,.2f})",
+                            "Podemos revender o re-alquilar la propiedad a un nuevo inquilino",
+                        ],
+                        "estimated_discount": loyalty_discount,
+                    },
+                    {
+                        "key": "upgrade",
+                        "title": "Opcion 2: Upgrade a Nueva Casa",
+                        "description": "Programa trade-in: intercambia tu casa actual por una nueva con un nuevo contrato RTO.",
+                        "details": [
+                            "Intercambiar tu casa actual por una nueva mobile home con nuevo contrato",
+                            f"Credito del 20% de tus pagos anteriores hacia el nuevo contrato (credito estimado: ${credit_amount:,.2f})",
+                        ],
+                        "credit_amount": credit_amount,
+                    },
+                ],
+                "loyalty_programs": {
+                    "title": "Programas de Lealtad",
+                    "programs": [
+                        {"key": "referral_bonus", "title": "Bono por Referido",
+                         "description": "Bonos por referir nuevos inquilinos", "min_bonus": 500, "max_bonus": 1000},
+                        {"key": "repeat_discount", "title": "Descuento Repeat Customer",
+                         "description": "Descuentos en contratos futuros para clientes recurrentes"},
+                        {"key": "satisfaction_survey", "title": "Encuesta de Satisfaccion",
+                         "description": "Tu opinion nos ayuda a mejorar"},
+                    ],
+                },
+            }
+
+            prop_address = f"{c['properties'].get('address', '')}, {c['properties'].get('city', '')}"
+            send_client_post_purchase_email(
+                client_email=c["clients"].get("email"),
+                client_name=c["clients"]["name"],
+                property_address=prop_address,
+                options_data=options_data,
+            )
+        except Exception as opt_err:
+            logger.warning(f"Could not send post-purchase options email: {opt_err}")
+
         return {
             "ok": True,
             "message": "🎉 Título entregado exitosamente. El cliente ha sido notificado.",

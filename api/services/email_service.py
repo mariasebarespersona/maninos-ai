@@ -1758,3 +1758,135 @@ def process_investor_followup_emails() -> dict:
         logger.error(f"[email_service] Error processing investor followup emails: {e}")
         return {"ok": False, "error": str(e)}
 
+
+# =============================================================================
+# CLIENT POST-PURCHASE OPTIONS EMAIL (RTO completed)
+# =============================================================================
+
+def _client_post_purchase_html(
+    client_name: str,
+    property_address: str,
+    options_data: dict,
+) -> str:
+    """HTML template for client post-purchase options after RTO completion."""
+    financial = options_data.get("financial_summary", {})
+    purchase_price = float(financial.get("purchase_price", 0))
+    total_paid = float(financial.get("total_paid", 0))
+    options = options_data.get("options", [])
+    loyalty = options_data.get("loyalty_programs", {})
+
+    # Build options sections
+    options_html = ""
+    for opt in options:
+        icon = "🏠" if opt["key"] == "repurchase" else "⬆️"
+        details_html = ""
+        for detail in opt.get("details", []):
+            details_html += f'<li style="margin: 6px 0; color: #4a5568;">{detail}</li>'
+
+        highlight_html = ""
+        if opt.get("estimated_discount"):
+            highlight_html = f"""
+            <div style="background: #eff6ff; border-radius: 6px; padding: 12px; margin-top: 12px; text-align: center;">
+                <span style="color: #1e40af; font-weight: 600;">Ahorro estimado: ${opt['estimated_discount']:,.2f}</span>
+            </div>"""
+        elif opt.get("credit_amount"):
+            highlight_html = f"""
+            <div style="background: #f0fdf4; border-radius: 6px; padding: 12px; margin-top: 12px; text-align: center;">
+                <span style="color: #166534; font-weight: 600;">Credito estimado: ${opt['credit_amount']:,.2f}</span>
+            </div>"""
+
+        options_html += f"""
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin: 12px 0;">
+            <h3 style="margin: 0 0 8px; color: #1e3a5f; font-size: 16px;">{icon} {opt['title']}</h3>
+            <p style="margin: 0 0 12px; color: #718096; font-size: 14px;">{opt['description']}</p>
+            <ul style="padding-left: 20px; margin: 0;">{details_html}</ul>
+            {highlight_html}
+        </div>
+        """
+
+    # Loyalty programs
+    loyalty_html = ""
+    for prog in loyalty.get("programs", []):
+        bonus_text = ""
+        if prog.get("min_bonus"):
+            bonus_text = f' <strong style="color: #c9a227;">(${prog["min_bonus"]:,} - ${prog["max_bonus"]:,})</strong>'
+        loyalty_html += f"""
+        <li style="margin: 8px 0; color: #4a5568;">
+            <strong>{prog['title']}</strong>: {prog['description']}{bonus_text}
+        </li>"""
+
+    content = f"""
+    <div class="header">
+        <h1>Opciones Post-Compra</h1>
+        <p>Tu casa, tus opciones — Maninos Homes</p>
+    </div>
+    <div class="body">
+        <p>Estimado/a <strong>{client_name}</strong>,</p>
+
+        <p>Ahora que eres propietario/a de tu casa en <strong>{property_address}</strong>,
+        queremos informarte sobre las opciones disponibles para ti como parte de la familia Maninos.</p>
+
+        <div class="highlight">
+            <table style="width: 100%; font-size: 15px; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 6px 0; color: #718096;">Tu Propiedad</td>
+                    <td style="padding: 6px 0; text-align: right; font-weight: 600;">{property_address}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 6px 0; color: #718096;">Valor de Compra</td>
+                    <td style="padding: 6px 0; text-align: right; font-weight: 600;">${purchase_price:,.2f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 6px 0; color: #718096;">Total Pagado</td>
+                    <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #16a34a;">${total_paid:,.2f}</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2 style="color: #1e3a5f; font-size: 18px; margin-top: 28px;">Tus Opciones</h2>
+
+        {options_html}
+
+        <h2 style="color: #1e3a5f; font-size: 18px; margin-top: 28px;">🎁 {loyalty.get('title', 'Programas de Lealtad')}</h2>
+
+        <ul style="padding-left: 20px;">
+            {loyalty_html}
+        </ul>
+
+        <hr class="divider">
+
+        <p style="color: #4a5568;">
+            Para aprovechar cualquiera de estas opciones o si tienes preguntas,
+            contactanos al <strong>{COMPANY_PHONE}</strong> o responde directamente a este correo.
+        </p>
+
+        <p style="font-size: 14px; color: #718096;">
+            Gracias por ser parte de la familia Maninos Homes.
+        </p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_client_post_purchase_email(
+    client_email: str,
+    client_name: str,
+    property_address: str,
+    options_data: dict,
+) -> dict:
+    """Send post-purchase options email to RTO client after title delivery."""
+    try:
+        if not client_email:
+            logger.warning(f"[email_service] No email for client {client_name}, skipping post-purchase email")
+            return {"ok": False, "error": "No client email"}
+
+        html = _client_post_purchase_html(client_name, property_address, options_data)
+        subject = f"Tus opciones como propietario — {property_address}"
+
+        result = send_email(to=[client_email], subject=subject, html=html)
+        logger.info(f"[email_service] Post-purchase options email sent to {client_email}")
+        return {"ok": True, "type": "client_post_purchase", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send post-purchase email: {e}")
+        return {"ok": False, "error": str(e)}
+

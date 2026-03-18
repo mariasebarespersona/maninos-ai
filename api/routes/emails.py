@@ -15,6 +15,7 @@ from api.services.email_service import (
     send_investor_followup_email,
     send_investor_completion_email,
     process_investor_followup_emails,
+    send_client_post_purchase_email,
 )
 from api.services.scheduler_service import get_scheduler_status
 from tools.supabase_client import sb
@@ -179,6 +180,59 @@ async def test_investor_completion_email(
         investor_email=to,
         investor_name="Inversor de Prueba",
         note_data=sample_note,
+    )
+    return result
+
+
+@router.post("/client/test-post-purchase")
+async def test_client_post_purchase_email(
+    to: str = Query("mariasebares9@gmail.com", description="Test recipient email"),
+):
+    """Test: Send client post-purchase options email with sample data."""
+    sample_options = {
+        "financial_summary": {
+            "purchase_price": 45000,
+            "total_paid": 52000,
+        },
+        "options": [
+            {
+                "key": "repurchase",
+                "title": "Opcion 1: Recompra de la Casa",
+                "description": "Te ofrecemos recomprar tu casa a valor de mercado con un descuento especial por lealtad.",
+                "details": [
+                    "Recompra a valor de mercado menos 5% de descuento por lealtad (ahorro estimado: $2,250.00)",
+                    "Podemos revender o re-alquilar la propiedad a un nuevo inquilino",
+                ],
+                "estimated_discount": 2250,
+            },
+            {
+                "key": "upgrade",
+                "title": "Opcion 2: Upgrade a Nueva Casa",
+                "description": "Programa trade-in: intercambia tu casa actual por una nueva con un nuevo contrato RTO.",
+                "details": [
+                    "Intercambiar tu casa actual por una nueva mobile home con nuevo contrato",
+                    "Credito del 20% de tus pagos anteriores hacia el nuevo contrato (credito estimado: $10,400.00)",
+                ],
+                "credit_amount": 10400,
+            },
+        ],
+        "loyalty_programs": {
+            "title": "Programas de Lealtad",
+            "programs": [
+                {"key": "referral_bonus", "title": "Bono por Referido",
+                 "description": "Bonos por referir nuevos inquilinos", "min_bonus": 500, "max_bonus": 1000},
+                {"key": "repeat_discount", "title": "Descuento Repeat Customer",
+                 "description": "Descuentos en contratos futuros para clientes recurrentes"},
+                {"key": "satisfaction_survey", "title": "Encuesta de Satisfaccion",
+                 "description": "Tu opinion nos ayuda a mejorar"},
+            ],
+        },
+    }
+    result = send_client_post_purchase_email(
+        client_email=to,
+        client_name="Cliente de Prueba",
+        property_address="123 Main St, Houston TX",
+        options_data=sample_options,
     )
     return result
 

@@ -40,6 +40,8 @@ from api.services.email_service import (
     _investor_followup_html,
     _investor_completion_html,
     process_investor_followup_emails,
+    send_client_post_purchase_email,
+    _client_post_purchase_html,
 )
 
 
@@ -219,6 +221,60 @@ def test_process_followup_emails():
     print("PASS test_process_followup_emails")
 
 
+# ── TEST: Client post-purchase email HTML ──
+def test_client_post_purchase_html():
+    options_data = {
+        "financial_summary": {"purchase_price": 45000, "total_paid": 52000},
+        "options": [
+            {"key": "repurchase", "title": "Opcion 1: Recompra", "description": "Recompra con descuento.",
+             "details": ["5% descuento lealtad"], "estimated_discount": 2250},
+            {"key": "upgrade", "title": "Opcion 2: Upgrade", "description": "Trade-in program.",
+             "details": ["20% credito"], "credit_amount": 10400},
+        ],
+        "loyalty_programs": {
+            "title": "Programas de Lealtad",
+            "programs": [
+                {"key": "referral_bonus", "title": "Bono Referido", "description": "Bonos por referir", "min_bonus": 500, "max_bonus": 1000},
+            ],
+        },
+    }
+    html = _client_post_purchase_html("Maria Test", "456 Oak Ave, Dallas", options_data)
+
+    assert "Maria Test" in html
+    assert "456 Oak Ave, Dallas" in html
+    assert "$45,000.00" in html
+    assert "$52,000.00" in html
+    assert "Recompra" in html
+    assert "Upgrade" in html
+    assert "$2,250.00" in html
+    assert "$10,400.00" in html
+    assert "Bono Referido" in html
+    assert "$500" in html
+    assert "Opciones Post-Compra" in html
+    print("PASS test_client_post_purchase_html")
+
+
+def test_client_post_purchase_send():
+    _mock_email.send_email.reset_mock()
+    options_data = {
+        "financial_summary": {"purchase_price": 30000, "total_paid": 38000},
+        "options": [], "loyalty_programs": {"title": "Lealtad", "programs": []},
+    }
+    result = send_client_post_purchase_email("client@test.com", "Test Client", "123 Main St", options_data)
+    assert result["ok"] is True
+    assert result["type"] == "client_post_purchase"
+    _mock_email.send_email.assert_called_once()
+    call_args = _mock_email.send_email.call_args
+    assert "123 Main St" in call_args[1]["subject"]
+    print("PASS test_client_post_purchase_send")
+
+
+def test_client_post_purchase_no_email():
+    result = send_client_post_purchase_email("", "No Email", "addr", {})
+    assert result["ok"] is False
+    print("PASS test_client_post_purchase_no_email")
+
+
 # ── Run all tests ──
 if __name__ == "__main__":
     test_welcome_email_html()
@@ -229,4 +285,7 @@ if __name__ == "__main__":
     test_completion_email_html()
     test_completion_email_send()
     test_process_followup_emails()
-    print("\n✅ All investor email tests passed!")
+    test_client_post_purchase_html()
+    test_client_post_purchase_send()
+    test_client_post_purchase_no_email()
+    print("\n✅ All email tests passed!")
