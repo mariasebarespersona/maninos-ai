@@ -1348,3 +1348,367 @@ def process_promissory_maturity_alerts(admin_email: str = "info@maninoscapital.c
         logger.error(f"[email_service] Error processing promissory maturity alerts: {e}")
         return {"ok": False, "error": str(e)}
 
+
+# =============================================================================
+# INVESTOR EMAILS
+# =============================================================================
+
+def _investor_welcome_html(
+    investor_name: str,
+    note_data: dict,
+) -> str:
+    """HTML template for investor welcome email with promissory note details."""
+    loan_amount = float(note_data.get("loan_amount", 0))
+    annual_rate = float(note_data.get("annual_rate", 12))
+    term_months = int(note_data.get("term_months", 12))
+    total_due = float(note_data.get("total_due", 0))
+    total_interest = float(note_data.get("total_interest", 0))
+    start_date = note_data.get("start_date", "")
+    maturity_date = note_data.get("maturity_date", "")
+    note_id = note_data.get("id", "")
+
+    content = f"""
+    <div class="header">
+        <h1>Bienvenido a Maninos Capital</h1>
+        <p>Gracias por su confianza como inversionista</p>
+    </div>
+    <div class="body">
+        <p>Estimado/a <strong>{investor_name}</strong>,</p>
+
+        <p>Le damos la bienvenida a Maninos Capital. Su nota promisoria ha sido creada exitosamente.
+        A continuacion encontrara los detalles de su inversion:</p>
+
+        <div class="highlight">
+            <h3 style="margin-top: 0; color: #1e3a5f;">Resumen de la Nota Promisoria</h3>
+            <table style="width: 100%; font-size: 15px; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Principal</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">${loan_amount:,.2f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Tasa de Interes Anual</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{annual_rate}%</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Plazo</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{term_months} meses</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Interes Total</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">${total_interest:,.2f}</td>
+                </tr>
+                <tr style="border-top: 2px solid #c9a227;">
+                    <td style="padding: 12px 0; color: #1e3a5f; font-weight: 700;">Total al Vencimiento</td>
+                    <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #1e3a5f; font-size: 18px;">${total_due:,.2f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Fecha de Inicio</td>
+                    <td style="padding: 8px 0; text-align: right;">{start_date}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Fecha de Vencimiento</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{maturity_date}</td>
+                </tr>
+            </table>
+        </div>
+
+        <p>Puede descargar el PDF de su nota promisoria y consultar el estado de su inversion
+        en cualquier momento desde nuestro portal:</p>
+
+        <center>
+            <a href="{APP_URL}/capital/promissory-notes/{note_id}" class="btn">Ver Mi Nota Promisoria</a>
+        </center>
+
+        <hr class="divider">
+
+        <p style="font-size: 14px; color: #718096;">
+            Si tiene alguna pregunta, no dude en contactarnos al <strong>{COMPANY_PHONE}</strong>
+            o responda directamente a este correo.
+        </p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_investor_welcome_email(
+    investor_email: str,
+    investor_name: str,
+    note_data: dict,
+) -> dict:
+    """Send welcome email to investor when a new promissory note is created."""
+    try:
+        if not investor_email:
+            logger.warning(f"[email_service] No email for investor {investor_name}, skipping welcome email")
+            return {"ok": False, "error": "No investor email"}
+
+        html = _investor_welcome_html(investor_name, note_data)
+        loan_amount = float(note_data.get("loan_amount", 0))
+        subject = f"Bienvenido a Maninos Capital — Nota Promisoria ${loan_amount:,.0f}"
+
+        result = send_email(to=[investor_email], subject=subject, html=html)
+        logger.info(f"[email_service] Investor welcome email sent to {investor_email}")
+        return {"ok": True, "type": "investor_welcome", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send investor welcome email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def _investor_followup_html(
+    investor_name: str,
+    summary: dict,
+) -> str:
+    """HTML template for periodic investor follow-up email."""
+    total_invested = float(summary.get("total_invested", 0))
+    total_returned = float(summary.get("total_returned", 0))
+    outstanding = float(summary.get("outstanding", 0))
+    active_notes = int(summary.get("active_notes", 0))
+    notes_detail = summary.get("notes", [])
+
+    rows = ""
+    for n in notes_detail:
+        status_color = "#16a34a" if n["status"] == "paid" else "#c9a227" if n["status"] == "active" else "#dc2626"
+        status_label = "Pagada" if n["status"] == "paid" else "Activa" if n["status"] == "active" else n["status"].capitalize()
+        rows += f"""
+        <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${float(n.get('loan_amount', 0)):,.2f}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">{n.get('annual_rate', 12)}%</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">{n.get('maturity_date', 'N/A')}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${float(n.get('paid_amount', 0)):,.2f}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: {status_color}; font-weight: 600;">{status_label}</td>
+        </tr>
+        """
+
+    content = f"""
+    <div class="header">
+        <h1>Reporte de Inversion</h1>
+        <p>Maninos Capital — Estado de su portafolio</p>
+    </div>
+    <div class="body">
+        <p>Estimado/a <strong>{investor_name}</strong>,</p>
+
+        <p>Le compartimos el estado actual de su inversion con Maninos Capital:</p>
+
+        <div style="display: flex; gap: 12px; margin: 20px 0;">
+            <div style="flex: 1; background: #f0fdf4; border-radius: 8px; padding: 16px; text-align: center;">
+                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Total Invertido</p>
+                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #1e3a5f;">${total_invested:,.2f}</p>
+            </div>
+            <div style="flex: 1; background: #fef9e7; border-radius: 8px; padding: 16px; text-align: center;">
+                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Retornos Pagados</p>
+                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #16a34a;">${total_returned:,.2f}</p>
+            </div>
+            <div style="flex: 1; background: #eff6ff; border-radius: 8px; padding: 16px; text-align: center;">
+                <p style="margin: 0; font-size: 12px; color: #718096; text-transform: uppercase;">Saldo Pendiente</p>
+                <p style="margin: 4px 0 0; font-size: 22px; font-weight: 700; color: #c9a227;">${outstanding:,.2f}</p>
+            </div>
+        </div>
+
+        <h3 style="color: #1e3a5f;">Notas Promisorias ({active_notes} activa{'s' if active_notes != 1 else ''})</h3>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+            <thead>
+                <tr style="background: #283242; color: white;">
+                    <th style="padding: 10px; text-align: left;">Principal</th>
+                    <th style="padding: 10px; text-align: center;">Tasa</th>
+                    <th style="padding: 10px; text-align: left;">Vencimiento</th>
+                    <th style="padding: 10px; text-align: right;">Pagado</th>
+                    <th style="padding: 10px; text-align: left;">Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+
+        <center>
+            <a href="{APP_URL}/capital/investors" class="btn">Ver Portal de Inversiones</a>
+        </center>
+
+        <hr class="divider">
+
+        <p style="font-size: 14px; color: #718096;">
+            Este reporte se genera automaticamente de forma mensual. Para cualquier consulta,
+            contactenos al <strong>{COMPANY_PHONE}</strong>.
+        </p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_investor_followup_email(
+    investor_email: str,
+    investor_name: str,
+    summary: dict,
+) -> dict:
+    """Send periodic follow-up email to investor with investment summary."""
+    try:
+        if not investor_email:
+            logger.warning(f"[email_service] No email for investor {investor_name}, skipping followup")
+            return {"ok": False, "error": "No investor email"}
+
+        html = _investor_followup_html(investor_name, summary)
+        subject = f"Maninos Capital — Reporte de Inversion ({investor_name})"
+
+        result = send_email(to=[investor_email], subject=subject, html=html)
+        logger.info(f"[email_service] Investor followup email sent to {investor_email}")
+        return {"ok": True, "type": "investor_followup", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send investor followup email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def _investor_completion_html(
+    investor_name: str,
+    note_data: dict,
+) -> str:
+    """HTML template for promissory note completion email."""
+    loan_amount = float(note_data.get("loan_amount", 0))
+    total_due = float(note_data.get("total_due", 0))
+    paid_amount = float(note_data.get("paid_amount", 0))
+    annual_rate = float(note_data.get("annual_rate", 12))
+    total_interest = float(note_data.get("total_interest", 0))
+    start_date = note_data.get("start_date", "")
+    maturity_date = note_data.get("maturity_date", "")
+
+    content = f"""
+    <div class="header" style="background: linear-gradient(135deg, #166534 0%, #15803d 100%);">
+        <h1>Nota Promisoria Completada</h1>
+        <p>Su inversion ha sido pagada en su totalidad</p>
+    </div>
+    <div class="body">
+        <p>Estimado/a <strong>{investor_name}</strong>,</p>
+
+        <p>Nos complace informarle que su nota promisoria con Maninos Capital ha sido
+        <strong style="color: #16a34a;">pagada en su totalidad</strong>. A continuacion el resumen final:</p>
+
+        <div class="highlight" style="background: #f0fdf4; border-left-color: #16a34a;">
+            <h3 style="margin-top: 0; color: #166534;">Resumen Final</h3>
+            <table style="width: 100%; font-size: 15px; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Principal Invertido</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">${loan_amount:,.2f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Tasa de Interes</td>
+                    <td style="padding: 8px 0; text-align: right;">{annual_rate}%</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Intereses Ganados</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #16a34a;">${total_interest:,.2f}</td>
+                </tr>
+                <tr style="border-top: 2px solid #16a34a;">
+                    <td style="padding: 12px 0; font-weight: 700; color: #166534;">Total Pagado</td>
+                    <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #166534; font-size: 18px;">${paid_amount:,.2f}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #718096;">Periodo</td>
+                    <td style="padding: 8px 0; text-align: right;">{start_date} — {maturity_date}</td>
+                </tr>
+            </table>
+        </div>
+
+        <p>Agradecemos profundamente su confianza. Si desea reinvertir o explorar nuevas
+        oportunidades de inversion, estamos a su disposicion.</p>
+
+        <center>
+            <a href="{APP_URL}/capital/investors" class="btn" style="background: #166534;">Explorar Nuevas Oportunidades</a>
+        </center>
+
+        <hr class="divider">
+
+        <p style="font-size: 14px; color: #718096;">
+            Gracias por ser parte de Maninos Capital. Para cualquier consulta, contactenos
+            al <strong>{COMPANY_PHONE}</strong>.
+        </p>
+    </div>
+    """
+    return _base_template(content)
+
+
+def send_investor_completion_email(
+    investor_email: str,
+    investor_name: str,
+    note_data: dict,
+) -> dict:
+    """Send email to investor when their promissory note is fully paid."""
+    try:
+        if not investor_email:
+            logger.warning(f"[email_service] No email for investor {investor_name}, skipping completion email")
+            return {"ok": False, "error": "No investor email"}
+
+        html = _investor_completion_html(investor_name, note_data)
+        loan_amount = float(note_data.get("loan_amount", 0))
+        subject = f"Nota Promisoria Completada — ${loan_amount:,.0f} pagada en su totalidad"
+
+        result = send_email(to=[investor_email], subject=subject, html=html)
+        logger.info(f"[email_service] Investor completion email sent to {investor_email}")
+        return {"ok": True, "type": "investor_completion", **result}
+    except Exception as e:
+        logger.error(f"[email_service] Failed to send investor completion email: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def process_investor_followup_emails() -> dict:
+    """
+    Send monthly follow-up emails to all active investors.
+    Queries each investor's notes and payments, builds a summary, and sends email.
+    Called monthly by scheduler job.
+    """
+    try:
+        # Get all active investors with email
+        investors = sb.table("investors") \
+            .select("id, name, email, total_invested") \
+            .eq("status", "active") \
+            .execute()
+
+        if not investors.data:
+            return {"ok": True, "sent": 0, "message": "No active investors"}
+
+        sent = 0
+        errors = 0
+
+        for inv in investors.data:
+            if not inv.get("email"):
+                continue
+
+            # Get investor's promissory notes
+            notes_result = sb.table("promissory_notes") \
+                .select("id, loan_amount, annual_rate, term_months, total_due, total_interest, paid_amount, status, start_date, maturity_date") \
+                .eq("investor_id", inv["id"]) \
+                .order("created_at", desc=True) \
+                .execute()
+
+            notes = notes_result.data or []
+            active_notes = [n for n in notes if n.get("status") == "active"]
+            total_returned = sum(float(n.get("paid_amount", 0) or 0) for n in notes)
+            outstanding = sum(
+                float(n.get("total_due", 0)) - float(n.get("paid_amount", 0) or 0)
+                for n in notes if n.get("status") == "active"
+            )
+
+            summary = {
+                "total_invested": float(inv.get("total_invested", 0)),
+                "total_returned": total_returned,
+                "outstanding": max(0, outstanding),
+                "active_notes": len(active_notes),
+                "notes": notes,
+            }
+
+            result = send_investor_followup_email(
+                investor_email=inv["email"],
+                investor_name=inv["name"],
+                summary=summary,
+            )
+
+            if result.get("ok"):
+                sent += 1
+            else:
+                errors += 1
+
+        logger.info(f"[email_service] Investor followup emails: {sent} sent, {errors} errors")
+        return {"ok": True, "sent": sent, "errors": errors}
+
+    except Exception as e:
+        logger.error(f"[email_service] Error processing investor followup emails: {e}")
+        return {"ok": False, "error": str(e)}
+

@@ -341,9 +341,22 @@ async def create_promissory_note(data: PromissoryNoteCreate):
             notes=f"Pagaré {data.term_months} meses, vence {maturity.isoformat()}",
         )
 
+        created_note = result.data[0]
+
+        # Send welcome email to investor
+        try:
+            from api.services.email_service import send_investor_welcome_email
+            send_investor_welcome_email(
+                investor_email=inv.get("email"),
+                investor_name=inv["name"],
+                note_data=created_note,
+            )
+        except Exception as email_err:
+            logger.warning(f"Failed to send investor welcome email: {email_err}")
+
         return {
             "ok": True,
-            "note": result.data[0],
+            "note": created_note,
             "schedule": calc["schedule"],
             "message": f"Nota promisoria creada: ${data.loan_amount:,.2f} al {data.annual_rate}% por {data.term_months} meses. Vencimiento: ${calc['total_due']:,.2f}",
         }
@@ -481,6 +494,27 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
             notes=data.notes,
         )
         
+        # Send completion email if note is fully paid
+        if new_status == "paid":
+            try:
+                from api.services.email_service import send_investor_completion_email
+                # Get investor email
+                investor_info = sb.table("investors") \
+                    .select("name, email") \
+                    .eq("id", n["investor_id"]) \
+                    .single() \
+                    .execute()
+                if investor_info.data and investor_info.data.get("email"):
+                    # Build complete note data for email
+                    completed_note = {**n, "paid_amount": new_paid, "status": "paid"}
+                    send_investor_completion_email(
+                        investor_email=investor_info.data["email"],
+                        investor_name=investor_info.data["name"],
+                        note_data=completed_note,
+                    )
+            except Exception as email_err:
+                logger.warning(f"Failed to send investor completion email: {email_err}")
+
         return {
             "ok": True,
             "paid_amount": new_paid,

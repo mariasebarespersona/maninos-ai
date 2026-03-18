@@ -11,6 +11,10 @@ from api.services.email_service import (
     process_scheduled_emails,
     process_rto_reminders,
     process_rto_overdue_alerts,
+    send_investor_welcome_email,
+    send_investor_followup_email,
+    send_investor_completion_email,
+    process_investor_followup_emails,
 )
 from api.services.scheduler_service import get_scheduler_status
 from tools.supabase_client import sb
@@ -108,6 +112,81 @@ async def process_overdue_alerts(
     Should be called daily via cron job.
     """
     result = process_rto_overdue_alerts(admin_email=admin_email)
+    return result
+
+
+@router.post("/investor/test-welcome")
+async def test_investor_welcome_email(
+    to: str = Query("mariasebares9@gmail.com", description="Test recipient email"),
+):
+    """Test: Send investor welcome email with sample data."""
+    sample_note = {
+        "id": "test-note-id",
+        "loan_amount": 50000,
+        "annual_rate": 12,
+        "term_months": 12,
+        "total_interest": 6000,
+        "total_due": 56000,
+        "start_date": "2026-03-01",
+        "maturity_date": "2027-03-01",
+    }
+    result = send_investor_welcome_email(
+        investor_email=to,
+        investor_name="Inversor de Prueba",
+        note_data=sample_note,
+    )
+    return result
+
+
+@router.post("/investor/test-followup")
+async def test_investor_followup_email(
+    to: str = Query("mariasebares9@gmail.com", description="Test recipient email"),
+):
+    """Test: Send investor follow-up email with sample data."""
+    sample_summary = {
+        "total_invested": 100000,
+        "total_returned": 25000,
+        "outstanding": 81000,
+        "active_notes": 2,
+        "notes": [
+            {"loan_amount": 50000, "annual_rate": 12, "maturity_date": "2027-03-01", "paid_amount": 15000, "status": "active"},
+            {"loan_amount": 50000, "annual_rate": 10, "maturity_date": "2026-09-01", "paid_amount": 10000, "status": "active"},
+        ],
+    }
+    result = send_investor_followup_email(
+        investor_email=to,
+        investor_name="Inversor de Prueba",
+        summary=sample_summary,
+    )
+    return result
+
+
+@router.post("/investor/test-completion")
+async def test_investor_completion_email(
+    to: str = Query("mariasebares9@gmail.com", description="Test recipient email"),
+):
+    """Test: Send investor completion email with sample data."""
+    sample_note = {
+        "loan_amount": 50000,
+        "annual_rate": 12,
+        "total_interest": 6000,
+        "total_due": 56000,
+        "paid_amount": 56000,
+        "start_date": "2025-03-01",
+        "maturity_date": "2026-03-01",
+    }
+    result = send_investor_completion_email(
+        investor_email=to,
+        investor_name="Inversor de Prueba",
+        note_data=sample_note,
+    )
+    return result
+
+
+@router.post("/investor/send-all-followups")
+async def send_all_investor_followups():
+    """Manually trigger monthly investor follow-up emails to all active investors."""
+    result = process_investor_followup_emails()
     return result
 
 

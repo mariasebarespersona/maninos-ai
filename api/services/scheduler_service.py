@@ -242,6 +242,22 @@ def _job_promissory_maturity_alerts():
         return {"ok": False, "error": str(e)}
 
 
+def _job_investor_followup_emails():
+    """Job: Send monthly follow-up emails to all active investors."""
+    from api.services.email_service import process_investor_followup_emails
+    try:
+        result = process_investor_followup_emails()
+        _log_job("investor_followup_emails", result)
+        sent = result.get("sent", 0)
+        if sent > 0:
+            logger.info(f"[scheduler] Sent investor followup emails to {sent} investors")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in investor_followup_emails: {e}")
+        _log_job("investor_followup_emails", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def _job_title_monitor():
     """Job: Check TDHCA for title name updates on pending transfers."""
     try:
@@ -339,7 +355,16 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
-    # Job 7: Promissory note maturity alerts - daily at 9:30 AM CT
+    # Job 7: Investor follow-up emails - 1st of every month at 10:30 AM CT
+    _scheduler.add_job(
+        _job_investor_followup_emails,
+        trigger=CronTrigger(day=1, hour=10, minute=30),
+        id="investor_followup_emails",
+        name="Monthly Investor Follow-up Emails",
+        replace_existing=True,
+    )
+
+    # Job 8: Promissory note maturity alerts - daily at 9:30 AM CT
     # Checks for notes maturing within 90 days, skips if alerted in last 7 days
     _scheduler.add_job(
         _job_promissory_maturity_alerts,
