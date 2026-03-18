@@ -91,9 +91,9 @@ def test_strategic_kpis_with_data():
     ]
 
     clients = [
-        {"id": "cl1", "status": "rto_active", "kyc_verified": True, "nps_score": 85, "referred_by": None},
-        {"id": "cl2", "status": "completed", "kyc_verified": True, "nps_score": 90, "referred_by": "cl1"},
-        {"id": "cl3", "status": "rto_applicant", "kyc_verified": False, "nps_score": None, "referred_by": None},
+        {"id": "cl1", "status": "rto_active", "kyc_verified": True},
+        {"id": "cl2", "status": "completed", "kyc_verified": True},
+        {"id": "cl3", "status": "rto_applicant", "kyc_verified": False},
     ]
 
     payments_due = [
@@ -193,9 +193,9 @@ def test_strategic_kpis_with_data():
     # KYC: 2 verified / 3 RTO clients = 66.7%
     assert client_kpis["kyc_compliance"]["value"] == 66.7
 
-    # NPS: avg of 85 and 90 = 87.5
-    assert client_kpis["nps"]["value"] == 87.5
-    assert client_kpis["nps"]["status"] == "on_target"  # >= 80
+    # NPS: not yet tracked in DB, should be None
+    assert client_kpis["nps"]["value"] is None
+    assert client_kpis["nps"]["status"] == "off_target"  # None < 80
 
     # Investor KPIs
     inv_kpis = {m["key"]: m for m in kpis["investor"]["metrics"]}
@@ -227,9 +227,9 @@ def test_strategic_kpis_with_data():
     assert purchase_kpis["customer_retention"]["value"] == 50.0
     assert purchase_kpis["customer_retention"]["status"] == "on_target"  # >= 20
 
-    # Referral rate: 1 referred / 3 total = 33.3%
-    assert purchase_kpis["referral_rate"]["value"] == 33.3
-    assert purchase_kpis["referral_rate"]["status"] == "on_target"  # >= 10
+    # Referral rate: not yet tracked in DB, should be 0
+    assert purchase_kpis["referral_rate"]["value"] == 0
+    assert purchase_kpis["referral_rate"]["status"] == "off_target"  # 0 < 5
 
     print("PASS test_strategic_kpis_with_data")
 
