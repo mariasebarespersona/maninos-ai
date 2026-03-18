@@ -1602,7 +1602,7 @@ ${price}
                           })()}
 
                           {/* Request payment to Abigail */}
-                          {move.payment_status !== 'paid' && move.payment_status !== 'pending' && (
+                          {(move.payment_status === 'not_requested' || !move.payment_status) && (
                             <button
                               onClick={() => handleRequestPayment(move.id)}
                               disabled={requestingPayment === move.id}
