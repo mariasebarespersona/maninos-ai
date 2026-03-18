@@ -147,6 +147,8 @@ export default function PropertyDetailPage() {
   const [showNewMoveModal, setShowNewMoveModal] = useState(false)
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
+  const [moverProviders, setMoverProviders] = useState<any[]>([])
+  const [requestingPayment, setRequestingPayment] = useState<string | null>(null)
   const [newMove, setNewMove] = useState({
     move_type: 'purchase' as string,
     origin_address: '',
@@ -222,7 +224,67 @@ export default function PropertyDetailPage() {
     fetchProperty()
     fetchTransfers()
     fetchMoves()
+    fetchMoverProviders()
   }, [params.id])
+
+  const fetchMoverProviders = async () => {
+    try {
+      const res = await fetch('/api/moves/providers/list')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ok) setMoverProviders(data.providers || [])
+      }
+    } catch (err) { /* silent */ }
+  }
+
+  const handleSelectProvider = (provider: any) => {
+    setNewMove({
+      ...newMove,
+      moving_company: provider.company || provider.name,
+      driver_name: provider.name,
+      driver_phone: provider.phone,
+    })
+  }
+
+  const handleWhatsAppProvider = async (providerId: string, move?: any) => {
+    const origin = move?.origin_city || newMove.origin_city || ''
+    const dest = move?.destination_city || newMove.destination_city || ''
+    const addr = property?.address || ''
+    try {
+      const params = new URLSearchParams({
+        provider_id: providerId,
+        property_address: addr,
+        origin,
+        destination: dest,
+      })
+      const res = await fetch(`/api/moves/providers/whatsapp-url?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ok) window.open(data.url, '_blank')
+      }
+    } catch (err) {
+      toast.error('Error generando link WhatsApp')
+    }
+  }
+
+  const handleRequestPayment = async (moveId: string) => {
+    if (!confirm('¿Crear orden de pago para Abigail por esta movida?')) return
+    setRequestingPayment(moveId)
+    try {
+      const res = await fetch(`/api/moves/${moveId}/request-payment`, { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Orden de pago creada')
+        fetchMoves()
+      } else {
+        toast.error(data.detail || 'Error al crear orden de pago')
+      }
+    } catch (err) {
+      toast.error('Error de conexión')
+    } finally {
+      setRequestingPayment(null)
+    }
+  }
 
   const fetchTransfers = async () => {
     try {
@@ -1517,6 +1579,47 @@ ${price}
                           )}
                         </div>
 
+                        {/* WhatsApp + Payment actions */}
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+                          {/* WhatsApp to provider */}
+                          {move.driver_phone && moverProviders.length > 0 && (() => {
+                            const matchedProvider = moverProviders.find((p: any) => p.phone === move.driver_phone || p.name === move.driver_name)
+                            if (matchedProvider) {
+                              return (
+                                <button
+                                  onClick={() => handleWhatsAppProvider(matchedProvider.id, move)}
+                                  className="text-xs px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1"
+                                >
+                                  💬 WhatsApp a {matchedProvider.name.split(' ')[0]}
+                                </button>
+                              )
+                            }
+                            return null
+                          })()}
+
+                          {/* Request payment to Abigail */}
+                          {move.payment_status !== 'paid' && (move.quoted_cost > 0 || move.final_cost > 0) && (
+                            <button
+                              onClick={() => handleRequestPayment(move.id)}
+                              disabled={requestingPayment === move.id}
+                              className="text-xs px-3 py-1.5 bg-gold-50 text-gold-700 border border-gold-200 rounded-lg hover:bg-gold-100 flex items-center gap-1"
+                              style={{ backgroundColor: '#fef9e7', color: '#92400e', borderColor: '#fde68a' }}
+                            >
+                              💰 {requestingPayment === move.id ? 'Creando...' : 'Solicitar Pago a Abigail'}
+                            </button>
+                          )}
+                          {move.payment_status === 'paid' && (
+                            <span className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-lg font-medium">
+                              ✅ Pagado
+                            </span>
+                          )}
+                          {move.payment_status === 'pending' && (
+                            <span className="text-xs px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg font-medium">
+                              ⏳ Pago pendiente (Abigail)
+                            </span>
+                          )}
+                        </div>
+
                         {/* Status actions */}
                         <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
                           {move.status === 'pending' && (
@@ -1804,6 +1907,40 @@ ${price}
                   <option value="yard_transfer">Entre Yards (transferencia)</option>
                 </select>
               </div>
+
+              {/* Mover Provider Quick Select */}
+              {moverProviders.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-navy-700 mb-2">Seleccionar Proveedor</label>
+                  <div className="space-y-2">
+                    {moverProviders.map((prov: any) => (
+                      <div key={prov.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors"
+                        style={{ backgroundColor: newMove.driver_name === prov.name ? '#fff7ed' : 'white', borderColor: newMove.driver_name === prov.name ? '#fb923c' : undefined }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-navy-900">{prov.name}</p>
+                          {prov.company && <p className="text-xs text-gray-500">{prov.company}</p>}
+                          <p className="text-xs text-gray-500">{prov.phone}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectProvider(prov)}
+                          className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                          style={{ backgroundColor: newMove.driver_name === prov.name ? '#f97316' : '#f3f4f6', color: newMove.driver_name === prov.name ? 'white' : '#374151' }}
+                        >
+                          {newMove.driver_name === prov.name ? 'Seleccionado' : 'Seleccionar'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleWhatsAppProvider(prov.id)}
+                          className="text-xs px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1"
+                        >
+                          💬 WhatsApp
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Origin */}
               <div className="grid grid-cols-2 gap-3">

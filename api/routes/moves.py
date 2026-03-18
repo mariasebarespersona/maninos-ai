@@ -313,6 +313,144 @@ async def delete_move(move_id: str):
 
 
 # ============================================================================
+# MOVERS / PROVIDERS
+# ============================================================================
+
+MOVERS = [
+    {
+        "id": "trujillo",
+        "name": "Angel Trujillo",
+        "company": "Trujillo's Mobile Homes",
+        "phone": "(936) 718-3321",
+        "phone_raw": "19367183321",
+    },
+    {
+        "id": "koko",
+        "name": "Josue Koko",
+        "company": None,
+        "phone": "(832) 358-6264",
+        "phone_raw": "18323586264",
+    },
+]
+
+
+@router.get("/providers/list")
+async def list_mover_providers():
+    """List all available mover providers."""
+    return {"ok": True, "providers": MOVERS}
+
+
+@router.get("/providers/whatsapp-url")
+async def get_whatsapp_url(
+    provider_id: str = Query(...),
+    property_address: str = "",
+    origin: str = "",
+    destination: str = "",
+    message: Optional[str] = None,
+):
+    """Generate a WhatsApp URL to contact a mover provider."""
+    provider = next((p for p in MOVERS if p["id"] == provider_id), None)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    if message:
+        text = message
+    else:
+        text = (
+            f"Hola {provider['name']}, le escribo de Maninos Homes. "
+            f"Necesitamos mover una mobile home"
+        )
+        if property_address:
+            text += f" ubicada en {property_address}"
+        if origin and destination:
+            text += f" desde {origin} hasta {destination}"
+        elif destination:
+            text += f" hacia {destination}"
+        text += ". ¿Tiene disponibilidad? ¿Cual seria el costo?"
+
+    import urllib.parse
+    encoded = urllib.parse.quote(str(text))
+    url = f"https://wa.me/{provider['phone_raw']}?text={encoded}"
+
+    return {"ok": True, "url": url, "provider": provider, "message": text}
+
+
+@router.post("/{move_id}/request-payment")
+async def request_move_payment(move_id: str):
+    """
+    Create a payment order for a completed/in-progress move.
+    This sends a notification to Abigail (via payment_orders system)
+    and creates the accounting entry for later reconciliation.
+    """
+    try:
+        # Get the move with property info
+        move_result = sb.table("moves").select(
+            "*, properties(id, address, city)"
+        ).eq("id", move_id).execute()
+
+        if not move_result.data:
+            raise HTTPException(status_code=404, detail="Movida no encontrada")
+
+        move = move_result.data[0]
+
+        if move.get("payment_status") == "paid":
+            raise HTTPException(status_code=400, detail="Esta movida ya fue pagada")
+
+        cost = float(move.get("final_cost") or move.get("quoted_cost") or 0)
+        if cost <= 0:
+            raise HTTPException(status_code=400, detail="La movida no tiene costo asignado")
+
+        prop = move.get("properties") or {}
+        prop_address = f"{prop.get('address', 'N/A')}, {prop.get('city', '')}"
+        company = move.get("moving_company") or move.get("driver_name") or "Transporte"
+        driver = move.get("driver_name") or ""
+        driver_phone = move.get("driver_phone") or ""
+
+        # Create payment order (same system Abigail uses for house purchases)
+        order_data = {
+            "property_id": move.get("property_id"),
+            "property_address": prop_address,
+            "payee_name": company,
+            "amount": cost,
+            "method": "transferencia",
+            "status": "pending",
+            "notes": (
+                f"Pago movida: {move.get('origin_city', '')} → {move.get('destination_city', '')}\n"
+                f"Conductor: {driver}\n"
+                f"Telefono: {driver_phone}\n"
+                f"Movida ID: {move_id[:8]}"
+            ),
+            "created_by": "sistema_movidas",
+        }
+
+        order_result = sb.table("payment_orders").insert(order_data).execute()
+
+        if not order_result.data:
+            raise HTTPException(status_code=500, detail="Error al crear orden de pago")
+
+        # Update move payment status to pending
+        sb.table("moves").update({
+            "payment_status": "pending",
+            "updated_at": datetime.utcnow().isoformat(),
+        }).eq("id", move_id).execute()
+
+        order = order_result.data[0]
+        logger.info(f"[moves] Payment order created for move {move_id}: ${cost} to {company}")
+
+        return {
+            "ok": True,
+            "payment_order": order,
+            "message": f"Orden de pago por ${cost:,.2f} creada para Abigail. Proveedor: {company}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[moves] Error creating payment request for move {move_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # HELPERS
 # ============================================================================
 
