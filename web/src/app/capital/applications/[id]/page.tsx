@@ -103,6 +103,7 @@ export default function ApplicationDetailPage() {
   // Client credit application (filled by client)
   const [clientCreditApp, setClientCreditApp] = useState<any>(null)
   const [loadingCreditApp, setLoadingCreditApp] = useState(true)
+  const [showTemplate, setShowTemplate] = useState(false)
 
   // Credit form (expanded) — manual fallback
   const [showCreditForm, setShowCreditForm] = useState(false)
@@ -1203,14 +1204,164 @@ export default function ApplicationDetailPage() {
               </div>
             </div>
           ) : (
-            <div className="card-luxury p-5">
-              <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--ash)' }}>
-                <Clock className="w-5 h-5" />
-                <div>
-                  <p className="font-medium" style={{ color: 'var(--charcoal)' }}>El cliente aún no ha completado la solicitud de crédito</p>
-                  <p className="text-xs mt-0.5">La solicitud de crédito se envía al cliente después de verificar su identidad (KYC).</p>
+            <div className="card-luxury">
+              <div className="p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className="w-5 h-5" style={{ color: 'var(--ash)' }} />
+                  <div>
+                    <p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>El cliente aún no ha completado la solicitud de crédito</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>La solicitud se envía al cliente después de verificar su identidad (KYC).</p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowTemplate(!showTemplate)}
+                  className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors hover:bg-gray-50"
+                  style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                >
+                  {showTemplate ? 'Ocultar plantilla' : 'Ver plantilla vacía'}
+                </button>
               </div>
+              {showTemplate && (
+                <div className="px-5 pb-5 border-t space-y-5" style={{ borderColor: 'var(--sand)' }}>
+                  <p className="text-xs italic pt-3" style={{ color: 'var(--ash)' }}>
+                    Este es el formato que el cliente rellena desde su portal. Se muestra vacío como referencia.
+                  </p>
+
+                  {/* S1 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>1. Información Personal</h3>
+                    <div className="grid md:grid-cols-3 gap-3 text-sm">
+                      {['Nombre completo', 'Fecha de nacimiento', 'SSN (últimos 4 dígitos)', 'Estado civil', 'Núm. dependientes + edades', 'Número de licencia / ID + estado emisor'].map(f => (
+                        <div key={f} className="p-2.5 rounded-lg bg-gray-50 border border-dashed border-gray-200">
+                          <span className="text-xs" style={{ color: 'var(--ash)' }}>{f}</span>
+                          <p className="text-xs mt-0.5 italic text-gray-300">Campo del cliente</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* S2 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>2. Historial de Vivienda</h3>
+                    <div className="p-3 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-sm">
+                      <p className="text-xs" style={{ color: 'var(--ash)' }}>Dirección actual y anteriores (hasta 3)</p>
+                      <div className="grid md:grid-cols-3 gap-2 mt-2">
+                        {['Dirección completa', '¿Propia / Rentada / Con familia?', 'Pago mensual', 'Tiempo en la dirección', 'Nombre del arrendador', 'Teléfono del arrendador'].map(f => (
+                          <span key={f} className="text-xs px-2 py-1 rounded bg-white border border-gray-100" style={{ color: 'var(--slate)' }}>{f}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* S3 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>3. Empleo e Ingresos</h3>
+                    <div className="grid md:grid-cols-3 gap-3 text-sm">
+                      {['Empleador actual', 'Dirección del empleador', 'Teléfono del empleador', 'Ocupación / Cargo', 'Tipo de empleo (W-2 / 1099 / Self-employed)', 'Ingreso mensual bruto ($)', 'Tiempo en el empleo', 'Empleo anterior (si < 2 años)'].map(f => (
+                        <div key={f} className="p-2.5 rounded-lg bg-gray-50 border border-dashed border-gray-200">
+                          <span className="text-xs" style={{ color: 'var(--ash)' }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* S4 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>
+                      4. Otras Fuentes de Ingreso
+                      <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">CLAVE</span>
+                    </h3>
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+                      <p className="text-xs mb-2" style={{ color: 'var(--charcoal)' }}>El cliente selecciona categorías con monto mensual:</p>
+                      <div className="grid md:grid-cols-2 gap-1.5">
+                        {['Segundo trabajo / tiempo parcial', 'Beneficios gobierno (SSI, SSDI, TANF)', 'Beneficios VA (veteranos)', 'Child support / pensión recibida', 'Ingreso de renta (propiedades)', 'Negocio propio / freelance', 'Pensión / retiro', 'Otro'].map(s => (
+                          <div key={s} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-white border border-amber-100">
+                            <div className="w-3 h-3 rounded border border-amber-300 flex-shrink-0" />
+                            <span style={{ color: 'var(--charcoal)' }}>{s}</span>
+                            <span className="ml-auto text-amber-400 italic">$___/mes</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* S5 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>
+                      5. Propiedades
+                      <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">CLAVE</span>
+                    </h3>
+                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm">
+                      <p className="text-xs mb-2" style={{ color: 'var(--charcoal)' }}>¿Es propietario de otras propiedades? (hasta 3)</p>
+                      <div className="grid md:grid-cols-3 gap-2">
+                        {['Dirección de la propiedad', 'Valor estimado', 'Saldo de hipoteca', 'Pago mensual', 'Ingreso de renta'].map(f => (
+                          <span key={f} className="text-xs px-2 py-1.5 rounded bg-white border border-blue-100" style={{ color: 'var(--charcoal)' }}>{f}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* S6 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>6. Deudas y Gastos Mensuales</h3>
+                    <div className="grid md:grid-cols-3 gap-3 text-sm">
+                      {['Renta / hipoteca actual ($)', 'Servicios / utilities ($)', 'Child support pagado ($)', 'Otros gastos ($)'].map(f => (
+                        <div key={f} className="p-2.5 rounded-lg bg-gray-50 border border-dashed border-gray-200">
+                          <span className="text-xs" style={{ color: 'var(--ash)' }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs mt-2 italic" style={{ color: 'var(--ash)' }}>+ deudas individuales: tipo (auto, tarjeta, préstamo), acreedor, saldo, pago mensual</p>
+                  </div>
+
+                  {/* S7 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>7. Referencias Personales (3 mínimo)</h3>
+                    <div className="grid md:grid-cols-3 gap-3">
+                      {[1, 2, 3].map(n => (
+                        <div key={n} className="p-3 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-sm">
+                          <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Referencia {n}</p>
+                          <div className="space-y-0.5 text-xs" style={{ color: 'var(--ash)' }}>
+                            <p>Nombre</p><p>Teléfono</p><p>Relación</p><p>Años de conocerlo</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs mt-1 italic" style={{ color: 'var(--ash)' }}>Al menos 1 referencia debe ser no-familiar</p>
+                  </div>
+
+                  {/* S8 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>8. Historial Legal (Sí/No)</h3>
+                    <div className="grid md:grid-cols-2 gap-2">
+                      {[
+                        '¿Bancarrota en los últimos 7 años?',
+                        '¿Propiedad embargada o recuperada?',
+                        '¿Ha sido desalojado?',
+                        '¿Juicios pendientes en su contra?',
+                        '¿Deuda federal pendiente?',
+                      ].map(q => (
+                        <div key={q} className="flex items-center gap-2 p-2 rounded bg-gray-50 border border-dashed border-gray-200 text-xs" style={{ color: 'var(--charcoal)' }}>
+                          <div className="w-3 h-3 rounded border border-gray-300 flex-shrink-0" />
+                          {q}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* S9 */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>9. Contacto de Emergencia</h3>
+                    <div className="grid md:grid-cols-3 gap-3 text-sm">
+                      {['Nombre', 'Teléfono', 'Relación', 'Dirección'].map(f => (
+                        <div key={f} className="p-2.5 rounded-lg bg-gray-50 border border-dashed border-gray-200">
+                          <span className="text-xs" style={{ color: 'var(--ash)' }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
