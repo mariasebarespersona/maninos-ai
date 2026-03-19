@@ -14,3 +14,15 @@ ALTER TABLE payment_orders ADD CONSTRAINT payment_orders_status_check
 -- Add approval columns to sales (for transfer confirmations)
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS transfer_approved_by TEXT;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS transfer_approved_at TIMESTAMPTZ;
+
+-- Capital: Add approval columns to RTO payments
+ALTER TABLE rto_payments ADD COLUMN IF NOT EXISTS approved_by TEXT;
+ALTER TABLE rto_payments ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+
+-- Capital: Add approval columns to down payment installments
+ALTER TABLE capital_down_payment_installments ADD COLUMN IF NOT EXISTS approved_by TEXT;
+ALTER TABLE capital_down_payment_installments ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+
+-- Capital: Add approval columns to capital_transactions
+ALTER TABLE capital_transactions ADD COLUMN IF NOT EXISTS approved_by TEXT;
+ALTER TABLE capital_transactions ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;

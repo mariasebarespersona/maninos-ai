@@ -5,7 +5,7 @@ Phase 4: Gestionar Cartera
 
 from datetime import datetime, date
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from tools.supabase_client import sb
 from api.routes.capital._accounting_hooks import record_txn
@@ -170,6 +170,8 @@ async def get_client_reported_payments():
                 "property_address": prop.get("address", "N/A"),
                 "property_city": prop.get("city"),
                 "contract_id": contract.get("id"),
+                "approved_by": p.get("approved_by"),
+                "approved_at": p.get("approved_at"),
             })
 
         return {"ok": True, "reported_payments": payments, "total": len(payments)}
@@ -208,11 +210,73 @@ async def get_client_reported_dp_installments():
                 "property_city": prop.get("city"),
                 "contract_id": contract.get("id"),
                 "total_down_payment": float(contract.get("down_payment", 0)),
+                "approved_by": inst.get("approved_by"),
+                "approved_at": inst.get("approved_at"),
             })
 
         return {"ok": True, "reported_installments": installments, "total": len(installments)}
     except Exception as e:
         logger.error(f"Error getting client-reported dp installments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approve-rto-payment/{payment_id}")
+async def approve_rto_payment(payment_id: str, approved_by: Optional[str] = Query(None)):
+    """Approve a client-reported RTO payment (admin). Treasury can then confirm."""
+    try:
+        now = datetime.utcnow().isoformat()
+        result = sb.table("rto_payments").update({
+            "approved_by": approved_by,
+            "approved_at": now,
+        }).eq("id", payment_id).eq("status", "client_reported").execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Pago no encontrado o ya aprobado")
+        logger.info(f"[capital] Approved RTO payment {payment_id} by {approved_by}")
+        return {"ok": True, "message": "Pago RTO aprobado. Tesorería puede confirmar."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving RTO payment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approve-dp-installment/{installment_id}")
+async def approve_dp_installment(installment_id: str, approved_by: Optional[str] = Query(None)):
+    """Approve a client-reported down payment installment (admin)."""
+    try:
+        now = datetime.utcnow().isoformat()
+        result = sb.table("capital_down_payment_installments").update({
+            "approved_by": approved_by,
+            "approved_at": now,
+        }).eq("id", installment_id).eq("status", "client_reported").execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Cuota no encontrada o ya aprobada")
+        logger.info(f"[capital] Approved DP installment {installment_id} by {approved_by}")
+        return {"ok": True, "message": "Enganche aprobado. Tesorería puede confirmar."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving DP installment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/approve-transaction/{transaction_id}")
+async def approve_capital_transaction(transaction_id: str, approved_by: Optional[str] = Query(None)):
+    """Approve a pending capital transaction (admin)."""
+    try:
+        now = datetime.utcnow().isoformat()
+        result = sb.table("capital_transactions").update({
+            "approved_by": approved_by,
+            "approved_at": now,
+        }).eq("id", transaction_id).eq("status", "pending_confirmation").execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Transacción no encontrada o ya aprobada")
+        logger.info(f"[capital] Approved capital transaction {transaction_id} by {approved_by}")
+        return {"ok": True, "message": "Transacción aprobada. Tesorería puede confirmar."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving capital transaction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
