@@ -144,14 +144,22 @@ async def update_credit_application(client_id: str, rto_application_id: str, req
             "has_federal_debt", "legal_details",
             "emergency_name", "emergency_phone", "emergency_relationship", "emergency_address",
         }
+        # Map frontend field names to DB column names
+        field_mapping = {
+            "residences": "residence_history",
+            "references": "personal_references",
+            "owned_properties": "properties_owned",
+        }
+
         update_data = {}
         for k, v in body.items():
-            if k not in allowed_fields:
+            db_key = field_mapping.get(k, k)
+            if db_key not in allowed_fields:
                 continue
-            # Convert empty strings to None for numeric fields
+            # Skip empty strings and None
             if v == "" or v is None:
                 continue
-            update_data[k] = v
+            update_data[db_key] = v
         update_data["updated_at"] = datetime.utcnow().isoformat()
 
         result = sb.table("credit_applications") \
