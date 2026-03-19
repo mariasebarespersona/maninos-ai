@@ -8,10 +8,9 @@ export async function POST(
 ) {
   const { clientId, rtoApplicationId } = await params
   try {
-    const cookie = request.headers.get('cookie') || ''
     const res = await fetch(
       `${API_URL}/api/public/credit-application/${clientId}/${rtoApplicationId}/submit`,
-      { method: 'POST', headers: { cookie } }
+      { method: 'POST' }
     )
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })

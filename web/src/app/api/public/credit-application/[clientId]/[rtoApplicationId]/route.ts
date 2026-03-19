@@ -8,10 +8,9 @@ export async function GET(
 ) {
   const { clientId, rtoApplicationId } = await params
   try {
-    const cookie = request.headers.get('cookie') || ''
     const res = await fetch(
       `${API_URL}/api/public/credit-application/${clientId}/${rtoApplicationId}`,
-      { cache: 'no-store', headers: { cookie } }
+      { cache: 'no-store' }
     )
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
@@ -27,13 +26,12 @@ export async function PUT(
 ) {
   const { clientId, rtoApplicationId } = await params
   try {
-    const cookie = request.headers.get('cookie') || ''
     const body = await request.json()
     const res = await fetch(
       `${API_URL}/api/public/credit-application/${clientId}/${rtoApplicationId}`,
       {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', cookie },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }
     )

@@ -6,10 +6,9 @@ Allows RTO clients to fill out their credit application after KYC verification.
 import logging
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
-from api.auth import get_current_user_email, verify_client_ownership
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/credit-application", tags=["Public - Credit Application"])
@@ -83,19 +82,12 @@ class CreditApplicationData(BaseModel):
 # =============================================================================
 
 @router.get("/{client_id}/{rto_application_id}")
-async def get_credit_application(
-    client_id: str,
-    rto_application_id: str,
-    email: str = Depends(get_current_user_email),
-):
+async def get_credit_application(client_id: str, rto_application_id: str):
     """
     Get or create a credit application for an RTO application.
     If none exists, creates a draft pre-filled with client info.
     """
-    verify_client_ownership(client_id, email)
-
     try:
-        # Look up existing credit application
         result = sb.table("credit_applications") \
             .select("*") \
             .eq("rto_application_id", rto_application_id) \
@@ -103,32 +95,26 @@ async def get_credit_application(
             .execute()
 
         if result.data:
-            logger.info(f"[credit_app] Found existing credit application for rto={rto_application_id}")
             return {"ok": True, "credit_application": result.data[0]}
 
-        # No existing application — pre-fill from client data
+        # Pre-fill from client data
         client_result = sb.table("clients") \
             .select("name, email") \
             .eq("id", client_id) \
             .execute()
 
-        prefill_name = None
-        if client_result.data:
-            prefill_name = client_result.data[0].get("name")
-
-        # Create draft
-        insert_data = {
-            "rto_application_id": rto_application_id,
-            "client_id": client_id,
-            "status": "draft",
-            "full_name": prefill_name,
-        }
+        prefill_name = client_result.data[0].get("name") if client_result.data else None
 
         insert_result = sb.table("credit_applications") \
-            .insert(insert_data) \
+            .insert({
+                "rto_application_id": rto_application_id,
+                "client_id": client_id,
+                "status": "draft",
+                "full_name": prefill_name,
+            }) \
             .execute()
 
-        logger.info(f"[credit_app] Created draft credit application for rto={rto_application_id}, client={client_id}")
+        logger.info(f"[credit_app] Created draft for rto={rto_application_id}, client={client_id}")
         return {"ok": True, "credit_application": insert_result.data[0]}
 
     except Exception as e:
@@ -137,20 +123,9 @@ async def get_credit_application(
 
 
 @router.put("/{client_id}/{rto_application_id}")
-async def update_credit_application(
-    client_id: str,
-    rto_application_id: str,
-    data: CreditApplicationData,
-    email: str = Depends(get_current_user_email),
-):
-    """
-    Update a credit application with partial or full data.
-    Used for auto-saving as the client fills out sections.
-    """
-    verify_client_ownership(client_id, email)
-
+async def update_credit_application(client_id: str, rto_application_id: str, data: CreditApplicationData):
+    """Update a credit application with partial or full data."""
     try:
-        # Build update payload — only include fields that were explicitly set
         update_data = data.model_dump(exclude_none=True)
         update_data["updated_at"] = datetime.utcnow().isoformat()
 
@@ -163,7 +138,7 @@ async def update_credit_application(
         if not result.data:
             raise HTTPException(status_code=404, detail="Credit application not found")
 
-        logger.info(f"[credit_app] Updated credit application for rto={rto_application_id}, fields={list(update_data.keys())}")
+        logger.info(f"[credit_app] Updated for rto={rto_application_id}, fields={list(update_data.keys())}")
         return {"ok": True, "credit_application": result.data[0]}
 
     except HTTPException:
@@ -174,19 +149,9 @@ async def update_credit_application(
 
 
 @router.post("/{client_id}/{rto_application_id}/submit")
-async def submit_credit_application(
-    client_id: str,
-    rto_application_id: str,
-    email: str = Depends(get_current_user_email),
-):
-    """
-    Submit the credit application for review.
-    Validates minimum required fields before allowing submission.
-    """
-    verify_client_ownership(client_id, email)
-
+async def submit_credit_application(client_id: str, rto_application_id: str):
+    """Submit the credit application for review."""
     try:
-        # Fetch current application
         result = sb.table("credit_applications") \
             .select("*") \
             .eq("rto_application_id", rto_application_id) \
@@ -200,39 +165,32 @@ async def submit_credit_application(
 
         # Validate minimum required fields
         errors = []
-
         if not app.get("full_name"):
-            errors.append("Full name is required")
-
+            errors.append("Nombre completo es requerido")
         if not app.get("monthly_income"):
-            errors.append("Monthly income is required")
-
+            errors.append("Ingreso mensual es requerido")
         residence_history = app.get("residence_history") or []
         if len(residence_history) < 1:
-            errors.append("At least 1 residence history entry is required")
-
+            errors.append("Al menos 1 dirección es requerida")
         personal_references = app.get("personal_references") or []
         if len(personal_references) < 3:
-            errors.append("At least 3 personal references are required")
+            errors.append("Se requieren 3 referencias personales")
 
         if errors:
             raise HTTPException(status_code=400, detail={"errors": errors})
 
-        # Submit
-        update_data = {
-            "status": "submitted",
-            "submitted_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-
         sb.table("credit_applications") \
-            .update(update_data) \
+            .update({
+                "status": "submitted",
+                "submitted_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            }) \
             .eq("rto_application_id", rto_application_id) \
             .eq("client_id", client_id) \
             .execute()
 
-        logger.info(f"[credit_app] Credit application submitted for rto={rto_application_id}, client={client_id}")
-        return {"ok": True, "message": "Credit application submitted successfully"}
+        logger.info(f"[credit_app] Submitted for rto={rto_application_id}, client={client_id}")
+        return {"ok": True, "message": "Solicitud enviada correctamente"}
 
     except HTTPException:
         raise
