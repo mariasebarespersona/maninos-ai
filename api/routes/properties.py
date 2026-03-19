@@ -640,8 +640,69 @@ async def update_renovation(property_id: str, data: RenovationUpdate):
         return _format_renovation(renovation.data)
     
     result = sb.table("renovations").update(update_data).eq("id", renovation.data["id"]).execute()
-    
+
     return _format_renovation(result.data[0])
+
+
+@router.post("/{property_id}/renovation/request-payment")
+async def request_renovation_payment(property_id: str):
+    """
+    Create a payment order for a renovation.
+    Goes through the approval flow: Sebastian approves → Abigail pays.
+    """
+    from datetime import datetime
+
+    # Get renovation with property info
+    reno = sb.table("renovations").select("*") \
+        .eq("property_id", property_id) \
+        .order("created_at", desc=True).limit(1).execute()
+
+    if not reno.data:
+        raise HTTPException(status_code=404, detail="No hay renovación para esta propiedad")
+
+    renovation = reno.data[0]
+    cost = float(renovation.get("total_cost") or 0)
+    if cost <= 0:
+        raise HTTPException(status_code=400, detail="La renovación no tiene costo asignado")
+
+    # Get property info
+    prop = sb.table("properties").select("address, city").eq("id", property_id).single().execute()
+    prop_address = ""
+    if prop.data:
+        prop_address = f"{prop.data.get('address', 'N/A')}, {prop.data.get('city', '')}"
+
+    # Check if payment order already exists for this renovation
+    existing = sb.table("payment_orders").select("id") \
+        .eq("property_id", property_id) \
+        .like("notes", f"%Renovación%{renovation['id'][:8]}%") \
+        .in_("status", ["pending", "approved"]) \
+        .execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail="Ya existe una orden de pago para esta renovación")
+
+    # Create payment order
+    order_data = {
+        "property_id": property_id,
+        "property_address": prop_address,
+        "payee_name": "Proveedor Renovación",
+        "amount": cost,
+        "method": "transferencia",
+        "status": "pending",
+        "notes": f"Pago renovación: {prop_address}\nCosto total: ${cost:,.2f}\nRenovación ID: {renovation['id'][:8]}",
+        "created_by": "sistema_renovaciones",
+    }
+
+    order_result = sb.table("payment_orders").insert(order_data).execute()
+    if not order_result.data:
+        raise HTTPException(status_code=500, detail="Error al crear orden de pago")
+
+    logger.info(f"[properties] Payment order created for renovation on {property_id}: ${cost}")
+
+    return {
+        "ok": True,
+        "payment_order": order_result.data[0],
+        "message": f"Orden de pago por ${cost:,.2f} creada para renovación",
+    }
 
 
 @router.post("/{property_id}/complete-renovation", response_model=PropertyResponse)

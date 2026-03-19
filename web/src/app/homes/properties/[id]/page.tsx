@@ -149,6 +149,7 @@ export default function PropertyDetailPage() {
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
   const [moverProviders, setMoverProviders] = useState<any[]>([])
   const [requestingPayment, setRequestingPayment] = useState<string | null>(null)
+  const [requestingRenoPayment, setRequestingRenoPayment] = useState(false)
   const [newMove, setNewMove] = useState({
     move_type: 'purchase' as string,
     origin_address: '',
@@ -322,6 +323,24 @@ export default function PropertyDetailPage() {
       toast.error('Error de conexión')
     } finally {
       setRequestingPayment(null)
+    }
+  }
+
+  const handleRequestRenoPayment = async () => {
+    if (!property || !confirm('¿Crear orden de pago por la renovación de esta propiedad?')) return
+    setRequestingRenoPayment(true)
+    try {
+      const res = await fetch(`/api/properties/${property.id}/renovation/request-payment`, { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(data.message || 'Orden de pago creada')
+      } else {
+        toast.error(data.detail || 'Error al crear orden de pago')
+      }
+    } catch (err) {
+      toast.error('Error de conexión')
+    } finally {
+      setRequestingRenoPayment(false)
     }
   }
 
@@ -1256,7 +1275,17 @@ ${price}
                   <>
                     {costBreakdown.renovation_cost > 0 && (
                       <div className="flex justify-between items-center">
-                        <span className="text-navy-500">Renovación</span>
+                        <span className="text-navy-500 flex items-center gap-1">
+                          Renovación
+                          <button
+                            onClick={handleRequestRenoPayment}
+                            disabled={requestingRenoPayment}
+                            className="text-[10px] px-1.5 py-0.5 bg-gold-50 text-gold-700 border border-gold-200 rounded hover:bg-gold-100"
+                            title="Solicitar pago de renovación"
+                          >
+                            {requestingRenoPayment ? '...' : '💰 Pagar'}
+                          </button>
+                        </span>
                         <span className="text-navy-700">${costBreakdown.renovation_cost.toLocaleString()}</span>
                       </div>
                     )}
