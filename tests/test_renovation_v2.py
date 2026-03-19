@@ -544,6 +544,8 @@ def test_renovation_route_structure():
         ("POST", "/{property_id}/import-report"),
         ("PATCH", "/{property_id}/approve"),
         ("GET", "/{property_id}/approval-status"),
+        ("POST", "/voice-command"),
+        ("GET", "/pending-approvals"),
     ]
 
     for method, path in expected_routes:
@@ -551,8 +553,8 @@ def test_renovation_route_structure():
         assert found, f"Missing route: {method} {path}"
         print(f"  ✅ {method} {path}")
 
-    assert len(routes) == 8, f"Expected 8 routes, got {len(routes)}"
-    print(f"  ✅ Exactly 8 renovation routes (6 original + 2 approval)")
+    assert len(routes) == 10, f"Expected 10 routes, got {len(routes)}"
+    print(f"  ✅ Exactly 10 renovation routes (6 original + 2 approval + voice-command + pending-approvals)")
 
     print(f"  ✅ Renovation route structure PASSED")
 
@@ -669,11 +671,11 @@ def test_frontend_desktop_renovation_page():
     assert "renderSubfields" in content, "Missing renderSubfields function"
     print(f"  ✅ Expandable subfields per partida")
 
-    # V4: Approval flow
+    # V4: Approval flow (approve button moved to notificaciones)
     assert "Enviar a Aprobación" in content, "Missing submit for approval button"
-    assert "Aprobar Cotización" in content, "Missing approve button"
+    assert "Enviada a Sebastian/Abigail para aprobación" in content, "Missing pending approval message"
     assert "pending_approval" in content, "Missing pending_approval status"
-    print(f"  ✅ Approval flow UI (submit, approve, status badges)")
+    print(f"  ✅ Approval flow UI (submit, pending message, status badges)")
 
     # V4: Business rules tooltip
     assert "Reglas de materiales" in content, "Missing business rules tooltip"
@@ -1086,11 +1088,190 @@ def test_live_renovation_endpoints():
 
 
 # ============================================================================
+# TEST 23: VOICE COMMAND ENDPOINT STRUCTURE
+# ============================================================================
+
+def test_voice_command_endpoint():
+    """Test that the voice-command endpoint exists and has correct schema."""
+    print("\n" + "=" * 60)
+    print("TEST 23: VOICE COMMAND ENDPOINT STRUCTURE")
+    print("=" * 60)
+
+    from api.routes.renovation import router, VoiceCommandRequest, VoiceAction
+
+    # Check VoiceCommandRequest schema
+    schema = VoiceCommandRequest.model_json_schema()
+    assert "text" in schema["properties"], "VoiceCommandRequest must have 'text' field"
+    print(f"  ✅ VoiceCommandRequest has 'text' field")
+
+    # Check VoiceAction schema
+    schema = VoiceAction.model_json_schema()
+    assert "item_id" in schema["properties"]
+    assert "field" in schema["properties"]
+    assert "value" in schema["properties"]
+    print(f"  ✅ VoiceAction has item_id, field, value")
+
+    # Check route exists
+    routes = [r.path for r in router.routes]
+    assert "/voice-command" in routes, "Missing /voice-command route"
+    print(f"  ✅ /voice-command route registered")
+
+    print(f"  ✅ Voice command endpoint PASSED")
+
+
+# ============================================================================
+# TEST 24: PENDING APPROVALS ENDPOINT STRUCTURE
+# ============================================================================
+
+def test_pending_approvals_endpoint():
+    """Test that the pending-approvals endpoint exists."""
+    print("\n" + "=" * 60)
+    print("TEST 24: PENDING APPROVALS ENDPOINT STRUCTURE")
+    print("=" * 60)
+
+    from api.routes.renovation import router
+
+    routes = [r.path for r in router.routes]
+    assert "/pending-approvals" in routes, "Missing /pending-approvals route"
+    print(f"  ✅ /pending-approvals route registered")
+
+    print(f"  ✅ Pending approvals endpoint PASSED")
+
+
+# ============================================================================
+# TEST 25: FRONTEND VOICE USES LLM ENDPOINT
+# ============================================================================
+
+def test_frontend_voice_llm():
+    """Verify frontend calls /api/renovation/voice-command."""
+    print("\n" + "=" * 60)
+    print("TEST 25: FRONTEND VOICE → LLM ENDPOINT")
+    print("=" * 60)
+
+    page_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "web", "src", "app", "homes", "properties", "[id]", "renovate", "page.tsx"
+    )
+    with open(page_path, "r") as f:
+        content = f.read()
+
+    assert "/api/renovation/voice-command" in content, "Frontend must call voice-command endpoint"
+    print(f"  ✅ Frontend calls /api/renovation/voice-command")
+
+    assert "processVoiceCommandFallback" in content, "Must have regex fallback"
+    print(f"  ✅ Regex fallback function present")
+
+    assert "processingVoice" in content, "Must have processing indicator state"
+    print(f"  ✅ Processing indicator state present")
+
+    print(f"  ✅ Frontend voice LLM PASSED")
+
+
+# ============================================================================
+# TEST 26: APPROVAL REMOVED FROM RENOVATE PAGE
+# ============================================================================
+
+def test_approval_removed_from_renovate_page():
+    """Verify Aprobar button is removed from renovate page, moved to notificaciones."""
+    print("\n" + "=" * 60)
+    print("TEST 26: APPROVAL FLOW — NOTIFICACIONES")
+    print("=" * 60)
+
+    # Check renovate page does NOT have "Aprobar Cotización" button
+    page_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "web", "src", "app", "homes", "properties", "[id]", "renovate", "page.tsx"
+    )
+    with open(page_path, "r") as f:
+        content = f.read()
+
+    assert "Aprobar Cotización" not in content, "Renovate page should NOT have 'Aprobar Cotización' button"
+    print(f"  ✅ 'Aprobar Cotización' button removed from renovate page")
+
+    assert "Enviada a Sebastian/Abigail para aprobación" in content
+    print(f"  ✅ Pending approval message shown instead")
+
+    # Check notificaciones page HAS renovation approval section
+    notif_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "web", "src", "app", "homes", "notificaciones", "page.tsx"
+    )
+    with open(notif_path, "r") as f:
+        notif_content = f.read()
+
+    assert "Cotizaciones de Renovación por Aprobar" in notif_content
+    print(f"  ✅ Notificaciones page has 'Cotizaciones de Renovación por Aprobar' section")
+
+    assert "handleApproveRenovation" in notif_content
+    print(f"  ✅ Notificaciones page has approve renovation handler")
+
+    assert "/api/renovation/pending-approvals" in notif_content
+    print(f"  ✅ Notificaciones page fetches pending approvals")
+
+    print(f"  ✅ Approval flow PASSED")
+
+
+# ============================================================================
+# TEST 27: LAYOUT BADGE INCLUDES RENOVATIONS
+# ============================================================================
+
+def test_layout_badge_includes_renovations():
+    """Verify layout badge count includes renovation pending approvals."""
+    print("\n" + "=" * 60)
+    print("TEST 27: LAYOUT BADGE — INCLUDES RENOVATIONS")
+    print("=" * 60)
+
+    layout_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "web", "src", "app", "homes", "layout.tsx"
+    )
+    with open(layout_path, "r") as f:
+        content = f.read()
+
+    assert "/api/renovation/pending-approvals" in content
+    print(f"  ✅ Layout fetches /api/renovation/pending-approvals")
+
+    assert "renoCount" in content or "renoData" in content
+    print(f"  ✅ Layout includes renovation count in badge")
+
+    print(f"  ✅ Layout badge PASSED")
+
+
+# ============================================================================
+# TEST 28: EMAIL FIX — to= is List[str]
+# ============================================================================
+
+def test_email_to_is_list():
+    """Verify send_email calls use to=[email] (list, not string)."""
+    print("\n" + "=" * 60)
+    print("TEST 28: EMAIL FIX — to= is List[str]")
+    print("=" * 60)
+
+    import inspect
+    from api.routes.renovation import _send_approval_notification, _send_approved_notification
+
+    src1 = inspect.getsource(_send_approval_notification)
+    src2 = inspect.getsource(_send_approved_notification)
+
+    assert "to=[admin_email]" in src1, "Approval notification must use to=[admin_email]"
+    print(f"  ✅ _send_approval_notification uses to=[admin_email]")
+
+    assert "to=[treasury_email]" in src2, "Approved notification must use to=[treasury_email]"
+    print(f"  ✅ _send_approved_notification uses to=[treasury_email]")
+
+    assert "_base_template" in src1, "Must use branded template"
+    assert "_base_template" in src2, "Must use branded template"
+    print(f"  ✅ Both use _base_template for branded emails")
+
+    print(f"  ✅ Email fix PASSED")
+
+
+# ============================================================================
 # RUN ALL TESTS
 # ============================================================================
 
 if __name__ == "__main__":
-    print("🧪 RENOVATION V4 TESTS — Material Defaults + Subfields + Approval")
+    print("🧪 RENOVATION V4 TESTS — Material Defaults + Subfields + Approval + Voice LLM")
     print("=" * 60)
 
     tests = [
@@ -1116,6 +1297,12 @@ if __name__ == "__main__":
         test_approval_endpoints,
         test_subfields_save_load,
         test_live_renovation_endpoints,
+        test_voice_command_endpoint,
+        test_pending_approvals_endpoint,
+        test_frontend_voice_llm,
+        test_approval_removed_from_renovate_page,
+        test_layout_badge_includes_renovations,
+        test_email_to_is_list,
     ]
 
     passed = 0

@@ -13,7 +13,10 @@ import {
   X,
   Calendar,
   ShieldCheck,
+  Hammer,
+  ExternalLink,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
 
@@ -77,6 +80,10 @@ export default function NotificacionesPage() {
   const [confirmedTransfers, setConfirmedTransfers] = useState<any[]>([])
   const [loadingConfirmed, setLoadingConfirmed] = useState(true)
 
+  // Renovation approvals
+  const [pendingRenovations, setPendingRenovations] = useState<any[]>([])
+  const [loadingRenovations, setLoadingRenovations] = useState(true)
+
   // Approval state
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
@@ -136,9 +143,23 @@ export default function NotificacionesPage() {
     }
   }, [])
 
+  const fetchPendingRenovations = useCallback(async () => {
+    setLoadingRenovations(true)
+    try {
+      const res = await fetch('/api/renovation/pending-approvals')
+      const data = await res.json()
+      if (data.ok) setPendingRenovations(data.pending || [])
+    } catch (e) {
+      console.error('Error fetching pending renovations:', e)
+    } finally {
+      setLoadingRenovations(false)
+    }
+  }, [])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
   useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
   useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
+  useEffect(() => { fetchPendingRenovations() }, [fetchPendingRenovations])
 
   // ── Approve (admin only) ──────────────────────────────────────────────
   const handleApproveOrder = async (orderId: string) => {
@@ -176,6 +197,30 @@ export default function NotificacionesPage() {
       }
     } catch (e) {
       console.error('Error approving transfer:', e)
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  // ── Approve renovation (admin only) ──────────────────────────────────
+  const handleApproveRenovation = async (propertyId: string) => {
+    setApprovingId(propertyId)
+    try {
+      const res = await fetch(`/api/renovation/${propertyId}/approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: teamUser?.name || teamUser?.id || 'admin' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Cotización de renovación aprobada')
+        fetchPendingRenovations()
+      } else {
+        toast.error(data.detail || 'Error al aprobar')
+      }
+    } catch (e) {
+      console.error('Error approving renovation:', e)
+      toast.error('Error de conexión')
     } finally {
       setApprovingId(null)
     }
@@ -268,6 +313,79 @@ export default function NotificacionesPage() {
           </div>
         </div>
       </div>
+
+      {/* ── ADMIN: Renovation quotes pending approval ─────────────────── */}
+      {isAdmin && pendingRenovations.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+              Cotizaciones de Renovación por Aprobar
+            </h2>
+            <span className="ml-auto bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-1 rounded-full">
+              {pendingRenovations.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {pendingRenovations.map((reno: any) => (
+              <div key={reno.renovation_id} className="bg-white rounded-xl border-2 border-purple-200 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Hammer className="w-4 h-4 text-purple-500" />
+                      <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
+                        Cotización de Renovación
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <Clock className="w-3 h-3" />
+                        Pendiente
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
+                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
+                        {reno.address || reno.property_id}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 mb-2">
+                      <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
+                        ${reno.total_cost?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
+                      {reno.responsable && <span>Responsable: <strong>{reno.responsable}</strong></span>}
+                      {reno.created_at && <span>Creada: {new Date(reno.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleApproveRenovation(reno.property_id)}
+                      disabled={approvingId === reno.property_id}
+                      className="px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                      style={{ backgroundColor: 'var(--navy-800)' }}
+                    >
+                      {approvingId === reno.property_id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4" />
+                      )}
+                      Aprobar
+                    </button>
+                    <Link
+                      href={`/homes/properties/${reno.property_id}/renovate`}
+                      className="px-4 py-2 rounded-lg text-xs font-medium text-center transition-colors border flex items-center justify-center gap-1.5"
+                      style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Ver detalle
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── ADMIN: Unapproved transfers to approve ─────────────────────── */}
       {isAdmin && unapprovedTransfers.length > 0 && (

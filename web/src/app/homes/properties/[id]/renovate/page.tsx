@@ -142,7 +142,6 @@ export default function RenovationPage() {
   const [activeTab, setActiveTab] = useState<TabType>('cotizacion')
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [submittingApproval, setSubmittingApproval] = useState(false)
-  const [approvingQuote, setApprovingQuote] = useState(false)
 
   // Project metadata
   const [projectResponsable, setProjectResponsable] = useState('')
@@ -409,32 +408,6 @@ export default function RenovationPage() {
   }
 
   // ============================================
-  // APPROVE
-  // ============================================
-
-  const approveQuote = async () => {
-    setApprovingQuote(true)
-    try {
-      const res = await fetch(`/api/renovation/${propertyId}/approve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved_by: 'admin' }),
-      })
-      if (res.ok) {
-        setQuote(prev => prev ? { ...prev, approval_status: 'approved' } : prev)
-        toast.success('Cotización aprobada')
-      } else {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.detail || 'Error al aprobar')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setApprovingQuote(false)
-    }
-  }
-
-  // ============================================
   // AI AUTO-FILL
   // ============================================
 
@@ -615,7 +588,7 @@ export default function RenovationPage() {
     recognitionRef.current = recognition
     recognition.start()
     setIsListening(true)
-    toast.info('Escuchando... Di "partida [numero] mano de obra [monto]" o "materiales [monto]"')
+    toast.info('Escuchando... Di "pon en demolición 500 de materiales" o cualquier comando')
   }
 
   const stopVoice = () => {
@@ -624,7 +597,47 @@ export default function RenovationPage() {
     setVoiceTranscript('')
   }
 
-  const processVoiceCommand = (text: string) => {
+  const [processingVoice, setProcessingVoice] = useState(false)
+
+  const processVoiceCommand = async (text: string) => {
+    if (!quote) return
+
+    // Try LLM endpoint first
+    setProcessingVoice(true)
+    try {
+      const res = await fetch('/api/renovation/voice-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const actions = data.actions || []
+
+        if (actions.length > 0) {
+          for (const action of actions) {
+            updateItem(action.item_id, action.field, action.value)
+          }
+          toast.success(data.message || `${actions.length} cambio(s) aplicado(s)`)
+          setProcessingVoice(false)
+          return
+        } else {
+          toast.warning(data.message || 'No pude entender el comando')
+          setProcessingVoice(false)
+          return
+        }
+      }
+    } catch {
+      // LLM failed, fall through to regex fallback
+    }
+    setProcessingVoice(false)
+
+    // Regex fallback
+    processVoiceCommandFallback(text)
+  }
+
+  const processVoiceCommandFallback = (text: string) => {
     if (!quote) return
 
     const numWords: Record<string, number> = {
@@ -685,7 +698,6 @@ export default function RenovationPage() {
       changed = true
     }
     if (precioMatch && !moMatch && !matMatch) {
-      // Legacy: "precio X" → assign to mano_obra
       const val = parseFloat(precioMatch[1].replace(/,/g, ''))
       updateItem(targetItem.id, 'mano_obra', val)
       changed = true
@@ -832,7 +844,7 @@ export default function RenovationPage() {
           <div className="bg-red-50 border-t border-red-200 px-4 py-2 flex items-center gap-2">
             <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
             <span className="text-sm text-red-700">
-              {voiceTranscript || 'Escuchando... Di "partida [número] mano de obra [monto]"'}
+              {processingVoice ? 'Procesando comando...' : voiceTranscript || 'Escuchando... Di cualquier comando de renovación'}
                         </span>
                       </div>
         )}
@@ -1514,14 +1526,16 @@ export default function RenovationPage() {
             </button>
           )}
           {approvalStatus === 'pending_approval' && (
-            <button
-              onClick={approveQuote}
-              disabled={approvingQuote}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-all"
-            >
-              {approvingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Aprobar Cotización
-            </button>
+            <span className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium border border-amber-200">
+              <Clock className="w-4 h-4" />
+              Enviada a Sebastian/Abigail para aprobación
+            </span>
+          )}
+          {approvalStatus === 'approved' && (
+            <span className="flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200">
+              <CheckCircle2 className="w-4 h-4" />
+              Cotización aprobada
+            </span>
           )}
 
           {/* Guide text */}

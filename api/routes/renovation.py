@@ -15,13 +15,15 @@ Flow:
 6. POST /{property_id}/import-report   → Import evaluation report → suggestions
 7. PATCH /{property_id}/approve        → Approve renovation quote (admin/manager)
 8. GET /{property_id}/approval-status  → Get approval status
+9. POST /voice-command                 → GPT-4o-mini voice command parsing
+10. GET /pending-approvals             → List all pending approval quotes
 """
 
 import json
 import logging
 import os
 import re
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
 
@@ -60,6 +62,17 @@ class SaveQuoteV2Request(BaseModel):
 
 class ApproveQuoteRequest(BaseModel):
     approved_by: Optional[str] = None
+
+
+class VoiceCommandRequest(BaseModel):
+    text: str
+    property_id: Optional[str] = None
+
+
+class VoiceAction(BaseModel):
+    item_id: str
+    field: str  # mano_obra, materiales, dias, notas, responsable
+    value: Any
 
 
 # ============================================================================
@@ -311,6 +324,143 @@ async def get_approval_status(property_id: str):
 
 
 # ============================================================================
+# VOICE COMMAND — GPT-4o-mini
+# ============================================================================
+
+@router.post("/voice-command")
+async def process_voice_command(data: VoiceCommandRequest):
+    """Parse a Spanish voice command into structured renovation actions using GPT-4o-mini."""
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty text")
+
+    try:
+        import openai
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+
+        client = openai.OpenAI(api_key=api_key)
+
+        # Build item reference for the prompt
+        items_ref = "\n".join(
+            f'- id: "{item["id"]}", partida: {item["partida"]}, concepto: "{item["concepto"]}"'
+            for item in RENOVATION_ITEMS
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""Eres un asistente que parsea comandos de voz en español para una cotización de renovación de casas móviles.
+
+PARTIDAS DISPONIBLES (usa el id exacto):
+{items_ref}
+
+CAMPOS válidos por partida: mano_obra (número), materiales (número), dias (número), notas (texto), responsable (texto)
+
+Tu tarea: dado un comando de voz, devuelve UN JSON con:
+- "actions": lista de objetos con "item_id", "field", "value"
+- "message": resumen breve en español de lo que se hizo
+
+REGLAS:
+1. Si el usuario dice un número en palabras ("mil doscientos"), conviértelo a número (1200)
+2. Si dice "materiales" sin especificar partida, intenta deducir la partida del contexto
+3. Si dice "pon en X" o "X para Y", deduce partida + campo
+4. Si no puedes deducir la partida, devuelve actions vacío y message explicativo
+5. Si solo dice un monto sin especificar campo, asígnalo a "mano_obra" por defecto
+6. SIEMPRE responde con JSON válido, sin markdown"""
+                },
+                {"role": "user", "content": text},
+            ],
+            max_tokens=500,
+            temperature=0.1,
+        )
+
+        result_text = response.choices[0].message.content or "{}"
+        # Strip markdown code fences if present
+        json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result_text, re.DOTALL)
+        json_str = json_match.group(1).strip() if json_match else result_text.strip()
+
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError:
+            logger.warning(f"[voice-command] Failed to parse GPT response: {json_str[:200]}")
+            return {"actions": [], "message": "No pude entender el comando", "raw": json_str}
+
+        actions = parsed.get("actions", [])
+        message = parsed.get("message", "Comando procesado")
+
+        # Validate item_ids
+        valid_ids = {item["id"] for item in RENOVATION_ITEMS}
+        validated_actions = [
+            a for a in actions
+            if isinstance(a, dict)
+            and a.get("item_id") in valid_ids
+            and a.get("field") in ("mano_obra", "materiales", "dias", "notas", "responsable")
+        ]
+
+        logger.info(f"[voice-command] '{text}' → {len(validated_actions)} actions")
+        return {
+            "actions": validated_actions,
+            "message": message,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[voice-command] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice command processing error: {e}")
+
+
+# ============================================================================
+# PENDING APPROVALS
+# ============================================================================
+
+@router.get("/pending-approvals")
+async def get_pending_approvals():
+    """List all renovation quotes with pending_approval status."""
+    try:
+        renos = sb.table("renovations").select(
+            "id, property_id, materials, total_cost, created_at, updated_at"
+        ).eq("status", "in_progress").execute()
+    except Exception as e:
+        logger.error(f"[renovation] DB error fetching pending approvals: {e}")
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+
+    pending = []
+    for reno in renos.data or []:
+        materials = reno.get("materials") or {}
+        if materials.get("approval_status") != "pending_approval":
+            continue
+
+        # Fetch property address
+        prop_address = ""
+        try:
+            prop = sb.table("properties").select("address").eq(
+                "id", reno["property_id"]
+            ).execute()
+            if prop.data:
+                prop_address = prop.data[0].get("address", "")
+        except Exception:
+            pass
+
+        pending.append({
+            "renovation_id": reno["id"],
+            "property_id": reno["property_id"],
+            "address": prop_address,
+            "total_cost": reno.get("total_cost", 0),
+            "responsable": materials.get("responsable", ""),
+            "created_at": reno.get("created_at", ""),
+            "updated_at": reno.get("updated_at", ""),
+        })
+
+    return {"ok": True, "pending": pending, "count": len(pending)}
+
+
+# ============================================================================
 # NOTIFICATION HELPERS
 # ============================================================================
 
@@ -323,17 +473,32 @@ def _send_approval_notification(property_id: str, total: float, responsable: str
     """Send email to admin when quote is submitted for approval."""
     try:
         from tools.email_tool import send_email
+        from api.services.email_service import _base_template
         admin_email = os.getenv("ADMIN_EMAIL", "sebastian@maninoshomes.com")
+        app_url = os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+        prop_link = f"{app_url}/homes/notificaciones"
+
+        content = f"""
+        <div class="header">
+            <h1>Cotización Pendiente de Aprobación</h1>
+            <p>${total:,.2f}</p>
+        </div>
+        <div class="body">
+            <p>Se ha enviado una nueva cotización de renovación para aprobación.</p>
+            <div class="highlight">
+                <p><strong>Propiedad:</strong> {property_id}</p>
+                <p><strong>Total:</strong> ${total:,.2f}</p>
+                <p><strong>Responsable:</strong> {responsable or 'No asignado'}</p>
+            </div>
+            <p style="text-align: center; margin-top: 24px;">
+                <a href="{prop_link}" class="btn">Revisar y Aprobar</a>
+            </p>
+        </div>
+        """
         send_email(
-            to=admin_email,
+            to=[admin_email],
             subject=f"Cotización de renovación pendiente de aprobación — ${total:,.2f}",
-            html=f"""
-            <h2>Nueva cotización pendiente de aprobación</h2>
-            <p><strong>Propiedad:</strong> {property_id}</p>
-            <p><strong>Total:</strong> ${total:,.2f}</p>
-            <p><strong>Responsable:</strong> {responsable or 'No asignado'}</p>
-            <p>Ingresa al sistema para revisar y aprobar la cotización.</p>
-            """,
+            html=_base_template(content),
         )
     except Exception as e:
         logger.warning(f"[renovation] Failed to send approval notification: {e}")
@@ -343,16 +508,31 @@ def _send_approved_notification(property_id: str, total: float):
     """Send email to treasury when quote is approved."""
     try:
         from tools.email_tool import send_email
+        from api.services.email_service import _base_template
         treasury_email = os.getenv("TREASURY_EMAIL", "abigail@maninoshomes.com")
+        app_url = os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+        prop_link = f"{app_url}/homes/properties/{property_id}/renovate"
+
+        content = f"""
+        <div class="header">
+            <h1>Cotización de Renovación Aprobada</h1>
+            <p>${total:,.2f}</p>
+        </div>
+        <div class="body">
+            <p>La cotización de renovación ha sido aprobada y puede proceder con la compra de materiales.</p>
+            <div class="highlight">
+                <p><strong>Propiedad:</strong> {property_id}</p>
+                <p><strong>Total aprobado:</strong> ${total:,.2f}</p>
+            </div>
+            <p style="text-align: center; margin-top: 24px;">
+                <a href="{prop_link}" class="btn">Ver Cotización</a>
+            </p>
+        </div>
+        """
         send_email(
-            to=treasury_email,
+            to=[treasury_email],
             subject=f"Cotización de renovación APROBADA — ${total:,.2f}",
-            html=f"""
-            <h2>Cotización de renovación aprobada</h2>
-            <p><strong>Propiedad:</strong> {property_id}</p>
-            <p><strong>Total aprobado:</strong> ${total:,.2f}</p>
-            <p>Esta cotización ha sido aprobada y puede proceder con la compra de materiales.</p>
-            """,
+            html=_base_template(content),
         )
     except Exception as e:
         logger.warning(f"[renovation] Failed to send approved notification: {e}")
