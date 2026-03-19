@@ -134,12 +134,26 @@ export default function ClientDashboard() {
 
   const fetchRtoApplication = async (clientId: string) => {
     try {
+      // Try the dedicated endpoint first
       const res = await fetch(`/api/public/clients/${clientId}/rto-application`)
-      const data = await res.json()
-      if (data.ok && data.rto_application) {
-        setRtoAppId(data.rto_application.id)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ok && data.rto_application) {
+          setRtoAppId(data.rto_application.id)
+          return
+        }
       }
-    } catch {} // silent fail
+    } catch {}
+    // Fallback: query capital applications list (no auth needed)
+    try {
+      const res = await fetch(`/api/capital/applications`)
+      if (res.ok) {
+        const data = await res.json()
+        const apps = data.applications || []
+        const myApp = apps.find((a: any) => a.client_id === clientId && ['submitted', 'under_review', 'needs_info', 'approved'].includes(a.status))
+        if (myApp) setRtoAppId(myApp.id)
+      }
+    } catch {}
   }
       
   const fetchPayments = async (clientId: string) => {
