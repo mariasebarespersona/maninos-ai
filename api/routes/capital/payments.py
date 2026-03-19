@@ -327,7 +327,7 @@ async def confirm_dp_installment(installment_id: str):
             "rto_contract_id": contract.get("id"),
             "payment_method": inst.get("client_payment_method", "bank_transfer"),
             "notes": f"Confirmado desde reporte de cliente. Método: {inst.get('client_payment_method', 'N/A')}",
-            "created_by": "abigail",
+            "created_by": "treasury",
         }
         txn_result = sb.table("capital_transactions").insert(txn_data).execute()
 
@@ -381,10 +381,13 @@ async def get_pending_confirmations():
 
 @router.post("/confirm-transaction/{transaction_id}")
 async def confirm_transaction(transaction_id: str):
-    """Confirm a pending capital_transaction — sets status to 'confirmed'."""
+    """
+    Confirm a pending capital_transaction — sets status to 'confirmed'.
+    For investor_deposit and investor_return, also executes the actual business logic.
+    """
     try:
         txn = sb.table("capital_transactions") \
-            .select("id, status, transaction_type, amount, description") \
+            .select("*") \
             .eq("id", transaction_id) \
             .single() \
             .execute()
@@ -395,19 +398,156 @@ async def confirm_transaction(transaction_id: str):
         if txn.data["status"] != "pending_confirmation":
             raise HTTPException(status_code=400, detail=f"Estado inválido: {txn.data['status']}")
 
+        t = txn.data
+        notes = t.get("notes") or ""
+
+        # Execute business logic based on transaction type
+        if t["transaction_type"] == "investor_return" and notes.startswith("return_payment|"):
+            # Execute investor return: update investment + investor capital
+            parts = notes.split("|")
+            if len(parts) >= 4:
+                investor_id, investment_id, amount_str = parts[1], parts[2], parts[3]
+                amount = float(amount_str)
+                _execute_investor_return(investor_id, investment_id, amount, t)
+
+        elif t["transaction_type"] == "investor_deposit" and notes.startswith("investment_link|"):
+            # Execute investment link: create investment + update investor
+            parts = notes.split("|")
+            if len(parts) >= 5:
+                investor_id, contract_id, amount_str, rate_str = parts[1], parts[2], parts[3], parts[4]
+                amount = float(amount_str)
+                rate = float(rate_str)
+                _execute_investment_link(investor_id, contract_id, amount, rate, t)
+
+        # Mark as confirmed
         sb.table("capital_transactions").update({
             "status": "confirmed",
         }).eq("id", transaction_id).execute()
 
         return {
             "ok": True,
-            "message": f"Confirmado: {txn.data['description'][:80]} — ${float(txn.data['amount']):,.2f}",
+            "message": f"Confirmado: {t['description'][:80]} — ${float(t['amount']):,.2f}",
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error confirming transaction {transaction_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _execute_investor_return(investor_id: str, investment_id: str, amount: float, txn: dict):
+    """Execute the actual investor return after approval + confirmation."""
+    from api.routes.capital.capital_flows import _record_flow
+    try:
+        investment = sb.table("investments") \
+            .select("*, investors(name, available_capital)") \
+            .eq("id", investment_id).single().execute()
+
+        if not investment.data:
+            logger.warning(f"[confirm] Investment {investment_id} not found for return")
+            return
+
+        inv = investment.data
+
+        # Record capital flow (outgoing)
+        _record_flow({
+            "flow_type": "return_out",
+            "amount": -abs(amount),
+            "investor_id": investor_id,
+            "investment_id": investment_id,
+            "property_id": inv.get("property_id"),
+            "rto_contract_id": inv.get("rto_contract_id"),
+            "description": txn.get("description", f"Retorno a inversor"),
+            "flow_date": date.today().isoformat(),
+        }, skip_accounting=True)  # Skip because we already have the capital_transaction
+
+        # Update investment
+        existing_return = float(inv.get("return_amount", 0) or 0)
+        new_return = existing_return + amount
+        original_amount = float(inv.get("amount", 0))
+        status = "returned" if new_return >= original_amount else "partial_return"
+
+        sb.table("investments").update({
+            "return_amount": new_return,
+            "status": status,
+            "returned_at": datetime.utcnow().isoformat() if status == "returned" else None,
+        }).eq("id", investment_id).execute()
+
+        # Update investor available capital
+        current_available = float(inv["investors"].get("available_capital", 0) or 0)
+        sb.table("investors").update({
+            "available_capital": current_available + amount,
+        }).eq("id", investor_id).execute()
+
+        logger.info(f"[confirm] Executed investor return: ${amount:,.0f} to {inv['investors']['name']}")
+    except Exception as e:
+        logger.error(f"[confirm] Error executing investor return: {e}")
+
+
+def _execute_investment_link(investor_id: str, contract_id: str, amount: float, rate: float, txn: dict):
+    """Execute the actual investment link after approval + confirmation."""
+    from api.routes.capital.capital_flows import _record_flow
+    try:
+        investor = sb.table("investors") \
+            .select("id, name, available_capital, total_invested") \
+            .eq("id", investor_id).single().execute()
+
+        if not investor.data:
+            logger.warning(f"[confirm] Investor {investor_id} not found")
+            return
+
+        inv = investor.data
+        contract = sb.table("rto_contracts") \
+            .select("id, property_id") \
+            .eq("id", contract_id).single().execute()
+
+        if not contract.data:
+            logger.warning(f"[confirm] Contract {contract_id} not found")
+            return
+
+        c = contract.data
+
+        # 1. Create investment
+        investment = sb.table("investments").insert({
+            "investor_id": investor_id,
+            "property_id": c["property_id"],
+            "rto_contract_id": contract_id,
+            "amount": amount,
+            "expected_return_rate": rate,
+            "funding_purpose": "acquisition",
+            "notes": f"Inversión vinculada a contrato RTO (aprobada)",
+        }).execute()
+
+        investment_id = investment.data[0]["id"] if investment.data else None
+
+        # 2. Record capital flow
+        flow = _record_flow({
+            "flow_type": "investment_in",
+            "amount": amount,
+            "investor_id": investor_id,
+            "investment_id": investment_id,
+            "property_id": c["property_id"],
+            "rto_contract_id": contract_id,
+            "description": txn.get("description", f"Inversión de {inv['name']}"),
+            "flow_date": date.today().isoformat(),
+        }, skip_accounting=True)  # Skip because we already have the capital_transaction
+
+        # 3. Update investment with flow ID
+        if investment_id and flow.get("id"):
+            sb.table("investments").update({
+                "capital_flow_id": flow["id"],
+            }).eq("id", investment_id).execute()
+
+        # 4. Update investor totals
+        available = float(inv.get("available_capital", 0) or 0)
+        sb.table("investors").update({
+            "total_invested": float(inv.get("total_invested", 0) or 0) + amount,
+            "available_capital": available - amount,
+        }).eq("id", investor_id).execute()
+
+        logger.info(f"[confirm] Executed investment link: ${amount:,.0f} from {inv['name']}")
+    except Exception as e:
+        logger.error(f"[confirm] Error executing investment link: {e}")
 
 
 @router.post("/{payment_id}/record")

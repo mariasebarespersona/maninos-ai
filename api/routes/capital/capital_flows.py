@@ -230,11 +230,9 @@ async def record_flow(data: FlowCreate):
 @router.post("/link-investment")
 async def link_investment_to_contract(data: InvestmentLink):
     """
-    Link an investor's funds to a specific RTO contract.
-    This is the Fondear → Adquirir connection.
-    1. Creates investment record linked to the contract
-    2. Records capital flow (investment_in)
-    3. Updates investor totals
+    Request to link an investor's funds to an RTO contract.
+    Creates a pending capital_transaction for approval (Sebastian → Abigail).
+    The actual investment is created only when Abigail confirms.
     """
     try:
         # Validate investor
@@ -257,70 +255,48 @@ async def link_investment_to_contract(data: InvestmentLink):
 
         # Validate contract
         contract = sb.table("rto_contracts") \
-            .select("id, property_id, client_id, status, monthly_rent, purchase_price") \
+            .select("id, property_id, client_id, status") \
             .eq("id", data.rto_contract_id) \
             .execute()
 
         if not contract.data:
             raise HTTPException(status_code=404, detail="Contrato no encontrado")
 
-        c = contract.data[0]
-
-        # 1. Create investment
-        investment = sb.table("investments").insert({
-            "investor_id": data.investor_id,
-            "property_id": c["property_id"],
-            "rto_contract_id": data.rto_contract_id,
-            "amount": data.amount,
-            "expected_return_rate": data.expected_return_rate,
-            "funding_purpose": "acquisition",
-            "notes": data.notes or f"Inversión vinculada a contrato RTO",
-        }).execute()
-
-        investment_id = investment.data[0]["id"]
-
-        # 2. Record capital flow
-        flow = _record_flow({
-            "flow_type": "investment_in",
-            "amount": data.amount,
-            "investor_id": data.investor_id,
-            "investment_id": investment_id,
-            "property_id": c["property_id"],
-            "rto_contract_id": data.rto_contract_id,
-            "description": f"Inversión de {inv['name']} para contrato RTO",
-            "flow_date": date.today().isoformat(),
-        })
-
-        # 3. Update investment with flow ID
-        sb.table("investments").update({
-            "capital_flow_id": flow["id"],
-        }).eq("id", investment_id).execute()
-
-        # 4. Update investor totals
-        sb.table("investors").update({
-            "total_invested": float(inv.get("total_invested", 0) or 0) + data.amount,
-            "available_capital": available - data.amount,
-        }).eq("id", data.investor_id).execute()
+        # Create pending capital_transaction (awaits Sebastian → Abigail approval)
+        txn = record_txn(
+            txn_type="investor_deposit",
+            amount=data.amount,
+            is_income=True,
+            description=f"Inversión de {inv['name']} — contrato RTO (pendiente aprobación)",
+            txn_date=date.today().isoformat(),
+            investor_id=data.investor_id,
+            property_id=contract.data[0].get("property_id"),
+            rto_contract_id=data.rto_contract_id,
+            counterparty_name=inv["name"],
+            notes=f"investment_link|{data.investor_id}|{data.rto_contract_id}|{data.amount}|{data.expected_return_rate}",
+            created_by="sistema",
+            status="pending_confirmation",
+        )
 
         return {
             "ok": True,
-            "investment_id": investment_id,
-            "flow_id": flow["id"],
-            "message": f"Inversión de ${data.amount:,.0f} vinculada al contrato. Capital restante: ${available - data.amount:,.0f}",
+            "transaction_id": txn["id"] if txn else None,
+            "message": f"Solicitud de inversión ${data.amount:,.0f} de {inv['name']} creada. Pendiente de aprobación.",
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error linking investment: {e}")
+        logger.error(f"Error creating investment request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/pay-return")
 async def pay_investor_return(data: ReturnPayment):
     """
-    Pay returns to an investor. This closes (or partially closes) an investment.
-    Records the return as a capital_flow (return_out).
+    Request to pay returns to an investor.
+    Creates a pending capital_transaction for approval (Sebastian → Abigail).
+    The actual payment is executed only when Abigail confirms.
     """
     try:
         # Validate investment
@@ -338,49 +314,34 @@ async def pay_investor_return(data: ReturnPayment):
         if inv["status"] == "returned":
             raise HTTPException(status_code=400, detail="Esta inversión ya fue retornada completamente")
 
-        # Record capital flow (outgoing)
-        flow = _record_flow({
-            "flow_type": "return_out",
-            "amount": -abs(data.amount),
-            "investor_id": data.investor_id,
-            "investment_id": data.investment_id,
-            "property_id": inv.get("property_id"),
-            "rto_contract_id": inv.get("rto_contract_id"),
-            "description": data.notes or f"Retorno a {inv['investors']['name']}",
-            "flow_date": date.today().isoformat(),
-        })
+        investor_name = inv["investors"]["name"]
 
-        # Update investment
-        existing_return = float(inv.get("return_amount", 0) or 0)
-        new_return = existing_return + data.amount
-        original_amount = float(inv.get("amount", 0))
-
-        status = "returned" if new_return >= original_amount else "partial_return"
-
-        sb.table("investments").update({
-            "return_amount": new_return,
-            "status": status,
-            "returned_at": datetime.utcnow().isoformat() if status == "returned" else None,
-        }).eq("id", data.investment_id).execute()
-
-        # Update investor available capital
-        current_available = float(inv["investors"].get("available_capital", 0) or 0)
-        sb.table("investors").update({
-            "available_capital": current_available + data.amount,
-        }).eq("id", data.investor_id).execute()
+        # Create pending capital_transaction (awaits Sebastian → Abigail approval)
+        txn = record_txn(
+            txn_type="investor_return",
+            amount=data.amount,
+            is_income=False,
+            description=f"Retorno a {investor_name} — ${data.amount:,.0f} (pendiente aprobación)",
+            txn_date=date.today().isoformat(),
+            investor_id=data.investor_id,
+            property_id=inv.get("property_id"),
+            rto_contract_id=inv.get("rto_contract_id"),
+            counterparty_name=investor_name,
+            notes=f"return_payment|{data.investor_id}|{data.investment_id}|{data.amount}",
+            created_by="sistema",
+            status="pending_confirmation",
+        )
 
         return {
             "ok": True,
-            "flow_id": flow["id"],
-            "total_returned": new_return,
-            "investment_status": status,
-            "message": f"Retorno de ${data.amount:,.0f} procesado. Total retornado: ${new_return:,.0f}",
+            "transaction_id": txn["id"] if txn else None,
+            "message": f"Solicitud de retorno ${data.amount:,.0f} a {investor_name} creada. Pendiente de aprobación.",
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error paying return: {e}")
+        logger.error(f"Error creating return request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
