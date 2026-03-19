@@ -487,33 +487,72 @@ export default function ClientDashboard() {
                           </div>
                             )}
 
-                            {/* Credit application CTA for RTO pending */}
-                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && kycVerified && rtoAppId && (
-                              <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2">
-                                    <ClipboardList className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                                    <div>
-                                      <p className="font-semibold text-[13px] text-emerald-800">Siguiente paso: Solicitud de Crédito</p>
-                                      <p className="text-[11px] text-emerald-600">Completa tu solicitud para que podamos evaluar tu caso</p>
+                            {/* RTO Progress Steps */}
+                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && (
+                              <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
+                                <p className="text-[13px] font-bold text-[#222] mb-3">Pasos para completar tu compra RTO:</p>
+                                <div className="space-y-3">
+                                  {/* Step 1: Identity */}
+                                  <div className="flex items-start gap-3">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${kycVerified ? 'bg-emerald-500 text-white' : kycRequested ? 'bg-amber-400 text-white' : 'bg-gray-300 text-white'}`}>
+                                      {kycVerified ? <CheckCircle className="w-3.5 h-3.5" /> : '1'}
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className={`text-[13px] font-semibold ${kycVerified ? 'text-emerald-700' : 'text-[#222]'}`}>
+                                        Verificar identidad
+                                      </p>
+                                      {kycVerified ? (
+                                        <p className="text-[11px] text-emerald-600">Identidad verificada</p>
+                                      ) : kycRequested ? (
+                                        <Link href="/clientes/mi-cuenta/verificacion" className="text-[11px] text-amber-700 font-semibold underline">
+                                          Pendiente — Verificar ahora
+                                        </Link>
+                                      ) : (
+                                        <p className="text-[11px] text-[#717171]">Esperando que Maninos te solicite la verificación</p>
+                                      )}
                                     </div>
                                   </div>
-                                  <Link
-                                    href={`/clientes/mi-cuenta/solicitud-credito/${rtoAppId}`}
-                                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-700 transition-colors"
-                                  >
-                                    Completar <ArrowRight className="w-3.5 h-3.5" />
-                                  </Link>
-                                </div>
-                              </div>
-                            )}
 
-                            {/* RTO pending without KYC */}
-                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && !kycVerified && (
-                              <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                  <p className="text-[12px] text-amber-700">Tu solicitud está en revisión. Te notificaremos cuando necesitemos más información.</p>
+                                  {/* Step 2: Credit Application */}
+                                  <div className="flex items-start gap-3">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${!kycVerified ? 'bg-gray-200 text-gray-400' : rtoAppId ? 'bg-[#004274] text-white ring-2 ring-[#004274]/30 ring-offset-1' : 'bg-gray-300 text-white'}`}>
+                                      2
+                                    </div>
+                                    <div className="flex-1">
+                                      {kycVerified && rtoAppId ? (
+                                        <Link
+                                          href={`/clientes/mi-cuenta/solicitud-credito/${rtoAppId}`}
+                                          className="block p-3 -m-1 rounded-lg bg-[#004274] hover:bg-[#00345c] transition-colors"
+                                        >
+                                          <p className="text-[14px] font-bold text-white">
+                                            Completar Solicitud de Crédito
+                                          </p>
+                                          <p className="text-[12px] text-white/80 mt-0.5">
+                                            Toca aquí para llenar tu solicitud (10-15 min)
+                                          </p>
+                                          <div className="flex items-center gap-1 mt-1.5 text-white/90 text-[11px] font-semibold">
+                                            Empezar ahora <ArrowRight className="w-3.5 h-3.5" />
+                                          </div>
+                                        </Link>
+                                      ) : (
+                                        <>
+                                          <p className="text-[13px] font-semibold text-gray-400">Completar solicitud de crédito</p>
+                                          <p className="text-[11px] text-gray-400">Disponible después de verificar tu identidad</p>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Step 3: Review */}
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold bg-gray-200 text-gray-400">
+                                      3
+                                    </div>
+                                    <div>
+                                      <p className="text-[13px] font-semibold text-gray-400">Revisión y aprobación</p>
+                                      <p className="text-[11px] text-gray-400">Maninos revisará tu solicitud y te contactará</p>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             )}
