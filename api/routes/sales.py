@@ -211,6 +211,8 @@ async def get_pending_transfers():
                 "client_name": client.get("name"),
                 "client_email": client.get("email"),
                 "client_phone": client.get("phone"),
+                "transfer_approved_by": sale.get("transfer_approved_by"),
+                "transfer_approved_at": sale.get("transfer_approved_at"),
             })
 
         return {"ok": True, "transfers": transfers}
@@ -589,6 +591,29 @@ async def mark_sale_paid(sale_id: str, data: SaleComplete):
         prop.data["address"] if prop.data else None,
         client.data["name"] if client.data else None,
     )
+
+
+@router.post("/{sale_id}/approve-transfer")
+async def approve_transfer(sale_id: str, approved_by: Optional[str] = Query(None)):
+    """
+    Approve a reported transfer (Sebastian/admin).
+    Records approval so Treasury can then confirm the payment.
+    """
+    sale_result = sb.table("sales").select("id, status").eq("id", sale_id).single().execute()
+    if not sale_result.data:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+    if sale_result.data["status"] != "transfer_reported":
+        raise HTTPException(status_code=400, detail=f"Estado actual: {sale_result.data['status']}")
+
+    now = datetime.utcnow().isoformat()
+    sb.table("sales").update({
+        "transfer_approved_by": approved_by,
+        "transfer_approved_at": now,
+    }).eq("id", sale_id).execute()
+
+    logger.info(f"[sales] Transfer approved for sale {sale_id} by {approved_by}")
+    return {"ok": True, "message": "Transferencia aprobada. Tesorería puede confirmar el pago."}
 
 
 @router.post("/{sale_id}/confirm-transfer")

@@ -12,14 +12,16 @@ import {
   CreditCard,
   X,
   Calendar,
+  ShieldCheck,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { useAuth } from '@/components/Auth/AuthProvider'
 
 interface PaymentOrder {
   id: string
   property_id: string
   property_address: string
-  status: 'pending' | 'completed' | 'cancelled'
+  status: 'pending' | 'approved' | 'completed' | 'cancelled'
   payee_name: string
   bank_name: string | null
   routing_number: string | null
@@ -37,6 +39,8 @@ interface PaymentOrder {
   created_by: string | null
   completed_by: string | null
   completed_at: string | null
+  approved_by: string | null
+  approved_at: string | null
   created_at: string
 }
 
@@ -49,9 +53,14 @@ interface BankAccount {
 
 export default function NotificacionesPage() {
   const toast = useToast()
+  const { teamUser } = useAuth()
+  const userRole = teamUser?.role || 'admin'
+  const isAdmin = userRole === 'admin'
+  const isTreasury = userRole === 'treasury'
+
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'received'>('pending')
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'completed' | 'received'>('pending')
 
   // Completion modal state
   const [completing, setCompleting] = useState<PaymentOrder | null>(null)
@@ -59,6 +68,7 @@ export default function NotificacionesPage() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  // Transfer state
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([])
   const [loadingTransfers, setLoadingTransfers] = useState(true)
   const [confirmingTransfer, setConfirmingTransfer] = useState<any | null>(null)
@@ -67,10 +77,20 @@ export default function NotificacionesPage() {
   const [confirmedTransfers, setConfirmedTransfers] = useState<any[]>([])
   const [loadingConfirmed, setLoadingConfirmed] = useState(true)
 
+  // Approval state
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  // Default tab based on role
+  useEffect(() => {
+    if (isTreasury) setActiveTab('approved')
+    else setActiveTab('pending')
+  }, [isTreasury])
+
   const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/payment-orders?status=${activeTab}`)
+      const status = activeTab === 'approved' ? 'approved' : activeTab
+      const res = await fetch(`/api/payment-orders?status=${status}`)
       const data = await res.json()
       if (data.ok) setOrders(data.data || [])
     } catch (e) {
@@ -120,6 +140,48 @@ export default function NotificacionesPage() {
   useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
   useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
 
+  // ── Approve (admin only) ──────────────────────────────────────────────
+  const handleApproveOrder = async (orderId: string) => {
+    setApprovingId(orderId)
+    try {
+      const res = await fetch(`/api/payment-orders/${orderId}/approve?approved_by=${teamUser?.id || ''}`, {
+        method: 'PATCH',
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Orden aprobada')
+        fetchOrders()
+      } else {
+        toast.error(data.detail || 'Error al aprobar')
+      }
+    } catch (e) {
+      console.error('Error approving order:', e)
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  const handleApproveTransfer = async (saleId: string) => {
+    setApprovingId(saleId)
+    try {
+      const res = await fetch(`/api/sales/${saleId}/approve-transfer?approved_by=${teamUser?.id || ''}`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Transferencia aprobada')
+        fetchPendingTransfers()
+      } else {
+        toast.error(data.detail || 'Error al aprobar')
+      }
+    } catch (e) {
+      console.error('Error approving transfer:', e)
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  // ── Complete (treasury) ───────────────────────────────────────────────
   const openCompleteModal = (order: PaymentOrder) => {
     setCompleting(order)
     setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '' })
@@ -137,8 +199,11 @@ export default function NotificacionesPage() {
       })
       const data = await res.json()
       if (data.ok) {
+        toast.success('Pago completado')
         setCompleting(null)
         fetchOrders()
+      } else {
+        toast.error(data.detail || 'Error al completar')
       }
     } catch (e) {
       console.error('Error completing order:', e)
@@ -175,6 +240,14 @@ export default function NotificacionesPage() {
   const formatCurrency = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
+  // Filter transfers: admin sees all, treasury only sees approved ones
+  const transfersForRole = isTreasury
+    ? pendingTransfers.filter((t: any) => t.transfer_approved_at)
+    : pendingTransfers
+
+  // Unapproved transfers (for admin to approve)
+  const unapprovedTransfers = pendingTransfers.filter((t: any) => !t.transfer_approved_at)
+
   return (
     <div className="max-w-4xl mx-auto animate-fade-in">
       {/* Header */}
@@ -188,104 +261,112 @@ export default function NotificacionesPage() {
               Notificaciones
             </h1>
             <p className="text-sm" style={{ color: 'var(--slate)' }}>
-              Ordenes de pago y transferencias pendientes
+              {isAdmin
+                ? 'Aprueba ordenes de pago y transferencias'
+                : 'Ordenes de pago y transferencias pendientes'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Pending Contado Transfers */}
-      {pendingTransfers.length > 0 && (
+      {/* ── ADMIN: Unapproved transfers to approve ─────────────────────── */}
+      {isAdmin && unapprovedTransfers.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
             <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-              Transferencias Pendientes de Confirmar
+              Transferencias por Aprobar
             </h2>
             <span className="ml-auto bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              {pendingTransfers.length}
+              {unapprovedTransfers.length}
             </span>
           </div>
           <div className="space-y-3">
-            {pendingTransfers.map((transfer: any) => (
-              <div
+            {unapprovedTransfers.map((transfer: any) => (
+              <TransferCard
                 key={transfer.sale_id}
-                className="bg-white rounded-xl border-2 border-orange-200 p-5 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <DollarSign className="w-4 h-4 text-orange-500" />
-                      <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-                        Pago Contado - Transferencia Bancaria
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-                        {transfer.property_address}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 mb-3">
-                      <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                        {formatCurrency(transfer.sale_price)}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        <AlertCircle className="w-3 h-3" />
-                        Pendiente de confirmar
-                      </span>
-                    </div>
-                    <div className="bg-orange-50 rounded-lg p-3 mb-2">
-                      <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--slate)' }}>
-                        <div><span className="font-medium">Cliente:</span> {transfer.client_name}</div>
-                        <div><span className="font-medium">Email:</span> {transfer.client_email}</div>
-                        <div><span className="font-medium">Telefono:</span> {transfer.client_phone}</div>
-                        <div><span className="font-medium">Reportado:</span> {formatDate(transfer.reported_at)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {confirmingTransfer?.sale_id === transfer.sale_id ? (
-                      <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[240px]">
-                        <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-                          ¿Confirmas que el pago ha sido recibido?
-                        </p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setConfirmingTransfer(null)}
-                            className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-gray-50"
-                            style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            onClick={() => handleConfirmTransfer(transfer.sale_id)}
-                            disabled={confirmingSubmitting}
-                            className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
-                            style={{ backgroundColor: '#16a34a' }}
-                          >
-                            {confirmingSubmitting ? (
-                              <span className="flex items-center justify-center gap-1">
-                                <Loader2 className="w-3 h-3 animate-spin" /> ...
-                              </span>
-                            ) : 'Si, confirmar'}
-                          </button>
-                        </div>
-                      </div>
+                transfer={transfer}
+                action={
+                  <button
+                    onClick={() => handleApproveTransfer(transfer.sale_id)}
+                    disabled={approvingId === transfer.sale_id}
+                    className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                    style={{ backgroundColor: 'var(--navy-800)' }}
+                  >
+                    {approvingId === transfer.sale_id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <button
-                        onClick={() => setConfirmingTransfer(transfer)}
-                        className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
-                        style={{ backgroundColor: '#16a34a' }}
-                        onMouseOver={e => (e.currentTarget.style.backgroundColor = '#15803d')}
-                        onMouseOut={e => (e.currentTarget.style.backgroundColor = '#16a34a')}
-                      >
-                        El pago ha sido recibido
-                      </button>
+                      <ShieldCheck className="w-4 h-4" />
                     )}
-                  </div>
-                </div>
-              </div>
+                    Aprobar
+                  </button>
+                }
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── TREASURY: Approved transfers to confirm ────────────────────── */}
+      {isTreasury && transfersForRole.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+              Transferencias Aprobadas — Confirmar Pago
+            </h2>
+            <span className="ml-auto bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+              {transfersForRole.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {transfersForRole.map((transfer: any) => (
+              <TransferCard
+                key={transfer.sale_id}
+                transfer={transfer}
+                action={
+                  confirmingTransfer?.sale_id === transfer.sale_id ? (
+                    <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[240px]">
+                      <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                        ¿Confirmas que el pago ha sido recibido?
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmingTransfer(null)}
+                          className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-gray-50"
+                          style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => handleConfirmTransfer(transfer.sale_id)}
+                          disabled={confirmingSubmitting}
+                          className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: '#16a34a' }}
+                        >
+                          {confirmingSubmitting ? (
+                            <span className="flex items-center justify-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> ...
+                            </span>
+                          ) : 'Si, confirmar'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingTransfer(transfer)}
+                      className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                      style={{ backgroundColor: '#16a34a' }}
+                    >
+                      El pago ha sido recibido
+                    </button>
+                  )
+                }
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+              />
             ))}
           </div>
         </div>
@@ -293,17 +374,33 @@ export default function NotificacionesPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1" style={{ borderColor: 'var(--sand)' }}>
-        <button
-          onClick={() => setActiveTab('pending')}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'pending'
-              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          Pendientes
-        </button>
+        {/* Admin sees "Pending" (to approve), Treasury sees "Approved" (to execute) */}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'pending'
+                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            Por Aprobar
+          </button>
+        )}
+        {isTreasury && (
+          <button
+            onClick={() => setActiveTab('approved')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'approved'
+                ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Aprobadas
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('received')}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
@@ -314,11 +411,6 @@ export default function NotificacionesPage() {
         >
           <DollarSign className="w-4 h-4" />
           Recibidos
-          {confirmedTransfers.length > 0 && (
-            <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-1.5 py-0.5 rounded-full">
-              {confirmedTransfers.length}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setActiveTab('completed')}
@@ -348,18 +440,11 @@ export default function NotificacionesPage() {
               <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
                 No hay pagos recibidos aun
               </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-                Los pagos confirmados de clientes contado apareceran aqui
-              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {confirmedTransfers.map((ct: any) => (
-                <div
-                  key={ct.sale_id}
-                  className="bg-white rounded-xl border p-5"
-                  style={{ borderColor: 'var(--sand)' }}
-                >
+                <div key={ct.sale_id} className="bg-white rounded-xl border p-5" style={{ borderColor: 'var(--sand)' }}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -379,20 +464,14 @@ export default function NotificacionesPage() {
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
                         <span>Cliente: <strong>{ct.client_name}</strong></span>
-                        {ct.client_email && <span>{ct.client_email}</span>}
                         {ct.completed_at && (
-                          <span>
-                            Confirmado: {new Date(ct.completed_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
+                          <span>Confirmado: {formatDate(ct.completed_at)}</span>
                         )}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                        ${ct.sale_price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-                        Enviado a contabilidad
+                        {formatCurrency(ct.sale_price)}
                       </p>
                     </div>
                   </div>
@@ -403,7 +482,7 @@ export default function NotificacionesPage() {
         </>
       )}
 
-      {/* Orders List (pending/completed tabs only) */}
+      {/* Orders List (pending/approved/completed tabs) */}
       {activeTab !== 'received' && (loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
@@ -411,83 +490,61 @@ export default function NotificacionesPage() {
       ) : orders.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
           <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-            {activeTab === 'pending' ? <Clock className="w-6 h-6 text-gray-400" /> : <CheckCircle className="w-6 h-6 text-gray-400" />}
+            {activeTab === 'pending' ? <Clock className="w-6 h-6 text-gray-400" /> :
+             activeTab === 'approved' ? <ShieldCheck className="w-6 h-6 text-gray-400" /> :
+             <CheckCircle className="w-6 h-6 text-gray-400" />}
           </div>
           <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-            {activeTab === 'pending' ? 'No hay ordenes pendientes' : 'No hay ordenes completadas'}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-            {activeTab === 'pending'
-              ? 'Las ordenes de pago apareceran aqui cuando se cree una compra'
-              : 'Las ordenes completadas apareceran aqui'}
+            {activeTab === 'pending' ? 'No hay ordenes por aprobar' :
+             activeTab === 'approved' ? 'No hay ordenes aprobadas pendientes' :
+             'No hay ordenes completadas'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {orders.map(order => (
-            <div
-              key={order.id}
-              className="bg-white rounded-xl border p-5 hover:shadow-sm transition-shadow"
-              style={{ borderColor: 'var(--sand)' }}
-            >
+            <div key={order.id} className="bg-white rounded-xl border p-5 hover:shadow-sm transition-shadow" style={{ borderColor: 'var(--sand)' }}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  {/* Property + Amount */}
                   <div className="flex items-center gap-2 mb-2">
                     <Building2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--navy-600)' }} />
                     <span className="font-medium text-sm truncate" style={{ color: 'var(--ink)' }}>
                       {order.property_address || 'Propiedad'}
                     </span>
                   </div>
-
                   <div className="flex items-center gap-4 mb-3">
                     <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
                       {formatCurrency(order.amount)}
                     </span>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      order.status === 'pending'
-                        ? 'bg-amber-100 text-amber-800'
-                        : order.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-600'
+                      order.status === 'pending' ? 'bg-amber-100 text-amber-800' :
+                      order.status === 'approved' ? 'bg-blue-100 text-blue-800' :
+                      order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-600'
                     }`}>
                       {order.status === 'pending' && <Clock className="w-3 h-3" />}
+                      {order.status === 'approved' && <ShieldCheck className="w-3 h-3" />}
                       {order.status === 'completed' && <CheckCircle className="w-3 h-3" />}
-                      {order.status === 'pending' ? 'Pendiente' : order.status === 'completed' ? 'Completado' : 'Cancelado'}
+                      {order.status === 'pending' ? 'Pendiente' :
+                       order.status === 'approved' ? 'Aprobada' :
+                       order.status === 'completed' ? 'Completado' : 'Cancelado'}
                     </span>
                   </div>
-
-                  {/* Bank Details for Abigail */}
+                  {/* Bank Details */}
                   <div className="bg-gray-50 rounded-lg p-3 mb-2 space-y-1.5">
                     <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
                       <CreditCard className="w-4 h-4" />
                       {order.payee_name}
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                      {order.bank_name && (
-                        <div><span className="font-medium">Banco:</span> {order.bank_name}</div>
-                      )}
-                      {order.account_type && (
-                        <div><span className="font-medium">Tipo:</span> {order.account_type === 'checking' ? 'Checking' : 'Savings'}</div>
-                      )}
-                      {order.routing_number && (
-                        <div><span className="font-medium">Routing #:</span> <span className="font-mono">{order.routing_number}</span></div>
-                      )}
-                      {order.account_number && (
-                        <div><span className="font-medium">Account #:</span> <span className="font-mono">{order.account_number}</span></div>
-                      )}
-                      {!order.routing_number && order.routing_number_last4 && (
-                        <div><span className="font-medium">Routing #:</span> ****{order.routing_number_last4}</div>
-                      )}
-                      {!order.account_number && order.account_number_last4 && (
-                        <div><span className="font-medium">Account #:</span> ****{order.account_number_last4}</div>
-                      )}
-                      {order.payee_address && (
-                        <div className="col-span-2"><span className="font-medium">Dir. beneficiario:</span> {order.payee_address}</div>
-                      )}
-                      {order.bank_address && (
-                        <div className="col-span-2"><span className="font-medium">Dir. banco:</span> {order.bank_address}</div>
-                      )}
+                      {order.bank_name && <div><span className="font-medium">Banco:</span> {order.bank_name}</div>}
+                      {order.account_type && <div><span className="font-medium">Tipo:</span> {order.account_type === 'checking' ? 'Checking' : 'Savings'}</div>}
+                      {order.routing_number && <div><span className="font-medium">Routing #:</span> <span className="font-mono">{order.routing_number}</span></div>}
+                      {order.account_number && <div><span className="font-medium">Account #:</span> <span className="font-mono">{order.account_number}</span></div>}
+                      {!order.routing_number && order.routing_number_last4 && <div><span className="font-medium">Routing #:</span> ****{order.routing_number_last4}</div>}
+                      {!order.account_number && order.account_number_last4 && <div><span className="font-medium">Account #:</span> ****{order.account_number_last4}</div>}
+                      {order.payee_address && <div className="col-span-2"><span className="font-medium">Dir. beneficiario:</span> {order.payee_address}</div>}
+                      {order.bank_address && <div className="col-span-2"><span className="font-medium">Dir. banco:</span> {order.bank_address}</div>}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
@@ -495,30 +552,50 @@ export default function NotificacionesPage() {
                       <Calendar className="w-3 h-3" />
                       Creado: {formatDate(order.created_at)}
                     </span>
-                    {order.reference && (
-                      <span className="flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        Ref: {order.reference}
-                      </span>
-                    )}
-                    {order.payment_date && (
-                      <span>Pagado: {formatDate(order.payment_date)}</span>
-                    )}
+                    {order.reference && <span>Ref: {order.reference}</span>}
+                    {order.payment_date && <span>Pagado: {formatDate(order.payment_date)}</span>}
                   </div>
                 </div>
 
-                {/* Action */}
-                {order.status === 'pending' && (
-                  <button
-                    onClick={() => openCompleteModal(order)}
-                    className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                    style={{ backgroundColor: 'var(--navy-800)' }}
-                    onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--navy-700)')}
-                    onMouseOut={e => (e.currentTarget.style.backgroundColor = 'var(--navy-800)')}
-                  >
-                    Completar Pago
-                  </button>
-                )}
+                {/* Actions based on role */}
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  {/* Admin: approve pending orders */}
+                  {isAdmin && order.status === 'pending' && (
+                    <button
+                      onClick={() => handleApproveOrder(order.id)}
+                      disabled={approvingId === order.id}
+                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                      style={{ backgroundColor: 'var(--navy-800)' }}
+                    >
+                      {approvingId === order.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4" />
+                      )}
+                      Aprobar
+                    </button>
+                  )}
+                  {/* Treasury: complete approved orders */}
+                  {isTreasury && order.status === 'approved' && (
+                    <button
+                      onClick={() => openCompleteModal(order)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                      style={{ backgroundColor: 'var(--navy-800)' }}
+                    >
+                      Completar Pago
+                    </button>
+                  )}
+                  {/* Admin can also complete approved orders */}
+                  {isAdmin && order.status === 'approved' && (
+                    <button
+                      onClick={() => openCompleteModal(order)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                      style={{ backgroundColor: '#16a34a' }}
+                    >
+                      Completar Pago
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -538,8 +615,6 @@ export default function NotificacionesPage() {
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-
-            {/* Order summary */}
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span style={{ color: 'var(--slate)' }}>Propiedad</span>
@@ -554,8 +629,6 @@ export default function NotificacionesPage() {
                 <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(completing.amount)}</span>
               </div>
             </div>
-
-            {/* Form */}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
@@ -565,12 +638,11 @@ export default function NotificacionesPage() {
                   type="text"
                   value={completeForm.reference}
                   onChange={e => setCompleteForm(prev => ({ ...prev, reference: e.target.value }))}
-                  placeholder="Ingresa el # de confirmacion de la transferencia"
+                  placeholder="Ingresa el # de confirmacion"
                   className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500"
                   style={{ borderColor: 'var(--stone)' }}
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
                   Fecha del pago *
@@ -583,7 +655,6 @@ export default function NotificacionesPage() {
                   style={{ borderColor: 'var(--stone)' }}
                 />
               </div>
-
               {bankAccounts.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
@@ -592,7 +663,7 @@ export default function NotificacionesPage() {
                   <select
                     value={completeForm.bank_account_id}
                     onChange={e => setCompleteForm(prev => ({ ...prev, bank_account_id: e.target.value }))}
-                    className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500 bg-white"
+                    className="w-full p-3 border rounded-lg text-sm bg-white"
                     style={{ borderColor: 'var(--stone)' }}
                   >
                     <option value="">Seleccionar cuenta...</option>
@@ -605,12 +676,10 @@ export default function NotificacionesPage() {
                 </div>
               )}
             </div>
-
-            {/* Actions */}
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setCompleting(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors hover:bg-gray-50"
+                className="flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium hover:bg-gray-50"
                 style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
               >
                 Cancelar
@@ -618,21 +687,73 @@ export default function NotificacionesPage() {
               <button
                 onClick={handleComplete}
                 disabled={!completeForm.reference || submitting}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--navy-800)' }}
               >
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Procesando...
                   </span>
-                ) : (
-                  'Confirmar Pago Realizado'
-                )}
+                ) : 'Confirmar Pago Realizado'}
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Reusable Transfer Card ──────────────────────────────────────────────
+function TransferCard({
+  transfer,
+  action,
+  formatCurrency,
+  formatDate,
+}: {
+  transfer: any
+  action: React.ReactNode
+  formatCurrency: (n: number) => string
+  formatDate: (d: string) => string
+}) {
+  return (
+    <div className="bg-white rounded-xl border-2 border-orange-200 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className="w-4 h-4 text-orange-500" />
+            <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
+              Pago Contado - Transferencia Bancaria
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
+            <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
+              {transfer.property_address}
+            </span>
+          </div>
+          <div className="flex items-center gap-4 mb-3">
+            <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
+              {formatCurrency(transfer.sale_price)}
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+              <AlertCircle className="w-3 h-3" />
+              Pendiente
+            </span>
+          </div>
+          <div className="bg-orange-50 rounded-lg p-3 mb-2">
+            <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--slate)' }}>
+              <div><span className="font-medium">Cliente:</span> {transfer.client_name}</div>
+              <div><span className="font-medium">Email:</span> {transfer.client_email}</div>
+              <div><span className="font-medium">Telefono:</span> {transfer.client_phone}</div>
+              <div><span className="font-medium">Reportado:</span> {formatDate(transfer.reported_at)}</div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          {action}
+        </div>
+      </div>
     </div>
   )
 }

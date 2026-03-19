@@ -142,11 +142,40 @@ async def get_payment_order(order_id: str):
     return {"ok": True, "data": result.data[0]}
 
 
+@router.patch("/{order_id}/approve")
+async def approve_payment_order(order_id: str, approved_by: Optional[str] = Query(None)):
+    """
+    Approve a pending payment order (Sebastian/admin).
+    Moves status from pending → approved so Treasury can execute it.
+    """
+    order_res = sb.table("payment_orders").select("*").eq("id", order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Orden de pago no encontrada")
+
+    order = order_res.data[0]
+    if order["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"Solo se pueden aprobar ordenes pendientes (estado actual: '{order['status']}')")
+
+    now = datetime.utcnow().isoformat()
+    result = sb.table("payment_orders").update({
+        "status": "approved",
+        "approved_by": approved_by,
+        "approved_at": now,
+    }).eq("id", order_id).execute()
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Error al aprobar orden")
+
+    logger.info(f"[payment_orders] Approved order {order_id} by {approved_by}")
+    return {"ok": True, "data": result.data[0], "message": "Orden aprobada. Tesorería puede ejecutar el pago."}
+
+
 @router.patch("/{order_id}/complete")
 async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     """
-    Mark a payment order as completed (Abigail).
+    Mark a payment order as completed (Abigail/Treasury).
     Creates an accounting transaction for reconciliation.
+    Requires the order to be approved first.
     """
     # Fetch the order
     order_res = sb.table("payment_orders").select("*").eq("id", order_id).execute()
@@ -154,7 +183,7 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
         raise HTTPException(status_code=404, detail="Orden de pago no encontrada")
 
     order = order_res.data[0]
-    if order["status"] != "pending":
+    if order["status"] not in ("pending", "approved"):
         raise HTTPException(status_code=400, detail=f"La orden ya esta en estado '{order['status']}'")
 
     now = datetime.utcnow().isoformat()
