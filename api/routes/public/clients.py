@@ -111,9 +111,7 @@ async def get_client_purchases(client_id: str, user_email: str = Depends(get_cur
 
 
 @router.get("/{client_id}/rto-application")
-async def get_client_rto_application(client_id: str, user_email: str = Depends(get_current_user_email)):
-    """Get the active RTO application ID for a client (for credit application link)."""
-    verify_client_ownership(client_id, user_email)
+async def get_client_rto_application(client_id: str):
     try:
         result = sb.table("rto_applications") \
             .select("id, status, sale_id") \

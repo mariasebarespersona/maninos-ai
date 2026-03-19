@@ -5,8 +5,8 @@ Allows RTO clients to fill out their credit application after KYC verification.
 
 import logging
 from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from typing import Any, Optional, List
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from tools.supabase_client import sb
 
@@ -123,10 +123,35 @@ async def get_credit_application(client_id: str, rto_application_id: str):
 
 
 @router.put("/{client_id}/{rto_application_id}")
-async def update_credit_application(client_id: str, rto_application_id: str, data: CreditApplicationData):
+async def update_credit_application(client_id: str, rto_application_id: str, request: Request):
     """Update a credit application with partial or full data."""
     try:
-        update_data = data.model_dump(exclude_none=True)
+        body = await request.json()
+        # Filter to only known columns, skip empty strings for numeric fields
+        allowed_fields = {
+            "full_name", "date_of_birth", "ssn_last4", "marital_status",
+            "dependents_count", "dependents_ages", "id_number", "id_state",
+            "residence_history",
+            "employer_name", "employer_address", "employer_phone", "occupation",
+            "employment_type", "monthly_income", "time_at_job_years", "time_at_job_months",
+            "previous_employer", "previous_employer_duration",
+            "other_income_sources",
+            "owns_properties", "properties_owned",
+            "debts", "monthly_rent", "monthly_utilities", "monthly_child_support_paid",
+            "monthly_other_expenses",
+            "personal_references",
+            "has_bankruptcy", "has_foreclosure", "has_eviction", "has_judgments",
+            "has_federal_debt", "legal_details",
+            "emergency_name", "emergency_phone", "emergency_relationship", "emergency_address",
+        }
+        update_data = {}
+        for k, v in body.items():
+            if k not in allowed_fields:
+                continue
+            # Convert empty strings to None for numeric fields
+            if v == "" or v is None:
+                continue
+            update_data[k] = v
         update_data["updated_at"] = datetime.utcnow().isoformat()
 
         result = sb.table("credit_applications") \
