@@ -29,7 +29,7 @@ interface NavItem {
   icon: React.ElementType
 }
 
-const navigation: NavItem[] = [
+const allNavigation: NavItem[] = [
   { name: 'Inicio', href: '/homes', icon: Home },
   { name: 'Casas del Mercado', href: '/homes/market', icon: Search },
   { name: 'Propiedades', href: '/homes/properties', icon: Building2 },
@@ -40,6 +40,20 @@ const navigation: NavItem[] = [
   { name: 'Notificaciones', href: '/homes/notificaciones', icon: Bell },
   { name: 'Contabilidad', href: '/homes/accounting', icon: Calculator },
 ]
+
+// Nav visibility per role
+const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
+  treasury: ['/homes', '/homes/commissions', '/homes/notificaciones', '/homes/accounting'],
+  operations: ['/homes', '/homes/market', '/homes/properties', '/homes/clients', '/homes/sales', '/homes/transfers'],
+}
+
+function getNavForRole(role?: string): NavItem[] {
+  if (role && ROLE_ALLOWED_HREFS[role]) {
+    return allNavigation.filter(item => ROLE_ALLOWED_HREFS[role].includes(item.href))
+  }
+  // admin, yard_manager, etc → everything
+  return allNavigation
+}
 
 const externalLinks = [
   { name: 'Portal Capital →', href: '/capital', icon: DollarSign },
@@ -72,6 +86,17 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
     if (href === '/homes') return pathname === '/homes'
     return pathname.startsWith(href)
   }
+
+  // Redirect if user navigates to a restricted page
+  useEffect(() => {
+    if (!teamUser?.role || pathname === '/homes') return
+    const allowed = ROLE_ALLOWED_HREFS[teamUser.role]
+    if (!allowed) return // no restrictions for this role
+    const isAllowed = allowed.some(href => href === '/homes' ? pathname === '/homes' : pathname.startsWith(href))
+    if (!isAllowed) {
+      router.replace('/homes')
+    }
+  }, [pathname, teamUser?.role, router])
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -139,7 +164,7 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => {
+          {getNavForRole(teamUser?.role).map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
             
