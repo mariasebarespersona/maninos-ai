@@ -487,6 +487,37 @@ export default function ClientDashboard() {
                           </div>
                             )}
 
+                            {/* Credit application CTA for RTO pending */}
+                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && kycVerified && rtoAppId && (
+                              <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                    <div>
+                                      <p className="font-semibold text-[13px] text-emerald-800">Siguiente paso: Solicitud de Crédito</p>
+                                      <p className="text-[11px] text-emerald-600">Completa tu solicitud para que podamos evaluar tu caso</p>
+                                    </div>
+                                  </div>
+                                  <Link
+                                    href={`/clientes/mi-cuenta/solicitud-credito/${rtoAppId}`}
+                                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                                  >
+                                    Completar <ArrowRight className="w-3.5 h-3.5" />
+                                  </Link>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* RTO pending without KYC */}
+                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && !kycVerified && (
+                              <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                  <p className="text-[12px] text-amber-700">Tu solicitud está en revisión. Te notificaremos cuando necesitemos más información.</p>
+                                </div>
+                              </div>
+                            )}
+
                             {/* RTO info */}
                             {sale.sale_type === 'rto' && sale.rto_monthly_payment && sale.status !== 'cancelled' && (
                               <div className="mt-3 p-3 rounded-lg bg-blue-50 flex items-center justify-between">
