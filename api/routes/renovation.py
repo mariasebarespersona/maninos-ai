@@ -797,9 +797,17 @@ async def import_evaluation_report(
     checklist = report_data.get("checklist") or []
     extra_notes = report_data.get("extra_notes") or []
     manual_notes = "\n".join(extra_notes) if isinstance(extra_notes, list) else str(extra_notes)
+    ai_summary = report_data.get("ai_summary") or ""
+    recommendation_reason = report_data.get("recommendation_reason") or ""
+    score = report_data.get("score", 0)
 
-    # Map evaluation checklist items to V2 renovation items
-    suggestions = _map_evaluation_to_v2_items(checklist, manual_notes)
+    # Try AI-powered mapping first, fall back to static mapping
+    suggestions = await _ai_map_evaluation_to_renovation(
+        checklist, manual_notes, ai_summary, recommendation_reason, score
+    )
+
+    if not suggestions:
+        suggestions = _map_evaluation_to_v2_items(checklist, manual_notes)
 
     logger.info(f"[renovation import] Report {report_id} → {len(suggestions)} V2 items suggested")
 
@@ -808,11 +816,133 @@ async def import_evaluation_report(
         "items_suggested": len(suggestions),
         "source": {
             "from_evaluation_report": True,
+            "ai_powered": bool(suggestions),
         },
         "report_number": report_data.get("report_number"),
-        "report_score": report_data.get("score"),
-        "ai_analysis": report_data.get("recommendation_reason"),
+        "report_score": score,
+        "ai_analysis": recommendation_reason or ai_summary,
     }
+
+
+async def _ai_map_evaluation_to_renovation(
+    checklist: list, notes: str, ai_summary: str, recommendation_reason: str, score: int
+) -> dict:
+    """
+    Use GPT-4o-mini to intelligently map evaluation report data
+    to V2 renovation items with estimated costs.
+    Returns dict: { item_id: { "mano_obra": float, "materiales": float, "notas": str } }
+    """
+    try:
+        import openai
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return {}
+
+        client = openai.OpenAI(api_key=api_key)
+
+        # Build evaluation data summary for GPT
+        checklist_summary = []
+        for item in checklist:
+            if not isinstance(item, dict):
+                continue
+            status = item.get("status", "pending")
+            if status == "pending":
+                continue
+            entry = f'- {item.get("label", item.get("id", "?"))}: {status}'
+            note = item.get("note", "")
+            if note:
+                entry += f' — "{note}"'
+            checklist_summary.append(entry)
+
+        checklist_text = "\n".join(checklist_summary) if checklist_summary else "No hay items evaluados"
+
+        # Build renovation items reference
+        items_ref = "\n".join(
+            f'- id: "{item["id"]}", partida: {item["partida"]}, '
+            f'concepto: "{item["concepto"]}", '
+            f'MO base: ${item["mano_obra"]:.0f}, Mat base: ${item["materiales"]:.0f}, '
+            f'unidad: "{item["unidad"]}"'
+            for item in RENOVATION_ITEMS
+        )
+
+        prompt = f"""Eres un experto en remodelación de casas móviles (mobile homes) en Texas.
+
+REPORTE DE EVALUACIÓN (puntuación: {score}/100):
+{checklist_text}
+
+{f'NOTAS DEL EVALUADOR: {notes}' if notes else ''}
+{f'ANÁLISIS AI: {ai_summary}' if ai_summary else ''}
+{f'RAZÓN DE RECOMENDACIÓN: {recommendation_reason}' if recommendation_reason else ''}
+
+PARTIDAS DE RENOVACIÓN DISPONIBLES (19 items):
+{items_ref}
+
+TAREA: Basándote en el reporte de evaluación, determina qué partidas de renovación son necesarias.
+Para cada partida que aplique, estima costos realistas de mano de obra y materiales.
+
+REGLAS:
+1. Solo sugiere partidas que CLARAMENTE se deriven del reporte de evaluación
+2. Items con status "pass" NO necesitan renovación (a menos que las notas indiquen lo contrario)
+3. Items con "fail", "needs_repair", "needs_attention", "warning" SÍ necesitan renovación
+4. Usa los costos base como referencia pero ajusta según la severidad descrita
+5. Si el item de evaluación menciona detalles específicos, inclúyelos en las notas
+6. Si un item de evaluación mapea a múltiples partidas, incluye todas las relevantes
+7. Materiales: estima basándote en lo que típicamente se necesita comprar
+8. Si la evaluación es muy buena (score alto, pocos fails), sugiere menos partidas
+9. Siempre incluye "limpieza" y "acabados" si hay alguna otra partida sugerida
+
+RESPONDE ÚNICAMENTE en JSON válido (sin markdown):
+{{
+  "item_id": {{
+    "mano_obra": número,
+    "materiales": número,
+    "notas": "explicación breve basada en la evaluación"
+  }}
+}}
+
+Ejemplo: {{ "demolicion": {{ "mano_obra": 300, "materiales": 50, "notas": "Marco de acero con daño visible" }} }}"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a mobile home renovation expert. Always respond with valid JSON only, no markdown.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=2000,
+            temperature=0.2,
+        )
+
+        result_text = response.choices[0].message.content or "{}"
+        # Strip markdown fences if present
+        json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result_text, re.DOTALL)
+        json_str = json_match.group(1).strip() if json_match else result_text.strip()
+
+        ai_result = json.loads(json_str)
+
+        # Validate: only keep items with valid IDs
+        valid_ids = {item["id"] for item in RENOVATION_ITEMS}
+        suggestions = {}
+        for item_id, data in ai_result.items():
+            if item_id in valid_ids and isinstance(data, dict):
+                suggestions[item_id] = {
+                    "mano_obra": float(data.get("mano_obra", 0)),
+                    "materiales": float(data.get("materiales", 0)),
+                    "notas": str(data.get("notas", "")),
+                }
+
+        logger.info(f"[renovation import AI] GPT mapped {len(suggestions)} items from evaluation")
+        return suggestions
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"[renovation import AI] JSON parse error: {e}")
+        return {}
+    except Exception as e:
+        logger.warning(f"[renovation import AI] Error: {e}")
+        return {}
 
 
 def _map_evaluation_to_v2_items(checklist: list, notes: str) -> dict:
