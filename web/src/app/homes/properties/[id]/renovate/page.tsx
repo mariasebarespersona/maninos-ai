@@ -22,12 +22,27 @@ import {
   Calendar,
   Hammer,
   Package,
+  ChevronDown,
+  ChevronRight,
+  Send,
+  CheckCircle2,
+  Clock,
+  Info,
+  ShoppingCart,
+  User,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
 // ============================================
-// TYPES — V2 with MO + Materiales + Cronograma
+// TYPES — V4 with MO + Mat + Unidad + Subfields + Approval
 // ============================================
+
+interface SubfieldDef {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'boolean' | 'select'
+  options?: string[]
+}
 
 interface RenovationItem {
   id: string
@@ -38,7 +53,10 @@ interface RenovationItem {
   precio: number       // computed = mano_obra + materiales
   dias: number
   start_day: number
+  unidad: string       // "día", "proyecto", "casa", "pieza", "ventana"
   notas: string
+  responsable?: string
+  subfields?: Record<string, any>
   is_custom?: boolean
 }
 
@@ -55,6 +73,12 @@ interface QuoteData {
   total_mano_obra: number
   total_materiales: number
   dias_estimados: number
+  item_subfields?: Record<string, SubfieldDef[]>
+  business_rules?: string[]
+  responsable?: string
+  fecha_inicio?: string
+  fecha_fin?: string
+  approval_status?: string
 }
 
 type TabType = 'cotizacion' | 'cronograma'
@@ -82,6 +106,15 @@ const GANTT_COLORS: Record<string, string> = {
   cerraduras: 'bg-violet-400',
 }
 
+// Short unit labels for column headers
+const UNIT_SHORT: Record<string, string> = {
+  'día': '/día',
+  'proyecto': '/proy',
+  'casa': '/casa',
+  'pieza': '/pza',
+  'ventana': '/vent',
+}
+
 // ============================================
 // COMPONENT
 // ============================================
@@ -107,6 +140,14 @@ export default function RenovationPage() {
   const [customMO, setCustomMO] = useState('')
   const [customMat, setCustomMat] = useState('')
   const [activeTab, setActiveTab] = useState<TabType>('cotizacion')
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [submittingApproval, setSubmittingApproval] = useState(false)
+  const [approvingQuote, setApprovingQuote] = useState(false)
+
+  // Project metadata
+  const [projectResponsable, setProjectResponsable] = useState('')
+  const [fechaInicio, setFechaInicio] = useState('')
+  const [fechaFin, setFechaFin] = useState('')
 
   // Voice state
   const [isListening, setIsListening] = useState(false)
@@ -130,6 +171,8 @@ export default function RenovationPage() {
   // Max day for Gantt chart
   const maxDay = Math.max(...(quote?.items.map(i => (i.start_day || 1) + (i.dias || 1) - 1) || [1]), 1)
 
+  const approvalStatus = quote?.approval_status || 'draft'
+
   // ============================================
   // DATA FETCHING
   // ============================================
@@ -151,8 +194,14 @@ export default function RenovationPage() {
           precio: (item.mano_obra ?? item.precio ?? 0) + (item.materiales ?? 0),
           dias: item.dias ?? 1,
           start_day: item.start_day ?? 1,
+          unidad: item.unidad ?? 'proyecto',
+          responsable: item.responsable ?? '',
+          subfields: item.subfields ?? {},
         }))
         setQuote({ ...data, items })
+        setProjectResponsable(data.responsable || '')
+        setFechaInicio(data.fecha_inicio || '')
+        setFechaFin(data.fecha_fin || '')
       } else {
         toast.error('Error al cargar la cotización')
         router.push(`/homes/properties/${propertyId}`)
@@ -197,6 +246,31 @@ export default function RenovationPage() {
     setHasUnsavedChanges(true)
   }, [])
 
+  const updateSubfield = useCallback((itemId: string, key: string, value: any) => {
+    setQuote(prev => {
+      if (!prev) return prev
+      const updatedItems = prev.items.map(item => {
+        if (item.id !== itemId) return item
+        return { ...item, subfields: { ...(item.subfields || {}), [key]: value } }
+      })
+      return { ...prev, items: updatedItems }
+    })
+    setHasUnsavedChanges(true)
+  }, [])
+
+  // ============================================
+  // EXPAND/COLLAPSE ROWS
+  // ============================================
+
+  const toggleRow = (itemId: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(itemId)) next.delete(itemId)
+      else next.add(itemId)
+      return next
+    })
+  }
+
   // ============================================
   // ADD / REMOVE CUSTOM ITEM
   // ============================================
@@ -218,6 +292,7 @@ export default function RenovationPage() {
       precio: mo + mat,
       dias: 1,
       start_day: maxDay + 1,
+      unidad: 'proyecto',
       notas: '',
       is_custom: true,
     }
@@ -265,9 +340,11 @@ export default function RenovationPage() {
   // SAVE
   // ============================================
 
-  const saveQuote = async () => {
+  const saveQuote = async (submitForApproval = false) => {
     if (!quote) return
-    setSaving(true)
+    if (submitForApproval) setSubmittingApproval(true)
+    else setSaving(true)
+
     try {
       const itemsPayload: Record<string, any> = {}
       const customItems: any[] = []
@@ -291,6 +368,8 @@ export default function RenovationPage() {
             dias: item.dias || 1,
             start_day: item.start_day || 1,
             notas: item.notas || '',
+            responsable: item.responsable || '',
+            subfields: item.subfields || {},
           }
         }
       }
@@ -302,12 +381,21 @@ export default function RenovationPage() {
           items: itemsPayload,
           custom_items: customItems,
           notes: '',
+          responsable: projectResponsable,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
+          submit_for_approval: submitForApproval,
         }),
       })
 
       if (res.ok) {
         const result = await res.json()
-        toast.success(`Cotización guardada — $${result.total?.toLocaleString() || '0'} (${result.active_items} items)`)
+        if (submitForApproval) {
+          setQuote(prev => prev ? { ...prev, approval_status: 'pending_approval' } : prev)
+          toast.success('Cotización enviada a aprobación')
+        } else {
+          toast.success(`Cotización guardada — $${result.total?.toLocaleString() || '0'} (${result.active_items} items)`)
+        }
         setHasUnsavedChanges(false)
       } else {
         toast.error('Error al guardar')
@@ -316,6 +404,33 @@ export default function RenovationPage() {
       toast.error('Error de conexión')
     } finally {
       setSaving(false)
+      setSubmittingApproval(false)
+    }
+  }
+
+  // ============================================
+  // APPROVE
+  // ============================================
+
+  const approveQuote = async () => {
+    setApprovingQuote(true)
+    try {
+      const res = await fetch(`/api/renovation/${propertyId}/approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: 'admin' }),
+      })
+      if (res.ok) {
+        setQuote(prev => prev ? { ...prev, approval_status: 'approved' } : prev)
+        toast.success('Cotización aprobada')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.detail || 'Error al aprobar')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setApprovingQuote(false)
     }
   }
 
@@ -588,6 +703,55 @@ export default function RenovationPage() {
   }
 
   // ============================================
+  // SUBFIELD RENDERER
+  // ============================================
+
+  const renderSubfields = (item: RenovationItem) => {
+    const subfields = quote?.item_subfields?.[item.id]
+    if (!subfields || subfields.length === 0) return null
+
+    return (
+      <tr className="bg-blue-50/30">
+        <td></td>
+        <td colSpan={8} className="px-3 py-2.5">
+          <div className="flex flex-wrap gap-3">
+            {subfields.map((sf: SubfieldDef) => (
+              <div key={sf.key} className="flex items-center gap-1.5">
+                <label className="text-[10px] text-gray-500 font-medium whitespace-nowrap">{sf.label}:</label>
+                {sf.type === 'boolean' ? (
+                  <input
+                    type="checkbox"
+                    checked={!!item.subfields?.[sf.key]}
+                    onChange={(e) => updateSubfield(item.id, sf.key, e.target.checked)}
+                    className="rounded border-gray-300 text-gold-500 focus:ring-gold-400"
+                  />
+                ) : sf.type === 'select' ? (
+                  <select
+                    value={item.subfields?.[sf.key] || ''}
+                    onChange={(e) => updateSubfield(item.id, sf.key, e.target.value)}
+                    className="border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-gold-400"
+                  >
+                    <option value="">--</option>
+                    {sf.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={sf.type === 'number' ? 'number' : 'text'}
+                    value={item.subfields?.[sf.key] ?? ''}
+                    onChange={(e) => updateSubfield(item.id, sf.key, sf.type === 'number' ? (parseFloat(e.target.value) || '') : e.target.value)}
+                    className="border border-gray-200 rounded px-2 py-1 text-xs w-24 focus:ring-2 focus:ring-gold-400"
+                    placeholder={sf.label}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
+  // ============================================
   // RENDER
   // ============================================
 
@@ -622,6 +786,18 @@ export default function RenovationPage() {
               </div>
             </div>
           <div className="flex items-center gap-2">
+            {/* Approval status badge */}
+            {approvalStatus === 'pending_approval' && (
+              <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-medium">
+                <Clock className="w-3 h-3" /> Pendiente
+              </span>
+            )}
+            {approvalStatus === 'approved' && (
+              <span className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-medium">
+                <CheckCircle2 className="w-3 h-3" /> Aprobada
+              </span>
+            )}
+
             {/* Voice */}
               <button
               onClick={isListening ? stopVoice : startVoice}
@@ -637,7 +813,7 @@ export default function RenovationPage() {
 
             {/* Save */}
                   <button
-              onClick={saveQuote}
+              onClick={() => saveQuote(false)}
               disabled={saving || !hasUnsavedChanges}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
                 hasUnsavedChanges
@@ -663,8 +839,46 @@ export default function RenovationPage() {
                     </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {/* Summary cards: MO | Mat | Total | Días */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+        {/* Project metadata header */}
+        <div className="card-luxury p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Responsable del Proyecto</label>
+              <div className="relative mt-1">
+                <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  value={projectResponsable}
+                  onChange={(e) => { setProjectResponsable(e.target.value); setHasUnsavedChanges(true) }}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                  placeholder="Nombre del responsable"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Fecha Inicio</label>
+              <input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => { setFechaInicio(e.target.value); setHasUnsavedChanges(true) }}
+                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Fecha Fin</label>
+              <input
+                type="date"
+                value={fechaFin}
+                onChange={(e) => { setFechaFin(e.target.value); setHasUnsavedChanges(true) }}
+                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Summary cards: MO | Mat | Total | Compra | Días */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="card-luxury p-4">
             <div className="flex items-center gap-2 text-navy-800 font-medium mb-1 text-sm">
               <Hammer className="w-4 h-4" />
@@ -695,6 +909,26 @@ export default function RenovationPage() {
             </p>
           </div>
 
+          {quote.purchase_price ? (
+            <div className="card-luxury p-4">
+              <div className="flex items-center gap-2 text-navy-800 font-medium mb-1 text-sm">
+                <ShoppingCart className="w-4 h-4" />
+                Precio Compra
+              </div>
+              <p className="text-xl font-bold text-navy-900 font-mono">
+                ${(quote.purchase_price || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </p>
+            </div>
+          ) : (
+            <div className="card-luxury p-4">
+              <div className="flex items-center gap-2 text-navy-800 font-medium mb-1 text-sm">
+                <ShoppingCart className="w-4 h-4" />
+                Precio Compra
+              </div>
+              <p className="text-xl font-bold text-gray-300 font-mono">N/A</p>
+            </div>
+          )}
+
           <div className="card-luxury p-4">
             <div className="flex items-center gap-2 text-navy-800 font-medium mb-1 text-sm">
               <Calendar className="w-4 h-4" />
@@ -706,7 +940,7 @@ export default function RenovationPage() {
           </div>
         </div>
 
-        {/* AI tools row */}
+        {/* AI tools row + business rules */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -723,11 +957,26 @@ export default function RenovationPage() {
             <FileText className="w-3.5 h-3.5" />
             Importar Reporte
           </button>
-          {quote.purchase_price ? (
-            <span className="text-xs text-gray-400 ml-2">
-              Compra: ${(quote.purchase_price || 0).toLocaleString()}
-            </span>
-          ) : null}
+
+          {/* Business rules tooltip */}
+          <div className="relative group ml-auto">
+            <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+              <Info className="w-3.5 h-3.5" />
+              Reglas de materiales
+            </button>
+            <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3 hidden group-hover:block z-20">
+              <p className="text-xs font-semibold text-navy-900 mb-2">Reglas de Negocio</p>
+              <ul className="text-[11px] text-gray-600 space-y-1">
+                {(quote.business_rules || []).map((rule, i) => (
+                  <li key={i} className="flex gap-1">
+                    <span className="text-amber-500 flex-shrink-0">*</span>
+                    {rule}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -791,95 +1040,130 @@ export default function RenovationPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-navy-900 text-white">
+                      <th className="px-2 py-3 w-8"></th>
                       <th className="px-3 py-3 text-left font-semibold w-12">#</th>
                       <th className="px-3 py-3 text-left font-semibold">Concepto</th>
                       <th className="px-3 py-3 text-right font-semibold w-28">MO ($)</th>
                       <th className="px-3 py-3 text-right font-semibold w-28">Mat ($)</th>
                       <th className="px-3 py-3 text-right font-semibold w-24">Total</th>
                       <th className="px-3 py-3 text-center font-semibold w-16">Días</th>
-                      <th className="px-3 py-3 text-left font-semibold w-48">Notas</th>
+                      <th className="px-3 py-3 text-left font-semibold w-28">Responsable</th>
+                      <th className="px-3 py-3 text-left font-semibold w-44">Notas</th>
                       {quote.items.some(i => i.is_custom) && (
                         <th className="px-2 py-3 w-10"></th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
-                    {quote.items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
-                          item.precio > 0 ? 'bg-green-50/20' : ''
-                        } ${item.is_custom ? 'bg-amber-50/30' : ''}`}
-                      >
-                        <td className="px-3 py-2.5 text-center font-bold text-navy-700">
-                          {item.partida}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span className="font-medium text-navy-900 text-xs">{item.concepto}</span>
-                          {item.is_custom && (
-                            <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
-                              Custom
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={item.mano_obra || ''}
-                            onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
-                            className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                            placeholder="$0"
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={item.materiales || ''}
-                            onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
-                            className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                            placeholder="$0"
-                          />
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-sm font-semibold text-green-700">
-                          ${item.precio.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={item.dias || 1}
-                            onChange={(e) => updateItem(item.id, 'dias', parseInt(e.target.value) || 1)}
-                            className="w-full text-center border border-gray-200 rounded-lg px-1 py-1.5 text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="text"
-                            value={item.notas || ''}
-                            onChange={(e) => updateItem(item.id, 'notas', e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                            placeholder="Notas..."
-                          />
-                        </td>
-                        {quote.items.some(i => i.is_custom) && (
-                          <td className="px-2 py-2.5 text-center">
-                            {item.is_custom && (
-                              <button
-                                onClick={() => removeCustomItem(item.id)}
-                                className="text-red-400 hover:text-red-600 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                    {quote.items.map((item) => {
+                      const hasSubfields = !!(quote.item_subfields?.[item.id]?.length)
+                      const isExpanded = expandedRows.has(item.id)
+
+                      return (
+                        <React.Fragment key={item.id}>
+                          <tr
+                            className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
+                              item.precio > 0 ? 'bg-green-50/20' : ''
+                            } ${item.is_custom ? 'bg-amber-50/30' : ''}`}
+                          >
+                            {/* Expand toggle */}
+                            <td className="px-2 py-2.5 text-center">
+                              {hasSubfields ? (
+                                <button
+                                  onClick={() => toggleRow(item.id)}
+                                  className="text-gray-400 hover:text-navy-600 transition-colors"
+                                >
+                                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                </button>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-bold text-navy-700">
+                              {item.partida}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="font-medium text-navy-900 text-xs">{item.concepto}</span>
+                              {item.is_custom && (
+                                <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                                  Custom
+                                </span>
+                              )}
+                              {item.unidad && (
+                                <span className="ml-1.5 text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                                  {UNIT_SHORT[item.unidad] || `/${item.unidad}`}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.mano_obra || ''}
+                                onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
+                                className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                                placeholder="$0"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.materiales || ''}
+                                onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
+                                className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                                placeholder="$0"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-sm font-semibold text-green-700">
+                              ${item.precio.toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="number"
+                                min="1"
+                                max="30"
+                                value={item.dias || 1}
+                                onChange={(e) => updateItem(item.id, 'dias', parseInt(e.target.value) || 1)}
+                                className="w-full text-center border border-gray-200 rounded-lg px-1 py-1.5 text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="text"
+                                value={item.responsable || ''}
+                                onChange={(e) => updateItem(item.id, 'responsable', e.target.value)}
+                                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                                placeholder="Asignar..."
+                              />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="text"
+                                value={item.notas || ''}
+                                onChange={(e) => updateItem(item.id, 'notas', e.target.value)}
+                                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                                placeholder="Notas..."
+                              />
+                            </td>
+                            {quote.items.some(i => i.is_custom) && (
+                              <td className="px-2 py-2.5 text-center">
+                                {item.is_custom && (
+                                  <button
+                                    onClick={() => removeCustomItem(item.id)}
+                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </td>
                             )}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
+                          </tr>
+                          {/* Expanded subfields row */}
+                          {hasSubfields && isExpanded && renderSubfields(item)}
+                        </React.Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -951,81 +1235,145 @@ export default function RenovationPage() {
 
             {/* MOBILE CARDS */}
             <div className="md:hidden space-y-3">
-              {quote.items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`card-luxury p-4 space-y-3 ${item.is_custom ? 'border-amber-200' : ''}`}
-                >
-                  <div className="flex items-start justify-between">
+              {quote.items.map((item) => {
+                const hasSubfields = !!(quote.item_subfields?.[item.id]?.length)
+                const isExpanded = expandedRows.has(item.id)
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`card-luxury p-4 space-y-3 ${item.is_custom ? 'border-amber-200' : ''}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-2">
+                        {hasSubfields && (
+                          <button onClick={() => toggleRow(item.id)} className="text-gray-400 mt-0.5">
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        )}
+                        <div>
+                          <span className="text-xs font-bold text-navy-600">#{item.partida}</span>
+                          <p className="font-medium text-navy-900 text-sm">{item.concepto}</p>
+                          <div className="flex gap-1.5 mt-0.5">
+                            {item.is_custom && (
+                              <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Custom</span>
+                            )}
+                            {item.unidad && (
+                              <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                                {UNIT_SHORT[item.unidad] || `/${item.unidad}`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-green-700 font-mono">${item.precio.toLocaleString()}</p>
+                        <p className="text-[10px] text-gray-400">{item.dias}d desde día {item.start_day}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-gray-500 font-medium">MO ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.mano_obra || ''}
+                          onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
+                          placeholder="$0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 font-medium">Mat ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.materiales || ''}
+                          onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
+                          placeholder="$0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 font-medium">Días</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          value={item.dias || 1}
+                          onChange={(e) => updateItem(item.id, 'dias', parseInt(e.target.value) || 1)}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-gold-400"
+                        />
+                      </div>
+                    </div>
+
                     <div>
-                      <span className="text-xs font-bold text-navy-600">#{item.partida}</span>
-                      <p className="font-medium text-navy-900 text-sm">{item.concepto}</p>
-                      {item.is_custom && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
-                          Custom
-                        </span>
-                      )}
+                      <label className="text-[10px] text-gray-500 font-medium">Responsable</label>
+                      <input
+                        type="text"
+                        value={item.responsable || ''}
+                        onChange={(e) => updateItem(item.id, 'responsable', e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-gold-400"
+                        placeholder="Asignar..."
+                      />
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-green-700 font-mono">${item.precio.toLocaleString()}</p>
-                      <p className="text-[10px] text-gray-400">{item.dias}d desde día {item.start_day}</p>
-                    </div>
+
+                    <input
+                      type="text"
+                      value={item.notas || ''}
+                      onChange={(e) => updateItem(item.id, 'notas', e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-gold-400"
+                      placeholder="Notas..."
+                    />
+
+                    {/* Mobile subfields */}
+                    {hasSubfields && isExpanded && (
+                      <div className="bg-blue-50/40 rounded-lg p-3 space-y-2">
+                        {quote.item_subfields?.[item.id]?.map((sf: SubfieldDef) => (
+                          <div key={sf.key} className="flex items-center gap-2">
+                            <label className="text-[10px] text-gray-500 font-medium w-20 flex-shrink-0">{sf.label}:</label>
+                            {sf.type === 'boolean' ? (
+                              <input
+                                type="checkbox"
+                                checked={!!item.subfields?.[sf.key]}
+                                onChange={(e) => updateSubfield(item.id, sf.key, e.target.checked)}
+                                className="rounded border-gray-300"
+                              />
+                            ) : sf.type === 'select' ? (
+                              <select
+                                value={item.subfields?.[sf.key] || ''}
+                                onChange={(e) => updateSubfield(item.id, sf.key, e.target.value)}
+                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
+                              >
+                                <option value="">--</option>
+                                {sf.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type={sf.type === 'number' ? 'number' : 'text'}
+                                value={item.subfields?.[sf.key] ?? ''}
+                                onChange={(e) => updateSubfield(item.id, sf.key, sf.type === 'number' ? (parseFloat(e.target.value) || '') : e.target.value)}
+                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
+                                placeholder={sf.label}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.is_custom && (
+                      <button
+                        onClick={() => removeCustomItem(item.id)}
+                        className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Eliminar
+                      </button>
+                    )}
                   </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] text-gray-500 font-medium">MO ($)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.mano_obra || ''}
-                        onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
-                        placeholder="$0"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-500 font-medium">Mat ($)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.materiales || ''}
-                        onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
-                        placeholder="$0"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-500 font-medium">Días</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        value={item.dias || 1}
-                        onChange={(e) => updateItem(item.id, 'dias', parseInt(e.target.value) || 1)}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-gold-400"
-                      />
-                    </div>
-                  </div>
-
-                  <input
-                    type="text"
-                    value={item.notas || ''}
-                    onChange={(e) => updateItem(item.id, 'notas', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-gold-400"
-                    placeholder="Notas..."
-                  />
-
-                  {item.is_custom && (
-                    <button
-                      onClick={() => removeCustomItem(item.id)}
-                      className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3 h-3" /> Eliminar
-                    </button>
-                  )}
-                </div>
-              ))}
+                )
+              })}
 
               {/* Mobile add custom */}
               <div className="card-luxury p-4">
@@ -1153,10 +1501,34 @@ export default function RenovationPage() {
           </div>
         )}
 
-        {/* Guide text */}
-        <p className="text-xs text-gray-400 text-center italic">
-          Separe Mano de Obra y Materiales por partida. Use el botón + para agregar items personalizados.
-        </p>
+        {/* Approval actions */}
+        <div className="flex flex-wrap items-center gap-3">
+          {approvalStatus === 'draft' && (
+            <button
+              onClick={() => saveQuote(true)}
+              disabled={submittingApproval}
+              className="flex items-center gap-2 px-5 py-2.5 bg-navy-800 text-white rounded-lg font-medium hover:bg-navy-900 transition-all"
+            >
+              {submittingApproval ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Enviar a Aprobación
+            </button>
+          )}
+          {approvalStatus === 'pending_approval' && (
+            <button
+              onClick={approveQuote}
+              disabled={approvingQuote}
+              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-all"
+            >
+              {approvingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Aprobar Cotización
+            </button>
+          )}
+
+          {/* Guide text */}
+          <p className="text-xs text-gray-400 italic ml-auto">
+            Separe Mano de Obra y Materiales por partida. Use el botón + para agregar items personalizados.
+          </p>
+        </div>
           </div>
 
       {/* Import Report Modal */}

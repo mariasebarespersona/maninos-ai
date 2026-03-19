@@ -2,7 +2,7 @@
 Renovation Routes V2 — Simplified 19-item checklist (Caza Brothers Feb 2026).
 
 No longer divided by bedrooms/bathrooms. Single flat checklist.
-Each item has: concepto + mano_obra + materiales + dias + notas.
+Each item has: concepto + mano_obra + materiales + dias + notas + unidad.
 precio = mano_obra + materiales (computed).
 Editable: employees can add custom items.
 
@@ -13,6 +13,8 @@ Flow:
 4. POST /{property_id}/ai-fill         → AI photo analysis → suggested items
 5. GET /{property_id}/historical-comparison → Compare vs historical data
 6. POST /{property_id}/import-report   → Import evaluation report → suggestions
+7. PATCH /{property_id}/approve        → Approve renovation quote (admin/manager)
+8. GET /{property_id}/approval-status  → Get approval status
 """
 
 import json
@@ -28,6 +30,8 @@ from api.utils.renovation_template_v2 import (
     get_blank_quote,
     build_quote_from_saved,
     RENOVATION_ITEMS,
+    ITEM_SUBFIELDS,
+    BUSINESS_RULES,
 )
 from tools.supabase_client import sb
 
@@ -41,13 +45,21 @@ router = APIRouter()
 
 class SaveQuoteV2Request(BaseModel):
     """
-    V2 save format — each item has mano_obra + materiales + dias + notas.
-    items: dict keyed by item_id → { "mano_obra": number, "materiales": number, "dias": number, "notas": string }
+    V2 save format — each item has mano_obra + materiales + dias + notas + subfields.
+    items: dict keyed by item_id → { "mano_obra": number, "materiales": number, "dias": number, "notas": string, "responsable": string, "subfields": {} }
     custom_items: list of employee-added custom items
     """
-    items: dict  # { "demolicion": { "mano_obra": 300, "materiales": 50, "dias": 2, "notas": "..." }, ... }
+    items: dict  # { "demolicion": { "mano_obra": 300, "materiales": 50, "dias": 2, "notas": "...", "subfields": {} }, ... }
     custom_items: Optional[list] = None
     notes: Optional[str] = None
+    responsable: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    submit_for_approval: Optional[bool] = False
+
+
+class ApproveQuoteRequest(BaseModel):
+    approved_by: Optional[str] = None
 
 
 # ============================================================================
@@ -56,7 +68,7 @@ class SaveQuoteV2Request(BaseModel):
 
 @router.get("/template")
 async def get_renovation_template():
-    """Return the V2 renovation template (19 standard items, MO + Mat + Dias)."""
+    """Return the V2 renovation template (19 standard items, MO + Mat + Dias + Unidad)."""
     quote = get_blank_quote()
     return {
         "version": 2,
@@ -66,6 +78,8 @@ async def get_renovation_template():
         "total_mano_obra": quote["total_mano_obra"],
         "total_materiales": quote["total_materiales"],
         "dias_estimados": quote["dias_estimados"],
+        "item_subfields": ITEM_SUBFIELDS,
+        "business_rules": BUSINESS_RULES,
     }
 
 
@@ -120,6 +134,8 @@ async def get_property_quote(property_id: str):
         "square_feet": prop.get("square_feet"),
         "purchase_price": prop.get("purchase_price"),
         "has_inspection": bool(prop.get("checklist_data")),
+        "item_subfields": ITEM_SUBFIELDS,
+        "business_rules": BUSINESS_RULES,
         **quote,
     }
 
@@ -155,16 +171,32 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
             mo = float(ci["precio"])
         total += mo + mat
 
+    # Determine approval status
+    approval_status = "draft"
+    if data.submit_for_approval:
+        approval_status = "pending_approval"
+
     # Build materials blob to save
     materials_blob = {
         "items": data.items,
         "custom_items": custom_items,
+        "responsable": data.responsable or "",
+        "fecha_inicio": data.fecha_inicio or "",
+        "fecha_fin": data.fecha_fin or "",
+        "approval_status": approval_status,
     }
 
     # Upsert renovation
-    existing = sb.table("renovations").select("id").eq(
+    existing = sb.table("renovations").select("id, materials").eq(
         "property_id", property_id
     ).order("created_at", desc=True).limit(1).execute()
+
+    # Preserve approval_status if not submitting and already exists
+    if existing.data and not data.submit_for_approval:
+        existing_materials = existing.data[0].get("materials") or {}
+        existing_status = existing_materials.get("approval_status", "draft")
+        if existing_status in ("pending_approval", "approved"):
+            materials_blob["approval_status"] = existing_status
 
     reno_data = {
         "property_id": property_id,
@@ -190,14 +222,145 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
     )
     logger.info(f"[renovation] Saved V2 quote for {property_id}: ${total:.2f} ({active_items} items + {len(custom_items)} custom)")
 
+    # Send approval email if submitting
+    if data.submit_for_approval:
+        _send_approval_notification(property_id, round(total, 2), data.responsable or "")
+        logger.info(f"[renovation] Quote submitted for approval: {property_id}")
+
     return {
         "success": True,
         "total": round(total, 2),
         "active_items": active_items,
         "custom_items_count": len(custom_items),
         "renovation_id": result.data[0]["id"] if result.data else None,
+        "approval_status": materials_blob["approval_status"],
     }
 
+
+@router.patch("/{property_id}/approve")
+async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest = None):
+    """Approve a renovation quote (admin/manager only)."""
+    try:
+        reno_result = sb.table("renovations").select("id, materials, total_cost").eq(
+            "property_id", property_id
+        ).order("created_at", desc=True).limit(1).execute()
+    except Exception as e:
+        logger.error(f"[renovation] DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+
+    if not reno_result.data:
+        raise HTTPException(status_code=404, detail="No renovation quote found for this property")
+
+    reno = reno_result.data[0]
+    materials = reno.get("materials") or {}
+    current_status = materials.get("approval_status", "draft")
+
+    if current_status == "approved":
+        raise HTTPException(status_code=400, detail="Quote is already approved")
+
+    if current_status == "draft":
+        raise HTTPException(status_code=400, detail="Quote has not been submitted for approval yet")
+
+    # Update to approved
+    materials["approval_status"] = "approved"
+    materials["approved_by"] = (data.approved_by if data else None) or ""
+    materials["approved_at"] = _now_iso()
+
+    sb.table("renovations").update({
+        "materials": materials,
+    }).eq("id", reno["id"]).execute()
+
+    # Send notification to treasury (Abigail)
+    _send_approved_notification(property_id, reno.get("total_cost", 0))
+
+    logger.info(f"[renovation] Quote approved for {property_id} by {materials.get('approved_by', 'unknown')}")
+
+    return {
+        "success": True,
+        "approval_status": "approved",
+        "approved_by": materials["approved_by"],
+        "approved_at": materials["approved_at"],
+    }
+
+
+@router.get("/{property_id}/approval-status")
+async def get_approval_status(property_id: str):
+    """Get the approval status of a renovation quote."""
+    try:
+        reno_result = sb.table("renovations").select("id, materials, total_cost").eq(
+            "property_id", property_id
+        ).order("created_at", desc=True).limit(1).execute()
+    except Exception as e:
+        logger.error(f"[renovation] DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+
+    if not reno_result.data:
+        return {"property_id": property_id, "approval_status": "none", "renovation_id": None}
+
+    reno = reno_result.data[0]
+    materials = reno.get("materials") or {}
+
+    return {
+        "property_id": property_id,
+        "renovation_id": reno["id"],
+        "approval_status": materials.get("approval_status", "draft"),
+        "approved_by": materials.get("approved_by"),
+        "approved_at": materials.get("approved_at"),
+        "total_cost": reno.get("total_cost", 0),
+    }
+
+
+# ============================================================================
+# NOTIFICATION HELPERS
+# ============================================================================
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _send_approval_notification(property_id: str, total: float, responsable: str):
+    """Send email to admin when quote is submitted for approval."""
+    try:
+        from tools.email_tool import send_email
+        admin_email = os.getenv("ADMIN_EMAIL", "sebastian@maninoshomes.com")
+        send_email(
+            to=admin_email,
+            subject=f"Cotización de renovación pendiente de aprobación — ${total:,.2f}",
+            html=f"""
+            <h2>Nueva cotización pendiente de aprobación</h2>
+            <p><strong>Propiedad:</strong> {property_id}</p>
+            <p><strong>Total:</strong> ${total:,.2f}</p>
+            <p><strong>Responsable:</strong> {responsable or 'No asignado'}</p>
+            <p>Ingresa al sistema para revisar y aprobar la cotización.</p>
+            """,
+        )
+    except Exception as e:
+        logger.warning(f"[renovation] Failed to send approval notification: {e}")
+
+
+def _send_approved_notification(property_id: str, total: float):
+    """Send email to treasury when quote is approved."""
+    try:
+        from tools.email_tool import send_email
+        treasury_email = os.getenv("TREASURY_EMAIL", "abigail@maninoshomes.com")
+        send_email(
+            to=treasury_email,
+            subject=f"Cotización de renovación APROBADA — ${total:,.2f}",
+            html=f"""
+            <h2>Cotización de renovación aprobada</h2>
+            <p><strong>Propiedad:</strong> {property_id}</p>
+            <p><strong>Total aprobado:</strong> ${total:,.2f}</p>
+            <p>Esta cotización ha sido aprobada y puede proceder con la compra de materiales.</p>
+            """,
+        )
+    except Exception as e:
+        logger.warning(f"[renovation] Failed to send approved notification: {e}")
+
+
+# ============================================================================
+# AI AUTO-FILL
+# ============================================================================
 
 @router.post("/{property_id}/ai-fill")
 async def ai_autofill_quote(
@@ -258,7 +421,7 @@ async def ai_autofill_quote(
         if image_contents:
             # Build item reference from the 19-item template
             items_ref = "\n".join(
-                f'{item["id"]} (Partida {item["partida"]}): {item["concepto"]} — MO base: ${item["mano_obra"]:.2f}'
+                f'{item["id"]} (Partida {item["partida"]}): {item["concepto"]} — MO base: ${item["mano_obra"]:.2f}/{item["unidad"]}'
                 for item in RENOVATION_ITEMS
             )
 
@@ -281,6 +444,7 @@ RESPONDE ÚNICAMENTE en JSON:
       "needed": true/false,
       "mano_obra": número estimado de mano de obra,
       "materiales": número estimado de materiales,
+      "unidad": "día/proyecto/casa",
       "notas": "descripción de lo que se ve en la foto"
     }}
   }},
