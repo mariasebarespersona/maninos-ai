@@ -418,20 +418,23 @@ async def initiate_rto(request: RTOInitRequest):
                 )
         
         # 2. Check if client already exists by email
+        # Use order desc + limit 1 to match the same client the login lookup returns
         existing_client = sb.table("clients") \
             .select("*") \
-            .eq("email", request.client_email) \
+            .eq("email", request.client_email.lower()) \
+            .order("created_at", desc=True) \
+            .limit(1) \
             .execute()
-        
+
         if existing_client.data:
-            client_result = sb.table("clients").update({
+            client_id = existing_client.data[0]["id"]
+            sb.table("clients").update({
                 "name": request.client_name,
                 "phone": request.client_phone,
                 "terreno": request.client_terreno,
                 "status": "lead",
                 "updated_at": datetime.utcnow().isoformat()
-            }).eq("email", request.client_email).execute()
-            client_id = existing_client.data[0]["id"]
+            }).eq("id", client_id).execute()
         else:
             client_result = sb.table("clients").insert({
                 "name": request.client_name,
