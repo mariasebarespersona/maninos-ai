@@ -34,6 +34,7 @@ from api.routes.capital import router as capital_router
 from api.routes.public.clients import router as public_clients_router
 from api.routes.public.properties import router as public_properties_router
 from api.routes.public.purchases import router as public_purchases_router
+from api.routes.public.credit_application import router as public_credit_app_router
 
 # Services
 from api.services.scheduler_service import init_scheduler, shutdown_scheduler
@@ -133,3 +134,4 @@ app.include_router(capital_router, prefix="/api/capital", tags=["Capital"])
 app.include_router(public_clients_router, prefix="/api", tags=["Public - Clients"])
 app.include_router(public_properties_router, prefix="/api", tags=["Public - Properties"])
 app.include_router(public_purchases_router, prefix="/api", tags=["Public - Purchases"])
+app.include_router(public_credit_app_router, prefix="/api", tags=["Public - Credit Application"])

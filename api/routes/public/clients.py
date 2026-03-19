@@ -93,7 +93,8 @@ async def get_client_purchases(client_id: str, user_email: str = Depends(get_cur
                 created_at,
                 completed_at,
                 properties(address, city, state, photos),
-                title_transfers(id, status, transfer_date)
+                title_transfers(id, status, transfer_date),
+                rto_applications(id, status)
             """) \
             .eq("client_id", client_id) \
             .order("created_at", desc=True) \

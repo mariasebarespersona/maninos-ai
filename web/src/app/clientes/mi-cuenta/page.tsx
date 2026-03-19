@@ -7,7 +7,7 @@ import {
   XCircle, LogOut, Phone, Mail, MapPin, Loader2,
   DollarSign, TrendingUp, ShieldCheck, ArrowRight, MessageCircle,
   Bell, CreditCard, CalendarClock, AlertTriangle,
-  Banknote, Building2, Copy, X, CheckCheck,
+  Banknote, Building2, Copy, X, CheckCheck, ClipboardList,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { useClientAuth } from '@/hooks/useClientAuth'
@@ -35,6 +35,10 @@ interface Sale {
     id: string
     status: string
     transfer_date: string
+  }[]
+  rto_applications?: {
+    id: string
+    status: string
   }[]
 }
 
@@ -350,6 +354,31 @@ export default function ClientDashboard() {
             </Link>
           </div>
         )}
+
+        {/* ═══════════ CREDIT APPLICATION BANNER ═══════════ */}
+        {kycVerified && sales.some(s => s.sale_type === 'rto' && ['rto_pending', 'rto_approved'].includes(s.status) && s.rto_applications?.[0]) && (() => {
+          const rtoSale = sales.find(s => s.sale_type === 'rto' && ['rto_pending', 'rto_approved'].includes(s.status) && s.rto_applications?.[0])
+          const appId = rtoSale?.rto_applications?.[0]?.id
+          if (!rtoSale || !appId) return null
+          return (
+            <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <ClipboardList className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                <div>
+                  <h3 className="font-bold text-[#222] text-[14px]" style={{ letterSpacing: '-0.015em' }}>Completar Solicitud de Crédito</h3>
+                  <p className="text-[12px] text-[#484848]">Tu identidad fue verificada. Ahora completa tu solicitud de crédito para continuar.</p>
+                </div>
+              </div>
+              <Link
+                href={`/clientes/mi-cuenta/solicitud-credito/${appId}`}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 transition-colors"
+              >
+                <ClipboardList className="w-4 h-4" />
+                Completar <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          )
+        })()}
 
         <div className="grid lg:grid-cols-3 gap-6">
 

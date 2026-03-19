@@ -295,3 +295,21 @@ async def review_application(application_id: str, review: ApplicationReview):
         logger.error(f"Error reviewing application {application_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/{application_id}/credit-application")
+async def get_credit_application(application_id: str):
+    """Get the credit application filled by the client."""
+    try:
+        result = sb.table("credit_applications") \
+            .select("*") \
+            .eq("rto_application_id", application_id) \
+            .execute()
+
+        if not result.data:
+            return {"ok": True, "credit_application": None}
+
+        return {"ok": True, "credit_application": result.data[0]}
+    except Exception as e:
+        logger.error(f"Error getting credit application: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

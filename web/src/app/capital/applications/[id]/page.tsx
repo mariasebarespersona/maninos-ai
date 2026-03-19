@@ -9,7 +9,7 @@ import {
   FileSignature, Calculator, ShieldCheck, ShieldAlert, Loader2,
   Home, Mail, Phone, AlertTriangle, ChevronDown, ChevronUp,
   CreditCard, FileText, Upload, Download, ExternalLink, Eye,
-  Calendar, Hash,
+  Calendar, Hash, AlertCircle,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
@@ -100,7 +100,11 @@ export default function ApplicationDetailPage() {
   const [downPayment, setDownPayment] = useState('')
   const [annualRatePct, setAnnualRatePct] = useState(DEFAULT_ANNUAL_RATE * 100) // editable %
 
-  // Credit form (expanded)
+  // Client credit application (filled by client)
+  const [clientCreditApp, setClientCreditApp] = useState<any>(null)
+  const [loadingCreditApp, setLoadingCreditApp] = useState(true)
+
+  // Credit form (expanded) — manual fallback
   const [showCreditForm, setShowCreditForm] = useState(false)
   const [savingCredit, setSavingCredit] = useState(false)
   const [creditForm, setCreditForm] = useState({
@@ -193,11 +197,44 @@ export default function ApplicationDetailPage() {
         if (data.application.properties?.id) {
           loadDocuments(data.application.properties.id)
         }
+        // Load client credit application
+        loadCreditApplication()
       }
     } catch (err) {
       console.error('Error loading application:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadCreditApplication = async () => {
+    setLoadingCreditApp(true)
+    try {
+      const res = await fetch(`/api/capital/applications/${id}/credit-application`)
+      const data = await res.json()
+      if (data.ok && data.credit_application) {
+        setClientCreditApp(data.credit_application)
+        // Auto-populate capacity calculator
+        if (data.credit_application.monthly_income) {
+          setMonthlyIncome(parseFloat(data.credit_application.monthly_income) || 0)
+        }
+        const otherSources = data.credit_application.other_income_sources || []
+        const totalOther = otherSources.reduce((s: number, src: any) => s + (parseFloat(src.monthly_amount) || 0), 0)
+        if (totalOther > 0) setOtherIncome(totalOther)
+        // Auto-populate expenses
+        const debts = data.credit_application.debts || []
+        const totalDebts = debts.reduce((s: number, d: any) => s + (parseFloat(d.monthly_payment) || 0), 0)
+        const totalExpenses = totalDebts
+          + (parseFloat(data.credit_application.monthly_rent) || 0)
+          + (parseFloat(data.credit_application.monthly_utilities) || 0)
+          + (parseFloat(data.credit_application.monthly_child_support_paid) || 0)
+          + (parseFloat(data.credit_application.monthly_other_expenses) || 0)
+        if (totalExpenses > 0) setMonthlyExpenses(totalExpenses)
+      }
+    } catch (err) {
+      console.error('Error loading credit application:', err)
+    } finally {
+      setLoadingCreditApp(false)
     }
   }
 
@@ -989,7 +1026,195 @@ export default function ApplicationDetailPage() {
       {/* =================== TAB: CAPACITY =================== */}
       {activeTab === 'capacity' && (
         <div className="space-y-5">
-          {/* Credit Application Form */}
+
+          {/* Client Credit Application (read-only viewer) */}
+          {loadingCreditApp ? (
+            <div className="card-luxury p-8 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--slate)' }} />
+              <span className="ml-2 text-sm" style={{ color: 'var(--slate)' }}>Cargando solicitud...</span>
+            </div>
+          ) : clientCreditApp && clientCreditApp.status === 'submitted' ? (
+            <div className="card-luxury">
+              <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+                <div>
+                  <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                    Solicitud de Crédito — Completada por el Cliente
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                    Enviada el {clientCreditApp.submitted_at ? new Date(clientCreditApp.submitted_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Recibida</span>
+              </div>
+              <div className="p-5 space-y-6">
+                {/* S1: Personal */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>1. Información Personal</h3>
+                  <div className="grid md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Nombre</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.full_name || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Fecha nacimiento</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.date_of_birth || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>SSN (últimos 4)</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.ssn_last4 ? `****${clientCreditApp.ssn_last4}` : '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Estado civil</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.marital_status || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Dependientes</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.dependents_count || 0} {clientCreditApp.dependents_ages ? `(${clientCreditApp.dependents_ages})` : ''}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>ID / Licencia</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.id_number || '—'} {clientCreditApp.id_state ? `(${clientCreditApp.id_state})` : ''}</p></div>
+                  </div>
+                </div>
+
+                {/* S2: Residence */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>2. Historial de Vivienda</h3>
+                  {(clientCreditApp.residence_history || []).length > 0 ? (clientCreditApp.residence_history || []).map((r: any, i: number) => (
+                    <div key={i} className="mb-3 p-3 rounded-lg bg-gray-50">
+                      <div className="grid md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
+                        <div className="md:col-span-2"><span className="text-xs" style={{ color: 'var(--ash)' }}>Dirección</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{r.address}, {r.city}, {r.state} {r.zip}</p></div>
+                        <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Tipo</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{r.type || '—'}</p></div>
+                        <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Pago mensual</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${r.monthly_payment?.toLocaleString() || '0'}</p></div>
+                        <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Tiempo</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{r.duration_years || 0} años, {r.duration_months || 0} meses</p></div>
+                        {r.landlord_name && <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Arrendador</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{r.landlord_name} {r.landlord_phone ? `(${r.landlord_phone})` : ''}</p></div>}
+                      </div>
+                    </div>
+                  )) : <p className="text-sm italic" style={{ color: 'var(--ash)' }}>Sin historial</p>}
+                </div>
+
+                {/* S3: Employment */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>3. Empleo e Ingresos</h3>
+                  <div className="grid md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Empleador</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.employer_name || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ocupación</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.occupation || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Tipo empleo</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.employment_type || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso mensual</span><p className="font-semibold text-base" style={{ color: 'var(--gold-700)' }}>${parseFloat(clientCreditApp.monthly_income || 0).toLocaleString()}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Tiempo en empleo</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.time_at_job_years || 0} años, {clientCreditApp.time_at_job_months || 0} meses</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Tel. empleador</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.employer_phone || '—'}</p></div>
+                  </div>
+                  {clientCreditApp.previous_employer && (
+                    <div className="mt-2 p-2 bg-gray-50 rounded text-sm">
+                      <span className="text-xs" style={{ color: 'var(--ash)' }}>Empleo anterior:</span> {clientCreditApp.previous_employer} ({clientCreditApp.previous_employer_duration || '—'})
+                    </div>
+                  )}
+                </div>
+
+                {/* S4: Other Income */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>4. Otras Fuentes de Ingreso</h3>
+                  {(clientCreditApp.other_income_sources || []).length > 0 ? (
+                    <div className="space-y-1">
+                      {(clientCreditApp.other_income_sources || []).map((s: any, i: number) => (
+                        <div key={i} className="flex justify-between text-sm p-2 rounded bg-gray-50">
+                          <span style={{ color: 'var(--charcoal)' }}>{s.source}</span>
+                          <span className="font-semibold" style={{ color: 'var(--gold-700)' }}>${parseFloat(s.monthly_amount || 0).toLocaleString()}/mes</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-sm font-semibold pt-1 border-t" style={{ borderColor: 'var(--sand)' }}>
+                        <span>Total otros ingresos</span>
+                        <span style={{ color: 'var(--gold-700)' }}>${(clientCreditApp.other_income_sources || []).reduce((s: number, x: any) => s + (parseFloat(x.monthly_amount) || 0), 0).toLocaleString()}/mes</span>
+                      </div>
+                    </div>
+                  ) : <p className="text-sm italic" style={{ color: 'var(--ash)' }}>No reportó otras fuentes de ingreso</p>}
+                </div>
+
+                {/* S5: Properties — KEY */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>5. Propiedades</h3>
+                  {clientCreditApp.owns_properties ? (
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 mb-2">Sí, es propietario</span>
+                      {(clientCreditApp.properties_owned || []).map((p: any, i: number) => (
+                        <div key={i} className="mb-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
+                          <div className="grid md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
+                            <div className="md:col-span-2"><span className="text-xs" style={{ color: 'var(--ash)' }}>Dirección</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{p.address || '—'}</p></div>
+                            <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Valor estimado</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(p.estimated_value || 0).toLocaleString()}</p></div>
+                            <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Saldo hipoteca</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(p.mortgage_balance || 0).toLocaleString()}</p></div>
+                            <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Pago mensual</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(p.monthly_payment || 0).toLocaleString()}</p></div>
+                            {p.rental_income > 0 && <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso de renta</span><p className="font-medium text-green-700">${parseFloat(p.rental_income || 0).toLocaleString()}/mes</p></div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">No es propietario de otras propiedades</span>}
+                </div>
+
+                {/* S6: Debts */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>6. Deudas y Gastos Mensuales</h3>
+                  <div className="grid md:grid-cols-3 gap-x-6 gap-y-2 text-sm mb-2">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Renta/hipoteca</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(clientCreditApp.monthly_rent || 0).toLocaleString()}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Servicios</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(clientCreditApp.monthly_utilities || 0).toLocaleString()}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Child support pagado</span><p className="font-medium" style={{ color: 'var(--ink)' }}>${parseFloat(clientCreditApp.monthly_child_support_paid || 0).toLocaleString()}</p></div>
+                  </div>
+                  {(clientCreditApp.debts || []).length > 0 && (
+                    <div className="space-y-1">
+                      {(clientCreditApp.debts || []).map((d: any, i: number) => (
+                        <div key={i} className="flex justify-between text-sm p-2 rounded bg-red-50">
+                          <span style={{ color: 'var(--charcoal)' }}>{d.type}: {d.creditor || '—'} (saldo: ${parseFloat(d.balance || 0).toLocaleString()})</span>
+                          <span className="font-semibold text-red-700">${parseFloat(d.monthly_payment || 0).toLocaleString()}/mes</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* S7: References */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>7. Referencias Personales</h3>
+                  <div className="grid md:grid-cols-3 gap-3">
+                    {(clientCreditApp.personal_references || []).map((ref: any, i: number) => (
+                      <div key={i} className="p-3 rounded-lg bg-gray-50 text-sm">
+                        <p className="font-medium" style={{ color: 'var(--ink)' }}>{ref.name || '—'}</p>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>{ref.relationship} · {ref.years_known || '?'} años · {ref.phone || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* S8: Legal */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>8. Historial Legal</h3>
+                  <div className="grid md:grid-cols-3 gap-2 text-sm">
+                    {[
+                      { key: 'has_bankruptcy', label: 'Bancarrota' },
+                      { key: 'has_foreclosure', label: 'Embargo/Recuperación' },
+                      { key: 'has_eviction', label: 'Desalojo' },
+                      { key: 'has_judgments', label: 'Juicios pendientes' },
+                      { key: 'has_federal_debt', label: 'Deuda federal' },
+                    ].map(({ key, label }) => (
+                      <div key={key} className={`p-2 rounded flex items-center gap-2 ${clientCreditApp[key] ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                        {clientCreditApp[key] ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        <span className="text-xs font-medium">{label}: {clientCreditApp[key] ? 'SÍ' : 'No'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {clientCreditApp.legal_details && (
+                    <div className="mt-2 p-2 bg-red-50 rounded text-sm text-red-700">
+                      <span className="font-medium">Detalles:</span> {clientCreditApp.legal_details}
+                    </div>
+                  )}
+                </div>
+
+                {/* S9: Emergency */}
+                <div>
+                  <h3 className="font-semibold text-sm mb-2 pb-1 border-b" style={{ color: 'var(--charcoal)', borderColor: 'var(--sand)' }}>9. Contacto de Emergencia</h3>
+                  <div className="grid md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Nombre</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.emergency_name || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Teléfono</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.emergency_phone || '—'}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Relación</span><p className="font-medium" style={{ color: 'var(--ink)' }}>{clientCreditApp.emergency_relationship || '—'}</p></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card-luxury p-5">
+              <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--ash)' }}>
+                <Clock className="w-5 h-5" />
+                <div>
+                  <p className="font-medium" style={{ color: 'var(--charcoal)' }}>El cliente aún no ha completado la solicitud de crédito</p>
+                  <p className="text-xs mt-0.5">La solicitud de crédito se envía al cliente después de verificar su identidad (KYC).</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Manual credit form (fallback for employees) */}
           <div className="card-luxury">
             <button
               onClick={() => setShowCreditForm(!showCreditForm)}
@@ -997,10 +1222,10 @@ export default function ApplicationDetailPage() {
             >
               <div>
                 <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-                  Solicitud de Crédito
+                  {clientCreditApp?.status === 'submitted' ? 'Formulario Manual (empleado)' : 'Solicitud de Crédito — Manual'}
                 </h2>
                 <p className="text-sm mt-0.5" style={{ color: 'var(--ash)' }}>
-                  Información laboral, ingresos y referencias del cliente
+                  {clientCreditApp?.status === 'submitted' ? 'Datos adicionales ingresados por el equipo' : 'Información laboral, ingresos y referencias del cliente'}
                 </p>
               </div>
               {showCreditForm
@@ -1011,7 +1236,6 @@ export default function ApplicationDetailPage() {
 
             {showCreditForm && (
               <div className="px-5 pb-5 border-t space-y-5" style={{ borderColor: 'var(--sand)' }}>
-                {/* Información Laboral */}
                 <div className="pt-4">
                   <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
                     <Briefcase className="w-4 h-4" />
@@ -1027,54 +1251,12 @@ export default function ApplicationDetailPage() {
                       <input type="text" value={creditForm.occupation} onChange={(e) => setCreditForm(p => ({ ...p, occupation: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
                     </div>
                     <div>
-                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Teléfono del empleador</label>
-                      <input type="text" value={creditForm.employer_phone} onChange={(e) => setCreditForm(p => ({ ...p, employer_phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
-                    </div>
-                    <div>
                       <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ingreso mensual ($)</label>
                       <input type="number" value={creditForm.monthly_income} onChange={(e) => setCreditForm(p => ({ ...p, monthly_income: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex-1">
-                        <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Tiempo en empleo (años)</label>
-                        <input type="number" value={creditForm.time_at_job_years} onChange={(e) => setCreditForm(p => ({ ...p, time_at_job_years: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Meses</label>
-                        <input type="number" value={creditForm.time_at_job_months} onChange={(e) => setCreditForm(p => ({ ...p, time_at_job_months: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
-                      </div>
                     </div>
                     <div>
                       <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Otra fuente de ingresos ($)</label>
                       <input type="number" value={creditForm.other_income_amount} onChange={(e) => setCreditForm(p => ({ ...p, other_income_amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Personal info */}
-            <div>
-                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-                    <User className="w-4 h-4" />
-                    Información Personal
-                  </h3>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Estado civil</label>
-                      <select value={creditForm.marital_status} onChange={(e) => setCreditForm(p => ({ ...p, marital_status: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
-                        <option value="">Seleccionar</option>
-                        <option value="soltero">Soltero(a)</option>
-                        <option value="casado">Casado(a)</option>
-                        <option value="otro">Otro</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Tipo de residencia</label>
-                      <select value={creditForm.residence_type} onChange={(e) => setCreditForm(p => ({ ...p, residence_type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
-                        <option value="">Seleccionar</option>
-                        <option value="propia">Propia</option>
-                        <option value="rentada">Rentada</option>
-                        <option value="otra">Otra</option>
-                      </select>
                     </div>
                   </div>
                 </div>
@@ -1088,7 +1270,7 @@ export default function ApplicationDetailPage() {
                   <div className="space-y-3">
                     {[1, 2].map((refNum) => (
                       <div key={refNum} className="grid grid-cols-3 gap-2">
-                        <input type="text" placeholder={`Referencia ${refNum} - Nombre`}
+                        <input type="text" placeholder={`Ref. ${refNum} - Nombre`}
                           value={refNum === 1 ? creditForm.ref1_name : creditForm.ref2_name}
                           onChange={(e) => setCreditForm(p => ({ ...p, [`ref${refNum}_name`]: e.target.value }))}
                           className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
