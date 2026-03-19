@@ -2,7 +2,8 @@
 Renovation Routes V2 — Simplified 19-item checklist (Caza Brothers Feb 2026).
 
 No longer divided by bedrooms/bathrooms. Single flat checklist.
-Each item has only: concepto + precio + notas (optional).
+Each item has: concepto + mano_obra + materiales + dias + notas.
+precio = mano_obra + materiales (computed).
 Editable: employees can add custom items.
 
 Flow:
@@ -40,13 +41,13 @@ router = APIRouter()
 
 class SaveQuoteV2Request(BaseModel):
     """
-    V2 save format — simplified: each item has only precio + notas.
-    items: dict keyed by item_id → { "precio": number, "notas": string }
+    V2 save format — each item has mano_obra + materiales + dias + notas.
+    items: dict keyed by item_id → { "mano_obra": number, "materiales": number, "dias": number, "notas": string }
     custom_items: list of employee-added custom items
     """
-    items: dict  # { "demolicion": { "precio": 300, "notas": "..." }, ... }
-    custom_items: Optional[list] = None  # [ { "id": "custom_1", "concepto": "...", "precio": 150, "notas": "" } ]
-    notes: Optional[str] = None  # General notes for the whole quote
+    items: dict  # { "demolicion": { "mano_obra": 300, "materiales": 50, "dias": 2, "notas": "..." }, ... }
+    custom_items: Optional[list] = None
+    notes: Optional[str] = None
 
 
 # ============================================================================
@@ -55,19 +56,22 @@ class SaveQuoteV2Request(BaseModel):
 
 @router.get("/template")
 async def get_renovation_template():
-    """Return the V2 renovation template (19 standard items, concept + price)."""
+    """Return the V2 renovation template (19 standard items, MO + Mat + Dias)."""
     quote = get_blank_quote()
     return {
         "version": 2,
         "items": quote["items"],
         "total_items": len(quote["items"]),
         "total": quote["total"],
+        "total_mano_obra": quote["total_mano_obra"],
+        "total_materiales": quote["total_materiales"],
+        "dias_estimados": quote["dias_estimados"],
     }
 
 
 @router.get("/{property_id}/quote")
 async def get_property_quote(property_id: str):
-    """Get saved renovation quote for a property (V2 simplified format)."""
+    """Get saved renovation quote for a property (V2 format with MO + Mat)."""
     try:
         prop_result = sb.table("properties").select(
             "id, address, square_feet, purchase_price, checklist_data"
@@ -101,7 +105,8 @@ async def get_property_quote(property_id: str):
             saved_data = {"items": {}}
             for item_id, qty in v1_items.items():
                 saved_data["items"][item_id] = {
-                    "precio": 0.0,
+                    "mano_obra": 0.0,
+                    "materiales": 0.0,
                     "notas": f"(migrado V1, qty={qty})",
                 }
 
@@ -121,7 +126,7 @@ async def get_property_quote(property_id: str):
 
 @router.post("/{property_id}/quote")
 async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
-    """Save or update renovation quote (V2 simplified: concepto + precio)."""
+    """Save or update renovation quote (V2: mano_obra + materiales + dias)."""
     try:
         prop = sb.table("properties").select("id").eq("id", property_id).execute()
     except Exception as e:
@@ -130,16 +135,25 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
     if not prop.data:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Calculate total from all item prices
+    # Calculate total: precio = mano_obra + materiales per item
     total = 0.0
-    for item_data in data.items.values():
+    for item_id, item_data in data.items.items():
         if isinstance(item_data, dict):
-            total += float(item_data.get("precio", 0))
+            mo = float(item_data.get("mano_obra", 0))
+            mat = float(item_data.get("materiales", 0))
+            # If only precio provided (backward compat), use it
+            if mo == 0 and mat == 0 and "precio" in item_data:
+                mo = float(item_data["precio"])
+            total += mo + mat
 
     # Add custom items
     custom_items = data.custom_items or []
     for ci in custom_items:
-        total += float(ci.get("precio", 0))
+        mo = float(ci.get("mano_obra", 0))
+        mat = float(ci.get("materiales", 0))
+        if mo == 0 and mat == 0 and "precio" in ci:
+            mo = float(ci["precio"])
+        total += mo + mat
 
     # Build materials blob to save
     materials_blob = {
@@ -167,7 +181,13 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
     else:
         result = sb.table("renovations").insert(reno_data).execute()
 
-    active_items = sum(1 for v in data.items.values() if isinstance(v, dict) and float(v.get("precio", 0)) > 0)
+    active_items = sum(
+        1 for v in data.items.values()
+        if isinstance(v, dict) and (
+            float(v.get("mano_obra", 0)) + float(v.get("materiales", 0)) > 0
+            or float(v.get("precio", 0)) > 0
+        )
+    )
     logger.info(f"[renovation] Saved V2 quote for {property_id}: ${total:.2f} ({active_items} items + {len(custom_items)} custom)")
 
     return {
@@ -186,7 +206,8 @@ async def ai_autofill_quote(
 ):
     """
     AI auto-fill V2 renovation quote.
-    Analyzes photos to suggest which of the 19 items are needed and their estimated price.
+    Analyzes photos to suggest which of the 19 items are needed,
+    with mano_obra + materiales separated.
     """
     try:
         prop = sb.table("properties").select(
@@ -237,7 +258,7 @@ async def ai_autofill_quote(
         if image_contents:
             # Build item reference from the 19-item template
             items_ref = "\n".join(
-                f'{item["id"]} (Partida {item["partida"]}): {item["concepto"]} — Precio base: ${item["precio"]:.2f}'
+                f'{item["id"]} (Partida {item["partida"]}): {item["concepto"]} — MO base: ${item["mano_obra"]:.2f}'
                 for item in RENOVATION_ITEMS
             )
 
@@ -247,7 +268,8 @@ async def ai_autofill_quote(
             prompt = f"""Eres un experto en remodelación de casas móviles (mobile homes) en Texas.
 {size_ctx}
 
-TAREA: Analiza las fotos y sugiere qué partidas de renovación son necesarias y su precio estimado.
+TAREA: Analiza las fotos y sugiere qué partidas de renovación son necesarias.
+Separa el costo en MANO DE OBRA y MATERIALES.
 
 LISTA DE 19 PARTIDAS DISPONIBLES:
 {items_ref}
@@ -257,7 +279,8 @@ RESPONDE ÚNICAMENTE en JSON:
   "items": {{
     "item_id": {{
       "needed": true/false,
-      "precio": número estimado,
+      "mano_obra": número estimado de mano de obra,
+      "materiales": número estimado de materiales,
       "notas": "descripción de lo que se ve en la foto"
     }}
   }},
@@ -266,9 +289,10 @@ RESPONDE ÚNICAMENTE en JSON:
 
 REGLAS:
 1. Solo marca "needed": true para partidas CLARAMENTE necesarias según las fotos
-2. Estima el precio basándote en el precio base y la severidad del daño visible
-3. Los item_id DEBEN ser exactamente de la lista de 19 partidas
-4. Sé conservador — solo lo que CLARAMENTE se ve"""
+2. Estima mano_obra basándote en el MO base y la severidad del daño visible
+3. Estima materiales según lo que se necesite comprar (madera, pintura, etc.)
+4. Los item_id DEBEN ser exactamente de la lista de 19 partidas
+5. Sé conservador — solo lo que CLARAMENTE se ve"""
 
             messages_content = [{"type": "text", "text": prompt}] + image_contents
 
@@ -295,8 +319,14 @@ REGLAS:
                     ai_analysis = ai_result.get("analysis", "")
                     for item_id, item_data in ai_items.items():
                         if isinstance(item_data, dict) and item_data.get("needed"):
+                            mo = item_data.get("mano_obra", 0)
+                            mat = item_data.get("materiales", 0)
+                            # Fallback: if AI only returned "precio"
+                            if mo == 0 and mat == 0 and "precio" in item_data:
+                                mo = item_data["precio"]
                             suggestions[item_id] = {
-                                "precio": item_data.get("precio", 0),
+                                "mano_obra": mo,
+                                "materiales": mat,
                                 "notas": item_data.get("notas", ""),
                             }
                     logger.info(f"[renovation AI] V2 Vision: {len(suggestions)} items suggested")
@@ -444,7 +474,7 @@ async def import_evaluation_report(
 def _map_evaluation_to_v2_items(checklist: list, notes: str) -> dict:
     """
     Map evaluation checklist findings to V2 renovation item IDs.
-    Returns dict: { item_id: { "precio": float, "notas": str } }
+    Returns dict: { item_id: { "mano_obra": float, "materiales": float, "notas": str } }
     """
     suggestions = {}
 
@@ -471,15 +501,16 @@ def _map_evaluation_to_v2_items(checklist: list, notes: str) -> dict:
     for eval_id, reno_ids in EVAL_TO_RENO.items():
         if eval_id in failed_ids:
             for reno_id in reno_ids:
-                # Find the base price from template
-                base_price = 0
+                # Find the base MO from template
+                base_mo = 0
                 for item in RENOVATION_ITEMS:
                     if item["id"] == reno_id:
-                        base_price = item["precio"]
+                        base_mo = item["mano_obra"]
                         break
                 if reno_id not in suggestions:
                     suggestions[reno_id] = {
-                        "precio": base_price,
+                        "mano_obra": base_mo,
+                        "materiales": 0,
                         "notas": f"Detectado en evaluación ({eval_id})",
                     }
 
