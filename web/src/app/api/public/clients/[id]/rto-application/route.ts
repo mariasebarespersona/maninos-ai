@@ -4,13 +4,13 @@ const API_URL = process.env.API_URL || 'http://localhost:8000'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ clientId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { clientId } = await params
+  const { id } = await params
   try {
     const cookie = request.headers.get('cookie') || ''
     const res = await fetch(
-      `${API_URL}/api/public/clients/${clientId}/rto-application`,
+      `${API_URL}/api/public/clients/${id}/rto-application`,
       { cache: 'no-store', headers: { cookie } }
     )
     const data = await res.json()
