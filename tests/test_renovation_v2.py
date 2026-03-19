@@ -41,12 +41,12 @@ def test_v2_template_structure():
     # Check that get_template_v2 returns a deep copy (no mutation)
     template1 = get_template_v2()
     template2 = get_template_v2()
-    template1[0]["costo_base"] = 999999
-    assert template2[0]["costo_base"] != 999999, "get_template_v2 should return deep copies"
+    template1[0]["precio"] = 999999
+    assert template2[0]["precio"] != 999999, "get_template_v2 should return deep copies"
     print(f"  ✅ get_template_v2() returns deep copies (no mutation)")
 
     # Each item must have required fields
-    required_fields = {"id", "partida", "concepto", "concepto_en", "costo_base", "subtotal", "sub_fields", "notas"}
+    required_fields = {"id", "partida", "concepto", "precio", "notas"}
     for item in RENOVATION_ITEMS:
         missing = required_fields - set(item.keys())
         assert not missing, f"Item '{item.get('id', '?')}' missing fields: {missing}"
@@ -62,15 +62,10 @@ def test_v2_template_structure():
     assert len(ids) == len(set(ids)), f"Duplicate IDs: {[x for x in ids if ids.count(x) > 1]}"
     print(f"  ✅ All item IDs are unique")
 
-    # All subtotals must start at 0
+    # All notas must start empty
     for item in RENOVATION_ITEMS:
-        assert item["subtotal"] == 0.0, f"Item '{item['id']}' has non-zero subtotal: {item['subtotal']}"
-    print(f"  ✅ All subtotals start at 0.0")
-
-    # sub_fields must be dicts
-    for item in RENOVATION_ITEMS:
-        assert isinstance(item["sub_fields"], dict), f"Item '{item['id']}' sub_fields is not a dict"
-    print(f"  ✅ All sub_fields are dicts")
+        assert item["notas"] == "", f"Item '{item['id']}' has non-empty notas: {item['notas']}"
+    print(f"  ✅ All notas start as empty string")
 
     print(f"  ✅ V2 template structure PASSED")
 
@@ -96,10 +91,10 @@ def test_v2_template_items_and_prices():
         ("techos_ext", 5, "Reparación de techos exteriores (conglomerado, shingles)", 390.00),
         ("cielos_int", 6, "Reparación de cielos interiores (tablaroca, resanes, popcorn)", 390.00),
         ("textura_muros", 7, "Textura muros", 390.00),
-        ("siding", 8, "Siding aprobado (3 tipos)", 0.00),
+        ("siding", 8, "Siding aprobado (lámina, vynil, madera)", 0.00),
         ("pisos", 9, "Pisos (plywood y acabados)", 1500.00),
         ("gabinetes", 10, "Gabinetes reparar carpintería (cocina/baños)", 1000.00),
-        ("pintura_ext", 11, "Pintura exterior (lamina y plastico sin reparaciones)", 1300.00),
+        ("pintura_ext", 11, "Pintura exterior (lámina y plástico sin reparaciones)", 1300.00),
         ("pintura_int", 12, "Pintura interior y cielos", 390.00),
         ("pintura_gab", 13, "Pintura gabinetes", 800.00),
         ("banos", 14, "Baños (sanitarios, lavamanos, kits de plomería)", 200.00),
@@ -110,16 +105,16 @@ def test_v2_template_items_and_prices():
         ("cerraduras", 19, "Cerraduras y herrajes", 200.00),
     ]
 
-    for i, (exp_id, exp_partida, exp_concepto, exp_costo) in enumerate(expected_items):
+    for i, (exp_id, exp_partida, exp_concepto, exp_precio) in enumerate(expected_items):
         item = RENOVATION_ITEMS[i]
         assert item["id"] == exp_id, f"Item {i}: expected id '{exp_id}', got '{item['id']}'"
         assert item["partida"] == exp_partida, f"Item {exp_id}: expected partida {exp_partida}, got {item['partida']}"
         assert item["concepto"] == exp_concepto, f"Item {exp_id}: expected concepto '{exp_concepto}', got '{item['concepto']}'"
-        assert item["costo_base"] == exp_costo, f"Item {exp_id}: expected costo_base {exp_costo}, got {item['costo_base']}"
-        print(f"  ✅ Partida {exp_partida}: {exp_id} — ${exp_costo:.2f}")
+        assert item["precio"] == exp_precio, f"Item {exp_id}: expected precio {exp_precio}, got {item['precio']}"
+        print(f"  ✅ Partida {exp_partida}: {exp_id} — ${exp_precio:.2f}")
 
     # Verify total base cost
-    total_base = sum(item["costo_base"] for item in RENOVATION_ITEMS)
+    total_base = sum(item["precio"] for item in RENOVATION_ITEMS)
     print(f"\n  📊 Total base cost: ${total_base:,.2f}")
     assert total_base > 0, "Total base cost should be positive"
     print(f"  ✅ V2 items and prices PASSED")
@@ -140,34 +135,25 @@ def test_blank_quote_and_build_from_saved():
     # Test blank quote
     blank = get_blank_quote()
     assert "items" in blank, "Blank quote missing 'items'"
-    assert "subtotal_general" in blank, "Blank quote missing 'subtotal_general'"
-    assert "impuesto_pct" in blank, "Blank quote missing 'impuesto_pct'"
-    assert "total_proyecto" in blank, "Blank quote missing 'total_proyecto'"
+    assert "total" in blank, "Blank quote missing 'total'"
     assert len(blank["items"]) == 19, f"Blank quote should have 19 items, got {len(blank['items'])}"
-    assert blank["subtotal_general"] == 0.0, "Blank quote subtotal should be 0"
-    assert blank["total_proyecto"] == 0.0, "Blank quote total should be 0"
-    print(f"  ✅ Blank quote has correct structure and zero totals")
+    # Total should be sum of all default precios
+    expected_blank_total = sum(item["precio"] for item in blank["items"])
+    assert blank["total"] == round(expected_blank_total, 2), f"Blank quote total should be {expected_blank_total}"
+    print(f"  ✅ Blank quote has correct structure and total=${blank['total']}")
 
     # Test build_quote_from_saved with some saved data
     saved_data = {
         "items": {
             "demolicion": {
-                "dias": 3,
-                "unidad": "global",
-                "costo_unitario": 250.00,
-                "subtotal": 750.00,
+                "precio": 750.00,
                 "notas": "Demoler cocina vieja",
             },
             "pisos": {
-                "dias": 5,
-                "unidad": "m2",
-                "costo_unitario": 15.00,
-                "subtotal": 1500.00,
+                "precio": 2000.00,
                 "notas": "Plywood + vinyl plank",
-                "sub_fields": {"zona": "toda la casa", "cant": "100"},
             },
         },
-        "impuesto_pct": 8.25,
     }
 
     built = build_quote_from_saved(saved_data)
@@ -176,32 +162,25 @@ def test_blank_quote_and_build_from_saved():
 
     # Check demolicion was updated
     demolicion = next(i for i in built["items"] if i["id"] == "demolicion")
-    assert demolicion["dias"] == 3, f"Demolicion dias: expected 3, got {demolicion['dias']}"
-    assert demolicion["subtotal"] == 750.00, f"Demolicion subtotal: expected 750, got {demolicion['subtotal']}"
+    assert demolicion["precio"] == 750.00, f"Demolicion precio: expected 750, got {demolicion['precio']}"
     assert demolicion["notas"] == "Demoler cocina vieja"
-    print(f"  ✅ Saved item 'demolicion' correctly merged (dias=3, subtotal=$750)")
+    print(f"  ✅ Saved item 'demolicion' correctly merged (precio=$750)")
 
-    # Check pisos was updated with sub_fields
+    # Check pisos was updated
     pisos = next(i for i in built["items"] if i["id"] == "pisos")
-    assert pisos["subtotal"] == 1500.00
-    assert pisos["sub_fields"]["zona"] == "toda la casa"
-    assert pisos["sub_fields"]["cant"] == "100"
-    print(f"  ✅ Saved item 'pisos' correctly merged with sub_fields")
+    assert pisos["precio"] == 2000.00
+    assert pisos["notas"] == "Plywood + vinyl plank"
+    print(f"  ✅ Saved item 'pisos' correctly merged (precio=$2000)")
 
-    # Check unsaved items remain at zero
+    # Check unsaved items remain at defaults
     limpieza = next(i for i in built["items"] if i["id"] == "limpieza")
-    assert limpieza["subtotal"] == 0.0, "Unsaved item should have subtotal 0"
-    assert limpieza.get("dias", 0) == 0, "Unsaved item should have dias 0"
-    print(f"  ✅ Unsaved items remain at zero")
+    assert limpieza["precio"] == 200.00, "Unsaved item should keep default precio"
+    print(f"  ✅ Unsaved items remain at default precio")
 
-    # Check totals
-    expected_subtotal = 750.00 + 1500.00
-    assert built["subtotal_general"] == expected_subtotal, f"Expected subtotal {expected_subtotal}, got {built['subtotal_general']}"
-    assert built["impuesto_pct"] == 8.25
-    expected_total = expected_subtotal * (1 + 8.25 / 100)
-    assert abs(built["total_proyecto"] - round(expected_total, 2)) < 0.01, \
-        f"Expected total ~{expected_total:.2f}, got {built['total_proyecto']}"
-    print(f"  ✅ Totals correct: subtotal=${expected_subtotal:.2f}, tax=8.25%, total=${built['total_proyecto']:.2f}")
+    # Check total = sum of all precios
+    expected_total = sum(i["precio"] for i in built["items"])
+    assert built["total"] == round(expected_total, 2), f"Expected total {expected_total}, got {built['total']}"
+    print(f"  ✅ Total correct: ${built['total']:.2f}")
 
     print(f"  ✅ Blank quote and build from saved PASSED")
 
@@ -220,32 +199,24 @@ def test_custom_items():
 
     saved_data = {
         "items": {
-            "demolicion": {"dias": 1, "unidad": "global", "costo_unitario": 250, "subtotal": 250, "notas": ""},
+            "demolicion": {"precio": 250, "notas": ""},
         },
         "custom_items": [
             {
                 "id": "custom_1",
                 "partida": 20,
                 "concepto": "Cerca perimetral",
-                "concepto_en": "Perimeter fence",
-                "costo_base": 500.00,
-                "dias": 2,
-                "unidad": "ml",
-                "costo_unitario": 50.00,
-                "subtotal": 100.00,
+                "precio": 100.00,
                 "notas": "Cerca de madera 20 metros",
             },
             {
                 "id": "custom_2",
                 "partida": 21,
                 "concepto": "Rampa de acceso",
-                "concepto_en": "Access ramp",
-                "costo_base": 300.00,
-                "subtotal": 300.00,
+                "precio": 300.00,
                 "notas": "ADA compliant",
             },
         ],
-        "impuesto_pct": 0.0,
     }
 
     built = build_quote_from_saved(saved_data)
@@ -266,11 +237,11 @@ def test_custom_items():
     assert custom_2.get("is_custom") is True
     print(f"  ✅ Custom item 2: '{custom_2['concepto']}' (is_custom=True)")
 
-    # Totals should include custom items
-    expected_subtotal = 250 + 100 + 300  # demolicion + custom_1 + custom_2
-    assert built["subtotal_general"] == expected_subtotal, \
-        f"Expected subtotal {expected_subtotal}, got {built['subtotal_general']}"
-    print(f"  ✅ Subtotal includes custom items: ${expected_subtotal:.2f}")
+    # Total should include custom items
+    expected_total = sum(i["precio"] for i in built["items"])
+    assert built["total"] == round(expected_total, 2), \
+        f"Expected total {expected_total}, got {built['total']}"
+    print(f"  ✅ Total includes custom items: ${built['total']:.2f}")
 
     print(f"  ✅ Custom items PASSED")
 
@@ -600,9 +571,9 @@ def test_frontend_desktop_renovation_page():
 # ============================================================================
 
 def test_frontend_mobile_renovation_panel():
-    """Verify the mobile renovation panel uses V2 checklist and has voice commands."""
+    """Verify the mobile page exists (now redirects to responsive homes page)."""
     print("\n" + "=" * 60)
-    print("TEST 12: FRONTEND — MOBILE RENOVATION PANEL")
+    print("TEST 12: FRONTEND — MOBILE PAGE")
     print("=" * 60)
 
     page_path = os.path.join(
@@ -614,44 +585,24 @@ def test_frontend_mobile_renovation_panel():
     with open(page_path, "r") as f:
         content = f.read()
 
-    # Must have RenovationPanel component
-    assert "function RenovationPanel" in content, "Missing RenovationPanel function component"
-    print(f"  ✅ RenovationPanel component defined")
+    # Mobile page now redirects to the responsive homes page
+    assert "redirect" in content, "Mobile page should redirect to homes"
+    assert "/homes" in content, "Mobile page should redirect to /homes"
+    print(f"  ✅ Mobile page redirects to responsive /homes")
 
-    # Must have voice command functions
-    assert "startVoice" in content, "Missing startVoice function"
-    assert "stopVoice" in content, "Missing stopVoice function"
-    assert "processVoiceCommand" in content, "Missing processVoiceCommand function"
-    print(f"  ✅ Voice command functions: startVoice, stopVoice, processVoiceCommand")
+    # Verify the desktop renovation page has voice support instead
+    renovate_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "web", "src", "app", "homes", "properties", "[id]", "renovate", "page.tsx"
+    )
+    assert os.path.exists(renovate_path), "Desktop renovate page should exist"
+    with open(renovate_path, "r") as f:
+        renovate_content = f.read()
+    assert "SpeechRecognition" in renovate_content or "webkitSpeechRecognition" in renovate_content, \
+        "Desktop renovation page should have voice recognition"
+    print(f"  ✅ Voice recognition in desktop renovation page")
 
-    # Voice recognition setup
-    assert "webkitSpeechRecognition" in content or "SpeechRecognition" in content, "Missing SpeechRecognition API"
-    assert "es-MX" in content or "es-ES" in content, "Missing Spanish language for voice"
-    print(f"  ✅ SpeechRecognition API with Spanish language")
-
-    # Must have isListening state
-    assert "isListening" in content, "Missing isListening state"
-    assert "voiceTranscript" in content, "Missing voiceTranscript state"
-    print(f"  ✅ Voice state: isListening, voiceTranscript")
-
-    # No bedroom/bathroom configuration
-    assert "configBedrooms" not in content, "Mobile should not have configBedrooms"
-    assert "configBathrooms" not in content, "Mobile should not have configBathrooms"
-    print(f"  ✅ No bedroom/bathroom configuration in mobile")
-
-    # Should have MobileQuoteV2 or similar interface
-    assert "MobileQuoteV2" in content or "MobileRenovationItem" in content, "Missing V2 interfaces"
-    print(f"  ✅ V2 mobile interfaces defined")
-
-    # Custom item support
-    assert "showAddCustom" in content, "Missing custom item support in mobile"
-    print(f"  ✅ Custom item support in mobile")
-
-    # Import evaluation report
-    assert "importEvaluationReport" in content or "importReport" in content.lower(), "Missing import evaluation"
-    print(f"  ✅ Import evaluation report feature in mobile")
-
-    print(f"  ✅ Mobile renovation panel PASSED")
+    print(f"  ✅ Mobile page PASSED")
 
 
 # ============================================================================
@@ -734,11 +685,11 @@ def test_evaluation_to_v2_mapping():
     assert "textura_muros" not in suggestions, "paredes_ventanas passed, textura_muros should not be suggested"
     print(f"  ✅ Passing items are NOT suggested")
 
-    # Each suggestion should have costo_estimado and notas
+    # Each suggestion should have precio and notas
     for item_id, data in suggestions.items():
-        assert "costo_estimado" in data, f"Item {item_id} missing costo_estimado"
+        assert "precio" in data, f"Item {item_id} missing precio"
         assert "notas" in data, f"Item {item_id} missing notas"
-    print(f"  ✅ All suggestions have costo_estimado and notas")
+    print(f"  ✅ All suggestions have precio and notas")
 
     print(f"  ✅ Evaluation → V2 mapping PASSED ({len(suggestions)} items suggested)")
 

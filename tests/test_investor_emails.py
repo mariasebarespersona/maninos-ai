@@ -22,15 +22,13 @@ os.environ["SUPABASE_SERVICE_ROLE_KEY"] = (
 )
 
 from unittest.mock import MagicMock, patch
+import pytest
 
-# Mock supabase and email tool
-_mock_sb = MagicMock()
-sys.modules["tools.supabase_client"] = type(sys)("tools.supabase_client")
-sys.modules["tools.supabase_client"].sb = _mock_sb
-
-_mock_email = MagicMock()
-_mock_email.send_email = MagicMock(return_value={"id": "test-email-id"})
-sys.modules["tools.email_tool"] = _mock_email
+# Install email_tool mock before importing email_service
+if "tools.email_tool" not in sys.modules:
+    _email_mod = type(sys)("tools.email_tool")
+    _email_mod.send_email = MagicMock(return_value={"id": "test-email-id"})
+    sys.modules["tools.email_tool"] = _email_mod
 
 from api.services.email_service import (
     send_investor_welcome_email,
@@ -43,6 +41,20 @@ from api.services.email_service import (
     send_client_post_purchase_email,
     _client_post_purchase_html,
 )
+
+# Create a fresh mock for send_email and patch it at the usage site
+_mock_send = MagicMock(return_value={"id": "test-email-id"})
+
+@pytest.fixture(autouse=True)
+def _patch_send_email():
+    """Patch send_email at the module where it's used, not where it's defined."""
+    _mock_send.reset_mock()
+    with patch("api.services.email_service.send_email", _mock_send):
+        yield
+
+# Alias for test assertions
+_mock_email = MagicMock()
+_mock_email.send_email = _mock_send
 
 
 # ── TEST: Welcome email HTML content ──
@@ -212,13 +224,15 @@ def test_process_followup_emails():
             return make_chainable(notes_data)
         return make_chainable([])
 
-    _mock_sb.table.side_effect = mock_table
+    mock_sb = MagicMock()
+    mock_sb.table.side_effect = mock_table
+    _mock_email.send_email.reset_mock()
 
-    result = process_investor_followup_emails()
+    with patch("api.services.email_service.sb", mock_sb):
+        result = process_investor_followup_emails()
     assert result["ok"] is True
     assert result["sent"] == 2  # inv1 and inv2 (inv3 has no email)
     assert _mock_email.send_email.call_count == 2
-    print("PASS test_process_followup_emails")
 
 
 # ── TEST: Client post-purchase email HTML ──

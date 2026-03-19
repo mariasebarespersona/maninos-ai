@@ -1,11 +1,17 @@
 """
 Integration tests for API endpoints using FastAPI TestClient.
-Mocks Supabase via conftest.py to test endpoint logic without a real database.
+Mocks Supabase to test endpoint logic without a real database.
 """
 
+import sys
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+
+# Patch create_client before any app code imports supabase_client
+_mock_supabase_client = MagicMock()
+patch("supabase.create_client", lambda *a, **kw: _mock_supabase_client).start()
 
 
 # ============================================================================

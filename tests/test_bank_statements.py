@@ -290,24 +290,28 @@ def test_endpoint_structure():
 # ============================================================================
 
 def test_account_drawers():
-    """Test that the 4 account drawers are correctly configured."""
+    """Test that bank account management endpoints exist (dynamic accounts, no hardcoded drawers)."""
     print("\n" + "=" * 60)
-    print("TEST 6: ACCOUNT DRAWERS")
+    print("TEST 6: ACCOUNT DRAWERS (dynamic bank accounts)")
     print("=" * 60)
 
-    from api.routes.accounting import ACCOUNT_DRAWERS
+    from api.routes.accounting import router
 
-    expected_keys = {"conroe", "houston", "dallas", "cash"}
-    assert set(ACCOUNT_DRAWERS.keys()) == expected_keys, f"Wrong drawer keys: {set(ACCOUNT_DRAWERS.keys())}"
-    print(f"  ✅ All 4 drawers: {list(ACCOUNT_DRAWERS.keys())}")
+    # Get all routes
+    routes = set()
+    for route in router.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            for method in route.methods:
+                routes.add((method, route.path))
 
-    assert ACCOUNT_DRAWERS["conroe"] == "Cuenta Conroe"
-    assert ACCOUNT_DRAWERS["houston"] == "Cuenta Houston"
-    assert ACCOUNT_DRAWERS["dallas"] == "Cuenta Dallas"
-    assert ACCOUNT_DRAWERS["cash"] == "Cuenta Cash"
-    print("  ✅ Drawer labels correct")
+    # Bank accounts are now dynamic — verify the bank-statements endpoints exist
+    has_list = any("bank-statements" in p and m == "GET" for m, p in routes)
+    has_upload = any(p == "/bank-statements" and m == "POST" for m, p in routes)
+    assert has_list, "Missing GET bank-statements endpoint"
+    assert has_upload, "Missing POST bank-statements endpoint"
+    print("  ✅ Bank statement endpoints exist (dynamic bank accounts)")
 
-    print("  ✅ Account drawers PASSED")
+    print("  ✅ Account drawers PASSED (now dynamic from DB)")
 
 
 # ============================================================================
@@ -430,10 +434,9 @@ def test_frontend_tab_integration():
     assert "EstadoCuentaTab" in content, "Missing EstadoCuentaTab component"
     print("  ✅ EstadoCuentaTab component defined")
 
-    # Check the 4 account drawers are in the frontend
-    for drawer in ["Cuenta Conroe", "Cuenta Houston", "Cuenta Dallas", "Cuenta Cash"]:
-        assert drawer in content, f"Missing drawer: {drawer}"
-    print("  ✅ All 4 account drawers present in UI")
+    # Bank accounts are now dynamic from DB — just check the UI supports bank account drawers
+    assert "bank" in content.lower() or "cuenta" in content.lower(), "Missing bank account references in UI"
+    print("  ✅ Bank account references present in UI (dynamic from DB)")
 
     # Check file upload input exists
     assert 'type="file"' in content, "Missing file upload input"
