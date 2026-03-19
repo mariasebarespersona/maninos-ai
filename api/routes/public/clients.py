@@ -110,6 +110,27 @@ async def get_client_purchases(client_id: str, user_email: str = Depends(get_cur
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{client_id}/rto-application")
+async def get_client_rto_application(client_id: str, user_email: str = Depends(get_current_user_email)):
+    """Get the active RTO application ID for a client (for credit application link)."""
+    verify_client_ownership(client_id, user_email)
+    try:
+        result = sb.table("rto_applications") \
+            .select("id, status, sale_id") \
+            .eq("client_id", client_id) \
+            .in_("status", ["submitted", "under_review", "needs_info", "approved"]) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if result.data:
+            return {"ok": True, "rto_application": result.data[0]}
+        return {"ok": True, "rto_application": None}
+    except Exception as e:
+        logger.error(f"Error getting RTO application: {e}")
+        return {"ok": True, "rto_application": None}
+
+
 @router.get("/{client_id}/rto-contract/{sale_id}")
 async def get_client_rto_contract(client_id: str, sale_id: str, user_email: str = Depends(get_current_user_email)):
     """

@@ -85,6 +85,7 @@ export default function ClientDashboard() {
   const [salesLoading, setSalesLoading] = useState(true)
   const [kycRequested, setKycRequested] = useState(false)
   const [kycVerified, setKycVerified] = useState(false)
+  const [rtoAppId, setRtoAppId] = useState<string | null>(null)
 
   // Payments state
   const [payments, setPayments] = useState<Payment[]>([])
@@ -107,6 +108,7 @@ export default function ClientDashboard() {
       fetchClientSales(client.id)
       fetchKycStatus(client.id)
       fetchPayments(client.id)
+      fetchRtoApplication(client.id)
     }
   }, [client])
 
@@ -128,6 +130,16 @@ export default function ClientDashboard() {
       if (data.ok) setSales(data.purchases || [])
     } catch (error) { console.error('Error:', error) }
     finally { setSalesLoading(false) }
+  }
+
+  const fetchRtoApplication = async (clientId: string) => {
+    try {
+      const res = await fetch(`/api/public/clients/${clientId}/rto-application`)
+      const data = await res.json()
+      if (data.ok && data.rto_application) {
+        setRtoAppId(data.rto_application.id)
+      }
+    } catch {} // silent fail
   }
       
   const fetchPayments = async (clientId: string) => {
@@ -356,29 +368,24 @@ export default function ClientDashboard() {
         )}
 
         {/* ═══════════ CREDIT APPLICATION BANNER ═══════════ */}
-        {kycVerified && sales.some(s => s.sale_type === 'rto' && ['rto_pending', 'rto_approved'].includes(s.status) && s.rto_applications?.[0]) && (() => {
-          const rtoSale = sales.find(s => s.sale_type === 'rto' && ['rto_pending', 'rto_approved'].includes(s.status) && s.rto_applications?.[0])
-          const appId = rtoSale?.rto_applications?.[0]?.id
-          if (!rtoSale || !appId) return null
-          return (
-            <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <ClipboardList className="w-6 h-6 text-emerald-600 flex-shrink-0" />
-                <div>
-                  <h3 className="font-bold text-[#222] text-[14px]" style={{ letterSpacing: '-0.015em' }}>Completar Solicitud de Crédito</h3>
-                  <p className="text-[12px] text-[#484848]">Tu identidad fue verificada. Ahora completa tu solicitud de crédito para continuar.</p>
-                </div>
+        {kycVerified && rtoAppId && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <ClipboardList className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+              <div>
+                <h3 className="font-bold text-[#222] text-[14px]" style={{ letterSpacing: '-0.015em' }}>Completar Solicitud de Crédito</h3>
+                <p className="text-[12px] text-[#484848]">Tu identidad fue verificada. Ahora completa tu solicitud de crédito para continuar.</p>
               </div>
-              <Link
-                href={`/clientes/mi-cuenta/solicitud-credito/${appId}`}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 transition-colors"
-              >
-                <ClipboardList className="w-4 h-4" />
-                Completar <ArrowRight className="w-4 h-4" />
-              </Link>
             </div>
-          )
-        })()}
+            <Link
+              href={`/clientes/mi-cuenta/solicitud-credito/${rtoAppId}`}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 transition-colors"
+            >
+              <ClipboardList className="w-4 h-4" />
+              Completar <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6">
 
