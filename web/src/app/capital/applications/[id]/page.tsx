@@ -105,6 +105,10 @@ export default function ApplicationDetailPage() {
   const [loadingCreditApp, setLoadingCreditApp] = useState(true)
   const [showTemplate, setShowTemplate] = useState(false)
 
+  // RTO Calculation (auto-computed from backend)
+  const [rtoAnalysis, setRtoAnalysis] = useState<any>(null)
+  const [rtoAnalysisLoading, setRtoAnalysisLoading] = useState(false)
+
   // Credit form (expanded) — manual fallback
   const [showCreditForm, setShowCreditForm] = useState(false)
   const [savingCredit, setSavingCredit] = useState(false)
@@ -198,8 +202,9 @@ export default function ApplicationDetailPage() {
         if (data.application.properties?.id) {
           loadDocuments(data.application.properties.id)
         }
-        // Load client credit application
+        // Load client credit application + RTO calculation
         loadCreditApplication()
+        loadRtoAnalysis()
       }
     } catch (err) {
       console.error('Error loading application:', err)
@@ -236,6 +241,21 @@ export default function ApplicationDetailPage() {
       console.error('Error loading credit application:', err)
     } finally {
       setLoadingCreditApp(false)
+    }
+  }
+
+  const loadRtoAnalysis = async () => {
+    setRtoAnalysisLoading(true)
+    try {
+      const res = await fetch(`/api/capital/applications/${id}/rto-calculation`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ok) setRtoAnalysis(data.calculation)
+      }
+    } catch (err) {
+      console.error('Error loading RTO calculation:', err)
+    } finally {
+      setRtoAnalysisLoading(false)
     }
   }
 
@@ -1366,185 +1386,272 @@ export default function ApplicationDetailPage() {
           )}
 
 
-          {/* Payment Capacity Calculator */}
-          <div className="card-luxury p-5 space-y-4">
-            <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-              Cálculo de Capacidad de Pago
-            </h2>
-            <p className="text-sm" style={{ color: 'var(--ash)' }}>
-              Fórmula: <strong>Capacidad = (Ingresos Netos - Gastos Fijos) × 40%</strong>
-            </p>
-
-            <div className="grid md:grid-cols-3 gap-4">
-            <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Ingresos mensuales netos ($)</label>
-                <input type="number" value={monthlyIncome} onChange={(e) => setMonthlyIncome(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Otros ingresos ($)</label>
-                <input type="number" value={otherIncome} onChange={(e) => setOtherIncome(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Gastos fijos mensuales ($)</label>
-                <input type="number" value={monthlyExpenses} onChange={(e) => setMonthlyExpenses(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
-                  placeholder="Renta, servicios, préstamos..."
-                />
-              </div>
+          {/* RTO Calculation — Auto-computed from backend */}
+          {rtoAnalysisLoading ? (
+            <div className="card-luxury p-10 flex items-center justify-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--slate)' }} />
+              <span className="text-sm" style={{ color: 'var(--slate)' }}>Calculando escenarios RTO...</span>
             </div>
-
-            <button onClick={calculateCapacity}
-              className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
-              style={{ backgroundColor: 'var(--gold-700)' }}
-            >
-              Calcular Capacidad
-            </button>
-
-            {/* Result */}
-            {capacityResult && (
-              <div className="space-y-4">
-                {/* Main verdict */}
-                <div className={`p-4 rounded-lg border ${capacityResult.qualifies ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <div className="flex items-center gap-3 mb-3">
-                    {capacityResult.qualifies ? (
-                      <CheckCircle2 className="w-6 h-6 text-green-600" />
-                    ) : (
-                      <XCircle className="w-6 h-6 text-red-600" />
-                    )}
-                    <div>
-                      <p className={`font-semibold text-lg ${capacityResult.qualifies ? 'text-green-800' : 'text-red-800'}`}>
-                        {capacityResult.qualifies ? '✅ Cliente califica' : '❌ No califica'}
-                      </p>
-                      <p className="text-sm" style={{ color: 'var(--slate)' }}>
-                        Nivel de riesgo: <span className="font-semibold" style={{ color: 
-                          capacityResult.risk_level === 'critical' ? '#991b1b' :
-                          capacityResult.risk_level === 'high' ? 'var(--error)' :
-                          capacityResult.risk_level === 'medium' ? 'var(--warning)' : 'var(--success)'
-                        }}>
-                          {capacityResult.risk_level === 'critical' ? '⚫ Crítico' :
-                           capacityResult.risk_level === 'high' ? '🔴 Alto' :
-                           capacityResult.risk_level === 'medium' ? '🟡 Medio' : '🟢 Bajo'}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm mb-3">
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Ingreso total</p>
-                      <p className="font-semibold">{fmt(capacityResult.monthly_net_income)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Gastos fijos</p>
-                      <p className="font-semibold">{fmt(capacityResult.monthly_fixed_expenses)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Ingreso disponible</p>
-                      <p className="font-bold" style={{ color: 'var(--gold-700)' }}>
-                        {fmt(capacityResult.monthly_net_income - capacityResult.monthly_fixed_expenses)}
-                      </p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Capacidad de pago (40%)</p>
-                      <p className="font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(capacityResult.payment_capacity)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Pago mensual propuesto</p>
-                      <p className="font-semibold">{fmt(capacityResult.proposed_monthly)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--ash)' }}>Margen</p>
-                      <p className="font-semibold" style={{ color: capacityResult.payment_capacity >= capacityResult.proposed_monthly ? 'var(--success)' : 'var(--error)' }}>
-                        {fmt(capacityResult.payment_capacity - capacityResult.proposed_monthly)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Ratios */}
-                  <div className="grid grid-cols-2 gap-4 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.1)' }}>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span style={{ color: 'var(--ash)' }}>DTI (pago / ingreso bruto)</span>
-                        <span className="font-bold" style={{ color: capacityResult.dti_ratio > 40 ? 'var(--error)' : capacityResult.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)' }}>
-                          {capacityResult.dti_ratio.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="h-2 rounded-full transition-all" 
-                          style={{ 
-                            width: `${Math.min(capacityResult.dti_ratio, 100)}%`,
-                            backgroundColor: capacityResult.dti_ratio > 40 ? 'var(--error)' : capacityResult.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)'
-                          }} />
-                      </div>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Máx recomendado: 40%</p>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span style={{ color: 'var(--ash)' }}>Pago / Disponible</span>
-                        <span className="font-bold" style={{ color: capacityResult.disposable_ratio > 55 ? 'var(--error)' : capacityResult.disposable_ratio > 40 ? 'var(--warning)' : 'var(--success)' }}>
-                          {capacityResult.disposable_ratio.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="h-2 rounded-full transition-all" 
-                          style={{ 
-                            width: `${Math.min(capacityResult.disposable_ratio, 100)}%`,
-                            backgroundColor: capacityResult.disposable_ratio > 55 ? 'var(--error)' : capacityResult.disposable_ratio > 40 ? 'var(--warning)' : 'var(--success)'
-                          }} />
-                      </div>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Máx recomendado: 55%</p>
-                    </div>
+          ) : rtoAnalysis ? (() => { const rtoCalc = rtoAnalysis; return (
+            <div className="space-y-5">
+              {/* A: Property + Client side by side */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="card-luxury p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--ash)' }}>Propiedad</h3>
+                  <p className="font-semibold text-sm mb-2" style={{ color: 'var(--ink)' }}>{rtoCalc.property.address}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Precio venta</span><p className="font-bold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.property.sale_price)}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Inversión Maninos</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.property.total_investment)}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Compra</span><p style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.property.purchase_price)}</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Renovación</span><p style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.property.renovation_cost)}</p></div>
                   </div>
                 </div>
-
-                {/* Warnings */}
-                {capacityResult.warnings.length > 0 && (
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--warning-light)', border: '1px solid #fcd34d' }}>
-                    <p className="text-xs font-semibold mb-2" style={{ color: 'var(--warning)' }}>⚠️ Alertas</p>
-                    <ul className="space-y-1">
-                      {capacityResult.warnings.map((w, i) => (
-                        <li key={i} className="text-xs flex items-start gap-1.5" style={{ color: '#92400e' }}>
-                          <span className="mt-0.5">•</span> {w}
-                        </li>
-                      ))}
-                    </ul>
+                <div className="card-luxury p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--ash)' }}>Cliente</h3>
+                  <p className="font-semibold text-sm mb-2" style={{ color: 'var(--ink)' }}>{rtoCalc.client.name}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso total</span><p className="font-bold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.client.total_income)}/mes</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Renta actual</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.client.current_rent)}/mes</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso disponible</span><p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.client.disposable_income)}/mes</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Capacidad pago (40%)</span><p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.client.payment_capacity_40pct)}/mes</p></div>
                   </div>
-                )}
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Decision section for Capacity */}
-          {canReview && capacityResult && (
-            <div className="card-luxury p-5" style={{ borderTop: '3px solid var(--sand)' }}>
-              <h3 className="font-semibold text-sm mb-3" style={{ color: 'var(--charcoal)' }}>Decisión sobre Capacidad de Pago</h3>
-              {capacityResult.qualifies ? (
-                <div className="flex items-center gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--success-light)' }}>
-                  <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--success)' }} />
-                  <p className="text-sm font-medium" style={{ color: 'var(--success)' }}>
-                    El cliente califica — puede pasar a Términos del Contrato
-                  </p>
-                </div>
-              ) : (
-                <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
-                  <p className="text-sm" style={{ color: '#991b1b' }}>
-                    El cliente <strong>no califica</strong> según la evaluación de capacidad de pago 
-                    (DTI: {capacityResult.dti_ratio.toFixed(1)}%, Riesgo: {capacityResult.risk_level}).
-                  </p>
-                  <div className="flex gap-3">
-                    <button onClick={() => handleDeny('capacity', `No califica: DTI ${capacityResult.dti_ratio.toFixed(1)}%, Riesgo ${capacityResult.risk_level}`)} disabled={reviewing}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold text-white"
-                      style={{ backgroundColor: 'var(--error)' }}>
-                      {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                      Denegar Solicitud por Capacidad de Pago
-                    </button>
+              {/* B: Recommended Deal — HIGHLIGHTED */}
+              {rtoCalc.recommended && (
+                <div className="card-luxury p-5" style={{ borderLeft: '4px solid var(--gold-600)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Calculator className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
+                    <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Pago Mensual Recomendado</h2>
                   </div>
+                  <div className="flex flex-wrap items-end gap-6 mb-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Mensualidad</p>
+                      <p className="font-serif text-4xl font-bold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.recommended.monthly_payment)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Plazo</p>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{rtoCalc.recommended.term_months} meses</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Enganche</p>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.recommended.down_payment)} ({rtoCalc.recommended.down_payment_pct}%)</p>
+                    </div>
+                  </div>
+                  {/* Rent comparison */}
+                  {rtoCalc.client.current_rent > 0 && (
+                    <div className="p-3 rounded-lg bg-gray-50 flex items-center gap-3 text-sm">
+                      <span style={{ color: 'var(--ash)' }}>Renta actual:</span>
+                      <span className="font-semibold">{fmt(rtoCalc.client.current_rent)}</span>
+                      <span style={{ color: 'var(--ash)' }}>→</span>
+                      <span className="font-semibold">{fmt(rtoCalc.recommended.monthly_payment)}</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        rtoCalc.recommended.monthly_payment <= rtoCalc.client.current_rent * 1.3
+                          ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {rtoCalc.recommended.monthly_payment > rtoCalc.client.current_rent
+                          ? `+${fmt(rtoCalc.recommended.monthly_payment - rtoCalc.client.current_rent)}/mes`
+                          : `${fmt(rtoCalc.recommended.monthly_payment - rtoCalc.client.current_rent)}/mes`
+                        }
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-xs mt-2 italic" style={{ color: 'var(--ash)' }}>{rtoCalc.recommended.reason}</p>
                 </div>
               )}
+
+              {/* C: Scenario Comparison Table */}
+              <div className="card-luxury p-5">
+                <h3 className="font-serif text-base mb-4" style={{ color: 'var(--ink)' }}>Comparación de Escenarios</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left">
+                        <th className="pb-2 text-xs font-medium" style={{ color: 'var(--ash)' }}>Concepto</th>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <th key={s.term_months} className={`pb-2 text-center text-xs font-medium ${
+                            rtoCalc.recommended?.term_months === s.term_months ? 'text-white rounded-t-lg' : ''
+                          }`} style={rtoCalc.recommended?.term_months === s.term_months ? { backgroundColor: 'var(--gold-700)', color: 'white', padding: '4px 8px' } : { color: 'var(--ash)' }}>
+                            {s.term_months} meses
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Pago Mensual</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className={`py-2 text-center font-bold ${rtoCalc.recommended?.term_months === s.term_months ? 'text-amber-700' : ''}`} style={{ color: rtoCalc.recommended?.term_months === s.term_months ? 'var(--gold-700)' : 'var(--ink)' }}>
+                            {fmt(s.monthly_payment)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Total Cliente Paga</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-sm" style={{ color: 'var(--charcoal)' }}>{fmt(s.total_client_pays)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>ROI Maninos</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-sm font-semibold" style={{ color: 'var(--success)' }}>{s.roi_maninos_pct.toFixed(1)}%</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Valor Casa al Final</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-sm" style={{ color: 'var(--charcoal)' }}>{fmt(s.future_value_at_end)}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>vs Renta Actual</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-xs">
+                            <span className={s.vs_current_rent.difference > 0 ? 'text-amber-600' : 'text-green-600'}>
+                              {s.vs_current_rent.difference > 0 ? '+' : ''}{fmt(s.vs_current_rent.difference)}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>DTI</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-xs">
+                            <span className={`font-semibold ${s.dti_ratio > 40 ? 'text-red-600' : s.dti_ratio > 30 ? 'text-amber-600' : 'text-green-600'}`}>
+                              {s.dti_ratio}%
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Asequible</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center">
+                            {s.affordable
+                              ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
+                              : <XCircle className="w-4 h-4 text-red-400 mx-auto" />
+                            }
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* D: ROI Breakdown for Maninos */}
+              <div className="card-luxury p-5">
+                <h3 className="font-serif text-base mb-3" style={{ color: 'var(--ink)' }}>Retorno para Maninos</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div className="p-3 rounded-lg bg-gray-50">
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Inversión Total</p>
+                    <p className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.maninos_summary.total_investment)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-green-50">
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso Total</p>
+                    <p className="font-bold text-lg" style={{ color: 'var(--success)' }}>{fmt(rtoCalc.maninos_summary.total_income_recommended)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--gold-50, #fef9e7)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Ganancia Neta</p>
+                    <p className="font-bold text-lg" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.maninos_summary.net_profit)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--gold-50, #fef9e7)' }}>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>ROI</p>
+                    <p className="font-bold text-2xl" style={{ color: 'var(--gold-700)' }}>{rtoCalc.maninos_summary.roi_pct}%</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                  <div className="flex justify-between p-2 rounded bg-gray-50">
+                    <span style={{ color: 'var(--ash)' }}>Ganancia por financiamiento</span>
+                    <span className="font-semibold" style={{ color: 'var(--success)' }}>{fmt(rtoCalc.maninos_summary.financing_return)}</span>
+                  </div>
+                  <div className="flex justify-between p-2 rounded bg-gray-50">
+                    <span style={{ color: 'var(--ash)' }}>Ganancia por activo (venta vs inversión)</span>
+                    <span className="font-semibold" style={{ color: rtoCalc.maninos_summary.asset_return >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(rtoCalc.maninos_summary.asset_return)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* E: Risk Assessment */}
+              <div className={`card-luxury p-5 ${
+                rtoCalc.risk.level === 'high' ? 'border-l-4 border-red-500' :
+                rtoCalc.risk.level === 'medium' ? 'border-l-4 border-amber-500' :
+                'border-l-4 border-green-500'
+              }`}>
+                <div className="flex items-center gap-3 mb-3">
+                  {rtoCalc.risk.level === 'high' ? <XCircle className="w-5 h-5 text-red-500" /> :
+                   rtoCalc.risk.level === 'medium' ? <AlertTriangle className="w-5 h-5 text-amber-500" /> :
+                   <CheckCircle2 className="w-5 h-5 text-green-500" />}
+                  <div>
+                    <h3 className="font-serif text-base" style={{ color: 'var(--ink)' }}>Evaluación de Riesgo</h3>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      rtoCalc.risk.level === 'high' ? 'bg-red-100 text-red-700' :
+                      rtoCalc.risk.level === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {rtoCalc.risk.level === 'high' ? 'RIESGO ALTO' : rtoCalc.risk.level === 'medium' ? 'RIESGO MEDIO' : 'RIESGO BAJO'}
+                    </span>
+                  </div>
+                </div>
+                {/* DTI bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span style={{ color: 'var(--ash)' }}>DTI (pago / ingreso)</span>
+                    <span className="font-bold" style={{ color: rtoCalc.risk.dti_ratio > 40 ? 'var(--error)' : rtoCalc.risk.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)' }}>
+                      {rtoCalc.risk.dti_ratio}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="h-2 rounded-full" style={{
+                      width: `${Math.min(rtoCalc.risk.dti_ratio, 100)}%`,
+                      backgroundColor: rtoCalc.risk.dti_ratio > 40 ? 'var(--error)' : rtoCalc.risk.dti_ratio > 30 ? 'var(--warning)' : 'var(--success)'
+                    }} />
+                  </div>
+                </div>
+                {rtoCalc.risk.factors.length > 0 && (
+                  <ul className="space-y-1">
+                    {rtoCalc.risk.factors.map((f: string, i: number) => (
+                      <li key={i} className="text-xs flex items-start gap-1.5" style={{ color: rtoCalc.risk.level === 'high' ? '#991b1b' : '#92400e' }}>
+                        <span>•</span> {f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* F: Future Value */}
+              <div className="card-luxury p-5">
+                <h3 className="font-serif text-base mb-3" style={{ color: 'var(--ink)' }}>Predicción de Valor Futuro</h3>
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="text-center">
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Valor hoy</p>
+                    <p className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.future_value.current_market_value)}</p>
+                  </div>
+                  <div className="text-2xl" style={{ color: 'var(--ash)' }}>→</div>
+                  <div className="text-center">
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>En {rtoCalc.recommended?.term_months || 36} meses</p>
+                    <p className="font-bold text-lg" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.future_value.at_end_of_recommended_term)}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100" style={{ color: 'var(--slate)' }}>
+                      -{rtoCalc.future_value.total_depreciation_pct}% depreciación
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  Tasa de depreciación: {(rtoCalc.future_value.depreciation_rate_annual * 100).toFixed(1)}% anual |
+                  Confianza: <span className={`font-semibold ${rtoCalc.future_value.confidence === 'alta' ? 'text-green-600' : rtoCalc.future_value.confidence === 'media' ? 'text-amber-600' : 'text-red-600'}`}>
+                    {rtoCalc.future_value.confidence}
+                  </span>
+                  {rtoCalc.future_value.similar_houses?.length > 0 && ` (basado en ${rtoCalc.future_value.similar_houses.length} casas similares)`}
+                </p>
+              </div>
+            </div>
+          ) })() : (
+            <div className="card-luxury p-5 text-center" style={{ color: 'var(--ash)' }}>
+              <p className="text-sm">No se pudo calcular. Verifica que la propiedad tenga precio de venta y que exista una solicitud de crédito.</p>
             </div>
           )}
 
@@ -1556,11 +1663,6 @@ export default function ApplicationDetailPage() {
                 <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Solicitud Denegada</p>
               </div>
               <p className="text-sm" style={{ color: '#991b1b' }}>{app.review_notes || 'Sin notas'}</p>
-              {app.reviewed_at && (
-                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-                  {new Date(app.reviewed_at).toLocaleDateString('es-MX')} por {app.reviewed_by || 'Admin'}
-                </p>
-              )}
             </div>
           )}
         </div>
@@ -1701,9 +1803,9 @@ export default function ApplicationDetailPage() {
                   {kycVerified ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                   {kycVerified ? 'Identidad verificada' : 'Identidad pendiente'}
                 </span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${capacityResult?.qualifies ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                  {capacityResult?.qualifies ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                  {capacityResult?.qualifies ? 'Capacidad de pago OK' : 'Capacidad de pago pendiente'}
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${rtoAnalysis ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  {rtoAnalysis ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  {rtoAnalysis ? 'Cálculo RTO completado' : 'Cálculo RTO pendiente'}
                 </span>
           </div>
 

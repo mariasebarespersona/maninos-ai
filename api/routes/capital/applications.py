@@ -9,7 +9,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tools.supabase_client import sb
+from api.utils.future_value_predictor import predict_future_value
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/applications", tags=["Capital - Applications"])
@@ -311,5 +313,265 @@ async def get_credit_application(application_id: str):
         return {"ok": True, "credit_application": result.data[0]}
     except Exception as e:
         logger.error(f"Error getting credit application: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{application_id}/rto-calculation")
+async def rto_calculation(application_id: str):
+    """
+    Calculate RTO payment scenarios for an application.
+    Uses simple interest at 24% annual, rounds payments up to nearest $5.
+    Returns recommended term, all scenarios, risk assessment, and Maninos ROI.
+    """
+    try:
+        # 1. Fetch RTO application with related data
+        app_result = sb.table("rto_applications") \
+            .select("*, clients(*), properties(*), sales(*)") \
+            .eq("id", application_id) \
+            .single() \
+            .execute()
+
+        if not app_result.data:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+        application = app_result.data
+        prop = application.get("properties") or {}
+        client = application.get("clients") or {}
+
+        sale_price = float(prop.get("sale_price") or 0)
+        purchase_price = float(prop.get("purchase_price") or 0)
+        property_id = application.get("property_id")
+
+        if sale_price <= 0:
+            raise HTTPException(status_code=400, detail="La propiedad no tiene precio de venta")
+
+        # 2. Fetch credit application
+        credit_result = sb.table("credit_applications") \
+            .select("*") \
+            .eq("rto_application_id", application_id) \
+            .execute()
+
+        credit_app = credit_result.data[0] if credit_result.data else {}
+
+        # 3. Fetch renovation cost
+        renovation_cost = 0.0
+        if property_id:
+            reno_result = sb.table("renovations") \
+                .select("total_cost") \
+                .eq("property_id", property_id) \
+                .execute()
+            if reno_result.data:
+                renovation_cost = float(reno_result.data[0].get("total_cost") or 0)
+
+        total_investment = purchase_price + renovation_cost
+
+        # 4. Client financials from credit_application
+        monthly_income = float(credit_app.get("monthly_income") or 0)
+        other_income_sources = credit_app.get("other_income_sources") or []
+        other_income = sum(float(s.get("monthly_amount") or 0) for s in other_income_sources)
+        total_income = monthly_income + other_income
+
+        monthly_rent = float(credit_app.get("monthly_rent") or 0)
+        monthly_utilities = float(credit_app.get("monthly_utilities") or 0)
+        monthly_child_support = float(credit_app.get("monthly_child_support_paid") or 0)
+        monthly_other_expenses = float(credit_app.get("monthly_other_expenses") or 0)
+        debts = credit_app.get("debts") or []
+        debts_total = sum(float(d.get("monthly_payment") or 0) for d in debts)
+
+        total_expenses = monthly_rent + monthly_utilities + monthly_child_support + monthly_other_expenses + debts_total
+        disposable_income = total_income - total_expenses
+        payment_capacity_40pct = disposable_income * 0.40 if disposable_income > 0 else 0
+
+        # 5. Down payment
+        down_payment = float(application.get("desired_down_payment") or 0)
+        if down_payment <= 0:
+            down_payment = round(sale_price * 0.30, 2)
+        down_payment_pct = round(down_payment / sale_price * 100, 1) if sale_price > 0 else 0
+
+        finance_amount = sale_price - down_payment
+        annual_rate = 0.24
+
+        # 6. Predict future value
+        fv_result = predict_future_value(
+            sale_price=sale_price,
+            term_months=application.get("desired_term_months") or 36,
+            sqft=prop.get("sqft"),
+            bedrooms=prop.get("bedrooms"),
+            bathrooms=prop.get("bathrooms"),
+            home_type=prop.get("type"),
+        )
+
+        # 7. Calculate scenarios for [24, 36, 48, 60] months
+        term_options = [24, 36, 48, 60]
+        scenarios = []
+        recommended = None
+
+        for term in term_options:
+            total_interest = finance_amount * annual_rate * (term / 12)
+            total_to_pay = finance_amount + total_interest
+            monthly_payment = math.ceil(total_to_pay / term / 5) * 5  # round up to $5
+
+            total_client_pays = down_payment + (monthly_payment * term)
+            roi_maninos = ((total_client_pays - total_investment) / total_investment * 100) if total_investment > 0 else 0
+
+            # Future value at end of this specific term
+            fv_at_term = predict_future_value(
+                sale_price=sale_price,
+                term_months=term,
+                sqft=prop.get("sqft"),
+                bedrooms=prop.get("bedrooms"),
+                bathrooms=prop.get("bathrooms"),
+                home_type=prop.get("type"),
+            )
+
+            affordable = monthly_payment <= payment_capacity_40pct if payment_capacity_40pct > 0 else False
+            dti_ratio = round(monthly_payment / total_income * 100, 1) if total_income > 0 else 0
+
+            rent_difference = monthly_payment - monthly_rent
+            rent_change_pct = round(rent_difference / monthly_rent * 100, 1) if monthly_rent > 0 else 0
+
+            scenario = {
+                "term_months": term,
+                "monthly_payment": monthly_payment,
+                "finance_amount": round(finance_amount, 2),
+                "total_interest": round(total_interest, 2),
+                "total_client_pays": round(total_client_pays, 2),
+                "roi_maninos_pct": round(roi_maninos, 1),
+                "future_value_at_end": fv_at_term["future_value"],
+                "vs_current_rent": {
+                    "difference": round(rent_difference, 2),
+                    "change_pct": rent_change_pct,
+                },
+                "affordable": affordable,
+                "dti_ratio": dti_ratio,
+            }
+            scenarios.append(scenario)
+
+            # Find optimal: first affordable term, or the one closest to 40% capacity
+            if recommended is None and affordable:
+                recommended = {
+                    "term_months": term,
+                    "down_payment": round(down_payment, 2),
+                    "down_payment_pct": down_payment_pct,
+                    "monthly_payment": monthly_payment,
+                    "total_client_pays": round(total_client_pays, 2),
+                    "roi_maninos_pct": round(roi_maninos, 1),
+                    "reason": f"Pago mensual ${monthly_payment} esta dentro del 40% del ingreso disponible (${payment_capacity_40pct:,.0f})",
+                }
+
+        # If no affordable scenario, recommend the longest term (lowest payment)
+        if recommended is None and scenarios:
+            longest = scenarios[-1]
+            recommended = {
+                "term_months": longest["term_months"],
+                "down_payment": round(down_payment, 2),
+                "down_payment_pct": down_payment_pct,
+                "monthly_payment": longest["monthly_payment"],
+                "total_client_pays": longest["total_client_pays"],
+                "roi_maninos_pct": longest["roi_maninos_pct"],
+                "reason": f"Ningún plazo es asequible al 40% del ingreso disponible. Se recomienda {longest['term_months']} meses por tener el pago más bajo (${longest['monthly_payment']})",
+            }
+
+        # 8. Risk assessment
+        recommended_payment = recommended["monthly_payment"] if recommended else 0
+        dti_ratio = round(recommended_payment / total_income * 100, 1) if total_income > 0 else 100
+
+        risk_factors = []
+        if dti_ratio > 50:
+            risk_factors.append(f"DTI alto: {dti_ratio}% (limite recomendado 40%)")
+        if disposable_income < recommended_payment:
+            risk_factors.append(f"Ingreso disponible (${disposable_income:,.0f}) menor que pago mensual (${recommended_payment})")
+        if down_payment_pct < 30:
+            risk_factors.append(f"Enganche bajo: {down_payment_pct}% (minimo recomendado 30%)")
+        if not credit_app:
+            risk_factors.append("No se encontro aplicacion de credito — datos financieros incompletos")
+        if total_income <= 0:
+            risk_factors.append("No se reportaron ingresos")
+
+        if len(risk_factors) == 0:
+            risk_level = "low"
+            risk_recommendation = "proceed"
+        elif len(risk_factors) <= 2 and dti_ratio <= 50:
+            risk_level = "medium"
+            risk_recommendation = "caution"
+        else:
+            risk_level = "high"
+            risk_recommendation = "reject"
+
+        risk = {
+            "level": risk_level,
+            "factors": risk_factors,
+            "dti_ratio": dti_ratio,
+            "recommendation": risk_recommendation,
+        }
+
+        # 9. Maninos summary
+        rec_total_client_pays = recommended["total_client_pays"] if recommended else 0
+        net_profit = rec_total_client_pays - total_investment
+        roi_pct = round(net_profit / total_investment * 100, 1) if total_investment > 0 else 0
+        financing_return = rec_total_client_pays - sale_price if recommended else 0
+        asset_return = sale_price - total_investment
+
+        maninos_summary = {
+            "total_investment": round(total_investment, 2),
+            "total_income_recommended": round(rec_total_client_pays, 2),
+            "net_profit": round(net_profit, 2),
+            "roi_pct": roi_pct,
+            "financing_return": round(financing_return, 2),
+            "asset_return": round(asset_return, 2),
+        }
+
+        # Future value block for recommended term
+        rec_term = recommended["term_months"] if recommended else 36
+        fv_rec = predict_future_value(
+            sale_price=sale_price,
+            term_months=rec_term,
+            sqft=prop.get("sqft"),
+            bedrooms=prop.get("bedrooms"),
+            bathrooms=prop.get("bathrooms"),
+            home_type=prop.get("type"),
+        )
+
+        return {
+            "ok": True,
+            "calculation": {
+                "property": {
+                    "address": prop.get("address"),
+                    "sale_price": sale_price,
+                    "purchase_price": purchase_price,
+                    "renovation_cost": renovation_cost,
+                    "total_investment": round(total_investment, 2),
+                    "sqft": prop.get("sqft"),
+                    "bedrooms": prop.get("bedrooms"),
+                    "type": prop.get("type"),
+                },
+                "client": {
+                    "name": client.get("name"),
+                    "monthly_income": monthly_income,
+                    "other_income": other_income,
+                    "total_income": total_income,
+                    "current_rent": monthly_rent,
+                    "total_expenses": round(total_expenses, 2),
+                    "disposable_income": round(disposable_income, 2),
+                    "payment_capacity_40pct": round(payment_capacity_40pct, 2),
+                },
+                "future_value": {
+                    "current_market_value": fv_rec["current_market_value"],
+                    "at_end_of_recommended_term": fv_rec["future_value"],
+                    "depreciation_rate_annual": fv_rec["annual_depreciation_rate"],
+                    "total_depreciation_pct": fv_rec["total_depreciation_pct"],
+                    "confidence": fv_rec["confidence"],
+                    "similar_houses": fv_rec["similar_houses"],
+                },
+                "recommended": recommended,
+                "scenarios": scenarios,
+                "risk": risk,
+                "maninos_summary": maninos_summary,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating RTO for application {application_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
