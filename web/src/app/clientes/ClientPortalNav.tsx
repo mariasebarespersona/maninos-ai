@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import TourProvider from '@/components/tour/TourProvider'
 import { usePathname } from 'next/navigation'
 import { User, Phone, X, Menu, Mail, MapPin, MessageCircle, Globe } from 'lucide-react'
 
@@ -172,6 +173,7 @@ export default function ClientPortalNav({
 
       {/* ── MAIN ── */}
       <main>{children}</main>
+      <TourProvider portal="clientes" />
 
       {/* ── FOOTER ── */}
       <footer className="bg-[#fafafa] border-t border-gray-200">
