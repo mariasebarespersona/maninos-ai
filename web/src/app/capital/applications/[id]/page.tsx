@@ -1470,53 +1470,90 @@ export default function ApplicationDetailPage() {
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">OPORTUNIDAD</span>
                   </div>
 
-                  <p className="text-sm mb-4" style={{ color: 'var(--charcoal)' }}>
-                    {rtoCalc.smart_pricing.explanation}
-                  </p>
+                  {/* How it works explanation */}
+                  <div className="p-4 rounded-lg bg-purple-50/50 border border-purple-100 mb-4 space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-purple-700">¿Cómo funciona?</p>
+                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      La fórmula estándar calcula la mensualidad solo basándose en el precio de la casa + interés.
+                      Pero <strong>no considera cuánto paga el cliente hoy de renta</strong>.
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      Si un cliente paga <strong>{fmt(rtoCalc.smart_pricing.current_rent)}/mes de renta</strong> y la fórmula
+                      dice <strong>{fmt(rtoCalc.smart_pricing.base_payment)}/mes</strong>, estamos dejando
+                      {' '}<strong>{fmt(rtoCalc.smart_pricing.current_rent - rtoCalc.smart_pricing.base_payment)}/mes sobre la mesa</strong> que
+                      el cliente puede pagar cómodamente (ya lo hace hoy).
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      El Precio Inteligente cobra el <strong>90% de su renta actual</strong>: el cliente siente que ahorra
+                      un 10% vs lo que paga hoy, y <strong>Maninos captura la diferencia</strong>.
+                    </p>
+                    <div className="mt-2 p-2 rounded bg-white border border-purple-100 text-xs" style={{ color: 'var(--slate)' }}>
+                      <strong>Reglas:</strong> Nunca cobramos menos que la fórmula (no perdemos dinero) · Nunca más del 45% del ingreso total (DTI seguro) · Redondeado al $5 más cercano
+                    </div>
+                  </div>
 
                   {/* Visual comparison: 3 columns */}
                   <div className="grid grid-cols-3 gap-3 mb-4">
-                    <div className="p-3 rounded-lg bg-gray-50 text-center">
-                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Renta Actual</p>
-                      <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.smart_pricing.current_rent)}</p>
-                      <p className="text-[10px]" style={{ color: 'var(--ash)' }}>Lo que paga hoy</p>
+                    <div className="p-4 rounded-lg bg-gray-50 text-center">
+                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Renta Actual del Cliente</p>
+                      <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.smart_pricing.current_rent)}</p>
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Lo que paga hoy por alquilar</p>
                     </div>
-                    <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#f5f3ff', border: '2px solid #7c3aed' }}>
+                    <div className="p-4 rounded-lg text-center" style={{ backgroundColor: '#f5f3ff', border: '2px solid #7c3aed' }}>
                       <p className="text-[10px] uppercase tracking-wider font-bold text-purple-700">Precio Inteligente</p>
-                      <p className="text-xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}</p>
-                      <p className="text-[10px] text-purple-600">Ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs renta</p>
+                      <p className="text-2xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}</p>
+                      <p className="text-[11px] mt-1 text-purple-600">
+                        Ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs lo que paga hoy
+                      </p>
                     </div>
-                    <div className="p-3 rounded-lg bg-gray-50 text-center">
-                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Pago Fórmula</p>
-                      <p className="text-xl font-bold" style={{ color: 'var(--ash)' }}>{fmt(rtoCalc.smart_pricing.base_payment)}</p>
-                      <p className="text-[10px]" style={{ color: 'var(--ash)' }}>Cálculo estándar</p>
+                    <div className="p-4 rounded-lg bg-gray-50 text-center">
+                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Pago Fórmula Estándar</p>
+                      <p className="text-2xl font-bold" style={{ color: 'var(--ash)' }}>{fmt(rtoCalc.smart_pricing.base_payment)}</p>
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Solo casa + interés (sin considerar renta)</p>
                     </div>
                   </div>
 
-                  {/* Extra revenue highlight */}
-                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+                  {/* The punchline: extra revenue */}
+                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 mb-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2">Resultado</p>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-purple-800">Ganancia extra para Maninos</p>
-                        <p className="text-xs text-purple-600">
-                          +{fmt(rtoCalc.smart_pricing.extra_per_month)}/mes × {rtoCalc.smart_pricing.term_months} meses
+                        <p className="text-sm text-purple-800">
+                          Maninos cobra <strong>+{fmt(rtoCalc.smart_pricing.extra_per_month)}/mes</strong> más
+                          que la fórmula estándar
+                        </p>
+                        <p className="text-sm text-purple-800">
+                          Durante <strong>{rtoCalc.smart_pricing.term_months} meses</strong> del contrato
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold text-purple-700">+{fmt(rtoCalc.smart_pricing.extra_total_over_term)}</p>
-                        <p className="text-xs text-purple-600">ROI: {rtoCalc.smart_pricing.smart_roi_pct}%</p>
+                        <p className="text-3xl font-bold text-purple-700">+{fmt(rtoCalc.smart_pricing.extra_total_over_term)}</p>
+                        <p className="text-xs text-purple-600">ganancia extra total</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                    <div className="flex items-center gap-2 p-2 rounded bg-green-50">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                      <span className="text-green-700">Cliente ahorra {fmt(rtoCalc.smart_pricing.client_saves_vs_rent)}/mes vs su renta</span>
+                  {/* Why it works for the client too */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-green-800">El cliente gana</p>
+                        <p className="text-green-700">
+                          Paga {fmt(rtoCalc.smart_pricing.client_saves_vs_rent)} menos que su renta actual.
+                          En vez de tirar dinero en alquiler, está pagando su propia casa.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 p-2 rounded bg-green-50">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                      <span className="text-green-700">DTI: {rtoCalc.smart_pricing.smart_dti}% (dentro de límites)</span>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-green-800">Maninos gana</p>
+                        <p className="text-green-700">
+                          ROI sube de {rtoCalc.recommended?.roi_maninos_pct}% a {rtoCalc.smart_pricing.smart_roi_pct}%.
+                          DTI del cliente: {rtoCalc.smart_pricing.smart_dti}% (seguro).
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
