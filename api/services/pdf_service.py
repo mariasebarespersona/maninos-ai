@@ -650,6 +650,9 @@ def generate_rto_contract(
     nsf_fee: float = 250.0,
     holdover_monthly: float = 695.0,
     zelle_phone: str = "832-745-9600",
+    signed_by_company: str | None = None,
+    signed_by_client: str | None = None,
+    signed_at: str | None = None,
 ) -> bytes:
     """
     Generate a full Texas Residential Lease Agreement With Purchase Option PDF.
@@ -1147,12 +1150,27 @@ def generate_rto_contract(
     ))
     story.append(Spacer(1, 20))
     
+    # Format signature date
+    sig_date_str = "_______________"
+    if signed_at:
+        try:
+            from datetime import datetime as dt
+            parsed = dt.fromisoformat(signed_at.replace("Z", "+00:00")) if isinstance(signed_at, str) else signed_at
+            sig_date_str = parsed.strftime("%m/%d/%Y")
+        except Exception:
+            sig_date_str = str(signed_at)[:10]
+
+    landlord_sig = signed_by_company or "_" * 40
+    tenant_sig = signed_by_client or "_" * 40
+    landlord_date = f"Date: {sig_date_str}" if signed_by_company else "Date: _______________"
+    tenant_date = f"Date: {sig_date_str}" if signed_by_client else "Date: _______________"
+
     sig_data = [
-        ["_" * 40, "", "_" * 40],
+        [landlord_sig, "", tenant_sig],
         ["LANDLORD / SELLER", "", "TENANT / BUYER"],
-        ["Maninos Homes LLC", "", tenant_name],
+        ["Maninos Capital LLC", "", tenant_name],
         ["", "", ""],
-        ["Date: _______________", "", "Date: _______________"],
+        [landlord_date, "", tenant_date],
         ["", "", ""],
         ["_" * 40, "", ""],
         ["Witness", "", ""],

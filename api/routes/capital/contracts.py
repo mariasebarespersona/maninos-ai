@@ -428,8 +428,11 @@ async def activate_contract(contract_id: str, data: ContractActivate):
                 payment_due_day=c.get("payment_due_day", 15),
                 late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
                 grace_period_days=c.get("grace_period_days", 5) or 5,
+                signed_by_company=data.signed_by_company,
+                signed_by_client=data.signed_by_client,
+                signed_at=datetime.utcnow().isoformat(),
             )
-            
+
             # Upload to Supabase Storage
             bucket = "transaction-documents"
             storage_path = f"rto-contracts/{contract_id}/RTO_Contract_{contract_id[:8]}.pdf"
@@ -788,6 +791,9 @@ async def download_contract_pdf(contract_id: str):
             payment_due_day=c.get("payment_due_day", 15),
             late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
             grace_period_days=c.get("grace_period_days", 5) or 5,
+            signed_by_company=c.get("signed_by_company"),
+            signed_by_client=c.get("signed_by_client"),
+            signed_at=c.get("signed_at"),
         )
         
         client_name = (c["clients"].get("name", "contract") if c.get("clients") else "contract").replace(" ", "_")
@@ -846,6 +852,9 @@ async def regenerate_all_contract_pdfs():
                     payment_due_day=c.get("payment_due_day", 15),
                     late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
                     grace_period_days=c.get("grace_period_days", 5) or 5,
+                    signed_by_company=c.get("signed_by_company"),
+                    signed_by_client=c.get("signed_by_client"),
+                    signed_at=c.get("signed_at"),
                 )
 
                 bucket = "transaction-documents"
