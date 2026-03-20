@@ -958,16 +958,18 @@ async def scrape_and_save(
 
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
 
-        source_count = 2  # VMF Homes + 21st Mortgage (partner JSON APIs)
-        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF Homes, 21st Mortgage")
+        source_count = 5
+        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF, 21st Mortgage, MHVillage, Craigslist, Facebook")
 
         all_listings = []
         all_prices = []
         fb_count = 0
-        
-        # SOURCE 1: VMF Homes / Vanderbilt (mobile homes for SALE only — JSON API, no browser)
+        mhv_count = 0
+        cl_count = 0
+
+        # SOURCE 1: VMF Homes / Vanderbilt (JSON API, no browser)
         vmf_count = 0
-        logger.info(f"[Scrape] 1/{source_count} - Scraping VMF Homes (Vanderbilt) via JSON API...")
+        logger.info(f"[Scrape] 1/{source_count} - Scraping VMF Homes (JSON API)...")
         try:
             vmf_listings = await VMFHomesScraper.scrape(
                 min_price=min_price,
@@ -980,8 +982,8 @@ async def scrape_and_save(
             logger.info(f"[Scrape] ✅ VMF Homes: {vmf_count} mobile homes")
         except Exception as e:
             logger.warning(f"[Scrape] VMF Homes failed: {e}")
-        
-        # SOURCE 2: 21st Mortgage (repo/used mobile homes — JSON API, no browser needed)
+
+        # SOURCE 2: 21st Mortgage (JSON API, no browser)
         mortgage21_count = 0
         logger.info(f"[Scrape] 2/{source_count} - Scraping 21st Mortgage (JSON API)...")
         try:
@@ -996,6 +998,61 @@ async def scrape_and_save(
             logger.info(f"[Scrape] ✅ 21st Mortgage: {mortgage21_count} mobile homes")
         except Exception as e:
             logger.warning(f"[Scrape] 21st Mortgage failed: {e}")
+
+        # SOURCE 3: MHVillage (Playwright browser scraping)
+        logger.info(f"[Scrape] 3/{source_count} - Scraping MHVillage...")
+        try:
+            from api.agents.buscador.scraper import MHVillageScraper
+            mhv_listings = await MHVillageScraper.scrape(
+                city=city,
+                min_price=min_price,
+                max_price=max_price,
+                max_listings=30,
+            )
+            all_listings.extend(mhv_listings)
+            all_prices.extend([l.listing_price for l in mhv_listings])
+            mhv_count = len(mhv_listings)
+            logger.info(f"[Scrape] ✅ MHVillage: {mhv_count} mobile homes")
+        except Exception as e:
+            logger.warning(f"[Scrape] MHVillage failed: {e}")
+
+        # SOURCE 4: Craigslist (Playwright browser scraping)
+        logger.info(f"[Scrape] 4/{source_count} - Scraping Craigslist...")
+        try:
+            from api.agents.buscador.craigslist_scraper import CraigslistScraper
+            cl_listings = await CraigslistScraper.scrape(
+                city=city,
+                min_price=min_price,
+                max_price=max_price,
+                max_listings=30,
+            )
+            all_listings.extend(cl_listings)
+            all_prices.extend([l.listing_price for l in cl_listings])
+            cl_count = len(cl_listings)
+            logger.info(f"[Scrape] ✅ Craigslist: {cl_count} mobile homes")
+        except Exception as e:
+            logger.warning(f"[Scrape] Craigslist failed: {e}")
+
+        # SOURCE 5: Facebook Marketplace (requires cookies)
+        logger.info(f"[Scrape] 5/{source_count} - Scraping Facebook Marketplace...")
+        try:
+            from api.agents.buscador.fb_auth import FacebookAuth
+            if FacebookAuth.is_authenticated():
+                from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
+                fb_listings = await FacebookMarketplaceScraper.scrape(
+                    city=city,
+                    min_price=min_price,
+                    max_price=max_price,
+                    max_listings=30,
+                )
+                all_listings.extend(fb_listings)
+                all_prices.extend([l.listing_price for l in fb_listings])
+                fb_count = len(fb_listings)
+                logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes")
+            else:
+                logger.info(f"[Scrape] ⏭ Facebook: no cookies, skipping")
+        except Exception as e:
+            logger.warning(f"[Scrape] Facebook failed: {e}")
         
         if not all_listings:
             return {
@@ -1024,6 +1081,9 @@ async def scrape_and_save(
         sources_data = {
             "vmf_homes": vmf_count,
             "21st_mortgage": mortgage21_count,
+            "mhvillage": mhv_count,
+            "craigslist": cl_count,
+            "facebook": fb_count,
         }
         
         # Import zone checker
