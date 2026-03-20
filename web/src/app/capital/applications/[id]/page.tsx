@@ -84,7 +84,7 @@ export default function ApplicationDetailPage() {
   const [reviewing, setReviewing] = useState(false)
 
   // Active section
-  const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'terms' | 'payments' | 'documents'>('identity')
+  const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'payments' | 'documents'>('identity')
   
   // KYC
   const [kycStatus, setKycStatus] = useState<string>('unverified')
@@ -636,7 +636,9 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  const handleReview = async (status: 'approved' | 'rejected' | 'needs_info' | 'under_review') => {
+  const handleReview = async (status: 'approved' | 'rejected' | 'needs_info' | 'under_review', terms?: { monthly_rent?: number, term_months?: number, down_payment?: number }) => {
+    if (status === 'approved' && !confirm('¿Aprobar esta solicitud con la mensualidad seleccionada?')) return
+    if (status === 'rejected' && !confirm('¿Rechazar esta solicitud? La propiedad volverá a estar disponible.')) return
     setReviewing(true)
     try {
       const body: Record<string, any> = {
@@ -644,35 +646,18 @@ export default function ApplicationDetailPage() {
         review_notes: reviewNotes || undefined,
         reviewed_by: 'admin',
       }
-      if (status === 'approved') {
+      if (status === 'approved' && terms) {
+        body.monthly_rent = terms.monthly_rent
+        body.term_months = terms.term_months
+        body.down_payment = terms.down_payment
+      } else if (status === 'approved') {
+        // Fallback: use RTO analysis recommended
         const sp = app?.properties?.sale_price || 0
-        const dp = downPayment ? parseFloat(downPayment) : (app?.desired_down_payment || 0)
-        const tm = termMonths ? parseInt(termMonths) : (app?.desired_term_months || 36)
-
-        // Validate minimum 30% down payment
-        const minDP = sp * 0.30
-        if (dp < minDP) {
-          toast.error(`El enganche mínimo es 30% del precio de venta ($${Math.ceil(minDP).toLocaleString()})`)
-          setReviewing(false)
-          return
-        }
-
-        if (monthlyRent) {
-          // Capital overrode the monthly rent manually
-        body.monthly_rent = parseFloat(monthlyRent)
-        } else {
-          // Auto-calculate using the RTO formula with interest
-          const rtoCalc = calculateRTOMonthly({
-            salePrice: sp,
-            downPayment: dp,
-            termMonths: tm,
-            annualRate: annualRatePct / 100,
-          })
-          body.monthly_rent = rtoCalc.monthlyPayment
-        }
+        const dp = app?.desired_down_payment || Math.ceil(sp * 0.30)
+        const tm = app?.desired_term_months || 36
+        body.monthly_rent = rtoAnalysis?.recommended?.monthly_payment || 0
         body.term_months = tm
         body.down_payment = dp
-        body.annual_rate = annualRatePct / 100
       }
       
       const res = await fetch(`/api/capital/applications/${id}/review`, {
@@ -830,8 +815,7 @@ export default function ApplicationDetailPage() {
       <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--sand)' }}>
         {([
           { key: 'identity' as const, label: 'Identidad', icon: ShieldCheck, done: kycVerified },
-          { key: 'capacity' as const, label: 'Capacidad de Pago', icon: DollarSign, done: capacityResult?.qualifies ?? false },
-          { key: 'terms' as const, label: 'Términos', icon: FileSignature, done: app.status === 'approved' },
+          { key: 'capacity' as const, label: 'Cálculo RTO', icon: Calculator, done: app.status === 'approved' },
           { key: 'payments' as const, label: 'Pagos', icon: CreditCard, done: paymentsSummary?.payments_remaining === 0 && (paymentsSummary?.total_payments || 0) > 0 },
           { key: 'documents' as const, label: 'Documentos', icon: FileText, done: false },
         ]).map((tab) => (
@@ -1746,238 +1730,135 @@ export default function ApplicationDetailPage() {
                   {rtoCalc.future_value.similar_houses?.length > 0 && ` (basado en ${rtoCalc.future_value.similar_houses.length} casas similares)`}
                 </p>
               </div>
+              {/* G: Decision — Choose payment and approve/reject */}
+              {canReview && (
+                <div className="card-luxury p-5" style={{ borderTop: '3px solid var(--gold-600)' }}>
+                  <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Decisión</h3>
+
+                  {/* Review notes */}
+                  <div className="mb-4">
+                    <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--ash)' }}>Notas de revisión (opcional)</label>
+                    <textarea
+                      value={reviewNotes}
+                      onChange={(e) => setReviewNotes(e.target.value)}
+                      placeholder="Notas sobre la decisión..."
+                      className="w-full px-3 py-2 rounded-lg border text-sm"
+                      rows={2}
+                      style={{ borderColor: 'var(--stone)' }}
+                    />
+                  </div>
+
+                  {/* Approve with chosen payment */}
+                  <div className="grid md:grid-cols-2 gap-3 mb-4">
+                    {rtoCalc.smart_pricing && (
+                      <button
+                        onClick={() => handleReview('approved', {
+                          monthly_rent: rtoCalc.smart_pricing.smart_payment,
+                          term_months: rtoCalc.recommended?.term_months,
+                          down_payment: rtoCalc.recommended?.down_payment,
+                        })}
+                        disabled={reviewing}
+                        className="p-4 rounded-lg border-2 text-left transition-all hover:shadow-md disabled:opacity-50"
+                        style={{ borderColor: '#7c3aed', backgroundColor: '#faf5ff' }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold uppercase text-purple-700">Precio Inteligente</span>
+                          {reviewing && <Loader2 className="w-4 h-4 animate-spin text-purple-600" />}
+                        </div>
+                        <p className="text-2xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}/mes</p>
+                        <p className="text-xs text-purple-600 mt-1">
+                          {rtoCalc.recommended?.term_months} meses · Enganche {fmt(rtoCalc.recommended?.down_payment)} · ROI {rtoCalc.smart_pricing.smart_roi_pct}%
+                        </p>
+                        <p className="text-[10px] mt-2" style={{ color: 'var(--ash)' }}>
+                          Cliente ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs su renta actual
+                        </p>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleReview('approved', {
+                        monthly_rent: rtoCalc.recommended?.monthly_payment,
+                        term_months: rtoCalc.recommended?.term_months,
+                        down_payment: rtoCalc.recommended?.down_payment,
+                      })}
+                      disabled={reviewing}
+                      className="p-4 rounded-lg border-2 text-left transition-all hover:shadow-md disabled:opacity-50"
+                      style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--ivory, #fafaf5)' }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold uppercase" style={{ color: 'var(--ash)' }}>Pago Estándar</span>
+                        {reviewing && <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--slate)' }} />}
+                      </div>
+                      <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.recommended?.monthly_payment)}/mes</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>
+                        {rtoCalc.recommended?.term_months} meses · Enganche {fmt(rtoCalc.recommended?.down_payment)} · ROI {rtoCalc.recommended?.roi_maninos_pct}%
+                      </p>
+                      <p className="text-[10px] mt-2" style={{ color: 'var(--ash)' }}>
+                        Calculado con fórmula estándar de interés
+                      </p>
+                    </button>
+                  </div>
+
+                  {/* Other actions */}
+                  <div className="flex flex-wrap gap-3 pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                    <button
+                      onClick={() => handleReview('rejected')}
+                      disabled={reviewing}
+                      className="btn-danger btn-sm"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Rechazar
+                    </button>
+                    <button
+                      onClick={() => handleReview('needs_info')}
+                      disabled={reviewing}
+                      className="btn-secondary btn-sm"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                      Solicitar Más Info
+                    </button>
+                    <button
+                      onClick={() => handleReview('under_review')}
+                      disabled={reviewing}
+                      className="btn-ghost btn-sm"
+                    >
+                      En Revisión
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Already approved */}
+              {app.status === 'approved' && (
+                <div className="card-luxury p-5 text-center space-y-3" style={{ backgroundColor: 'var(--success-light)' }}>
+                  <CheckCircle2 className="w-8 h-8 mx-auto" style={{ color: 'var(--success)' }} />
+                  <p className="font-semibold" style={{ color: 'var(--success)' }}>Cliente aprobado para Rent-to-Own</p>
+                  <Link href="/capital/contracts"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                    style={{ backgroundColor: 'var(--gold-700)' }}>
+                    <FileSignature className="w-4 h-4" /> Ir a Generar Contrato
+                  </Link>
+                </div>
+              )}
+
+              {/* Already rejected */}
+              {app.status === 'rejected' && (
+                <div className="card-luxury p-4" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
+                    <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Solicitud Denegada</p>
+                  </div>
+                  <p className="text-sm" style={{ color: '#991b1b' }}>{app.review_notes || 'Sin notas'}</p>
+                </div>
+              )}
             </div>
           ) })() : (
             <div className="card-luxury p-5 text-center" style={{ color: 'var(--ash)' }}>
               <p className="text-sm">No se pudo calcular. Verifica que la propiedad tenga precio de venta y que exista una solicitud de crédito.</p>
             </div>
           )}
-
-          {/* Already rejected */}
-          {app.status === 'rejected' && (
-            <div className="card-luxury p-4" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
-              <div className="flex items-center gap-2 mb-1">
-                <XCircle className="w-5 h-5" style={{ color: 'var(--error)' }} />
-                <p className="font-semibold text-sm" style={{ color: 'var(--error)' }}>Solicitud Denegada</p>
-              </div>
-              <p className="text-sm" style={{ color: '#991b1b' }}>{app.review_notes || 'Sin notas'}</p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* =================== TAB: TERMS & DECISION =================== */}
-      {activeTab === 'terms' && (() => {
-        // Live RTO calculation based on the editable fields
-        const liveDP = downPayment ? parseFloat(downPayment) : desiredDP
-        const liveTM = termMonths ? parseInt(termMonths) : desiredTM
-        const liveRTO = calculateRTOMonthly({
-          salePrice,
-          downPayment: liveDP,
-          termMonths: liveTM,
-          annualRate: annualRatePct / 100,
-        })
-        const liveMonthly = monthlyRent ? parseFloat(monthlyRent) : liveRTO.monthlyPayment
-        const totalRTOIncome = liveMonthly * liveTM + liveDP
-        const margin = totalRTOIncome - salePrice
-        const roi = salePrice > 0 ? ((totalRTOIncome / salePrice) * 100 - 100) : 0
-
-        return (
-        <div className="space-y-6">
-          {/* Contract Terms */}
-          {canReview && (
-            <div className="card-luxury p-6">
-              <h3 className="font-serif text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-                <Calculator className="w-5 h-5" style={{ color: 'var(--gold-600)' }} />
-                Términos del Contrato
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div>
-                  <label className="label">Plazo (meses) *</label>
-                  <select value={termMonths} onChange={(e) => setTermMonths(e.target.value)} className="input">
-                <option value="">Seleccionar</option>
-                <option value="12">12 meses (1 año)</option>
-                    <option value="18">18 meses</option>
-                <option value="24">24 meses (2 años)</option>
-                    <option value="30">30 meses</option>
-                <option value="36">36 meses (3 años)</option>
-                    <option value="42">42 meses</option>
-                <option value="48">48 meses (4 años)</option>
-                    <option value="54">54 meses</option>
-                <option value="60">60 meses (5 años)</option>
-              </select>
-            </div>
-                <div>
-                  <label className="label">Tasa Anual (%)</label>
-                  <div className="relative">
-                    <input type="number" step="0.5" min="0" max="100"
-                      value={annualRatePct}
-                      onChange={(e) => setAnnualRatePct(Number(e.target.value))}
-                      className="input pr-8"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate text-sm">%</span>
-                  </div>
-            </div>
-            <div>
-              <label className="label">Enganche (mín. 30%)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                    <input type="number" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
-                      placeholder={desiredDP ? String(desiredDP) : String(Math.ceil(salePrice * 0.30))}
-                  className="input pl-8"
-                />
-              </div>
-              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-                Mínimo: {fmt(Math.ceil(salePrice * 0.30))} (30%)
-              </p>
-            </div>
-                <div>
-                  <label className="label">Renta Mensual (override)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
-                    <input type="number" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)}
-                      placeholder={String(liveRTO.monthlyPayment)}
-                      className="input pl-8"
-                    />
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
-                    Calculado: {fmt(liveRTO.monthlyPayment)}/mes — dejar vacío para usar cálculo automático
-                  </p>
-            </div>
-          </div>
-
-              {/* Interest breakdown */}
-              <div className="card-flat p-4 mb-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center text-sm">
-                <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>A Financiar</p>
-                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(liveRTO.financeAmount)}</p>
-                </div>
-                <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Interés Total</p>
-                    <p className="font-semibold" style={{ color: 'var(--warning)' }}>{fmt(Math.round(liveRTO.totalInterest))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Total a Pagar</p>
-                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(Math.round(liveRTO.totalToPay))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Ingreso Total</p>
-                    <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(Math.round(totalRTOIncome))}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Margen</p>
-                    <p className="font-serif font-semibold" style={{ color: margin >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(Math.round(margin))}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--ash)' }}>ROI</p>
-                    <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{roi.toFixed(1)}%</p>
-                </div>
-              </div>
-                <p className="text-xs mt-3 text-center" style={{ color: 'var(--ash)' }}>
-                  Fórmula: ({fmt(liveRTO.financeAmount)} × {annualRatePct}% × {(liveTM / 12).toFixed(1)} años) = {fmt(Math.round(liveRTO.totalInterest))} interés
-                  &nbsp;→&nbsp; ({fmt(Math.round(liveRTO.totalToPay))} ÷ {liveTM} meses) = {fmt(liveRTO.monthlyPayment)}/mes (redondeado ↑$5)
-                </p>
-            </div>
-
-
-          {/* Review Notes */}
-          <div className="mb-6">
-            <label className="label">Notas de Revisión</label>
-            <textarea
-              value={reviewNotes}
-              onChange={(e) => setReviewNotes(e.target.value)}
-              placeholder="Notas sobre la decisión..."
-              className="input"
-              rows={3}
-              style={{ minHeight: 'auto' }}
-            />
-          </div>
-
-              {/* Readiness indicator */}
-              <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${kycVerified ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                  {kycVerified ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                  {kycVerified ? 'Identidad verificada' : 'Identidad pendiente'}
-                </span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${rtoAnalysis ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                  {rtoAnalysis ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                  {rtoAnalysis ? 'Cálculo RTO completado' : 'Cálculo RTO pendiente'}
-                </span>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={() => handleReview('approved')}
-              disabled={reviewing}
-              className="btn btn-sm text-white"
-              style={{ backgroundColor: 'var(--success)' }}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Aprobar
-            </button>
-            <button 
-              onClick={() => handleReview('rejected')}
-              disabled={reviewing}
-              className="btn-danger btn-sm"
-            >
-              <XCircle className="w-4 h-4" />
-              Rechazar
-            </button>
-            <button 
-              onClick={() => handleReview('needs_info')}
-              disabled={reviewing}
-              className="btn-secondary btn-sm"
-            >
-              <HelpCircle className="w-4 h-4" />
-              Solicitar Más Info
-            </button>
-            <button 
-              onClick={() => handleReview('under_review')}
-              disabled={reviewing}
-              className="btn-ghost btn-sm"
-            >
-              En Revisión
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Review Result (if already reviewed) */}
-      {app.review_notes && !canReview && (
-        <div className="card-luxury p-6">
-          <h3 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Resultado de Revisión</h3>
-          <p style={{ color: 'var(--charcoal)' }}>{app.review_notes}</p>
-          {app.reviewed_at && (
-            <p className="text-sm mt-2" style={{ color: 'var(--ash)' }}>
-              Revisado por {app.reviewed_by || 'Admin'} el {new Date(app.reviewed_at).toLocaleDateString('es-MX')}
-            </p>
-          )}
-        </div>
-      )}
-
-          {/* Approved — link to generate contract */}
-          {app.status === 'approved' && (
-            <div className="card-luxury p-5 text-center space-y-3" style={{ backgroundColor: 'var(--success-light)' }}>
-              <CheckCircle2 className="w-8 h-8 mx-auto" style={{ color: 'var(--success)' }} />
-              <p className="font-semibold" style={{ color: 'var(--success)' }}>
-                Cliente aprobado para Rent-to-Own
-              </p>
-              <Link
-                href="/capital/contracts"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
-                style={{ backgroundColor: 'var(--gold-700)' }}
-              >
-                <FileSignature className="w-4 h-4" />
-                Ir a Generar Contrato
-              </Link>
-        </div>
-      )}
-    </div>
-  )
-      })()}
 
       {/* =================== TAB: PAYMENTS =================== */}
       {activeTab === 'payments' && (
