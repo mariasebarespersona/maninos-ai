@@ -517,9 +517,13 @@ async def rto_calculation(application_id: str):
             # Smart payment = 90% of current rent (client "saves" 10%)
             # But never below base (we don't lose money)
             # And never above 45% of total income (DTI safe)
+            # And total client pays never exceeds 2x sale price (fair cap)
             smart_raw = monthly_rent * 0.90
             max_by_income = total_income * 0.45 if total_income > 0 else smart_raw
-            smart_payment = math.ceil(min(max(smart_raw, base_payment), max_by_income) / 5) * 5
+            # Cap: total payments (down + monthly * term) <= 2x sale price
+            max_total = sale_price * 2.0
+            max_by_fair_cap = (max_total - down_payment) / rec_term if rec_term > 0 else smart_raw
+            smart_payment = math.ceil(min(max(smart_raw, base_payment), max_by_income, max_by_fair_cap) / 5) * 5
 
             if smart_payment > base_payment:
                 extra_per_month = smart_payment - base_payment
