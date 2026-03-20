@@ -51,7 +51,7 @@ export default function PaymentMethodPage() {
   useEffect(() => {
     const stored = sessionStorage.getItem('maninos_client_data')
     if (!stored) {
-      toast.error('Sesión expirada. Por favor, vuelve a empezar.')
+      toast.error('Sesion expirada. Por favor, vuelve a empezar.')
       router.push(`/clientes/comprar/${propertyId}`)
       return
     }
@@ -86,13 +86,13 @@ export default function PaymentMethodPage() {
       const data = await res.json()
       if (data.ok) {
         setTransferReported(true)
-        toast.success('¡Transferencia registrada!')
+        toast.success('Transferencia registrada!')
       } else {
         toast.error(data.detail || 'Error al registrar la transferencia')
       }
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error de conexión')
+      toast.error('Error de conexion')
     } finally {
       setReportingTransfer(false)
     }
@@ -128,7 +128,7 @@ export default function PaymentMethodPage() {
       if (data.ok) {
         sessionStorage.setItem('maninos_rto_data', JSON.stringify(data))
         sessionStorage.removeItem('maninos_rto_sim') // cleanup
-        toast.success('¡Solicitud enviada!')
+        toast.success('Solicitud enviada!')
         router.push(`/clientes/comprar/${propertyId}/rto-solicitud`)
       } else {
         toast.error(data.detail || 'Error al procesar')
@@ -137,7 +137,7 @@ export default function PaymentMethodPage() {
       }
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error de conexión')
+      toast.error('Error de conexion')
       setSubmitting(false)
       setSelectedMethod(null)
     }
@@ -145,8 +145,8 @@ export default function PaymentMethodPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-[#004274]" />
       </div>
     )
   }
@@ -168,13 +168,13 @@ export default function PaymentMethodPage() {
     }).monthlyPayment
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white">
       {/* Breadcrumb */}
-      <div className="bg-white border-b">
+      <div className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-4 py-4">
           <Link
             href={`/clientes/comprar/${propertyId}`}
-            className="flex items-center gap-2 text-gray-600 hover:text-navy-900"
+            className="flex items-center gap-2 text-[#717171] hover:text-[#004274] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Volver a mis datos
@@ -187,42 +187,42 @@ export default function PaymentMethodPage() {
         <div className="max-w-3xl mx-auto mb-8">
           <div className="flex items-center justify-center">
             <div className="flex items-center">
-              <div className="flex items-center justify-center w-10 h-10 bg-green-500 text-white rounded-full">
+              <div className="flex items-center justify-center w-10 h-10 bg-[#004274] text-white rounded-full text-[14px] font-semibold">
                 ✓
               </div>
-              <span className="ml-2 text-green-600">Tus Datos</span>
+              <span className="ml-2 text-[#004274] text-[14px] font-medium">Tus Datos</span>
             </div>
-            <div className="w-12 h-1 bg-gold-500 mx-3" />
+            <div className="w-12 h-1 bg-[#004274] mx-3 rounded" />
             <div className="flex items-center">
-              <div className="flex items-center justify-center w-10 h-10 bg-gold-500 text-navy-900 rounded-full font-bold">
+              <div className="flex items-center justify-center w-10 h-10 bg-[#004274] text-white rounded-full text-[14px] font-bold">
                 2
               </div>
-              <span className="ml-2 font-medium text-navy-900">Forma de Pago</span>
+              <span className="ml-2 font-semibold text-[#222] text-[14px]">Forma de Pago</span>
             </div>
-            <div className="w-12 h-1 bg-gray-200 mx-3" />
+            <div className="w-12 h-1 bg-gray-200 mx-3 rounded" />
             <div className="flex items-center">
-              <div className="flex items-center justify-center w-10 h-10 bg-gray-200 text-gray-500 rounded-full font-bold">
+              <div className="flex items-center justify-center w-10 h-10 bg-gray-200 text-[#717171] rounded-full text-[14px] font-bold">
                 3
               </div>
-              <span className="ml-2 text-gray-500">Pago</span>
+              <span className="ml-2 text-[#717171] text-[14px]">Pago</span>
             </div>
-            <div className="w-12 h-1 bg-gray-200 mx-3" />
+            <div className="w-12 h-1 bg-gray-200 mx-3 rounded" />
             <div className="flex items-center">
-              <div className="flex items-center justify-center w-10 h-10 bg-gray-200 text-gray-500 rounded-full font-bold">
+              <div className="flex items-center justify-center w-10 h-10 bg-gray-200 text-[#717171] rounded-full text-[14px] font-bold">
                 4
               </div>
-              <span className="ml-2 text-gray-500">Confirmación</span>
+              <span className="ml-2 text-[#717171] text-[14px]">Confirmacion</span>
             </div>
           </div>
         </div>
 
         {/* Title */}
         <div className="max-w-4xl mx-auto text-center mb-10">
-          <h1 className="text-3xl font-bold text-navy-900 mb-3">
-            ¿Cómo te gustaría pagar?
+          <h1 className="text-[24px] font-bold text-[#222] mb-3">
+            Como te gustaria pagar?
           </h1>
-          <p className="text-gray-600 text-lg">
-            Elige la opción que mejor se adapte a tu situación. Ambas opciones son seguras y confiables.
+          <p className="text-[#484848] text-[16px]">
+            Elige la opcion que mejor se adapte a tu situacion. Ambas opciones son seguras y confiables.
           </p>
         </div>
 
@@ -230,16 +230,16 @@ export default function PaymentMethodPage() {
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {/* Option 1: Contado */}
           <div
-            className={`relative bg-white rounded-2xl shadow-sm border-2 transition-all ${
+            className={`relative bg-white rounded-xl shadow-sm border-2 transition-all ${
               showBankDetails
-                ? 'border-green-500 shadow-lg'
-                : 'border-gray-200 hover:border-green-400 cursor-pointer hover:shadow-lg'
+                ? 'border-[#004274] shadow-lg'
+                : 'border-gray-200 hover:border-[#004274] cursor-pointer hover:shadow-lg'
             }`}
             onClick={() => !showBankDetails && handleContado()}
           >
             {/* Badge */}
             <div className="absolute -top-3 left-6">
-              <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+              <span className="bg-[#004274] text-white text-[11px] font-bold px-3 py-1 rounded-full tracking-wide">
                 PAGO INMEDIATO
               </span>
             </div>
@@ -247,34 +247,34 @@ export default function PaymentMethodPage() {
             <div className="p-8">
               {/* Header */}
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center">
-                  <DollarSign className="w-8 h-8 text-green-600" />
+                <div className="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-8 h-8 text-[#004274]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-navy-900">Al Contado</h2>
-                  <p className="text-gray-500 text-sm">Transferencia bancaria</p>
+                  <h2 className="text-[16px] font-bold text-[#222]">Al Contado</h2>
+                  <p className="text-[#717171] text-[13px]">Transferencia bancaria</p>
                 </div>
               </div>
 
               {/* Price */}
-              <div className="bg-green-50 rounded-xl p-5 mb-6 text-center">
-                <p className="text-sm text-green-700 mb-1">Precio total</p>
-                <p className="text-3xl font-bold text-green-700">
+              <div className="bg-blue-50 rounded-xl p-5 mb-6 text-center">
+                <p className="text-[13px] text-[#004274] mb-1">Precio total</p>
+                <p className="text-3xl font-bold text-[#004274]">
                   ${property.sale_price?.toLocaleString()}
                 </p>
               </div>
 
               {showBankDetails ? (
                 transferReported ? (
-                  <div className="bg-green-50 border border-green-300 rounded-xl p-5 text-center">
-                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                    <h3 className="text-lg font-bold text-green-800 mb-2">¡Transferencia Registrada!</h3>
-                    <p className="text-sm text-green-700 mb-4">
-                      Hemos registrado tu reporte. Nuestro equipo verificará la transferencia y te notificaremos por email.
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
+                    <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+                    <h3 className="text-[16px] font-bold text-emerald-800 mb-2">Transferencia Registrada!</h3>
+                    <p className="text-[13px] text-emerald-700 mb-4">
+                      Hemos registrado tu reporte. Nuestro equipo verificara la transferencia y te notificaremos por email.
                     </p>
                     <Link
                       href="/clientes/mi-cuenta"
-                      className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition-colors"
+                      className="inline-flex items-center gap-2 bg-[#004274] text-white font-bold py-3 px-6 rounded-xl hover:bg-[#00345c] transition-colors"
                     >
                       Ir a Mi Cuenta
                       <ArrowRight className="w-5 h-5" />
@@ -284,17 +284,17 @@ export default function PaymentMethodPage() {
                 <>
                   {/* Bank Details */}
                   <div className="bg-gray-50 rounded-xl p-5 mb-6 space-y-3">
-                    <p className="text-sm font-bold text-navy-900 mb-3">Datos para transferencia:</p>
+                    <p className="text-[13px] font-bold text-[#222] mb-3">Datos para transferencia:</p>
                     {[
                       { label: 'Banco', value: 'Chase Bank' },
                       { label: 'Nombre de la cuenta', value: 'Maninos Homes LLC' },
-                      { label: 'Número de cuenta', value: '000000000000' },
+                      { label: 'Numero de cuenta', value: '000000000000' },
                       { label: 'Routing Number', value: '000000000' },
                       { label: 'Tipo de cuenta', value: 'Business Checking' },
                     ].map((item) => (
                       <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-gray-200 last:border-0">
-                        <span className="text-sm text-gray-600">{item.label}</span>
-                        <span className="text-sm font-semibold text-navy-900 font-mono">{item.value}</span>
+                        <span className="text-[13px] text-[#717171]">{item.label}</span>
+                        <span className="text-[13px] font-semibold text-[#222] font-mono">{item.value}</span>
                       </div>
                     ))}
                   </div>
@@ -302,7 +302,7 @@ export default function PaymentMethodPage() {
                   <button
                     onClick={handleReportTransfer}
                     disabled={reportingTransfer}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-colors bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-colors bg-[#004274] text-white hover:bg-[#00345c] disabled:opacity-50"
                   >
                     {reportingTransfer ? (
                       <>
@@ -317,10 +317,10 @@ export default function PaymentMethodPage() {
                     )}
                   </button>
 
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mt-4">
-                    <p className="text-sm text-green-800 mb-3">
-                      <strong>Opcional:</strong> Si deseas, también puedes enviarnos el comprobante
-                      por WhatsApp para agilizar la confirmación.
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-4">
+                    <p className="text-[13px] text-[#004274] mb-3">
+                      <strong>Opcional:</strong> Si deseas, tambien puedes enviarnos el comprobante
+                      por WhatsApp para agilizar la confirmacion.
                     </p>
                     <a
                       href={`https://api.whatsapp.com/send?phone=+18327459600&text=${encodeURIComponent(
@@ -328,7 +328,7 @@ export default function PaymentMethodPage() {
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-colors border-2 border-green-500 text-green-700 hover:bg-green-100"
+                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-colors border-2 border-[#004274] text-[#004274] hover:bg-blue-50"
                     >
                       Enviar comprobante por WhatsApp
                       <ArrowRight className="w-4 h-4" />
@@ -341,26 +341,26 @@ export default function PaymentMethodPage() {
                   {/* Benefits */}
                   <ul className="space-y-3 mb-8">
                     <li className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">La casa es tuya <strong>inmediatamente</strong></span>
+                      <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                      <span className="text-[#484848] text-[14px]">La casa es tuya <strong>inmediatamente</strong></span>
                     </li>
                     <li className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">Título transferido <strong>a tu nombre</strong></span>
+                      <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                      <span className="text-[#484848] text-[14px]">Titulo transferido <strong>a tu nombre</strong></span>
                     </li>
                     <li className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">Sin pagos mensuales ni intereses</span>
+                      <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                      <span className="text-[#484848] text-[14px]">Sin pagos mensuales ni intereses</span>
                     </li>
                     <li className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">Pago por <strong>transferencia bancaria</strong></span>
+                      <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                      <span className="text-[#484848] text-[14px]">Pago por <strong>transferencia bancaria</strong></span>
                     </li>
                   </ul>
 
                   {/* CTA Button */}
                   <button
-                    className="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-[#004274] text-white font-bold py-4 rounded-xl hover:bg-[#00345c] transition-colors flex items-center justify-center gap-2"
                   >
                     Pagar al Contado
                     <ArrowRight className="w-5 h-5" />
@@ -372,16 +372,16 @@ export default function PaymentMethodPage() {
 
           {/* Option 2: RTO */}
           <div
-            className={`relative bg-white rounded-2xl shadow-sm border-2 transition-all cursor-pointer hover:shadow-lg ${
+            className={`relative bg-white rounded-xl shadow-sm border-2 transition-all cursor-pointer hover:shadow-lg ${
               selectedMethod === 'rto' && submitting
-                ? 'border-orange-500 shadow-lg'
-                : 'border-gray-200 hover:border-orange-400'
+                ? 'border-[#004274] shadow-lg'
+                : 'border-gray-200 hover:border-[#004274]'
             }`}
             onClick={() => !submitting && handleRTO()}
           >
             {/* Badge */}
             <div className="absolute -top-3 left-6">
-              <span className="bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+              <span className="bg-[#004274] text-white text-[11px] font-bold px-3 py-1 rounded-full tracking-wide">
                 PAGOS MENSUALES
               </span>
             </div>
@@ -389,22 +389,22 @@ export default function PaymentMethodPage() {
             <div className="p-8">
               {/* Header */}
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-14 h-14 bg-orange-100 rounded-xl flex items-center justify-center">
-                  <Key className="w-8 h-8 text-orange-600" />
+                <div className="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center">
+                  <Key className="w-8 h-8 text-[#004274]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-navy-900">Rent-to-Own</h2>
-                  <p className="text-gray-500 text-sm">Renta con opción a compra</p>
+                  <h2 className="text-[16px] font-bold text-[#222]">Rent-to-Own</h2>
+                  <p className="text-[#717171] text-[13px]">Renta con opcion a compra</p>
                 </div>
               </div>
 
               {/* Estimated Monthly */}
-              <div className="bg-orange-50 rounded-xl p-5 mb-6 text-center">
-                <p className="text-sm text-orange-700 mb-1">Pago mensual estimado</p>
-                <p className="text-3xl font-bold text-orange-700">
+              <div className="bg-blue-50 rounded-xl p-5 mb-6 text-center">
+                <p className="text-[13px] text-[#004274] mb-1">Pago mensual estimado</p>
+                <p className="text-3xl font-bold text-[#004274]">
                   ${estimatedMonthly.toLocaleString()}<span className="text-lg font-normal">/mes</span>
                 </p>
-                <p className="text-xs text-orange-500 mt-1">
+                <p className="text-[12px] text-[#717171] mt-1">
                   {simDownPayment > 0
                     ? `Enganche: $${simDownPayment.toLocaleString()} · ${simTermMonths} meses`
                     : `*Precio final: $${property.sale_price?.toLocaleString()}`
@@ -415,27 +415,27 @@ export default function PaymentMethodPage() {
               {/* Benefits */}
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Entra a vivir con un <strong>depósito inicial</strong></span>
+                  <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                  <span className="text-[#484848] text-[14px]">Entra a vivir con un <strong>deposito inicial</strong></span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Pagos mensuales <strong>accesibles</strong></span>
+                  <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                  <span className="text-[#484848] text-[14px]">Pagos mensuales <strong>accesibles</strong></span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Parte de tu renta <strong>se aplica a la compra</strong></span>
+                  <CheckCircle className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                  <span className="text-[#484848] text-[14px]">Parte de tu renta <strong>se aplica a la compra</strong></span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">Al final del plazo, <strong>la casa es tuya</strong></span>
+                  <Calendar className="w-5 h-5 text-[#004274] flex-shrink-0 mt-0.5" />
+                  <span className="text-[#484848] text-[14px]">Al final del plazo, <strong>la casa es tuya</strong></span>
                 </li>
               </ul>
 
               {/* CTA Button */}
               <button
                 disabled={submitting}
-                className="w-full bg-orange-600 text-white font-bold py-4 rounded-xl hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-[#004274] text-white font-bold py-4 rounded-xl hover:bg-[#00345c] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting && selectedMethod === 'rto' ? (
                   <>
@@ -455,8 +455,8 @@ export default function PaymentMethodPage() {
 
         {/* Property Summary */}
         <div className="max-w-4xl mx-auto mt-10">
-          <div className="bg-white rounded-xl p-5 shadow-sm flex items-center gap-5">
-            <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 flex items-center gap-5">
+            <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
               {property.photos?.[0] ? (
                 <img
                   src={property.photos[0]}
@@ -465,65 +465,65 @@ export default function PaymentMethodPage() {
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <HomeIcon className="w-8 h-8 text-gray-400" />
+                  <HomeIcon className="w-8 h-8 text-[#b0b0b0]" />
                 </div>
               )}
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-navy-900">{property.address}</p>
-              <p className="text-gray-500 text-sm">{property.city || 'Texas'}, {property.state || 'TX'}</p>
-              <p className="text-gold-600 font-bold text-lg">${property.sale_price?.toLocaleString()}</p>
+              <p className="font-semibold text-[#222] text-[14px]">{property.address}</p>
+              <p className="text-[#717171] text-[13px]">{property.city || 'Texas'}, {property.state || 'TX'}</p>
+              <p className="text-[#004274] font-bold text-lg">${property.sale_price?.toLocaleString()}</p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Shield className="w-4 h-4 text-green-500" />
+            <div className="flex items-center gap-2 text-[13px] text-[#717171]">
+              <Shield className="w-4 h-4 text-[#004274]" />
               <span>Compra segura</span>
             </div>
           </div>
         </div>
 
         {/* FAQ Section */}
-        <div className="max-w-4xl mx-auto mt-10 bg-white rounded-xl p-8 shadow-sm">
-          <h3 className="text-lg font-bold text-navy-900 mb-6 text-center">
+        <div className="max-w-4xl mx-auto mt-10 bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+          <h3 className="text-[16px] font-bold text-[#222] mb-6 text-center">
             Preguntas Frecuentes
           </h3>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <h4 className="font-semibold text-navy-900 mb-2 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-green-500" />
-                ¿Qué es pagar al contado?
+              <h4 className="font-semibold text-[#222] text-[14px] mb-2 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-[#004274]" />
+                Que es pagar al contado?
               </h4>
-              <p className="text-sm text-gray-600">
-                Pagas el precio completo de la casa por transferencia bancaria. El título se transfiere
+              <p className="text-[13px] text-[#484848]">
+                Pagas el precio completo de la casa por transferencia bancaria. El titulo se transfiere
                 directamente a tu nombre y la casa es tuya inmediatamente.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-navy-900 mb-2 flex items-center gap-2">
-                <Key className="w-4 h-4 text-orange-500" />
-                ¿Qué es Rent-to-Own?
+              <h4 className="font-semibold text-[#222] text-[14px] mb-2 flex items-center gap-2">
+                <Key className="w-4 h-4 text-[#004274]" />
+                Que es Rent-to-Own?
               </h4>
-              <p className="text-sm text-gray-600">
-                Es un programa donde rentas la casa con la opción de comprarla. Haces pagos 
+              <p className="text-[13px] text-[#484848]">
+                Es un programa donde rentas la casa con la opcion de comprarla. Haces pagos
                 mensuales y al final del plazo acordado, la casa pasa a ser tuya.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-navy-900 mb-2 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-500" />
-                ¿Cuánto tiempo tarda el proceso RTO?
+              <h4 className="font-semibold text-[#222] text-[14px] mb-2 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#004274]" />
+                Cuanto tiempo tarda el proceso RTO?
               </h4>
-              <p className="text-sm text-gray-600">
-                Después de enviar tu solicitud, nuestro equipo de Maninos Homes la revisa 
-                en 24-48 horas. Si es aprobada, puedes mudarte rápidamente.
+              <p className="text-[13px] text-[#484848]">
+                Despues de enviar tu solicitud, nuestro equipo de Maninos Homes la revisa
+                en 24-48 horas. Si es aprobada, puedes mudarte rapidamente.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-navy-900 mb-2 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-green-500" />
-                ¿Es seguro?
+              <h4 className="font-semibold text-[#222] text-[14px] mb-2 flex items-center gap-2">
+                <Shield className="w-4 h-4 text-[#004274]" />
+                Es seguro?
               </h4>
-              <p className="text-sm text-gray-600">
-                Sí. Todos los pagos se procesan de forma segura. Los contratos están protegidos 
+              <p className="text-[13px] text-[#484848]">
+                Si. Todos los pagos se procesan de forma segura. Los contratos estan protegidos
                 por las leyes del estado de Texas.
               </p>
             </div>
@@ -533,4 +533,3 @@ export default function PaymentMethodPage() {
     </div>
   )
 }
-

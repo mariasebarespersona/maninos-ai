@@ -358,47 +358,49 @@ def send_rto_application_email(
 ) -> dict:
     """Send RTO application confirmation email to client."""
     try:
-        html = f"""
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-            <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 30px; text-align: center;">
-                <h1 style="color: white; margin: 0; font-size: 24px;">🏠 Solicitud Rent-to-Own Recibida</h1>
-            </div>
-            <div style="padding: 30px;">
-                <p style="font-size: 16px; color: #333;">Hola <strong>{client_name}</strong>,</p>
-                <p style="color: #555; line-height: 1.6;">
-                    Hemos recibido tu solicitud de <strong>Rent-to-Own</strong> para la siguiente propiedad:
-                </p>
-                <div style="background: #fff7ed; border-left: 4px solid #f97316; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                    <p style="margin: 0; font-weight: bold; color: #1e3a5f;">{property_address}</p>
-                    <p style="margin: 5px 0 0; color: #666;">{property_city}</p>
-                    <p style="margin: 5px 0 0; font-size: 20px; color: #f97316; font-weight: bold;">${sale_price:,.0f}</p>
-                </div>
-                <h3 style="color: #1e3a5f;">¿Qué sigue?</h3>
-                <ol style="color: #555; line-height: 1.8;">
-                    <li><strong>Revisión de solicitud</strong> — Nuestro equipo de Maninos Homes revisará tu aplicación</li>
-                    <li><strong>Contacto</strong> — Te contactaremos dentro de 24-48 horas hábiles</li>
-                    <li><strong>Documentación</strong> — Te pediremos información adicional para evaluar tu solicitud</li>
-                    <li><strong>Aprobación</strong> — Si todo está en orden, procederemos con el contrato RTO</li>
-                </ol>
-                <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 0; color: #1e40af; font-size: 14px;">
-                        💡 <strong>¿Qué es Rent-to-Own?</strong><br>
-                        Es un programa donde rentas la casa con opción a compra. Parte de tu renta se aplica al precio final.
-                        Al terminar el plazo, la casa es tuya.
-                    </p>
-                </div>
-                <p style="color: #555;">
-                    Si tienes preguntas, no dudes en contactarnos al <strong>{COMPANY_PHONE}</strong>.
-                </p>
-            </div>
-            <div style="background: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
-                <p style="margin: 0; color: #94a3b8; font-size: 12px;">© {datetime.now().year} {COMPANY_NAME} LLC</p>
-            </div>
+        content = f"""
+    <div class="header">
+        <h1>Solicitud Rent-to-Own Recibida</h1>
+        <p>Tu solicitud ha sido registrada exitosamente</p>
+    </div>
+    <div class="body">
+        <p>Hola <strong>{client_name}</strong>,</p>
+        <p>Hemos recibido tu solicitud de <strong>Rent-to-Own</strong> para la siguiente propiedad:</p>
+
+        <div class="highlight">
+            <p style="margin: 0; font-weight: bold; color: #1e3a5f;">{property_address}</p>
+            <p style="margin: 5px 0 0; color: #666;">{property_city}</p>
+            <p style="margin: 5px 0 0; font-size: 20px; color: #c9a227; font-weight: bold;">${sale_price:,.0f}</p>
         </div>
+
+        <h3 style="color: #1e3a5f;">¿Qué sigue?</h3>
+        <ol>
+            <li><strong>Revisión de solicitud</strong> — Nuestro equipo de Maninos Homes revisará tu aplicación</li>
+            <li><strong>Contacto</strong> — Te contactaremos dentro de 24-48 horas hábiles</li>
+            <li><strong>Documentación</strong> — Te pediremos información adicional para evaluar tu solicitud</li>
+            <li><strong>Aprobación</strong> — Si todo está en orden, procederemos con el contrato RTO</li>
+        </ol>
+
+        <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; color: #1e3a5f; font-size: 14px;">
+                <strong>¿Qué es Rent-to-Own?</strong><br>
+                Es un programa donde rentas la casa con opción a compra. Parte de tu renta se aplica al precio final.
+                Al terminar el plazo, la casa es tuya.
+            </p>
+        </div>
+
+        <center>
+            <a href="{APP_URL}/clientes/mi-cuenta" class="btn">Ver Mi Cuenta</a>
+        </center>
+
+        <hr class="divider">
+        <p>Si tienes preguntas, no dudes en contactarnos al <strong>{COMPANY_PHONE}</strong>.</p>
+    </div>
         """
+        html = _base_template(content)
         result = send_email(
             to=[client_email],
-            subject="🏠 Solicitud Rent-to-Own Recibida - Maninos Homes",
+            subject="Solicitud Rent-to-Own Recibida - Maninos Homes",
             html=html,
         )
         logger.info(f"[email_service] RTO application email sent to {client_email}")
