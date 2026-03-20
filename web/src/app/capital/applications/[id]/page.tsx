@@ -1827,16 +1827,98 @@ export default function ApplicationDetailPage() {
                 </div>
               )}
 
-              {/* Already approved */}
+              {/* Already approved — show contract status + editable fields */}
               {app.status === 'approved' && (
-                <div className="card-luxury p-5 text-center space-y-3" style={{ backgroundColor: 'var(--success-light)' }}>
-                  <CheckCircle2 className="w-8 h-8 mx-auto" style={{ color: 'var(--success)' }} />
-                  <p className="font-semibold" style={{ color: 'var(--success)' }}>Cliente aprobado para Rent-to-Own</p>
-                  <Link href="/capital/contracts"
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
-                    style={{ backgroundColor: 'var(--gold-700)' }}>
-                    <FileSignature className="w-4 h-4" /> Ir a Generar Contrato
-                  </Link>
+                <div className="card-luxury p-5 space-y-4" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--success)' }} />
+                      <div>
+                        <p className="font-semibold" style={{ color: 'var(--success)' }}>Cliente aprobado para Rent-to-Own</p>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                          Contrato: {app.sales?.rto_contract_id ? 'Pendiente de firma del cliente' : 'Generándose...'}
+                        </p>
+                      </div>
+                    </div>
+                    <Link href="/capital/contracts"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                      style={{ backgroundColor: 'var(--gold-700)' }}>
+                      <FileSignature className="w-4 h-4" /> Ver Contrato
+                    </Link>
+                  </div>
+
+                  {/* Editable contract fields (only while pending_signature) */}
+                  {app.sales?.rto_contract_id && (
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--ash)' }}>
+                        Editar términos del contrato (antes de la firma del cliente)
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Mensualidad ($)</label>
+                          <input type="number" defaultValue={app.sales?.rto_monthly_payment || ''} id="edit-monthly"
+                            className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                        </div>
+                        <div>
+                          <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Plazo (meses)</label>
+                          <input type="number" defaultValue={app.sales?.rto_term_months || ''} id="edit-term"
+                            className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                        </div>
+                        <div>
+                          <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Enganche ($)</label>
+                          <input type="number" defaultValue={app.sales?.rto_down_payment || ''} id="edit-dp"
+                            className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                        </div>
+                        <div>
+                          <label className="text-xs mb-1 block" style={{ color: 'var(--ash)' }}>Fecha inicio</label>
+                          <input type="date" defaultValue={new Date().toISOString().split('T')[0]} id="edit-start"
+                            className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const monthly = (document.getElementById('edit-monthly') as HTMLInputElement)?.value
+                          const term = (document.getElementById('edit-term') as HTMLInputElement)?.value
+                          const dp = (document.getElementById('edit-dp') as HTMLInputElement)?.value
+                          const start = (document.getElementById('edit-start') as HTMLInputElement)?.value
+                          try {
+                            const res = await fetch(`/api/capital/contracts/${app.sales?.rto_contract_id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                monthly_rent: monthly ? parseFloat(monthly) : undefined,
+                                term_months: term ? parseInt(term) : undefined,
+                                down_payment: dp ? parseFloat(dp) : undefined,
+                                start_date: start || undefined,
+                              }),
+                            })
+                            const data = await res.json()
+                            if (data.ok) {
+                              toast.success('Contrato actualizado')
+                              // Also update sale terms
+                              await fetch(`/api/capital/applications/${id}/review`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  status: 'approved',
+                                  monthly_rent: monthly ? parseFloat(monthly) : undefined,
+                                  term_months: term ? parseInt(term) : undefined,
+                                  down_payment: dp ? parseFloat(dp) : undefined,
+                                  reviewed_by: 'admin',
+                                }),
+                              })
+                            } else {
+                              toast.error(data.detail || 'Error al actualizar')
+                            }
+                          } catch { toast.error('Error de conexión') }
+                        }}
+                        className="mt-3 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                        style={{ backgroundColor: 'var(--gold-700)' }}
+                      >
+                        Guardar Cambios
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
