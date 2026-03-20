@@ -286,6 +286,28 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
     # Send notification to treasury (Abigail)
     _send_approved_notification(property_id, reno.get("total_cost", 0))
 
+    # Create payment order so Abigail can execute the payment
+    try:
+        prop = sb.table("properties").select("address").eq("id", property_id).execute()
+        prop_address = prop.data[0].get("address", "") if prop.data else property_id
+        responsable = materials.get("responsable", "")
+
+        sb.table("payment_orders").insert({
+            "property_id": property_id,
+            "property_address": prop_address,
+            "payee_name": responsable or "Contratista renovación",
+            "amount": reno.get("total_cost", 0),
+            "method": "transferencia",
+            "status": "approved",
+            "notes": f"Cotización de renovación aprobada. Responsable: {responsable}",
+            "approved_by": (data.approved_by if data else None) or "admin",
+            "approved_at": _now_iso(),
+            "created_by": "sistema_renovacion",
+        }).execute()
+        logger.info(f"[renovation] Payment order created for approved renovation {property_id}")
+    except Exception as e:
+        logger.warning(f"[renovation] Failed to create payment order: {e}")
+
     logger.info(f"[renovation] Quote approved for {property_id} by {materials.get('approved_by', 'unknown')}")
 
     return {
