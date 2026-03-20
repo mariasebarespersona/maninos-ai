@@ -265,6 +265,35 @@ async def test_facebook_scrape():
 
         if listings:
             rm["sample"] = [{"title": l.title[:80], "price": l.price, "url": l.url} for l in listings[:3]]
+
+        # Deep pattern search: find what format Facebook actually uses
+        # Look for listing titles and their surrounding data
+        title_matches = re.findall(r'"marketplace_listing_title":"([^"]{5,80})"', response.text)
+        rm["titles_found"] = len(title_matches)
+        if title_matches:
+            rm["title_samples"] = title_matches[:5]
+
+        # Find the pattern around a title to understand the data structure
+        if title_matches:
+            first_title = title_matches[0]
+            idx = response.text.find(first_title)
+            if idx > 0:
+                # Get a wide context around the first listing
+                context = response.text[max(0, idx-1000):idx+1000]
+                # Extract all key-value pairs from this context
+                kv_pairs = re.findall(r'"(\w+)":\s*"?([^",}{]{1,100})"?', context)
+                rm["listing_context_keys"] = list(set([k for k, v in kv_pairs]))[:30]
+                rm["listing_context_snippet"] = context[:600]
+
+                # Look for ID and price near the title
+                id_near = re.findall(r'"id":"(\d+)"', context)
+                price_near = re.findall(r'"formatted_amount":\{[^}]*"text":"([^"]+)"', context)
+                price_near2 = re.findall(r'"listing_price":\{[^}]*"amount":"?(\d+)"?', context)
+                price_near3 = re.findall(r'\$[\d,]+', context)
+                rm["ids_near_title"] = id_near[:5]
+                rm["prices_formatted"] = price_near[:5]
+                rm["prices_amount"] = price_near2[:5]
+                rm["prices_dollar"] = price_near3[:5]
         
     except Exception as e:
         diagnostics["requests_method"]["error"] = f"{type(e).__name__}: {e}"
