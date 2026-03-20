@@ -450,7 +450,16 @@ async def initiate_rto(request: RTOInitRequest):
                 send_welcome_email(request.client_email, request.client_name)
             except Exception as email_err:
                 logger.warning(f"Failed to send welcome email: {email_err}")
-        
+
+        # Reset KYC for new RTO application — client must re-verify
+        sb.table("clients").update({
+            "kyc_verified": False,
+            "kyc_status": "unverified",
+            "kyc_requested": False,
+            "kyc_verified_at": None,
+            "kyc_failure_reason": None,
+        }).eq("id", client_id).execute()
+
         # 3. Check if there's ANY active sale for this property (from any client)
         active_sale_statuses = ["pending", "transfer_reported", "paid", "rto_pending", "rto_approved", "rto_active"]
         existing_any_sale = sb.table("sales") \

@@ -72,6 +72,14 @@ const navigationSections: NavSection[] = [
   },
 ]
 
+const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian']
+
+function isCapitalAuthorized(email?: string | null): boolean {
+  if (!email) return false
+  const lower = email.toLowerCase()
+  return CAPITAL_ALLOWED_PATTERNS.some(name => lower.includes(name))
+}
+
 export default function CapitalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -79,6 +87,40 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
   const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // Allow the login page to render without auth checks
+  const isLoginPage = pathname === '/capital/login'
+
+  // Redirect unauthorized users to /capital/login
+  React.useEffect(() => {
+    if (isLoginPage || authLoading) return
+    if (!user) {
+      router.replace('/capital/login')
+      return
+    }
+    if (!isCapitalAuthorized(user.email)) {
+      router.replace('/capital/login')
+    }
+  }, [user, authLoading, isLoginPage, router])
+
+  // Render login page without sidebar
+  if (isLoginPage) {
+    return <>{children}</>
+  }
+
+  // Show nothing while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ivory)' }}>
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--gold-600)' }} />
+      </div>
+    )
+  }
+
+  // Block rendering if not authorized
+  if (!user || !isCapitalAuthorized(user.email)) {
+    return null
+  }
 
   const isActive = (href: string) => {
     if (href === '/capital') return pathname === '/capital'
@@ -90,7 +132,7 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
     try {
       await signOut()
       toast.success('Sesión cerrada')
-      router.push('/login')
+      router.push('/capital/login')
     } catch (error) {
       toast.error('Error al cerrar sesión')
       console.error(error)

@@ -921,13 +921,6 @@ export default function ApplicationDetailPage() {
                 {kycRequested ? 'Re-solicitar Documentos' : 'Solicitar Verificación'}
               </button>
             )}
-            {!kycVerified && (
-              <button onClick={handleManualVerify} disabled={kycLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium"
-                style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)', opacity: kycLoading ? 0.6 : 1 }}>
-                Verificar Manual
-              </button>
-            )}
           </div>
         </div>
 

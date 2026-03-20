@@ -55,10 +55,6 @@ function getNavForRole(role?: string): NavItem[] {
   return allNavigation
 }
 
-const externalLinks = [
-  { name: 'Portal Capital →', href: '/capital', icon: DollarSign },
-]
-
 export default function HomesLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -194,17 +190,6 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
               </Link>
             )
           })}
-          
-          {/* Divider + Capital Link */}
-          <div className="pt-3 mt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
-            <Link
-              href="/capital"
-              className="flex items-center gap-3 px-4 py-3 rounded-md font-medium transition-colors text-slate hover:text-charcoal hover:bg-gold-100/50"
-            >
-              <Building2 className="w-5 h-5" strokeWidth={1.75} style={{ color: 'var(--gold-600)' }} />
-              <span className="text-base">Portal Capital →</span>
-            </Link>
-          </div>
         </nav>
 
         {/* User section */}
