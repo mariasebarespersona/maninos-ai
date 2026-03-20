@@ -68,7 +68,6 @@ const navigationSections: NavSection[] = [
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
       { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
-      { name: 'Flujo Capital', href: '/capital/flows', icon: ArrowRightLeft },
     ],
   },
 ]
@@ -349,7 +348,6 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     payments: 'Pagos',
     investors: 'Seguimiento',
     'promissory-notes': 'Promissory Notes',
-    flows: 'Flujo Capital',
     reports: 'Reportes',
     accounting: 'Contabilidad',
     kpis: 'KPIs',
