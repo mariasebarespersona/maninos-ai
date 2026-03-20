@@ -301,10 +301,11 @@ async def update_contract(contract_id: str, data: ContractUpdate):
         if not contract.data:
             raise HTTPException(status_code=404, detail="Contrato no encontrado")
         
-        if contract.data["status"] not in ("draft", "pending_signature"):
+        # Allow editing in any non-terminal status
+        if contract.data["status"] in ("completed", "delivered", "terminated"):
             raise HTTPException(
                 status_code=400,
-                detail="Solo se puede editar contratos en borrador o pendientes de firma"
+                detail="No se puede editar un contrato completado, entregado o terminado"
             )
         
         update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}

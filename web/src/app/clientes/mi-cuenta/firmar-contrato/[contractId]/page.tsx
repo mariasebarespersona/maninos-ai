@@ -280,16 +280,23 @@ export default function SignContractPage() {
                   />
                 </div>
 
-                <label className="flex items-start gap-3 cursor-pointer select-none">
+                <label className={`flex items-start gap-3 cursor-pointer select-none p-4 rounded-xl border-2 transition-colors ${
+                  accepted ? 'border-[#004274] bg-blue-50' : 'border-red-300 bg-red-50'
+                }`}>
                   <input
                     type="checkbox"
                     checked={accepted}
                     onChange={(e) => setAccepted(e.target.checked)}
-                    className="mt-0.5 w-5 h-5 rounded border-gray-300 text-[#004274] focus:ring-[#004274] accent-[#004274]"
+                    className="mt-0.5 w-5 h-5 rounded border-gray-300 text-[#004274] focus:ring-[#004274] accent-[#004274] flex-shrink-0"
                   />
-                  <span className="text-[13px] text-[#484848] leading-relaxed">
-                    He leido y acepto los terminos del contrato de Rent-to-Own. Entiendo que al firmar me comprometo a realizar los pagos mensuales segun lo establecido.
-                  </span>
+                  <div>
+                    <span className={`text-[13px] leading-relaxed font-medium ${accepted ? 'text-[#004274]' : 'text-red-700'}`}>
+                      {accepted ? '' : '(Obligatorio) '}He leido y acepto los terminos del contrato de Rent-to-Own.
+                    </span>
+                    <span className="text-[12px] text-[#717171] block mt-1">
+                      Entiendo que al firmar me comprometo a realizar los pagos mensuales segun lo establecido en este contrato.
+                    </span>
+                  </div>
                 </label>
 
                 <button
