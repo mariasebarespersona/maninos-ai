@@ -87,11 +87,11 @@ export default function NotificacionesPage() {
   // Approval state
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
-  // Default tab based on role
+  // Default tab based on role (admin sees pending first, pure treasury sees approved)
   useEffect(() => {
-    if (isTreasury) setActiveTab('approved')
+    if (isTreasury && !isAdmin) setActiveTab('approved')
     else setActiveTab('pending')
-  }, [isTreasury])
+  }, [isTreasury, isAdmin])
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
