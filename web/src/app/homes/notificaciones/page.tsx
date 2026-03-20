@@ -59,7 +59,7 @@ export default function NotificacionesPage() {
   const { teamUser } = useAuth()
   const userRole = teamUser?.role || 'admin'
   const isAdmin = userRole === 'admin'
-  const isTreasury = userRole === 'treasury'
+  const isTreasury = userRole === 'treasury' || userRole === 'admin'
 
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [loading, setLoading] = useState(true)
