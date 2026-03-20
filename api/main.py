@@ -23,6 +23,7 @@ from api.routes.evaluations import router as evaluations_router
 from api.routes.accounting import router as accounting_router
 from api.routes.moves import router as moves_router
 from api.routes.payment_orders import router as payment_orders_router
+from api.routes.facebook_auth import router as facebook_router
 
 # Agents
 from api.agents.router import router as agents_router
@@ -120,6 +121,7 @@ app.include_router(portal_links_router, prefix="/api/portal-links", tags=["Porta
 app.include_router(accounting_router, prefix="/api/accounting", tags=["Accounting"])
 app.include_router(moves_router, prefix="/api/moves", tags=["Moves"])
 app.include_router(payment_orders_router, prefix="/api/payment-orders", tags=["Payment Orders"])
+app.include_router(facebook_router, prefix="/api/facebook", tags=["Facebook"])
 
 # Agents (CostosAgent, PrecioAgent, etc.)
 app.include_router(agents_router, tags=["Agents"])
