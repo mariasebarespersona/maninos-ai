@@ -30,7 +30,7 @@ export const HOMES_MAIN_TOUR: Step[] = [
   },
   {
     target: 'a[href="/homes/market"]',
-    content: 'Busca casas en 5 fuentes automáticamente: MHVillage, VMF Homes, 21st Mortgage, Craigslist y Facebook Marketplace. Aplica la regla del 60% para identificar oportunidades de compra. Puedes conectar Facebook importando cookies.',
+    content: 'Busca casas en 5 fuentes automáticamente: MHVillage, VMF Homes, 21st Mortgage, Craigslist y Facebook Marketplace. Puedes conectar Facebook importando cookies desde tu navegador.',
     title: 'Casas del Mercado',
     placement: 'right',
   },
@@ -48,7 +48,7 @@ export const HOMES_MAIN_TOUR: Step[] = [
   },
   {
     target: 'a[href="/homes/sales"]',
-    content: 'Registro de ventas al contado y RTO. Incluye seguimiento de transferencias bancarias, confirmación de pagos, desglose de comisiones y documentos por venta.',
+    content: 'Registro de ventas al contado. Incluye seguimiento de transferencias bancarias, confirmación de pagos, desglose de comisiones y documentos por venta. Las ventas RTO se gestionan desde Capital.',
     title: 'Ventas',
     placement: 'right',
   },
@@ -60,7 +60,7 @@ export const HOMES_MAIN_TOUR: Step[] = [
   },
   {
     target: 'a[href="/homes/transfers"]',
-    content: 'Dos funciones: (1) Monitoreo de títulos con TDHCA — alerta automática cuando cambia el nombre del título. (2) Gestión de documentos de compra y venta: Bill of Sale, Título, Aplicación de título.',
+    content: 'Monitoreo de títulos con integración TDHCA (Texas). Verifica automáticamente si el nombre del título ha cambiado y envía alertas. También gestiona los documentos de cada transferencia.',
     title: 'Títulos',
     placement: 'right',
   },
@@ -113,8 +113,8 @@ export const HOMES_PAGE_TOURS: Record<string, Step[]> = {
   '/homes/transfers': [
     {
       target: 'body',
-      content: 'Dos pestañas: "Monitoreo" revisa automáticamente en TDHCA si el nombre del título ha cambiado. "Documentos" gestiona los papers de cada compra/venta: Bill of Sale, Título y Aplicación.',
-      title: 'Títulos y Documentos',
+      content: 'Monitoreo automático de títulos con TDHCA. Verifica si el nombre del título ha cambiado y te avisa. Gestiona los documentos de cada transferencia de propiedad.',
+      title: 'Títulos',
       disableBeacon: true,
       placement: 'center',
     },
@@ -131,7 +131,7 @@ export const HOMES_PAGE_TOURS: Record<string, Step[]> = {
   '/homes/sales': [
     {
       target: 'body',
-      content: 'Registro de ventas. Cada venta muestra tipo (Contado/RTO), precio, estado, datos bancarios del comprador, y desglose de comisiones. Las ventas RTO se gestionan en detalle desde Capital.',
+      content: 'Registro de ventas al contado. Cada venta muestra precio, estado, datos bancarios del comprador, y desglose de comisiones. Las ventas RTO se gestionan desde Capital.',
       title: 'Ventas',
       disableBeacon: true,
       placement: 'center',
