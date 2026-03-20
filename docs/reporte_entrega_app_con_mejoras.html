@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Reporte Entrega V5</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Reporte Entrega V5</h1>
+</header>
+<h1 id="maninos-ai-platform-reporte-de-entrega-con-mejoras-v5">Maninos
+AI Platform — Reporte de Entrega con Mejoras V5</h1>
+<p><strong>Fecha:</strong> 20 de Marzo, 2026 <strong>Preparado
+para:</strong> Sebastian Zambrano, CEO — Maninos Homes LLC &amp; Maninos
+Capital LLC <strong>Preparado por:</strong> RAMA AI</p>
+<hr />
+<h2 id="links-de-acceso">Links de Acceso</h2>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 21%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Portal</th>
+<th>URL</th>
+<th>Usuarios</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Maninos Homes</strong></td>
+<td>https://maninos-ai.vercel.app/homes</td>
+<td>Empleados (Gabriel, Romario, Abigail)</td>
+</tr>
+<tr>
+<td><strong>Maninos Capital</strong></td>
+<td>https://maninos-ai.vercel.app/capital</td>
+<td>Sebastian, Abigail (acceso restringido)</td>
+</tr>
+<tr>
+<td><strong>Portal Clientes</strong></td>
+<td>https://maninos-ai.vercel.app/clientes</td>
+<td>Clientes publicos</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="resumen-de-mejoras-implementadas">Resumen de Mejoras
+Implementadas</h2>
+<p>Esta version incluye <strong>104+ mejoras</strong> distribuidas en
+los 3 portales. A continuacion el detalle completo organizado por las
+categorias del tracker de desarrollo.</p>
+<hr />
+<h2 id="portal-homes-v2-mejoras-implementadas">PORTAL HOMES V2 — Mejoras
+Implementadas</h2>
+<h3 id="propiedades-y-documentos">Propiedades y Documentos</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Medidas de propiedad en pies cuadrados + largo x ancho</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Todo lo que se escribe en Bill of Sale + Aplicacion se guarda en los
+documentos de cada propiedad</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Relleno automatico de Aplicacion Cambio Titulo con datos del titulo
+(Block 2a, 2b default yes, Block 3 vacio pero siempre NO, Block 4a del
+titulo, Block 6 inventory ticket checked, HUD label + serial number de
+la seccion 1)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>4</td>
+<td>La aplicacion cambio titulo no es compulsory (opcional)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>5</td>
+<td>No dejar poner varias opciones en ticket (Yes or No)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>6</td>
+<td>En “Nueva propiedad” meter todo el proceso de compra (formulario de
+4 pasos: datos + documentos + evaluacion + pago)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="seccion-titulos-nueva">Seccion Titulos (NUEVA)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>7</td>
+<td>Seccion estados de titulos de casas con integracion TDHCA
+(Texas)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Monitoreo automatico: cuando el nombre del titulo cambia en TDHCA,
+se envia alerta a Homes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>9</td>
+<td>El titulo se actualiza automaticamente y se manda mensaje al
+cliente</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Documentos de compra y venta gestionados desde la misma seccion
+(Bill of Sale, Titulo, Aplicacion)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="seccion-notificaciones-nueva">Seccion Notificaciones
+(NUEVA)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>11</td>
+<td>Nueva seccion de notificaciones en Homes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Requisiciones de pago: cuando hace falta pagar algo, le llega a
+Sebastian para aprobar</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Sebastian aprueba, le llega a Abigail para ejecutar el pago</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Abigail solo puede hacer el pago si Sebastian lo ha aprobado
+antes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Para Sebastian: notificacion de check de los pagos por hacer</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Cotizaciones de renovacion pendientes de aprobacion (desde
+Notificaciones)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Transferencias bancarias por confirmar (pagos de clientes al
+contado)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pagos-y-requisiciones">Pagos y Requisiciones</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>18</td>
+<td>Cuando se paga una casa: existing payee or new payee options</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>19</td>
+<td>Requisicion de pago casa, notificacion a Abigail para hacer el pago
+con toda la info</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>20</td>
+<td>Los pagos hechos por Abigail se mandan a contabilidad para la
+conciliacion cuando llegan estados de cuentas</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>21</td>
+<td>En contabilidad, recibos para cada transaccion</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="evaluacion-de-casas">Evaluacion de Casas</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22</td>
+<td>Evaluacion de casa: Reporte con checklist de 28 puntos (cajones mas
+generales)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>23</td>
+<td>Analisis AI de fotos (GPT-4o) para auto-rellenar checklist de
+evaluacion</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>24</td>
+<td>Importacion inteligente de reporte de evaluacion a cotizacion de
+renovacion (GPT-4o-mini)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="contabilidad-homes">Contabilidad Homes</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>25</td>
+<td>Movimientos extra se guardan y concilian una vez se sube un estado
+de cuenta</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>26</td>
+<td>Integrar info en reportes (P&amp;L, Balance General)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>27</td>
+<td>Reportes no modificables (bloqueables por admin)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>28</td>
+<td>Plan de cuentas contables completo</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>29</td>
+<td>Conciliacion bancaria con clasificacion AI de movimientos</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>30</td>
+<td>Presupuestos y gastos fijos recurrentes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>31</td>
+<td>Auditoria de todas las transacciones</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="remodelacion-homes-v5">Remodelacion Homes (V5)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>32</td>
+<td>Integrar feature de voz inteligente (GPT-4o-mini) — funciona en
+movil: “pon en demolicion 500 de materiales y 4 dias”</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>33</td>
+<td>Anadir: dias, Materiales, Persona responsable, gasto mano de obra
+(19 partidas con MO + Materiales separados)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>34</td>
+<td>Anadir sugerencias editables (items personalizados)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>35</td>
+<td>Una vez guardada la info, mandar a Sebastian/manager para aprobar y
+a Abigail (flujo de aprobacion desde Notificaciones)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>36</td>
+<td>Cronograma Gantt visual para planificacion de obra</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>37</td>
+<td>Importacion de reporte de evaluacion, sugerencias automaticas de
+renovacion</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>38</td>
+<td>Sub-campos por partida (ej: tipo de siding, color de pintura, zona
+de pisos)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>39</td>
+<td>Reglas de materiales del negocio integradas</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="movida-de-casa">Movida de Casa</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>40</td>
+<td>Meter numero telefono proveedores de movidas</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>41</td>
+<td>Mandar mensaje WhatsApp al numero del proveedor</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>42</td>
+<td>Meter datos bancos proveedor (la mayoria son efectivo)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>43</td>
+<td>Una vez confirmado todo, mandar orden de pago a Abigail</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="precio-venta-post-remodelacion">Precio Venta Post
+Remodelacion</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>44</td>
+<td>Formula: $9,500 + venta (compra + gastos comision + reparacion +
+movida)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>45</td>
+<td>Prediccion de precio basada en 93 datos historicos reales de Maninos
+(KNN)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="clientes-en-homes">Clientes (en Homes)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>46</td>
+<td>Gestionar documentos a transferir tras venta de casa (Bill of Sale,
+Titulo, Aplicacion)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>47</td>
+<td>Gestionar que se vea reflejado que llegan los pagos</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="comisiones">Comisiones</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>48</td>
+<td>Creacion de cuenta empleados, asignar roles</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>49</td>
+<td>Los roles van ligados a la comision ($1,500 contado / $1,000
+RTO)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>50</td>
+<td>Control de quien puede ver que (restricciones por rol)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>51</td>
+<td>Ranking de empleados por comisiones del mes</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="whatsapp-y-acceso">WhatsApp y Acceso</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>52</td>
+<td>WhatsApp flyer casas, compartir propiedades con texto + imagen</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>53</td>
+<td>Poner restricciones de acceso en la app (roles: admin, operations,
+treasury, yard_manager)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scraping-casas-del-mercado">Scraping Casas del Mercado</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>54</td>
+<td>Scraping automatico de 5 fuentes: MHVillage, VMF Homes, 21st
+Mortgage, Craigslist, Facebook Marketplace</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>55</td>
+<td>Regla del 60% para identificar oportunidades de compra</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>56</td>
+<td>Conexion con Facebook Marketplace via importacion de cookies</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>57</td>
+<td>Calificacion automatica de casas (precio, zona 200mi Houston/Dallas,
+tipo)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="portal-clientes-v2-mejoras-implementadas">PORTAL CLIENTES V2 —
+Mejoras Implementadas</h2>
+<h3 id="compra-al-contado">Compra al Contado</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>58</td>
+<td>Clientes que pagan al contado: Pagar por transferencia bancaria, se
+ofrece info bancaria de Maninos</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>59</td>
+<td>Clientes pagan contado: que les aparezcan los documentos Bill of
+Sale, Titulo, Aplicacion Cambio Titulo</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>60</td>
+<td>Bill of Sale viene con la info del cliente auto-rellenada</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>61</td>
+<td>Mandar email clientes al contado: Venta casa email + documentos</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>62</td>
+<td>Opcion de enviar comprobante de transferencia por WhatsApp</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="compra-rto-rent-to-own">Compra RTO (Rent-to-Own)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>63</td>
+<td>Flujo RTO visual de 4 pasos: Verificar identidad, Solicitud de
+credito, Firmar contrato, Pagos mensuales</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>64</td>
+<td>Verificacion de identidad: cliente sube foto ID + selfie desde su
+cuenta</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>65</td>
+<td>Solicitud de credito de 9 secciones (formato profesional basado en
+HUD 56001-MH): informacion personal, historial vivienda, empleo, otras
+fuentes de ingreso, propiedades, deudas, referencias, historial legal,
+contacto emergencia</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>66</td>
+<td>Pregunta clave: Es propietario de mas casas? Informacion muy
+importante</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>67</td>
+<td>Pregunta clave: Tiene otros ingresos? (SSI, SSDI, VA, child support,
+segundo trabajo, negocio propio)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>68</td>
+<td>La aplicacion cambio de titulo a rellenar por cliente (desde su
+portal)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>69</td>
+<td>Mostrar saldo pendiente en personas RTO (en Mi Cuenta)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>70</td>
+<td>Firma digital de contrato: el cliente firma desde su portal (nombre
++ aceptacion de terminos obligatoria)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>71</td>
+<td>Maninos firma automaticamente (Sebastian Zambrano, Maninos Capital
+LLC)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>72</td>
+<td>PDF del contrato generado con ambas firmas y fecha</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>73</td>
+<td>Simulador RTO: quitar intereses + total a pagar (el cliente solo ve
+mensualidad, no interes)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>74</td>
+<td>Simulador RTO minimo 30% enganche (pero sugerido 50%)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="emails-automaticos-al-cliente">Emails Automaticos al
+Cliente</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>75</td>
+<td>Email de confirmacion de solicitud RTO</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>76</td>
+<td>Email cuando el contrato esta listo para firmar (con link
+directo)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>77</td>
+<td>Mandar email cliente al finalizar RTO con sus documentos</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>78</td>
+<td>Emails de recordatorio de pagos mensuales</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>79</td>
+<td>Emails de pagos atrasados</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>80</td>
+<td>Mandar email cliente con opciones post compra casa RTO</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="diseno-y-ux">Diseno y UX</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>81</td>
+<td>Diseno unificado navy/blue estilo Airbnb en todo el portal
+(eliminado naranja/verde anterior)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>82</td>
+<td>Tutoriales interactivos paso a paso en cada portal</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="portal-capital-v2-mejoras-implementadas">PORTAL CAPITAL V2 —
+Mejoras Implementadas</h2>
+<h3 id="solicitudes-y-aprobacion-rto">Solicitudes y Aprobacion RTO</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>83</td>
+<td>Pagos clientes RTO llegan a Capital: Abi registra con toda la
+info</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>84</td>
+<td>Esos pagos se concilian con estados de cuenta</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>85</td>
+<td>Los pagos se meten en reportes automaticamente</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>86</td>
+<td>Verificacion de identidad (KYC): solicitar, cliente sube documentos,
+revisar fotos, aprobar/rechazar</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>87</td>
+<td>Solicitud de credito de 9 secciones visible en read-only + plantilla
+vacia de referencia</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="calculo-personalizado-de-mensualidad-rto-nuevo">Calculo
+Personalizado de Mensualidad RTO (NUEVO)</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>88</td>
+<td>Algoritmo personalizado basado en 6 inputs: renta actual, valor
+casa, plazo, down payment, valor futuro, rendimiento</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>89</td>
+<td>Precio Inteligente: ancla la mensualidad a la renta actual del
+cliente (el cliente ahorra 10% vs su renta, Maninos captura la
+diferencia)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>90</td>
+<td>Prediccion de valor futuro de la casa (modelo KNN con 93 datos
+historicos + depreciacion 3.5% anual)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>91</td>
+<td>4 escenarios comparativos (24, 36, 48, 60 meses) con ROI, DTI, y
+asequibilidad</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>92</td>
+<td>Tope justo: total que paga el cliente nunca supera 2x el precio de
+venta</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>93</td>
+<td>Quitar tabla amortizacion (el cliente solo ve mensualidad)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="estados-financieros-y-contabilidad">Estados Financieros y
+Contabilidad</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>94</td>
+<td>Estados financieros no editables (bloqueables)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>95</td>
+<td>En estado de cuenta: montos se pueden dividir</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>96</td>
+<td>Abi puede anadir descripciones a movimientos</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>97</td>
+<td>Abi puede anadir notas a descripciones existentes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>98</td>
+<td>Contabilidad de Capital separada de Homes</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>99</td>
+<td>Reconciliacion bancaria con clasificacion AI</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="down-payment-e-inversores">Down Payment e Inversores</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>100</td>
+<td>Hacer el down payment divisible (pagos fraccionados del
+enganche)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>101</td>
+<td>Promissory Notes: vencimiento 3 meses antes, alerta automatica a
+Capital</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>102</td>
+<td>Seguimiento de inversores con dashboard de capital
+captado/invertido/disponible</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>103</td>
+<td>KPIs financieros de Capital en el dashboard</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceso-y-seguridad">Acceso y Seguridad</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 42%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Mejora</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>104</td>
+<td>Login separado para Capital (solo Sebastian y Abigail)</td>
+<td>Implementado</td>
+</tr>
+<tr>
+<td>105</td>
+<td>Portal Capital no accesible desde Homes (separacion completa)</td>
+<td>Implementado</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="logicas-de-negocio-principales">Logicas de Negocio
+Principales</h2>
+<h3 id="logica-de-titulos">Logica de Titulos</h3>
+<ol type="1">
+<li>Informacion del titulo directamente en la aplicacion (integracion
+TDHCA Texas)</li>
+<li>Relleno automatico de la Aplicacion de Cambio de Titulo con datos
+reales del TDHCA</li>
+<li>Cuando el nombre del titulo cambia, alerta automatica a Homes</li>
+<li>Si la casa se vende, alerta al cliente con sus documentos</li>
+</ol>
+<h3 id="logica-de-requisiciones-payment-orders">Logica de Requisiciones
+(Payment Orders)</h3>
+<ol type="1">
+<li>Cada vez que hace falta hacer un pago, se genera requisicion</li>
+<li>Le llega a <strong>Sebastian</strong> para aprobar desde
+Notificaciones</li>
+<li>Le llega a <strong>Abigail</strong> para ejecutar el pago</li>
+<li>Una vez ejecutada y confirmada por Abigail, se manda a
+Contabilidad</li>
+<li>Se guarda hasta que llega estado de cuenta, conciliacion de
+movimientos</li>
+<li>Una vez los movimientos conciliados y confirmados por Abigail, se
+anaden automaticamente las cuentas contables</li>
+<li>Una vez confirmado, se manda a los estados financieros donde se
+generan los reportes</li>
+</ol>
+<h3 id="logica-de-pagos-casas-mensualidades">Logica de Pagos (Casas +
+Mensualidades)</h3>
+<ol type="1">
+<li>Un cliente confirma que ha hecho el pago, le llega a Abigail</li>
+<li>Abigail confirma que el pago se ha recibido desde Homes o
+Capital</li>
+<li>La info de los pagos se manda a Contabilidad (Homes o Capital segun
+corresponda)</li>
+<li>Al cliente se le actualizan los pagos pendientes en su cuenta</li>
+<li>Una vez se termine de pagar la casa, se transfieren los documentos:
+Bill of Sale, Titulo y Aplicacion Titulo al cliente</li>
+<li>Una vez se cambia el nombre en el titulo, le llega al cliente un
+email de alerta</li>
+</ol>
+<h3 id="logica-rto-completa-end-to-end">Logica RTO Completa
+(End-to-End)</h3>
+<ol type="1">
+<li>Cliente selecciona casa en el catalogo, elige RTO</li>
+<li>Capital solicita verificacion de identidad, cliente sube ID +
+selfie</li>
+<li>Capital revisa documentos, aprueba o rechaza identidad</li>
+<li>Cliente completa solicitud de credito de 9 secciones</li>
+<li>Capital calcula mensualidad inteligente (Precio Inteligente vs
+Estandar)</li>
+<li>Capital aprueba, contrato se genera con firma automatica de
+Sebastian</li>
+<li>Email al cliente con link para firmar</li>
+<li>Cliente firma desde su portal</li>
+<li>Contrato activo, se generan pagos mensuales</li>
+<li>Recordatorios automaticos de pago por email</li>
+<li>Late fees automaticos ($15/dia tras 5 dias de gracia)</li>
+<li>Al completar todos los pagos, documentos transferidos al
+cliente</li>
+</ol>
+<hr />
+<h2 id="stack-tecnico">Stack Tecnico</h2>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 64%" />
+</colgroup>
+<thead>
+<tr>
+<th>Capa</th>
+<th>Tecnologia</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backend</td>
+<td>Python 3.12, FastAPI, Supabase (PostgreSQL)</td>
+</tr>
+<tr>
+<td>Frontend</td>
+<td>Next.js 14, TypeScript, Tailwind CSS</td>
+</tr>
+<tr>
+<td>AI/LLM</td>
+<td>OpenAI GPT-4o (fotos, evaluacion) + GPT-4o-mini (voz, importacion,
+parsing)</td>
+</tr>
+<tr>
+<td>Scraping</td>
+<td>Playwright + BeautifulSoup (MHVillage, Craigslist, Facebook)</td>
+</tr>
+<tr>
+<td>Emails</td>
+<td>Resend (transaccionales con templates de marca)</td>
+</tr>
+<tr>
+<td>PDFs</td>
+<td>ReportLab (contratos, Bill of Sale, Titulo, reportes
+financieros)</td>
+</tr>
+<tr>
+<td>Deploy</td>
+<td>Railway (API Docker) + Vercel (Frontend)</td>
+</tr>
+<tr>
+<td>Auth</td>
+<td>Supabase Auth (empleados + clientes separados)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Reporte generado automaticamente. Para preguntas o soporte,
+contactar a RAMA AI.</em></p>
+</body>
+</html>
