@@ -190,7 +190,7 @@ async def review_application(application_id: str, review: ApplicationReview):
                     # Auto-sign by Maninos and set to pending_signature
                     sb.table("rto_contracts").update({
                         "status": "pending_signature",
-                        "signed_by_company": "Sebastian Sebares, Maninos Capital LLC",
+                        "signed_by_company": "Sebastian Zambrano, Maninos Capital LLC",
                     }).eq("id", new_contract_id).execute()
 
                     # Send signing email to client (in background thread to avoid timeout)

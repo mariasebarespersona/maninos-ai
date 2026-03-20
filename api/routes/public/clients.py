@@ -1225,7 +1225,7 @@ async def sign_contract(client_id: str, contract_id: str, request: Request):
         from api.routes.capital.contracts import activate_contract, ContractActivate
         activation_data = ContractActivate(
             signed_by_client=signed_name,
-            signed_by_company=contract.data.get("signed_by_company") or "Sebastian Sebares, Maninos Capital LLC",
+            signed_by_company=contract.data.get("signed_by_company") or "Sebastian Zambrano, Maninos Capital LLC",
         )
         result = await activate_contract(contract_id, activation_data)
 
