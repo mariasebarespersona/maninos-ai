@@ -505,7 +505,55 @@ async def rto_calculation(application_id: str):
             "recommendation": risk_recommendation,
         }
 
-        # 9. Maninos summary
+        # 9. Smart Pricing — anchor to client's current rent
+        # Logic: if the client pays $1,200 rent and formula says $900,
+        # we can charge up to ~$1,080 (90% of rent) and the client
+        # still feels like they're saving vs renting.
+        smart_pricing = None
+        if monthly_rent > 0 and recommended:
+            base_payment = recommended["monthly_payment"]
+            rec_term = recommended["term_months"]
+
+            # Smart payment = 90% of current rent (client "saves" 10%)
+            # But never below base (we don't lose money)
+            # And never above 45% of total income (DTI safe)
+            smart_raw = monthly_rent * 0.90
+            max_by_income = total_income * 0.45 if total_income > 0 else smart_raw
+            smart_payment = math.ceil(min(max(smart_raw, base_payment), max_by_income) / 5) * 5
+
+            if smart_payment > base_payment:
+                extra_per_month = smart_payment - base_payment
+                extra_total = extra_per_month * rec_term
+                smart_total_client_pays = down_payment + (smart_payment * rec_term)
+                smart_roi = ((smart_total_client_pays - total_investment) / total_investment * 100) if total_investment > 0 else 0
+                smart_dti = round(smart_payment / total_income * 100, 1) if total_income > 0 else 0
+
+                # How much client "saves" vs current rent
+                savings_vs_rent = monthly_rent - smart_payment
+                savings_pct = round(savings_vs_rent / monthly_rent * 100, 1) if monthly_rent > 0 else 0
+
+                smart_pricing = {
+                    "base_payment": base_payment,
+                    "smart_payment": smart_payment,
+                    "current_rent": monthly_rent,
+                    "extra_per_month": extra_per_month,
+                    "extra_total_over_term": round(extra_total, 2),
+                    "smart_total_client_pays": round(smart_total_client_pays, 2),
+                    "smart_roi_pct": round(smart_roi, 1),
+                    "smart_dti": smart_dti,
+                    "client_saves_vs_rent": round(savings_vs_rent, 2),
+                    "client_saves_pct": savings_pct,
+                    "term_months": rec_term,
+                    "explanation": (
+                        f"El cliente paga ${monthly_rent:,.0f}/mes de renta. "
+                        f"La formula estándar da ${base_payment:,.0f}/mes. "
+                        f"Con precio inteligente: ${smart_payment:,.0f}/mes "
+                        f"(el cliente ahorra {savings_pct:.0f}% vs su renta actual "
+                        f"y Maninos gana ${extra_total:,.0f} extra en {rec_term} meses)."
+                    ),
+                }
+
+        # 10. Maninos summary
         rec_total_client_pays = recommended["total_client_pays"] if recommended else 0
         net_profit = rec_total_client_pays - total_investment
         roi_pct = round(net_profit / total_investment * 100, 1) if total_investment > 0 else 0
@@ -564,6 +612,7 @@ async def rto_calculation(application_id: str):
                     "similar_houses": fv_rec["similar_houses"],
                 },
                 "recommended": recommended,
+                "smart_pricing": smart_pricing,
                 "scenarios": scenarios,
                 "risk": risk,
                 "maninos_summary": maninos_summary,

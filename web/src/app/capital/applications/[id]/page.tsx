@@ -1461,6 +1461,67 @@ export default function ApplicationDetailPage() {
                 </div>
               )}
 
+              {/* B2: Smart Pricing — Rent-Anchored */}
+              {rtoCalc.smart_pricing && (
+                <div className="card-luxury p-5" style={{ borderLeft: '4px solid #7c3aed' }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <DollarSign className="w-5 h-5 text-purple-600" />
+                    <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Precio Inteligente</h2>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">OPORTUNIDAD</span>
+                  </div>
+
+                  <p className="text-sm mb-4" style={{ color: 'var(--charcoal)' }}>
+                    {rtoCalc.smart_pricing.explanation}
+                  </p>
+
+                  {/* Visual comparison: 3 columns */}
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-gray-50 text-center">
+                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Renta Actual</p>
+                      <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.smart_pricing.current_rent)}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--ash)' }}>Lo que paga hoy</p>
+                    </div>
+                    <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#f5f3ff', border: '2px solid #7c3aed' }}>
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-700">Precio Inteligente</p>
+                      <p className="text-xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}</p>
+                      <p className="text-[10px] text-purple-600">Ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs renta</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-gray-50 text-center">
+                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Pago Fórmula</p>
+                      <p className="text-xl font-bold" style={{ color: 'var(--ash)' }}>{fmt(rtoCalc.smart_pricing.base_payment)}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--ash)' }}>Cálculo estándar</p>
+                    </div>
+                  </div>
+
+                  {/* Extra revenue highlight */}
+                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-purple-800">Ganancia extra para Maninos</p>
+                        <p className="text-xs text-purple-600">
+                          +{fmt(rtoCalc.smart_pricing.extra_per_month)}/mes × {rtoCalc.smart_pricing.term_months} meses
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-purple-700">+{fmt(rtoCalc.smart_pricing.extra_total_over_term)}</p>
+                        <p className="text-xs text-purple-600">ROI: {rtoCalc.smart_pricing.smart_roi_pct}%</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded bg-green-50">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                      <span className="text-green-700">Cliente ahorra {fmt(rtoCalc.smart_pricing.client_saves_vs_rent)}/mes vs su renta</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded bg-green-50">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                      <span className="text-green-700">DTI: {rtoCalc.smart_pricing.smart_dti}% (dentro de límites)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* C: Scenario Comparison Table */}
               <div className="card-luxury p-5">
                 <h3 className="font-serif text-base mb-4" style={{ color: 'var(--ink)' }}>Comparación de Escenarios</h3>
