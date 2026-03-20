@@ -420,6 +420,8 @@ export default function ApplicationDetailPage() {
 
   // ========== KYC ==========
 
+  const [kycDocs, setKycDocs] = useState<any>(null)
+
   const loadKycStatus = async (clientId: string) => {
     try {
       const res = await fetch(`/api/capital/kyc/status/${clientId}`)
@@ -429,10 +431,65 @@ export default function ApplicationDetailPage() {
         setKycVerified(data.kyc_verified || false)
         setKycFailReason(data.failure_reason || data.kyc_failure_reason || null)
         setKycRequested(data.kyc_requested || false)
+        setKycDocs(data.kyc_documents || null)
       }
     } catch (err) {
       console.error('Error loading KYC status:', err)
     }
+  }
+
+  const handleApproveKyc = async () => {
+    if (!app?.clients?.id) return
+    if (!confirm('¿Aprobar la identidad de este cliente?')) return
+    setKycLoading(true)
+    try {
+      const res = await fetch('/api/capital/kyc/review-documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: app.clients.id,
+          decision: 'approved',
+          reviewed_by: 'admin',
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Identidad aprobada')
+        setKycVerified(true)
+        setKycStatus('verified')
+      } else {
+        toast.error(data.detail || 'Error al aprobar')
+      }
+    } catch { toast.error('Error de conexión') }
+    finally { setKycLoading(false) }
+  }
+
+  const handleRejectKyc = async () => {
+    if (!app?.clients?.id) return
+    const reason = prompt('Razón del rechazo:')
+    if (!reason) return
+    setKycLoading(true)
+    try {
+      const res = await fetch('/api/capital/kyc/review-documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: app.clients.id,
+          decision: 'rejected',
+          reviewed_by: 'admin',
+          failure_reason: reason,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Identidad rechazada. El cliente puede volver a subir documentos.')
+        setKycStatus('failed')
+        setKycFailReason(reason)
+      } else {
+        toast.error(data.detail || 'Error al rechazar')
+      }
+    } catch { toast.error('Error de conexión') }
+    finally { setKycLoading(false) }
   }
 
   const handleCheckKycStatus = async () => {
@@ -879,7 +936,7 @@ export default function ApplicationDetailPage() {
                 </div>
                 <div>
                     <p className="font-semibold text-sm" style={{ color: 'var(--warning)' }}>Documentos por Revisar 📄</p>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente subió sus documentos. Revísalos desde la página de KYC.</p>
+                    <p className="text-xs" style={{ color: 'var(--ash)' }}>El cliente subió sus documentos. Revisa las fotos abajo y aprueba o rechaza.</p>
                 </div>
               </>
             ) : kycStatus === 'pending' || kycRequested ? (
@@ -923,6 +980,67 @@ export default function ApplicationDetailPage() {
             )}
           </div>
         </div>
+
+          {/* KYC Document Viewer + Approve/Reject */}
+          {kycStatus === 'pending_review' && kycDocs && (
+            <div className="mt-4 card-luxury p-5">
+              <h3 className="font-semibold text-sm mb-4 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                <Eye className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                Documentos del Cliente
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+                {kycDocs.id_front_url && (
+                  <div>
+                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--ash)' }}>ID Frente</p>
+                    <a href={kycDocs.id_front_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
+                      <img src={kycDocs.id_front_url} alt="ID Frente" className="w-full h-40 object-cover" />
+                    </a>
+                  </div>
+                )}
+                {kycDocs.id_back_url && (
+                  <div>
+                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--ash)' }}>ID Reverso</p>
+                    <a href={kycDocs.id_back_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
+                      <img src={kycDocs.id_back_url} alt="ID Reverso" className="w-full h-40 object-cover" />
+                    </a>
+                  </div>
+                )}
+                {kycDocs.selfie_url && (
+                  <div>
+                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--ash)' }}>Selfie con ID</p>
+                    <a href={kycDocs.selfie_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
+                      <img src={kycDocs.selfie_url} alt="Selfie" className="w-full h-40 object-cover" />
+                    </a>
+                  </div>
+                )}
+              </div>
+              {kycDocs.id_type && (
+                <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+                  Tipo de documento: <strong>{kycDocs.id_type === 'drivers_license' ? 'Licencia de conducir' : kycDocs.id_type === 'passport' ? 'Pasaporte' : 'ID estatal'}</strong>
+                </p>
+              )}
+              <div className="flex gap-3 pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                <button
+                  onClick={handleApproveKyc}
+                  disabled={kycLoading}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--success)' }}
+                >
+                  {kycLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Aprobar Identidad
+                </button>
+                <button
+                  onClick={handleRejectKyc}
+                  disabled={kycLoading}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--error)' }}
+                >
+                  {kycLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                  Rechazar
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Client details */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
