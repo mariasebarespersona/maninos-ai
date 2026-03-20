@@ -186,6 +186,54 @@ async def review_application(application_id: str, review: ApplicationReview):
                         "rto_contract_id": new_contract_id,
                     }).eq("id", application["sale_id"]).execute()
                     logger.info(f"[capital] Sale {application['sale_id']} linked to rto_contract {new_contract_id}")
+
+                    # Auto-sign by Maninos and set to pending_signature
+                    sb.table("rto_contracts").update({
+                        "status": "pending_signature",
+                        "signed_by_company": "Sebastian Sebares, Maninos Capital LLC",
+                    }).eq("id", new_contract_id).execute()
+
+                    # Send signing email to client
+                    try:
+                        from api.services.email_service import _base_template
+                        from tools.email_tool import send_email
+                        import os
+
+                        client_data = application.get("clients") or {}
+                        prop_data = application.get("properties") or {}
+                        app_url = os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+                        sign_link = f"{app_url}/clientes/mi-cuenta/firmar-contrato/{new_contract_id}"
+
+                        content = f"""
+                        <div class="header">
+                            <h1>Tu Contrato RTO está Listo</h1>
+                            <p>Firma tu contrato para comenzar</p>
+                        </div>
+                        <div class="body">
+                            <p>Hola <strong>{client_data.get('name', '')}</strong>,</p>
+                            <p>Tu solicitud de Rent-to-Own ha sido aprobada. Tu contrato está listo para firmar.</p>
+                            <div class="highlight">
+                                <p><strong>Propiedad:</strong> {prop_data.get('address', '')}</p>
+                                <p><strong>Mensualidad:</strong> ${review.monthly_rent:,.0f}/mes</p>
+                                <p><strong>Plazo:</strong> {review.term_months} meses</p>
+                                <p><strong>Enganche:</strong> ${review.down_payment:,.0f}</p>
+                            </div>
+                            <p style="text-align: center; margin-top: 24px;">
+                                <a href="{sign_link}" class="btn">Firmar Contrato</a>
+                            </p>
+                            <p style="text-align: center; font-size: 12px; color: #718096; margin-top: 12px;">
+                                Ingresa a tu cuenta para revisar y firmar el contrato.
+                            </p>
+                        </div>
+                        """
+                        send_email(
+                            to=[client_data.get('email', '')],
+                            subject="Tu contrato RTO está listo para firmar",
+                            html=_base_template(content),
+                        )
+                        logger.info(f"[capital] Signing email sent to {client_data.get('email')} for contract {new_contract_id}")
+                    except Exception as email_err:
+                        logger.warning(f"[capital] Failed to send signing email: {email_err}")
             else:
                 # Contract already exists — make sure it's linked to the sale
                 existing_cid = existing_contract.data[0]["id"]

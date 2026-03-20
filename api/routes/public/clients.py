@@ -1168,3 +1168,73 @@ async def client_save_document(client_id: str, sale_id: str, request: Request):
 
     return {"ok": True, "file_url": public_url, "message": "Documento guardado"}
 
+
+@router.get("/{client_id}/contract/{contract_id}")
+async def get_client_contract(client_id: str, contract_id: str):
+    """Get contract details for client signing page."""
+    try:
+        contract = sb.table("rto_contracts") \
+            .select("id, status, monthly_rent, purchase_price, down_payment, term_months, start_date, end_date, payment_due_day, signed_by_company, signed_at, property_id") \
+            .eq("id", contract_id) \
+            .eq("client_id", client_id) \
+            .single() \
+            .execute()
+
+        if not contract.data:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+        # Get property address
+        prop = sb.table("properties").select("address, city, state").eq("id", contract.data["property_id"]).execute()
+        prop_data = prop.data[0] if prop.data else {}
+
+        return {
+            "ok": True,
+            "contract": {
+                **contract.data,
+                "property_address": prop_data.get("address", ""),
+                "property_city": prop_data.get("city", ""),
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting client contract: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{client_id}/sign-contract/{contract_id}")
+async def sign_contract(client_id: str, contract_id: str, request: Request):
+    """Client signs their RTO contract. Triggers full activation."""
+    try:
+        body = await request.json()
+        signed_name = body.get("signed_name", "").strip()
+
+        if not signed_name:
+            raise HTTPException(status_code=400, detail="El nombre de firma es requerido")
+
+        # Verify contract exists and belongs to this client
+        contract = sb.table("rto_contracts").select("*").eq("id", contract_id).eq("client_id", client_id).single().execute()
+
+        if not contract.data:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+        if contract.data["status"] != "pending_signature":
+            raise HTTPException(status_code=400, detail=f"Este contrato no está pendiente de firma (estado: {contract.data['status']})")
+
+        # Activate the contract via the existing activate endpoint logic
+        from api.routes.capital.contracts import activate_contract, ContractActivate
+        activation_data = ContractActivate(
+            signed_by_client=signed_name,
+            signed_by_company=contract.data.get("signed_by_company") or "Sebastian Sebares, Maninos Capital LLC",
+        )
+        result = await activate_contract(contract_id, activation_data)
+
+        logger.info(f"[client-sign] Contract {contract_id} signed by client {signed_name}")
+        return {"ok": True, "message": "Contrato firmado exitosamente", "result": result}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error signing contract: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

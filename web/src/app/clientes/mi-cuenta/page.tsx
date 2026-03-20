@@ -502,7 +502,7 @@ export default function ClientDashboard() {
                             )}
 
                             {/* RTO Progress Steps */}
-                            {sale.sale_type === 'rto' && sale.status === 'rto_pending' && (
+                            {sale.sale_type === 'rto' && (sale.status === 'rto_pending' || sale.status === 'rto_approved') && (
                               <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
                                 <p className="text-[13px] font-bold text-[#222] mb-3">Pasos para completar tu compra RTO:</p>
                                 <div className="space-y-3">
@@ -529,11 +529,16 @@ export default function ClientDashboard() {
 
                                   {/* Step 2: Credit Application */}
                                   <div className="flex items-start gap-3">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${!kycVerified ? 'bg-gray-200 text-gray-400' : rtoAppId ? 'bg-[#004274] text-white ring-2 ring-[#004274]/30 ring-offset-1' : 'bg-gray-300 text-white'}`}>
-                                      2
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${sale.status === 'rto_approved' ? 'bg-emerald-500 text-white' : !kycVerified ? 'bg-gray-200 text-gray-400' : rtoAppId ? 'bg-[#004274] text-white ring-2 ring-[#004274]/30 ring-offset-1' : 'bg-gray-300 text-white'}`}>
+                                      {sale.status === 'rto_approved' ? <CheckCircle className="w-3.5 h-3.5" /> : '2'}
                                     </div>
                                     <div className="flex-1">
-                                      {kycVerified && rtoAppId ? (
+                                      {sale.status === 'rto_approved' ? (
+                                        <>
+                                          <p className="text-[13px] font-semibold text-emerald-700">Solicitud de crédito aprobada</p>
+                                          <p className="text-[11px] text-emerald-600">Tu solicitud fue aprobada</p>
+                                        </>
+                                      ) : kycVerified && rtoAppId ? (
                                         <Link
                                           href={`/clientes/mi-cuenta/solicitud-credito/${rtoAppId}`}
                                           className="block p-3 -m-1 rounded-lg bg-[#004274] hover:bg-[#00345c] transition-colors"
@@ -557,14 +562,44 @@ export default function ClientDashboard() {
                                     </div>
                                   </div>
 
-                                  {/* Step 3: Review */}
+                                  {/* Step 3: Sign Contract */}
                                   <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold bg-gray-200 text-gray-400">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold ${sale.status === 'rto_approved' && sale.rto_contract_id ? 'bg-[#004274] text-white ring-2 ring-[#004274]/30 ring-offset-1' : 'bg-gray-200 text-gray-400'}`}>
                                       3
                                     </div>
+                                    <div className="flex-1">
+                                      {sale.status === 'rto_approved' && sale.rto_contract_id ? (
+                                        <Link
+                                          href={`/clientes/mi-cuenta/firmar-contrato/${sale.rto_contract_id}`}
+                                          className="block p-3 -m-1 rounded-lg bg-[#004274] hover:bg-[#00345c] transition-colors"
+                                        >
+                                          <p className="text-[14px] font-bold text-white">
+                                            Firmar Contrato
+                                          </p>
+                                          <p className="text-[12px] text-white/80 mt-0.5">
+                                            Tu contrato está listo para firmar
+                                          </p>
+                                          <div className="flex items-center gap-1 mt-1.5 text-white/90 text-[11px] font-semibold">
+                                            Firmar ahora <ArrowRight className="w-3.5 h-3.5" />
+                                          </div>
+                                        </Link>
+                                      ) : (
+                                        <>
+                                          <p className="text-[13px] font-semibold text-gray-400">Firmar contrato</p>
+                                          <p className="text-[11px] text-gray-400">Disponible después de la aprobación</p>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Step 4: Monthly Payments */}
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold bg-gray-200 text-gray-400">
+                                      4
+                                    </div>
                                     <div>
-                                      <p className="text-[13px] font-semibold text-gray-400">Revisión y aprobación</p>
-                                      <p className="text-[11px] text-gray-400">Maninos revisará tu solicitud y te contactará</p>
+                                      <p className="text-[13px] font-semibold text-gray-400">Pagos mensuales</p>
+                                      <p className="text-[11px] text-gray-400">Comienza tus pagos después de firmar el contrato</p>
                                     </div>
                                   </div>
                                 </div>
