@@ -185,46 +185,13 @@ export default function TransfersPage() {
         <div>
           <h1 className="font-serif text-2xl text-navy-900">Titulos</h1>
           <p className="text-navy-500 text-sm mt-1">
-            Documentos y monitoreo de titulos TDHCA
+            Monitoreo de titulos TDHCA
           </p>
         </div>
       </div>
 
-      {/* Main Tabs: Titulos vs Documentos */}
-      <div className="flex gap-2 border-b border-navy-200 pb-0">
-        <button
-          onClick={() => setTab('titulos')}
-          className={`px-5 py-2.5 font-medium text-sm border-b-2 transition-all -mb-px ${
-            tab === 'titulos'
-              ? 'border-gold-500 text-gold-700'
-              : 'border-transparent text-navy-500 hover:text-navy-700'
-          }`}
-        >
-          <Shield className="w-4 h-4 inline mr-2" />
-          Monitoreo de Titulos
-          {monitor && monitor.title_pending > 0 && (
-            <span className="ml-2 bg-amber-100 text-amber-700 text-xs font-bold rounded-full px-2 py-0.5">
-              {monitor.title_pending}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('documents')}
-          className={`px-5 py-2.5 font-medium text-sm border-b-2 transition-all -mb-px ${
-            tab === 'documents'
-              ? 'border-gold-500 text-gold-700'
-              : 'border-transparent text-navy-500 hover:text-navy-700'
-          }`}
-        >
-          <FileText className="w-4 h-4 inline mr-2" />
-          Documentos
-        </button>
-      </div>
-
-      {/* ══════════════════════════════════════════════════ */}
-      {/* TAB: Title Monitoring */}
-      {/* ══════════════════════════════════════════════════ */}
-      {tab === 'titulos' && (
+      {/* Title Monitoring */}
+      {(
         <div className="space-y-6">
           {/* Title Monitor Stats */}
           {monitor && (
@@ -382,12 +349,9 @@ export default function TransfersPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════ */}
-      {/* TAB: Documents (existing functionality) */}
-      {/* ══════════════════════════════════════════════════ */}
-      {tab === 'documents' && (
+      {/* Documents section removed — documents are managed from property detail page */}
+      {false && (
         <div className="space-y-6">
-          {/* Stats Cards */}
           {stats && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="card-luxury p-4">
