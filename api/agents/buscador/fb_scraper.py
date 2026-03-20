@@ -429,68 +429,100 @@ class FacebookMarketplaceScraper:
     
     @staticmethod
     def _extract_json_from_html(html: str, city: str) -> List[FBListing]:
-        """Extract listings from Facebook's embedded JSON data in HTML."""
+        """Extract listings from Facebook's embedded JSON data in HTML.
+
+        Facebook 2026 format embeds data as:
+        - "marketplace_listing_title":"TITLE"
+        - "listing_price":{"formatted_amount":"8500\u00a0$","amount":"8500.00"}
+        - "id":"LISTING_ID" (near the title)
+        - "city":"CITY","state":"STATE"
+        """
         listings = []
-        
+
         try:
-            # Facebook embeds marketplace data in script tags
-            # Look for JSON blobs containing marketplace listing data
-            import json as json_mod
-            
-            # Pattern 1: Look for marketplace_search results in relay data
-            patterns = [
-                r'"marketplace_search":\{.*?"edges":\[(.*?)\]',
-                r'"marketplace_listing_title":"(.*?)".*?"listing_price":\{.*?"amount":"(\d+)"',
-                r'marketplace/item/(\d+).*?"price"\s*:\s*"?\$?([\d,]+)',
-            ]
-            
-            # Simple approach: find all marketplace item IDs and prices
-            item_pattern = re.compile(r'/marketplace/item/(\d+)')
-            price_pattern = re.compile(r'\$\s*([\d,]+(?:\.\d{2})?)')
-            
-            item_ids = list(set(item_pattern.findall(html)))
-            logger.info(f"[FB Requests] Found {len(item_ids)} marketplace item IDs in HTML")
-            
-            if not item_ids:
-                return []
-            
-            # Extract listing data around each item ID
-            for item_id in item_ids[:30]:
+            # Find all listing titles — this is the most reliable anchor
+            title_pattern = re.compile(r'"marketplace_listing_title":"([^"]{3,120})"')
+            title_matches = list(title_pattern.finditer(html))
+
+            logger.info(f"[FB Requests] Found {len(title_matches)} marketplace_listing_title matches")
+
+            if not title_matches:
+                # Fallback: try old format
+                item_ids = set(re.findall(r'/marketplace/item/(\d+)', html))
+                logger.info(f"[FB Requests] Fallback: {len(item_ids)} old-format item IDs")
+                for item_id in list(item_ids)[:30]:
+                    listing = FBListing()
+                    listing.url = f"https://www.facebook.com/marketplace/item/{item_id}"
+                    listing.city = city
+                    listing.state = "TX"
+                    listings.append(listing)
+                return listings
+
+            seen_ids = set()
+
+            for match in title_matches:
+                title = match.group(1)
+                pos = match.start()
+
+                # Get wide context around this title (the listing data blob)
+                context = html[max(0, pos - 2000):pos + 2000]
+
                 listing = FBListing()
-                listing.url = f"https://www.facebook.com/marketplace/item/{item_id}"
-                listing.city = city
+                listing.title = title
                 listing.state = "TX"
-                
-                # Find surrounding context for this item
-                idx = html.find(f"/marketplace/item/{item_id}")
-                if idx > 0:
-                    context = html[max(0, idx-500):idx+500]
-                    
-                    # Extract price from context
-                    prices = price_pattern.findall(context)
-                    for p in prices:
-                        price_val = float(p.replace(",", ""))
-                        if 1000 <= price_val <= 200000:  # Reasonable house price
-                            listing.price = price_val
-                            break
-                    
-                    # Extract title — look for marketplace_listing_title
-                    title_match = re.search(r'"marketplace_listing_title":"([^"]+)"', context)
-                    if title_match:
-                        listing.title = title_match.group(1)
-                    else:
-                        # Try finding any descriptive text
-                        text_match = re.search(r'"name":"([^"]{10,})"', context)
-                        if text_match:
-                            listing.title = text_match.group(1)
-                
+
+                # Extract ID — "id":"NUMERIC_ID" nearest to this title
+                id_matches = re.findall(r'"id":"(\d{10,20})"', context)
+                if id_matches:
+                    listing_id = id_matches[0]
+                    if listing_id in seen_ids:
+                        continue
+                    seen_ids.add(listing_id)
+                    listing.url = f"https://www.facebook.com/marketplace/item/{listing_id}"
+
+                # Extract price — "amount":"8500.00" or "amount":"8500"
+                price_match = re.search(r'"listing_price":\{[^}]*"amount":"([\d.]+)"', context)
+                if price_match:
+                    try:
+                        listing.price = float(price_match.group(1))
+                    except ValueError:
+                        pass
+
+                # If no structured price, try formatted_amount
+                if listing.price <= 0:
+                    fmt_match = re.search(r'"formatted_amount":"([\d,.]+)', context)
+                    if fmt_match:
+                        try:
+                            listing.price = float(fmt_match.group(1).replace(",", ""))
+                        except ValueError:
+                            pass
+
+                # Extract city from location data
+                city_match = re.search(r'"city":"([^"]+)"', context)
+                if city_match:
+                    listing.city = city_match.group(1)
+                else:
+                    listing.city = city
+
+                # Extract state
+                state_match = re.search(r'"state":"([^"]+)"', context)
+                if state_match:
+                    listing.state = state_match.group(1)
+
+                # Skip sold items
+                if '"is_sold":true' in context:
+                    continue
+
+                # Only add if we have price or title
                 if listing.price > 0 or listing.title:
                     FacebookMarketplaceScraper._extract_details(listing)
                     listings.append(listing)
-            
+
+            logger.info(f"[FB Requests] Extracted {len(listings)} listings from embedded JSON")
+
         except Exception as e:
             logger.warning(f"[FB Requests] JSON extraction error: {e}")
-        
+
         return listings
     
     @staticmethod
