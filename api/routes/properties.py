@@ -526,8 +526,8 @@ async def publish_property(
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
 
-    # ---- 80% rule validation ----
-    if not force:
+    # ---- 80% rule validation (disabled — price at seller's discretion) ----
+    if False:
         city = current.data.get("city", "")
         mv = _get_market_value_data(city)
         market_value = calculate_market_value(mv["scraping_avg"], mv["historical_avg"])
@@ -729,8 +729,8 @@ async def complete_renovation(
             detail=f"Property is not in renovating status (current: {current_status.value})"
         )
     
-    # ---- 80% rule validation on new price ----
-    if new_sale_price and not force:
+    # ---- 80% rule validation on new price (disabled) ----
+    if False:
         city = current.data.get("city", "")
         mv = _get_market_value_data(city)
         market_value = calculate_market_value(mv["scraping_avg"], mv["historical_avg"])
