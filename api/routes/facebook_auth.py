@@ -230,13 +230,39 @@ async def test_facebook_scrape():
         # Count marketplace item IDs in the HTML
         item_ids = set(re.findall(r'/marketplace/item/(\d+)', response.text))
         rm["marketplace_item_ids"] = len(item_ids)
-        
+
+        # Deep diagnosis: look for various Facebook data patterns
+        rm["has_marketplace_keyword"] = "marketplace" in response.text.lower()
+        rm["has_listing_title"] = "marketplace_listing_title" in response.text
+        rm["has_listing_price"] = "listing_price" in response.text
+        rm["has_result_count"] = "search_results" in response.text or "marketplace_search" in response.text
+        rm["has_relay_data"] = "__relay" in response.text or "require_deferred" in response.text
+
+        # Try to find FB's newer data format
+        price_amounts = re.findall(r'"amount":"(\d+)"', response.text)
+        rm["price_amounts_found"] = len(price_amounts)
+        if price_amounts:
+            rm["price_samples"] = price_amounts[:10]
+
+        # Look for listing IDs in newer format
+        listing_ids_v2 = re.findall(r'"listing_id":"(\d+)"', response.text)
+        rm["listing_ids_v2"] = len(listing_ids_v2)
+
+        # Check for CometMarketplace data
+        comet_data = re.findall(r'CometMarketplace\w+', response.text)
+        rm["comet_components"] = list(set(comet_data))[:5]
+
+        # HTML snippet around "marketplace" for debugging
+        idx = response.text.lower().find("marketplace_listing")
+        if idx > 0:
+            rm["html_around_listing"] = response.text[max(0,idx-100):idx+300][:400]
+
         # Try parsing listings
         listings = FacebookMarketplaceScraper._parse_from_html(response.text, "Houston")
         if not listings:
             listings = FacebookMarketplaceScraper._extract_json_from_html(response.text, "Houston")
         rm["listings_extracted"] = len(listings)
-        
+
         if listings:
             rm["sample"] = [{"title": l.title[:80], "price": l.price, "url": l.url} for l in listings[:3]]
         
