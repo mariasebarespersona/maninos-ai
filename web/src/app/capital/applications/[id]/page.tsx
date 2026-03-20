@@ -443,7 +443,7 @@ export default function ApplicationDetailPage() {
     if (!confirm('¿Aprobar la identidad de este cliente?')) return
     setKycLoading(true)
     try {
-      const res = await fetch('/api/capital/kyc/review-documents', {
+      const res = await fetch('/api/capital/kyc/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -470,7 +470,7 @@ export default function ApplicationDetailPage() {
     if (!reason) return
     setKycLoading(true)
     try {
-      const res = await fetch('/api/capital/kyc/review-documents', {
+      const res = await fetch('/api/capital/kyc/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
