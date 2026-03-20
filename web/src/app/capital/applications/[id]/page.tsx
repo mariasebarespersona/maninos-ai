@@ -1413,7 +1413,7 @@ export default function ApplicationDetailPage() {
                     <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso total</span><p className="font-bold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.client.total_income)}/mes</p></div>
                     <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Renta actual</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.client.current_rent)}/mes</p></div>
                     <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso disponible</span><p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.client.disposable_income)}/mes</p></div>
-                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Capacidad pago (40%)</span><p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.client.payment_capacity_40pct)}/mes</p></div>
+                    <div><span className="text-xs" style={{ color: 'var(--ash)' }}>Máx. que puede pagar</span><p className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.client.payment_capacity_40pct)}/mes</p><p className="text-[10px]" style={{ color: 'var(--ash)' }}>40% de su ingreso disponible</p></div>
                   </div>
                 </div>
               </div>
