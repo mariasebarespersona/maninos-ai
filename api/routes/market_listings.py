@@ -1035,6 +1035,12 @@ async def scrape_facebook_only(
             except Exception as e:
                 logger.warning(f"[FB Scrape] Save error: {e}")
 
+        # Ensure ALL Facebook listings are marked as qualified
+        try:
+            supabase.table("market_listings").update({"is_qualified": True}).eq("source", "facebook").execute()
+        except Exception:
+            pass
+
         # Update the latest market_analysis to include Facebook count
         if saved > 0:
             try:
