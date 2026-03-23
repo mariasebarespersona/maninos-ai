@@ -292,8 +292,8 @@ export default function MarketDashboard() {
   const fetchListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.append('qualified_only', 'true');
-      params.append('limit', '10');
+      params.append('qualified_only', 'false');
+      params.append('limit', '50');
       if (cityFilter) params.append('city', cityFilter);
       if (maxPriceFilter) params.append('max_price', String(maxPriceFilter));
 

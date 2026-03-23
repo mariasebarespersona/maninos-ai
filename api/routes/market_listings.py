@@ -237,7 +237,8 @@ async def list_market_listings(
         if city:
             query = query.ilike("city", f"%{city}%")
         
-        query = query.order("qualification_score", desc=True)
+        # Prioritize Facebook listings first, then by scraped date (newest first)
+        query = query.order("scraped_at", desc=True)
         query = query.range(offset, offset + limit - 1)
         
         response = query.execute()
