@@ -1061,6 +1061,9 @@ export default function RenovationPage() {
                       <th className="px-3 py-3 text-center font-semibold w-16">Días</th>
                       <th className="px-3 py-3 text-left font-semibold w-28">Responsable</th>
                       <th className="px-3 py-3 text-left font-semibold w-44">Notas</th>
+                      <th className="px-2 py-3 w-10 text-center font-semibold" title="Enviar orden de pago">
+                        <DollarSign className="w-3.5 h-3.5 mx-auto text-gray-400" />
+                      </th>
                       {quote.items.some(i => i.is_custom) && (
                         <th className="px-2 py-3 w-10"></th>
                       )}
@@ -1157,6 +1160,38 @@ export default function RenovationPage() {
                                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
                                 placeholder="Notas..."
                               />
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              {item.precio > 0 && (
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`¿Enviar orden de pago por ${item.concepto} ($${item.precio.toLocaleString()})?`)) return
+                                    try {
+                                      const res = await fetch('/api/payment-orders', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          property_id: propertyId,
+                                          property_address: quote?.address || '',
+                                          payee_name: item.responsable || 'Contratista',
+                                          amount: item.precio,
+                                          method: 'transferencia',
+                                          notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
+                                        }),
+                                      })
+                                      if (res.ok) {
+                                        toast.success(`Orden de pago enviada: ${item.concepto} — $${item.precio.toLocaleString()}`)
+                                      } else {
+                                        toast.error('Error al crear orden de pago')
+                                      }
+                                    } catch { toast.error('Error de conexión') }
+                                  }}
+                                  className="p-1 text-navy-400 hover:text-navy-700 hover:bg-navy-50 rounded transition-colors"
+                                  title={`Enviar orden de pago: ${item.concepto}`}
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </td>
                             {quote.items.some(i => i.is_custom) && (
                               <td className="px-2 py-2.5 text-center">
