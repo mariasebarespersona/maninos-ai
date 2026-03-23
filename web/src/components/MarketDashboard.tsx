@@ -1197,37 +1197,30 @@ export default function MarketDashboard() {
             </span>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Market Value */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
             <div className="space-y-1">
-              <p className="text-navy-300 text-sm">Valor de Mercado (Media)</p>
-              <p className="text-3xl font-bold text-white">
+              <p className="text-navy-300 text-xs sm:text-sm">Valor Mercado (Media)</p>
+              <p className="text-xl sm:text-3xl font-bold text-white">
                 ${stats.market_analysis.market_value_avg.toLocaleString()}
               </p>
             </div>
-            
-            {/* Max Offer 60% */}
             <div className="space-y-1">
-              <p className="text-navy-300 text-sm">Máxima Oferta (60%)</p>
-              <p className="text-3xl font-bold text-gold-400">
+              <p className="text-navy-300 text-xs sm:text-sm">Máx. Oferta (60%)</p>
+              <p className="text-xl sm:text-3xl font-bold text-gold-400">
                 ${(stats.market_analysis.max_offer_60_percent || stats.market_analysis.max_offer_70_percent || 0).toLocaleString()}
               </p>
             </div>
-            
-            {/* Price Range Filter */}
             <div className="space-y-1">
-              <p className="text-navy-300 text-sm">Rango de Precio (Filtro)</p>
-              <p className="text-xl font-semibold text-white">
-                $5,000 - $80,000
+              <p className="text-navy-300 text-xs sm:text-sm">Rango Precio</p>
+              <p className="text-base sm:text-xl font-semibold text-white">
+                $5K - $80K
               </p>
             </div>
-            
-            {/* Qualified Count */}
             <div className="space-y-1">
-              <p className="text-navy-300 text-sm">Calificadas</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-bold text-green-400">{stats.qualified_in_db}</p>
-                <p className="text-navy-300 text-sm">de {stats.market_analysis.total_scraped} encontradas</p>
+              <p className="text-navy-300 text-xs sm:text-sm">Calificadas</p>
+              <div className="flex items-baseline gap-1 sm:gap-2">
+                <p className="text-xl sm:text-3xl font-bold text-green-400">{stats.qualified_in_db}</p>
+                <p className="text-navy-300 text-[10px] sm:text-sm">de {stats.market_analysis.total_scraped}</p>
               </div>
             </div>
           </div>
@@ -1261,19 +1254,19 @@ export default function MarketDashboard() {
       {/* Facebook Connection Banner */}
       {!fbConnected && (
         <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center flex-shrink-0">
                 <span className="text-xl">📘</span>
               </div>
               <div>
-                <h4 className="font-semibold text-sky-900">Facebook Marketplace no conectado</h4>
-                <p className="text-sm text-sky-700">
-                  Conecta tu Facebook para buscar casas automáticamente en Marketplace — la fuente principal de Maninos.
+                <h4 className="font-semibold text-sky-900 text-sm sm:text-base">Facebook Marketplace no conectado</h4>
+                <p className="text-xs sm:text-sm text-sky-700">
+                  Conecta Facebook para buscar casas en Marketplace.
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={connectFacebook}
                 disabled={fbConnecting}
@@ -1301,16 +1294,16 @@ export default function MarketDashboard() {
                 <strong>Opción alternativa:</strong> Exporta cookies de Facebook desde tu navegador 
                 (usa extensión &quot;Cookie-Editor&quot; en Chrome) y pégalas aquí:
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <textarea
                   value={cookieJson}
                   onChange={(e) => setCookieJson(e.target.value)}
-                  placeholder='[{"name":"c_user","value":"...","domain":".facebook.com",...}]'
-                  className="flex-1 px-3 py-2 border border-sky-300 rounded-lg text-sm font-mono bg-white resize-none h-20"
+                  placeholder='[{"name":"c_user","value":"..."}]'
+                  className="flex-1 px-3 py-2 border border-sky-300 rounded-lg text-xs sm:text-sm font-mono bg-white resize-none h-20"
                 />
                 <button
                   onClick={importFbCookies}
-                  className="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700"
+                  className="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 flex-shrink-0"
                 >
                   Importar
                 </button>
@@ -1322,11 +1315,11 @@ export default function MarketDashboard() {
 
       {/* Facebook Connected indicator */}
       {fbConnected && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between">
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-green-800 font-medium text-sm">
-              Facebook Marketplace conectado ✓ — Las búsquedas incluirán casas de Facebook.
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            <span className="text-green-800 font-medium text-xs sm:text-sm">
+              Facebook conectado ✓
             </span>
           </div>
           <button
@@ -1339,7 +1332,7 @@ export default function MarketDashboard() {
       )}
 
       {/* Action Bar */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {/* View Toggle — Grid / Map (like VMF Homes) */}
         <div className="flex items-center bg-gray-100 rounded-xl p-1">
           <button
@@ -1366,20 +1359,20 @@ export default function MarketDashboard() {
           </button>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3 flex-wrap">
         <button
           onClick={() => fetchListings()}
-          className="btn-secondary flex items-center gap-2"
+          className="btn-secondary flex items-center gap-2 text-xs sm:text-sm"
         >
           <RefreshCw className="w-4 h-4" />
-          Refrescar
+          <span className="hidden sm:inline">Refrescar</span>
         </button>
         <button
           onClick={() => setShowAddModal(true)}
-          className="btn-secondary flex items-center gap-2 border-sky-300 text-sky-700 hover:bg-sky-50"
+          className="btn-secondary flex items-center gap-2 border-sky-300 text-sky-700 hover:bg-sky-50 text-xs sm:text-sm"
         >
           <Plus className="w-4 h-4" />
-          Agregar Manual
+          <span className="hidden sm:inline">Agregar Manual</span>
         </button>
         <button
           onClick={async () => {
