@@ -959,46 +959,14 @@ async def scrape_and_save(
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
 
         source_count = 3
-        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF, 21st Mortgage, Facebook")
+        logger.info(f"[Scrape] Will scrape {source_count} sources: Facebook, VMF, 21st Mortgage")
 
         all_listings = []
         all_prices = []
         fb_count = 0
 
-        # SOURCE 1: VMF Homes / Vanderbilt (JSON API, no browser)
-        vmf_count = 0
-        logger.info(f"[Scrape] 1/{source_count} - Scraping VMF Homes (JSON API)...")
-        try:
-            vmf_listings = await VMFHomesScraper.scrape(
-                min_price=min_price,
-                max_price=max_price,
-                max_listings=100,
-            )
-            all_listings.extend(vmf_listings)
-            all_prices.extend([l.listing_price for l in vmf_listings])
-            vmf_count = len(vmf_listings)
-            logger.info(f"[Scrape] ✅ VMF Homes: {vmf_count} mobile homes")
-        except Exception as e:
-            logger.warning(f"[Scrape] VMF Homes failed: {e}")
-
-        # SOURCE 2: 21st Mortgage (JSON API, no browser)
-        mortgage21_count = 0
-        logger.info(f"[Scrape] 2/{source_count} - Scraping 21st Mortgage (JSON API)...")
-        try:
-            mortgage21_listings = await TwentyFirstMortgageScraper.scrape(
-                min_price=min_price,
-                max_price=max_price,
-                max_listings=100,
-            )
-            all_listings.extend(mortgage21_listings)
-            all_prices.extend([l.listing_price for l in mortgage21_listings])
-            mortgage21_count = len(mortgage21_listings)
-            logger.info(f"[Scrape] ✅ 21st Mortgage: {mortgage21_count} mobile homes")
-        except Exception as e:
-            logger.warning(f"[Scrape] 21st Mortgage failed: {e}")
-
-        # SOURCE 3: Facebook Marketplace (HTTP requests only — fast, no Playwright)
-        logger.info(f"[Scrape] 3/{source_count} - Scraping Facebook Marketplace...")
+        # SOURCE 1: Facebook Marketplace FIRST (HTTP requests — ~10s)
+        logger.info(f"[Scrape] 1/{source_count} - Scraping Facebook Marketplace...")
         try:
             from api.agents.buscador.fb_auth import FacebookAuth
             if FacebookAuth.is_authenticated():
@@ -1048,7 +1016,39 @@ async def scrape_and_save(
                 logger.info(f"[Scrape] ⏭ Facebook: no cookies, skipping")
         except Exception as e:
             logger.warning(f"[Scrape] Facebook failed: {e}")
-        
+
+        # SOURCE 2: VMF Homes / Vanderbilt (JSON API)
+        vmf_count = 0
+        logger.info(f"[Scrape] 2/{source_count} - Scraping VMF Homes (JSON API)...")
+        try:
+            vmf_listings = await VMFHomesScraper.scrape(
+                min_price=min_price,
+                max_price=max_price,
+                max_listings=100,
+            )
+            all_listings.extend(vmf_listings)
+            all_prices.extend([l.listing_price for l in vmf_listings])
+            vmf_count = len(vmf_listings)
+            logger.info(f"[Scrape] ✅ VMF Homes: {vmf_count} mobile homes")
+        except Exception as e:
+            logger.warning(f"[Scrape] VMF Homes failed: {e}")
+
+        # SOURCE 3: 21st Mortgage (JSON API)
+        mortgage21_count = 0
+        logger.info(f"[Scrape] 3/{source_count} - Scraping 21st Mortgage (JSON API)...")
+        try:
+            mortgage21_listings = await TwentyFirstMortgageScraper.scrape(
+                min_price=min_price,
+                max_price=max_price,
+                max_listings=100,
+            )
+            all_listings.extend(mortgage21_listings)
+            all_prices.extend([l.listing_price for l in mortgage21_listings])
+            mortgage21_count = len(mortgage21_listings)
+            logger.info(f"[Scrape] ✅ 21st Mortgage: {mortgage21_count} mobile homes")
+        except Exception as e:
+            logger.warning(f"[Scrape] 21st Mortgage failed: {e}")
+
         if not all_listings:
             return {
                 "success": True,
