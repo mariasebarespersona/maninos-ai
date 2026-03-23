@@ -237,14 +237,17 @@ async def list_market_listings(
         if city:
             query = query.ilike("city", f"%{city}%")
         
-        # Prioritize Facebook listings first, then by scraped date (newest first)
         query = query.order("scraped_at", desc=True)
         query = query.range(offset, offset + limit - 1)
-        
+
         response = query.execute()
-        
+
+        # Sort: Facebook first, then rest by scraped date
+        listings = response.data or []
+        listings.sort(key=lambda x: (0 if x.get("source") == "facebook" else 1))
+
         return {
-            "listings": response.data,
+            "listings": listings,
             "count": len(response.data),
             "qualified_only": qualified_only,
         }
