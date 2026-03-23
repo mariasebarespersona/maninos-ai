@@ -28,6 +28,12 @@ interface Transfer {
   documents_checklist: Record<string, boolean>
   property_address: string
   created_at: string
+  tdhca_serial?: string | null
+  tdhca_label?: string | null
+  tdhca_owner_name?: string | null
+  title_name_updated?: boolean
+  last_tdhca_check?: string | null
+  tdhca_check_count?: number
 }
 
 interface Stats {
