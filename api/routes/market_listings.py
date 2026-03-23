@@ -1030,6 +1030,22 @@ async def scrape_facebook_only(
             except Exception as e:
                 logger.warning(f"[FB Scrape] Save error: {e}")
 
+        # Update the latest market_analysis to include Facebook count
+        if saved > 0:
+            try:
+                latest = supabase.table("market_analysis").select("id, sources, total_scraped").order("scraped_at", desc=True).limit(1).execute()
+                if latest.data:
+                    existing_sources = latest.data[0].get("sources") or {}
+                    existing_sources["facebook"] = saved
+                    new_total = (latest.data[0].get("total_scraped") or 0) + saved
+                    supabase.table("market_analysis").update({
+                        "sources": existing_sources,
+                        "total_scraped": new_total,
+                    }).eq("id", latest.data[0]["id"]).execute()
+                    logger.info(f"[FB Scrape] Updated market_analysis with facebook={saved}")
+            except Exception as ma_err:
+                logger.warning(f"[FB Scrape] Could not update market_analysis: {ma_err}")
+
         logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings (skipped: {skipped_price} no price)")
         return {"success": True, "facebook": saved, "total_raw": len(fb_results), "skipped_no_price": skipped_price, "message": f"{saved} casas de Facebook guardadas"}
     except Exception as e:
