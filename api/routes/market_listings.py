@@ -1028,7 +1028,9 @@ async def scrape_facebook_only(
                 supabase.table("market_listings").insert(listing_data).execute()
                 saved += 1
             except Exception as e:
-                logger.warning(f"[FB Scrape] Save error: {e}")
+                if saved == 0:  # Only log first error to avoid spam
+                    logger.error(f"[FB Scrape] FIRST save error (likely all fail same way): {e}")
+                    first_error = str(e)
 
         # Update the latest market_analysis to include Facebook count
         if saved > 0:
@@ -1047,7 +1049,28 @@ async def scrape_facebook_only(
                 logger.warning(f"[FB Scrape] Could not update market_analysis: {ma_err}")
 
         logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings (skipped: {skipped_price} no price)")
-        return {"success": True, "facebook": saved, "total_raw": len(fb_results), "skipped_no_price": skipped_price, "message": f"{saved} casas de Facebook guardadas"}
+        resp = {"success": True, "facebook": saved, "total_raw": len(fb_results), "skipped_no_price": skipped_price, "message": f"{saved} casas de Facebook guardadas"}
+        if saved == 0 and len(fb_results) > 0:
+            resp["debug_first_error"] = first_error if 'first_error' in dir() else "unknown"
+            # Try one insert with full error details
+            try:
+                test_fb = fb_results[0]
+                test_data = {
+                    "source": "facebook",
+                    "source_url": test_fb.url or "fb-test",
+                    "address": test_fb.title or "Test",
+                    "city": test_fb.city or "Houston",
+                    "state": "TX",
+                    "listing_price": test_fb.price if test_fb.price > 0 else 99999,
+                    "is_qualified": True,
+                    "status": "available",
+                    "scraped_at": datetime.now().isoformat(),
+                }
+                supabase.table("market_listings").insert(test_data).execute()
+                resp["debug_test_insert"] = "SUCCESS"
+            except Exception as test_err:
+                resp["debug_test_insert"] = str(test_err)
+        return resp
     except Exception as e:
         logger.error(f"[FB Scrape] Error: {e}")
         return {"success": False, "facebook": 0, "message": str(e)}
