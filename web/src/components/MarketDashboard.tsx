@@ -491,24 +491,34 @@ export default function MarketDashboard() {
     }
   }, [listings, fetchPredictions]);
 
-  // Trigger AI search - calls Railway directly to avoid Vercel serverless timeout (60s Hobby cap)
+  // Trigger search - scrapes VMF + 21st Mortgage + Facebook (in parallel)
   const triggerSearch = async () => {
     setSearching(true);
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(
-        `${backendUrl}/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000`,
-        { method: 'POST' }
-      );
 
-      if (!response.ok) {
-        const errText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Search failed (${response.status}): ${errText}`);
+      // Run Facebook + main scrape in PARALLEL (Facebook is separate to avoid timeout)
+      const [mainRes, fbRes] = await Promise.allSettled([
+        fetch(`${backendUrl}/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000`, { method: 'POST' }),
+        fetch(`${backendUrl}/api/market-listings/scrape-facebook?min_price=0&max_price=80000`, { method: 'POST' }),
+      ]);
+
+      let mainResult: any = null;
+      let fbResult: any = null;
+
+      if (mainRes.status === 'fulfilled' && mainRes.value.ok) {
+        mainResult = await mainRes.value.json();
+      }
+      if (fbRes.status === 'fulfilled' && fbRes.value.ok) {
+        fbResult = await fbRes.value.json();
       }
 
-      const result = await response.json();
+      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0) + (fbResult?.facebook || 0);
+      const qualified = (mainResult?.qualified || 0) + (fbResult?.facebook || 0);
+      const fbCount = fbResult?.facebook || 0;
+
       toast.success(
-        `✓ Encontradas ${result.qualified} casas calificadas de ${result.market_analysis?.total_scraped || 0} analizadas`
+        `✓ Encontradas ${qualified} casas calificadas de ${totalScraped} analizadas${fbCount > 0 ? ` (${fbCount} de Facebook)` : ''}`
       );
 
       // Refresh listings

@@ -931,6 +931,74 @@ async def cleanup_expired():
 
 
 # ============================================
+# FACEBOOK-ONLY SCRAPE ENDPOINT
+# ============================================
+
+@router.post("/scrape-facebook")
+async def scrape_facebook_only(
+    min_price: float = Query(default=5000),
+    max_price: float = Query(default=80000),
+):
+    """Scrape Facebook Marketplace only and save results to DB."""
+    try:
+        from api.agents.buscador.fb_auth import FacebookAuth
+        if not FacebookAuth.is_authenticated():
+            return {"success": True, "facebook": 0, "message": "Facebook not connected"}
+
+        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
+        from api.agents.buscador.scraper import ScrapedListing
+        from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE
+
+        logger.info("[FB Scrape] Starting Facebook-only scrape...")
+        fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
+            query="mobile home",
+            city="houston",
+            min_price=int(min_price),
+            max_price=int(max_price),
+            max_listings=30,
+        )
+        logger.info(f"[FB Scrape] Got {len(fb_results)} raw listings from Facebook")
+
+        saved = 0
+        for fb in fb_results:
+            if fb.price <= 0:
+                continue
+            # Check basic qualification
+            passes_range = MIN_PRICE <= fb.price <= MAX_PRICE
+            city_name = fb.city or "Houston"
+            passes_zone, _ = is_within_zone(city_name, fb.state or "TX")
+            if not (passes_range and passes_zone):
+                continue
+            try:
+                listing_data = {
+                    "source": "facebook",
+                    "source_url": fb.url or f"fb-{hash(fb.title)}",
+                    "address": fb.title or "Facebook Marketplace",
+                    "city": city_name,
+                    "state": fb.state or "TX",
+                    "listing_price": fb.price,
+                    "year_built": fb.year_built,
+                    "sqft": fb.sqft,
+                    "bedrooms": fb.bedrooms,
+                    "bathrooms": fb.bathrooms,
+                    "thumbnail_url": fb.image_url,
+                    "is_qualified": True,
+                    "status": "available",
+                    "scraped_at": datetime.now().isoformat(),
+                }
+                supabase.table("market_listings").insert(listing_data).execute()
+                saved += 1
+            except Exception as e:
+                logger.warning(f"[FB Scrape] Save error: {e}")
+
+        logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings")
+        return {"success": True, "facebook": saved, "message": f"{saved} casas de Facebook guardadas"}
+    except Exception as e:
+        logger.error(f"[FB Scrape] Error: {e}")
+        return {"success": False, "facebook": 0, "message": str(e)}
+
+
+# ============================================
 # SCRAPING ENDPOINT (Direct, no LLM)
 # ============================================
 
@@ -958,62 +1026,12 @@ async def scrape_and_save(
 
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
 
-        source_count = 3
-        logger.info(f"[Scrape] Will scrape {source_count} sources: Facebook, VMF, 21st Mortgage")
+        source_count = 2
+        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF, 21st Mortgage (Facebook scraped separately)")
 
         all_listings = []
         all_prices = []
-        fb_count = 0
-
-        # SOURCE 1: Facebook Marketplace FIRST (HTTP requests — ~10s)
-        logger.info(f"[Scrape] 1/{source_count} - Scraping Facebook Marketplace...")
-        try:
-            from api.agents.buscador.fb_auth import FacebookAuth
-            if FacebookAuth.is_authenticated():
-                from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
-                from api.agents.buscador.scraper import ScrapedListing
-                from datetime import datetime as dt
-                import asyncio as aio
-
-                # Single request only — minimize Facebook detection risk
-                # Houston "mobile home" covers the main market
-                try:
-                    logger.info("[Scrape] FB: single request to Houston marketplace...")
-                    fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
-                        query="mobile home",
-                        city="houston",
-                        min_price=int(min_price),
-                        max_price=int(max_price),
-                        max_listings=30,
-                    )
-                    if fb_results:
-                        for fb in fb_results:
-                            if fb.price > 0:
-                                sl = ScrapedListing(
-                                    source="facebook",
-                                    source_url=fb.url or f"fb-{fb.title[:20]}",
-                                    source_id=None,
-                                    address=fb.title or "Facebook Marketplace",
-                                    city=fb.city or "Houston",
-                                    state=fb.state or "TX",
-                                    zip_code=None,
-                                    listing_price=fb.price,
-                                    year_built=fb.year_built,
-                                    sqft=fb.sqft,
-                                    bedrooms=fb.bedrooms,
-                                    bathrooms=fb.bathrooms,
-                                    thumbnail_url=fb.image_url,
-                                    scraped_at=dt.now().isoformat(),
-                                    photos=[fb.image_url] if fb.image_url else [],
-                                )
-                                all_listings.append(sl)
-                                all_prices.append(sl.listing_price)
-                                fb_count += 1
-                    logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes")
-                except Exception as fb_err:
-                    logger.warning(f"[Scrape] FB failed: {fb_err}")
-            else:
-                logger.info(f"[Scrape] ⏭ Facebook: no cookies, skipping")
+        fb_count = 0  # Facebook scraped via separate /scrape-facebook endpoint
         except Exception as e:
             logger.warning(f"[Scrape] Facebook failed: {e}")
 
