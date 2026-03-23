@@ -958,14 +958,12 @@ async def scrape_and_save(
 
         logger.info(f"[Scrape] Starting scrape for {city}, ${min_price}-${max_price}")
 
-        source_count = 5
-        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF, 21st Mortgage, MHVillage, Craigslist, Facebook")
+        source_count = 3
+        logger.info(f"[Scrape] Will scrape {source_count} sources: VMF, 21st Mortgage, Facebook")
 
         all_listings = []
         all_prices = []
         fb_count = 0
-        mhv_count = 0
-        cl_count = 0
 
         # SOURCE 1: VMF Homes / Vanderbilt (JSON API, no browser)
         vmf_count = 0
@@ -999,41 +997,8 @@ async def scrape_and_save(
         except Exception as e:
             logger.warning(f"[Scrape] 21st Mortgage failed: {e}")
 
-        # SOURCE 3: MHVillage (Playwright browser scraping)
-        logger.info(f"[Scrape] 3/{source_count} - Scraping MHVillage...")
-        try:
-            from api.agents.buscador.scraper import MHVillageScraper
-            mhv_listings = await MHVillageScraper.scrape(
-                city=city,
-                min_price=min_price,
-                max_price=max_price,
-                max_listings=30,
-            )
-            all_listings.extend(mhv_listings)
-            all_prices.extend([l.listing_price for l in mhv_listings])
-            mhv_count = len(mhv_listings)
-            logger.info(f"[Scrape] ✅ MHVillage: {mhv_count} mobile homes")
-        except Exception as e:
-            logger.warning(f"[Scrape] MHVillage failed: {e}")
-
-        # SOURCE 4: Craigslist (Playwright browser scraping)
-        logger.info(f"[Scrape] 4/{source_count} - Scraping Craigslist...")
-        try:
-            from api.agents.buscador.craigslist_scraper import CraigslistScraper
-            cl_listings = await CraigslistScraper.scrape(
-                min_price=min_price,
-                max_price=max_price,
-                max_listings=30,
-            )
-            all_listings.extend(cl_listings)
-            all_prices.extend([l.listing_price for l in cl_listings])
-            cl_count = len(cl_listings)
-            logger.info(f"[Scrape] ✅ Craigslist: {cl_count} mobile homes")
-        except Exception as e:
-            logger.warning(f"[Scrape] Craigslist failed: {e}")
-
-        # SOURCE 5: Facebook Marketplace (requires cookies — HTTP requests only, no Playwright)
-        logger.info(f"[Scrape] 5/{source_count} - Scraping Facebook Marketplace...")
+        # SOURCE 3: Facebook Marketplace (HTTP requests only — fast, no Playwright)
+        logger.info(f"[Scrape] 3/{source_count} - Scraping Facebook Marketplace...")
         try:
             from api.agents.buscador.fb_auth import FacebookAuth
             if FacebookAuth.is_authenticated():
@@ -1111,8 +1076,6 @@ async def scrape_and_save(
         sources_data = {
             "vmf_homes": vmf_count,
             "21st_mortgage": mortgage21_count,
-            "mhvillage": mhv_count,
-            "craigslist": cl_count,
             "facebook": fb_count,
         }
         
