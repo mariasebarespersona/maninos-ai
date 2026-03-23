@@ -1021,7 +1021,6 @@ async def scrape_and_save(
         try:
             from api.agents.buscador.craigslist_scraper import CraigslistScraper
             cl_listings = await CraigslistScraper.scrape(
-                city=city,
                 min_price=min_price,
                 max_price=max_price,
                 max_listings=30,
@@ -1033,21 +1032,53 @@ async def scrape_and_save(
         except Exception as e:
             logger.warning(f"[Scrape] Craigslist failed: {e}")
 
-        # SOURCE 5: Facebook Marketplace (requires cookies)
+        # SOURCE 5: Facebook Marketplace (requires cookies — HTTP requests only, no Playwright)
         logger.info(f"[Scrape] 5/{source_count} - Scraping Facebook Marketplace...")
         try:
             from api.agents.buscador.fb_auth import FacebookAuth
             if FacebookAuth.is_authenticated():
                 from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
-                fb_listings = await FacebookMarketplaceScraper.scrape(
-                    min_price=min_price,
-                    max_price=max_price,
-                    max_listings=30,
-                )
-                all_listings.extend(fb_listings)
-                all_prices.extend([l.listing_price for l in fb_listings])
-                fb_count = len(fb_listings)
-                logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes")
+                # Use HTTP requests directly (faster, no headless detection issues)
+                for fb_city in ["houston", "dallas"]:
+                    for fb_term in ["mobile home for sale", "manufactured home for sale"]:
+                        try:
+                            fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
+                                query=fb_term,
+                                city=fb_city,
+                                min_price=int(min_price),
+                                max_price=int(max_price),
+                                max_listings=15,
+                            )
+                            if fb_results:
+                                # Convert FBListing → ScrapedListing format
+                                for fb in fb_results:
+                                    if fb.price > 0:
+                                        from api.agents.buscador.scraper import ScrapedListing
+                                        from datetime import datetime as dt
+                                        sl = ScrapedListing(
+                                            source="facebook",
+                                            source_url=fb.url or f"fb-{fb.title[:20]}",
+                                            source_id=None,
+                                            address=fb.title or "Facebook Marketplace",
+                                            city=fb.city or fb_city.title(),
+                                            state=fb.state or "TX",
+                                            zip_code=None,
+                                            listing_price=fb.price,
+                                            year_built=fb.year_built,
+                                            sqft=fb.sqft,
+                                            bedrooms=fb.bedrooms,
+                                            bathrooms=fb.bathrooms,
+                                            thumbnail_url=fb.image_url,
+                                            scraped_at=dt.now().isoformat(),
+                                            photos=[fb.image_url] if fb.image_url else [],
+                                        )
+                                        all_listings.append(sl)
+                                        all_prices.append(sl.listing_price)
+                                        fb_count += 1
+                                logger.info(f"[Scrape] FB requests '{fb_term}' in {fb_city}: {len(fb_results)} listings")
+                        except Exception as fb_err:
+                            logger.warning(f"[Scrape] FB requests error '{fb_term}' in {fb_city}: {fb_err}")
+                logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes (via HTTP requests)")
             else:
                 logger.info(f"[Scrape] ⏭ Facebook: no cookies, skipping")
         except Exception as e:
