@@ -319,6 +319,22 @@ async def cleanup_unqualified_listings():
 
 
 @router.delete("/all")
+@router.post("/fix-facebook-qualified")
+async def fix_facebook_qualified():
+    """Fix Facebook listings qualification status."""
+    try:
+        result = supabase.table("market_listings").update({
+            "is_qualified": True,
+            "qualification_score": 80,
+            "passes_70_rule": True,
+        }).eq("source", "facebook").execute()
+        count = len(result.data) if result.data else 0
+        return {"ok": True, "updated": count}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.delete("/all")
 async def delete_all_listings():
     """
     Delete ALL market listings from the database.
