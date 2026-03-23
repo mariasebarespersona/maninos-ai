@@ -286,27 +286,72 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
     # Send notification to treasury (Abigail)
     _send_approved_notification(property_id, reno.get("total_cost", 0))
 
-    # Create payment order so Abigail can execute the payment
+    # Create ONE payment order PER concepto (not one lump sum)
+    # So each item (pisos, electricidad, etc.) can be approved/executed individually
     try:
         prop = sb.table("properties").select("address").eq("id", property_id).execute()
         prop_address = prop.data[0].get("address", "") if prop.data else property_id
         responsable = materials.get("responsable", "")
+        items = materials.get("items", {})
+        approved_by = (data.approved_by if data else None) or "admin"
+        now = _now_iso()
 
-        sb.table("payment_orders").insert({
-            "property_id": property_id,
-            "property_address": prop_address,
-            "payee_name": responsable or "Contratista renovación",
-            "amount": reno.get("total_cost", 0),
-            "method": "transferencia",
-            "status": "approved",
-            "notes": f"Cotización de renovación aprobada. Responsable: {responsable}",
-            "approved_by": (data.approved_by if data else None) or "admin",
-            "approved_at": _now_iso(),
-            "created_by": "sistema_renovacion",
-        }).execute()
-        logger.info(f"[renovation] Payment order created for approved renovation {property_id}")
+        # Build item ID → concept name lookup
+        item_names = {item["id"]: item["concepto"] for item in RENOVATION_ITEMS}
+
+        orders_created = 0
+        for item_id, item_data in items.items():
+            if not isinstance(item_data, dict):
+                continue
+            mo = float(item_data.get("mano_obra", 0))
+            mat = float(item_data.get("materiales", 0))
+            total = mo + mat
+            if total <= 0:
+                continue
+
+            concepto = item_names.get(item_id, item_id)
+            item_responsable = item_data.get("responsable", "") or responsable
+
+            sb.table("payment_orders").insert({
+                "property_id": property_id,
+                "property_address": prop_address,
+                "payee_name": item_responsable or f"Contratista - {concepto}",
+                "amount": round(total, 2),
+                "method": "transferencia",
+                "status": "approved",
+                "notes": f"Renovación: {concepto} (MO: ${mo:,.0f} + Mat: ${mat:,.0f}). Propiedad: {prop_address}",
+                "approved_by": approved_by,
+                "approved_at": now,
+                "created_by": "sistema_renovacion",
+            }).execute()
+            orders_created += 1
+
+        # Also create orders for custom items
+        custom_items = materials.get("custom_items", [])
+        for ci in custom_items:
+            mo = float(ci.get("mano_obra", 0))
+            mat = float(ci.get("materiales", 0))
+            total = mo + mat
+            if total <= 0:
+                continue
+            concepto = ci.get("concepto", "Item personalizado")
+            sb.table("payment_orders").insert({
+                "property_id": property_id,
+                "property_address": prop_address,
+                "payee_name": responsable or f"Contratista - {concepto}",
+                "amount": round(total, 2),
+                "method": "transferencia",
+                "status": "approved",
+                "notes": f"Renovación (custom): {concepto} (MO: ${mo:,.0f} + Mat: ${mat:,.0f})",
+                "approved_by": approved_by,
+                "approved_at": now,
+                "created_by": "sistema_renovacion",
+            }).execute()
+            orders_created += 1
+
+        logger.info(f"[renovation] Created {orders_created} payment orders for renovation {property_id}")
     except Exception as e:
-        logger.warning(f"[renovation] Failed to create payment order: {e}")
+        logger.warning(f"[renovation] Failed to create payment orders: {e}")
 
     logger.info(f"[renovation] Quote approved for {property_id} by {materials.get('approved_by', 'unknown')}")
 

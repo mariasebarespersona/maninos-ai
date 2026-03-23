@@ -345,13 +345,13 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
-    # Job 6: Title monitor - 1st of every month at 10:00 AM CT
+    # Job 6: Title monitor - DAILY at 10:00 AM CT
     # Checks TDHCA for owner name updates on pending title transfers
     _scheduler.add_job(
         _job_title_monitor,
-        trigger=CronTrigger(day=1, hour=10, minute=0),
+        trigger=CronTrigger(hour=10, minute=0),
         id="title_monitor",
-        name="TDHCA Title Name Monitor (monthly)",
+        name="TDHCA Title Name Monitor (daily)",
         replace_existing=True,
     )
 
