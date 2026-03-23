@@ -1040,7 +1040,6 @@ async def scrape_and_save(
             if FacebookAuth.is_authenticated():
                 from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
                 fb_listings = await FacebookMarketplaceScraper.scrape(
-                    city=city,
                     min_price=min_price,
                     max_price=max_price,
                     max_listings=30,
