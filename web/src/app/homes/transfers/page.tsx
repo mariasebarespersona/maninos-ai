@@ -286,7 +286,7 @@ export default function TransfersPage() {
                         </td>
                         <td className="px-4 py-3">
                           <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs">
-                            {t.properties?.address || t.property_id?.slice(0, 8)}
+                            {(t as any).properties?.address || t.property_id?.slice(0, 8)}
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-xs">
