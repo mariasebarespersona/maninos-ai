@@ -330,7 +330,7 @@ export default function TransfersPage() {
                           )}
                           {t.last_tdhca_check && (
                             <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
-                              Último check: {formatDate(t.last_tdhca_check)} {t.tdhca_check_count > 0 && `(${t.tdhca_check_count}x)`}
+                              Último check: {formatDate(t.last_tdhca_check)} {(t.tdhca_check_count || 0) > 0 && `(${t.tdhca_check_count}x)`}
                             </p>
                           )}
                         </td>
