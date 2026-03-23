@@ -1032,10 +1032,8 @@ async def scrape_and_save(
         all_listings = []
         all_prices = []
         fb_count = 0  # Facebook scraped via separate /scrape-facebook endpoint
-        except Exception as e:
-            logger.warning(f"[Scrape] Facebook failed: {e}")
 
-        # SOURCE 2: VMF Homes / Vanderbilt (JSON API)
+        # SOURCE 1: VMF Homes / Vanderbilt (JSON API)
         vmf_count = 0
         logger.info(f"[Scrape] 2/{source_count} - Scraping VMF Homes (JSON API)...")
         try:
