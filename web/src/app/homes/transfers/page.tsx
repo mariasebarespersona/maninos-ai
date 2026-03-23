@@ -246,17 +246,17 @@ export default function TransfersPage() {
             </div>
           )}
 
-          {/* Title Monitor Table */}
-          {monitorLoading ? (
+          {/* ALL Transfers Table (with and without serial) */}
+          {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
             </div>
-          ) : !monitor || monitor.transfers.length === 0 ? (
+          ) : transfers.length === 0 ? (
             <div className="card-luxury p-12 text-center">
               <Shield className="w-12 h-12 text-navy-300 mx-auto mb-4" />
-              <h3 className="font-serif text-xl text-navy-900 mb-2">Sin titulos monitoreados</h3>
+              <h3 className="font-serif text-xl text-navy-900 mb-2">Sin titulos</h3>
               <p className="text-navy-500 text-sm">
-                Cuando se llene la aplicacion de cambio de titulo con serial/label, aparecera aqui.
+                Los titulos aparecen cuando se compra o vende una propiedad.
               </p>
             </div>
           ) : (
@@ -265,52 +265,71 @@ export default function TransfersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-navy-50 text-navy-600 text-left">
-                      <th className="px-4 py-3 font-medium">Transferencia</th>
-                      <th className="px-4 py-3 font-medium">Serial</th>
-                      <th className="px-4 py-3 font-medium">Nombre Esperado</th>
+                      <th className="px-4 py-3 font-medium">Tipo</th>
+                      <th className="px-4 py-3 font-medium">Propiedad</th>
+                      <th className="px-4 py-3 font-medium">De → A</th>
+                      <th className="px-4 py-3 font-medium">Serial/Label</th>
                       <th className="px-4 py-3 font-medium">Nombre TDHCA</th>
-                      <th className="px-4 py-3 font-medium">Estado</th>
-                      <th className="px-4 py-3 font-medium">Ultimo Check</th>
+                      <th className="px-4 py-3 font-medium">Estado Titulo</th>
                       <th className="px-4 py-3 font-medium">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-navy-100">
-                    {monitor.transfers.map((t) => (
+                    {transfers.map((t) => (
                       <tr key={t.id} className="hover:bg-navy-50/50 transition-colors">
                         <td className="px-4 py-3">
-                          <Link
-                            href={`/homes/properties/${t.property_id}`}
-                            className="text-blue-600 hover:underline text-xs"
-                          >
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                            t.transfer_type === 'purchase' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
                             {t.transfer_type === 'purchase' ? 'Compra' : 'Venta'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs">
+                            {t.properties?.address || t.property_id?.slice(0, 8)}
                           </Link>
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs">{t.tdhca_serial || t.tdhca_label || '-'}</td>
-                        <td className="px-4 py-3 text-xs">{t.to_name}</td>
                         <td className="px-4 py-3 text-xs">
-                          {t.tdhca_owner_name || <span className="text-navy-400">Sin verificar</span>}
+                          <span style={{ color: 'var(--ash)' }}>{t.from_name}</span>
+                          <span className="mx-1">→</span>
+                          <span className="font-medium" style={{ color: 'var(--ink)' }}>{t.to_name}</span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs">
+                          {t.tdhca_serial || t.tdhca_label || (
+                            <span className="text-amber-600 italic">Sin serial</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          {t.tdhca_owner_name ? (
+                            <span className="font-medium">{t.tdhca_owner_name}</span>
+                          ) : (
+                            <span className="text-navy-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {t.title_name_updated ? (
                             <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
                               <CheckCircle2 className="w-3 h-3" />
-                              Actualizado
+                              Nombre actualizado
                             </span>
-                          ) : (
+                          ) : (t.tdhca_serial || t.tdhca_label) ? (
                             <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
                               <Clock className="w-3 h-3" />
                               Pendiente
                             </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-medium">
+                              Sin monitorear
+                            </span>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-navy-500">
-                          {formatDate(t.last_tdhca_check)}
-                          {t.tdhca_check_count > 0 && (
-                            <span className="text-navy-400 ml-1">({t.tdhca_check_count}x)</span>
+                          {t.last_tdhca_check && (
+                            <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                              Último check: {formatDate(t.last_tdhca_check)} {t.tdhca_check_count > 0 && `(${t.tdhca_check_count}x)`}
+                            </p>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {!t.title_name_updated && (
+                          {(t.tdhca_serial || t.tdhca_label) && !t.title_name_updated && (
                             <button
                               onClick={() => handleRecheck(t.id)}
                               disabled={recheckingId === t.id}
@@ -340,7 +359,7 @@ export default function TransfersPage() {
               Monitoreo automatico
             </h4>
             <ul className="text-sm text-navy-600 space-y-1">
-              <li>- El sistema revisa TDHCA cada mes para ver si el nombre del titulo ha cambiado</li>
+              <li>- El sistema revisa TDHCA diariamente para ver si el nombre del titulo ha cambiado</li>
               <li>- El serial/label se obtiene de la aplicacion de cambio de titulo</li>
               <li>- Cuando el nombre en TDHCA coincide con el nuevo propietario, se marca como actualizado</li>
               <li>- Puedes verificar manualmente haciendo clic en "Verificar"</li>
