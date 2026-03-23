@@ -950,25 +950,32 @@ async def scrape_facebook_only(
         from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE
 
         logger.info("[FB Scrape] Starting Facebook-only scrape...")
-        fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
-            query="mobile home",
-            city="houston",
-            min_price=int(min_price),
-            max_price=int(max_price),
-            max_listings=30,
-        )
-        logger.info(f"[FB Scrape] Got {len(fb_results)} raw listings from Facebook")
+        try:
+            fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
+                query="mobile home",
+                city="houston",
+                min_price=int(min_price),
+                max_price=int(max_price),
+                max_listings=30,
+            )
+        except Exception as scrape_err:
+            logger.error(f"[FB Scrape] _scrape_with_requests CRASHED: {scrape_err}")
+            fb_results = []
+        logger.info(f"[FB Scrape] Got {len(fb_results)} raw FBListing objects")
+
+        # Log details of first few results for debugging
+        for i, fb in enumerate(fb_results[:3]):
+            logger.info(f"[FB Scrape] Sample {i}: title='{fb.title[:50]}', price={fb.price}, city={fb.city}, state={fb.state}")
 
         saved = 0
+        skipped_price = 0
+        skipped_range = 0
+        skipped_zone = 0
         for fb in fb_results:
             if fb.price <= 0:
+                skipped_price += 1
                 continue
-            # Check basic qualification
-            passes_range = MIN_PRICE <= fb.price <= MAX_PRICE
             city_name = fb.city or "Houston"
-            passes_zone, _ = is_within_zone(city_name, fb.state or "TX")
-            if not (passes_range and passes_zone):
-                continue
             try:
                 listing_data = {
                     "source": "facebook",
@@ -991,8 +998,8 @@ async def scrape_facebook_only(
             except Exception as e:
                 logger.warning(f"[FB Scrape] Save error: {e}")
 
-        logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings")
-        return {"success": True, "facebook": saved, "message": f"{saved} casas de Facebook guardadas"}
+        logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings (skipped: {skipped_price} no price)")
+        return {"success": True, "facebook": saved, "total_raw": len(fb_results), "skipped_no_price": skipped_price, "message": f"{saved} casas de Facebook guardadas"}
     except Exception as e:
         logger.error(f"[FB Scrape] Error: {e}")
         return {"success": False, "facebook": 0, "message": str(e)}
