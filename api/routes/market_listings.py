@@ -949,23 +949,55 @@ async def scrape_facebook_only(
         from api.agents.buscador.scraper import ScrapedListing
         from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE
 
-        logger.info("[FB Scrape] Starting Facebook-only scrape...")
-        try:
-            fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
-                query="mobile home",
-                city="houston",
-                min_price=int(min_price),
-                max_price=int(max_price),
-                max_listings=30,
-            )
-        except Exception as scrape_err:
-            logger.error(f"[FB Scrape] _scrape_with_requests CRASHED: {scrape_err}")
-            fb_results = []
-        logger.info(f"[FB Scrape] Got {len(fb_results)} raw FBListing objects")
+        # Use SAME logic as test-scrape diagnostic (which returns 22 listings)
+        # Instead of _scrape_with_requests which returns 0 for unknown reasons
+        import requests as req
+        import re as re_mod
+        import random as rand
+        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper as FBScraper, USER_AGENTS, PROXY_URL, FBListing
 
-        # Log details of first few results for debugging
-        for i, fb in enumerate(fb_results[:3]):
-            logger.info(f"[FB Scrape] Sample {i}: title='{fb.title[:50]}', price={fb.price}, city={fb.city}, state={fb.state}")
+        logger.info("[FB Scrape] Starting Facebook-only scrape (direct HTTP)...")
+        cookies = FacebookAuth.load_cookies()
+        fb_results = []
+
+        try:
+            session = req.Session()
+            for c in cookies:
+                session.cookies.set(c["name"], c["value"], domain=c.get("domain", ".facebook.com"), path=c.get("path", "/"))
+            if PROXY_URL:
+                session.proxies = {"http": PROXY_URL, "https": PROXY_URL}
+
+            ua = rand.choice(USER_AGENTS)
+            session.headers.update({
+                "User-Agent": ua,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"macOS"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+            })
+
+            url = f"https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
+            logger.info(f"[FB Scrape] Fetching: {url}")
+
+            response = session.get(url, allow_redirects=True, timeout=30)
+            logger.info(f"[FB Scrape] Response: {response.status_code}, URL: {response.url[:80]}, HTML: {len(response.text)} bytes")
+
+            if "/login" in response.url:
+                logger.warning("[FB Scrape] Redirected to login — cookies invalid")
+            else:
+                # Extract using the JSON method (same as test-scrape)
+                fb_results = FBScraper._extract_json_from_html(response.text, "Houston")
+                logger.info(f"[FB Scrape] Extracted {len(fb_results)} listings from HTML")
+        except Exception as http_err:
+            logger.error(f"[FB Scrape] HTTP error: {http_err}")
+
+        logger.info(f"[FB Scrape] Got {len(fb_results)} raw FBListing objects")
 
         saved = 0
         skipped_price = 0
