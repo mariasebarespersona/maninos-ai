@@ -1003,47 +1003,47 @@ async def scrape_and_save(
             from api.agents.buscador.fb_auth import FacebookAuth
             if FacebookAuth.is_authenticated():
                 from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
-                # Use HTTP requests directly (faster, no headless detection issues)
-                for fb_city in ["houston", "dallas"]:
-                    for fb_term in ["mobile home for sale", "manufactured home for sale"]:
-                        try:
-                            fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
-                                query=fb_term,
-                                city=fb_city,
-                                min_price=int(min_price),
-                                max_price=int(max_price),
-                                max_listings=15,
-                            )
-                            if fb_results:
-                                # Convert FBListing → ScrapedListing format
-                                for fb in fb_results:
-                                    if fb.price > 0:
-                                        from api.agents.buscador.scraper import ScrapedListing
-                                        from datetime import datetime as dt
-                                        sl = ScrapedListing(
-                                            source="facebook",
-                                            source_url=fb.url or f"fb-{fb.title[:20]}",
-                                            source_id=None,
-                                            address=fb.title or "Facebook Marketplace",
-                                            city=fb.city or fb_city.title(),
-                                            state=fb.state or "TX",
-                                            zip_code=None,
-                                            listing_price=fb.price,
-                                            year_built=fb.year_built,
-                                            sqft=fb.sqft,
-                                            bedrooms=fb.bedrooms,
-                                            bathrooms=fb.bathrooms,
-                                            thumbnail_url=fb.image_url,
-                                            scraped_at=dt.now().isoformat(),
-                                            photos=[fb.image_url] if fb.image_url else [],
-                                        )
-                                        all_listings.append(sl)
-                                        all_prices.append(sl.listing_price)
-                                        fb_count += 1
-                                logger.info(f"[Scrape] FB requests '{fb_term}' in {fb_city}: {len(fb_results)} listings")
-                        except Exception as fb_err:
-                            logger.warning(f"[Scrape] FB requests error '{fb_term}' in {fb_city}: {fb_err}")
-                logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes (via HTTP requests)")
+                from api.agents.buscador.scraper import ScrapedListing
+                from datetime import datetime as dt
+                import asyncio as aio
+
+                # Single request only — minimize Facebook detection risk
+                # Houston "mobile home" covers the main market
+                try:
+                    logger.info("[Scrape] FB: single request to Houston marketplace...")
+                    fb_results = await FacebookMarketplaceScraper._scrape_with_requests(
+                        query="mobile home",
+                        city="houston",
+                        min_price=int(min_price),
+                        max_price=int(max_price),
+                        max_listings=30,
+                    )
+                    if fb_results:
+                        for fb in fb_results:
+                            if fb.price > 0:
+                                sl = ScrapedListing(
+                                    source="facebook",
+                                    source_url=fb.url or f"fb-{fb.title[:20]}",
+                                    source_id=None,
+                                    address=fb.title or "Facebook Marketplace",
+                                    city=fb.city or "Houston",
+                                    state=fb.state or "TX",
+                                    zip_code=None,
+                                    listing_price=fb.price,
+                                    year_built=fb.year_built,
+                                    sqft=fb.sqft,
+                                    bedrooms=fb.bedrooms,
+                                    bathrooms=fb.bathrooms,
+                                    thumbnail_url=fb.image_url,
+                                    scraped_at=dt.now().isoformat(),
+                                    photos=[fb.image_url] if fb.image_url else [],
+                                )
+                                all_listings.append(sl)
+                                all_prices.append(sl.listing_price)
+                                fb_count += 1
+                    logger.info(f"[Scrape] ✅ Facebook: {fb_count} mobile homes")
+                except Exception as fb_err:
+                    logger.warning(f"[Scrape] FB failed: {fb_err}")
             else:
                 logger.info(f"[Scrape] ⏭ Facebook: no cookies, skipping")
         except Exception as e:

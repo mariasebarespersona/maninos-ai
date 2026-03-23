@@ -402,8 +402,8 @@ class FacebookMarketplaceScraper:
         except Exception as e:
             logger.warning(f"[FB Requests] Warmup failed: {e}")
         
-        await asyncio.sleep(random.uniform(1, 2))
-        
+        await asyncio.sleep(random.uniform(3, 6))
+
         # Fetch marketplace search page
         try:
             response = session.get(url, allow_redirects=True, timeout=30)
