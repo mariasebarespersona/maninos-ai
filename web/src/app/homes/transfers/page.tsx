@@ -165,9 +165,18 @@ export default function TransfersPage() {
     }
   }
 
+  const populateSerials = async () => {
+    try {
+      await fetch('/api/transfers/title-monitor', { method: 'POST' })
+    } catch {}
+  }
+
   useEffect(() => {
-    fetchData()
-    fetchMonitor()
+    // Auto-populate serials from document_data, then fetch
+    populateSerials().then(() => {
+      fetchData()
+      fetchMonitor()
+    })
   }, [])
 
   const filteredTransfers = transfers.filter(t => {
