@@ -495,12 +495,11 @@ export default function MarketDashboard() {
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-      // Run Facebook + main scrape in PARALLEL (Facebook is separate to avoid timeout)
+      // Call BOTH via Next.js proxy routes (NOT direct to Railway)
+      // Facebook runs separately to avoid timeout from heavy VMF/21st scrape
       const [mainRes, fbRes] = await Promise.allSettled([
-        fetch(`${backendUrl}/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000`, { method: 'POST' }),
-        fetch(`${backendUrl}/api/market-listings/scrape-facebook?min_price=0&max_price=80000`, { method: 'POST' }),
+        fetch('/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000', { method: 'POST' }),
+        fetch('/api/market-listings/scrape-facebook?min_price=0&max_price=80000', { method: 'POST' }),
       ]);
 
       let mainResult: any = null;
