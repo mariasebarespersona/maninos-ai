@@ -348,7 +348,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
   return (
     <div className="space-y-6">
       {/* KPI Cards — 6 cards now */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
         <KPICard label="Ingresos" value={fmt(s.total_income)} sublabel={`${totals.sales_count} ventas`} icon={TrendingUp} color="#059669" bgColor="#ecfdf5" />
         <KPICard label="Gastos" value={fmt(s.total_expenses)} sublabel={`${totals.properties_count} compras`} icon={TrendingDown} color="#dc2626" bgColor="#fef2f2" />
         <KPICard label="Ganancia Neta" value={fmt(s.net_profit)} sublabel={`Margen: ${s.margin_percent}%`} icon={BarChart3} color={s.net_profit >= 0 ? '#059669' : '#dc2626'} bgColor={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} />
@@ -401,7 +401,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           </a>
         </div>
         <div className="overflow-x-auto">
-          <div className="flex items-end gap-2 min-w-[600px]" style={{ height: 200 }}>
+          <div className="flex items-end gap-2 min-w-[300px] sm:min-w-[600px]" style={{ height: 200 }}>
             {cf.map((m, i) => {
               const ih = maxCf > 0 ? (m.income / maxCf) * 160 : 0
               const eh = maxCf > 0 ? (m.expense / maxCf) * 160 : 0

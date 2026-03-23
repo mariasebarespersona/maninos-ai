@@ -1484,7 +1484,7 @@ export default function RenovationPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <div className="min-w-[700px]">
+              <div className="min-w-[400px] sm:min-w-[700px]">
                 {/* Day headers */}
                 <div className="flex border-b border-gray-200">
                   <div className="w-44 flex-shrink-0 px-3 py-2 text-xs font-semibold text-gray-500 bg-gray-50">
