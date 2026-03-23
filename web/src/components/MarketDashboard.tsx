@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { 
   Search, 
@@ -220,6 +220,7 @@ export default function MarketDashboard() {
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [stats, setStats] = useState<MarketStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialLoadDone = useRef(false);
   const [searching, setSearching] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState<number | ''>('');
@@ -472,12 +473,13 @@ export default function MarketDashboard() {
     }, 300); // 300ms matches the CSS transition duration
   };
 
-  // Load data on mount
+  // Load data on mount (only show full loading spinner on first load)
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       await Promise.all([fetchListings(), fetchStats(), checkFbStatus(), fetchHistoricalStats()]);
       setLoading(false);
+      initialLoadDone.current = true;
     };
     loadData();
   }, [fetchListings, fetchStats, checkFbStatus, fetchHistoricalStats]);
