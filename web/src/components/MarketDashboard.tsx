@@ -1230,7 +1230,7 @@ export default function MarketDashboard() {
           <div className="mt-4 pt-4 border-t border-navy-700">
             <p className="text-navy-300 text-xs mb-2">Fuentes del último scraping:</p>
             <div className="flex gap-4 flex-wrap">
-              {Object.entries(stats.market_analysis.sources || {}).filter(([source]) => source !== 'craigslist').map(([source, count]) => (
+              {Object.entries(stats.by_source || stats.market_analysis?.sources || {}).filter(([source]) => source !== 'craigslist').map(([source, count]) => (
                 <span key={source} className="text-sm text-navy-200">
                   <span className="text-white font-medium">{sourceLabels[source] || source}:</span> {count}
                 </span>

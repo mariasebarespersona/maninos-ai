@@ -388,12 +388,11 @@ async def get_listings_stats():
         ]
         qualified_count = len(listings_query_data)
         
-        # By source (qualified only)
-        by_source = {"mhvillage": 0, "mobilehome": 0, "mhbay": 0}
-        for listing in listings_query_data:
-            source = listing.get("source", "")
-            if source in by_source:
-                by_source[source] += 1
+        # By source (count ALL listings in DB by source)
+        by_source = {}
+        for listing in (all_query.data or []):
+            source = listing.get("source", "other")
+            by_source[source] = by_source.get(source, 0) + 1
 
         # By city (qualified only)
         city_counts = {}
