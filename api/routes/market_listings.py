@@ -238,7 +238,8 @@ async def list_market_listings(
             query = query.ilike("city", f"%{city}%")
         
         query = query.order("scraped_at", desc=True)
-        query = query.range(offset, offset + limit - 1)
+        # Fetch more than needed so we can sort Facebook first, then apply limit
+        query = query.range(0, max(limit + 50, 200) - 1)
 
         response = query.execute()
 
@@ -246,9 +247,12 @@ async def list_market_listings(
         listings = response.data or []
         listings.sort(key=lambda x: (0 if x.get("source") == "facebook" else 1))
 
+        # Apply pagination after sort
+        listings = listings[offset:offset + limit]
+
         return {
             "listings": listings,
-            "count": len(response.data),
+            "count": len(listings),
             "qualified_only": qualified_only,
         }
         
