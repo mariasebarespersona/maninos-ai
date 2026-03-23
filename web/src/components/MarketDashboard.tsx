@@ -300,7 +300,13 @@ export default function MarketDashboard() {
       const response = await fetch(`/api/market-listings?${params}`);
       if (!response.ok) throw new Error('Failed to fetch listings');
       const data = await response.json();
-      setListings(data.listings || []);
+      // Sort: Facebook first, then by price
+      const sorted = (data.listings || []).sort((a: MarketListing, b: MarketListing) => {
+        if (a.source === 'facebook' && b.source !== 'facebook') return -1;
+        if (a.source !== 'facebook' && b.source === 'facebook') return 1;
+        return 0;
+      });
+      setListings(sorted);
     } catch (error) {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
