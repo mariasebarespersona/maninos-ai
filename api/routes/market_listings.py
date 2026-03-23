@@ -318,7 +318,6 @@ async def cleanup_unqualified_listings():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/all")
 @router.post("/fix-facebook-qualified")
 async def fix_facebook_qualified():
     """Fix Facebook listings qualification status."""
