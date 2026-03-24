@@ -2,7 +2,7 @@
 
 > **This is the primary context file for Claude Code Desktop.**
 > Read this ENTIRE document before making any changes to the codebase.
-> Last updated: March 5, 2026
+> Last updated: March 24, 2026
 
 ---
 
@@ -727,6 +727,30 @@ Step 5: VERIFY — QA Engineer validates:
    - Frontend test for component rendering
    - Verify CI pipeline passes
 ```
+
+---
+
+## Mandatory Skills (Slash Commands)
+
+> **IMPORTANT**: These skills MUST be used after every code change. They are NOT optional.
+
+| Command | When to Use | What It Does |
+|---------|-------------|--------------|
+| `/test-features` | After EVERY code change, before committing | Runs 5-layer test suite: TypeScript, Python syntax, Jest, live API endpoints, Next.js build |
+| `/update-docs` | After EVERY significant change, after committing | Updates this CLAUDE.md file with latest changes |
+
+**Workflow after any implementation:**
+```
+1. Implement changes
+2. Run /test-features → fix any failures
+3. Commit + push
+4. Run /update-docs [description of changes]
+5. Commit + push the docs update
+```
+
+The skill files live at:
+- `.claude/commands/test-features.md`
+- `.claude/commands/update-docs.md`
 
 ---
 
