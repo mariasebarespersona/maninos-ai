@@ -213,22 +213,27 @@ async def list_market_listings(
     city: Optional[str] = Query(default=None, description="Filter by city"),
     min_price: Optional[float] = Query(default=5000, description="Minimum price ($5K default)"),
     max_price: Optional[float] = Query(default=80000, description="Maximum price ($80K default)"),
-    limit: int = Query(default=10, description="Number of listings to return"),
+    bedrooms: Optional[int] = Query(default=None, description="Filter by bedrooms"),
+    min_year: Optional[int] = Query(default=None, description="Minimum year built"),
+    max_year: Optional[int] = Query(default=None, description="Maximum year built"),
+    source: Optional[str] = Query(default=None, description="Filter by source (facebook, mhvillage, etc.)"),
+    limit: int = Query(default=50, description="Number of listings to return"),
     offset: int = Query(default=0, description="Offset for pagination"),
 ):
     """
     List market listings from external sources.
-    
+
     By default, returns only qualified listings (pass all 3 rules).
     Enforces $5K-$80K price range by default.
+    Includes both 'available' and 'negotiating' listings.
     """
     try:
         query = supabase.table("market_listings").select("*")
-        
+
         if qualified_only:
             query = query.eq("is_qualified", True)
-        
-        query = query.eq("status", "available")
+
+        query = query.in_("status", ["available", "negotiating"])
         
         # Always enforce price range (defaults: $5K-$80K)
         query = query.gte("listing_price", min_price)
@@ -236,10 +241,18 @@ async def list_market_listings(
         
         if city:
             query = query.ilike("city", f"%{city}%")
-        
+        if bedrooms:
+            query = query.eq("bedrooms", bedrooms)
+        if min_year:
+            query = query.gte("year_built", min_year)
+        if max_year:
+            query = query.lte("year_built", max_year)
+        if source:
+            query = query.eq("source", source)
+
         query = query.order("scraped_at", desc=True)
         # Fetch more than needed so we can sort Facebook first, then apply limit
-        query = query.range(0, max(limit + 50, 200) - 1)
+        query = query.range(0, max(limit + 50, 500) - 1)
 
         response = query.execute()
 
@@ -560,6 +573,42 @@ async def save_listing_checklist(listing_id: str, data: dict):
         raise
     except Exception as e:
         logger.error(f"Error saving checklist: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ManualFieldsUpdate(BaseModel):
+    manual_price: Optional[float] = None
+    manual_bedrooms: Optional[int] = None
+    manual_bathrooms: Optional[float] = None
+    manual_sqft: Optional[int] = None
+    manual_year: Optional[int] = None
+
+
+@router.patch("/{listing_id}/manual-fields")
+async def update_manual_fields(listing_id: str, data: ManualFieldsUpdate):
+    """
+    Update manual override fields for price prediction.
+    These values take priority over scraped data when running predictions.
+    """
+    try:
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        response = supabase.table("market_listings")\
+            .update(update_data)\
+            .eq("id", listing_id)\
+            .execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Listing not found")
+
+        return {"success": True, "listing_id": listing_id, "updated_fields": list(update_data.keys())}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating manual fields: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -994,28 +1043,46 @@ async def scrape_facebook_only(
                 "User-Agent": ua,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Referer": "https://www.facebook.com/marketplace/",
                 "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
                 "Sec-Ch-Ua-Mobile": "?0",
                 "Sec-Ch-Ua-Platform": '"macOS"',
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-Site": "same-origin",
                 "Sec-Fetch-User": "?1",
                 "Upgrade-Insecure-Requests": "1",
             })
 
-            url = f"https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
-            logger.info(f"[FB Scrape] Fetching: {url}")
+            # Search both Houston and Dallas with multiple terms
+            search_configs = [
+                ("houston", "mobile%20home", "Houston"),
+                ("dallas", "mobile%20home", "Dallas"),
+                ("houston", "manufactured%20home", "Houston"),
+                ("houston", "trailer%20home", "Houston"),
+                ("dallas", "casa%20movil", "Dallas"),
+            ]
+            rand.shuffle(search_configs)
 
-            response = session.get(url, allow_redirects=True, timeout=30)
-            logger.info(f"[FB Scrape] Response: {response.status_code}, URL: {response.url[:80]}, HTML: {len(response.text)} bytes")
+            for city_slug, query_term, city_label in search_configs[:2]:  # Limit to 2 requests per session
+                url = f"https://www.facebook.com/marketplace/{city_slug}/search?query={query_term}&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
+                logger.info(f"[FB Scrape] Fetching: {url}")
 
-            if "/login" in response.url:
-                logger.warning("[FB Scrape] Redirected to login — cookies invalid")
-            else:
-                # Extract using the JSON method (same as test-scrape)
-                fb_results = FBScraper._extract_json_from_html(response.text, "Houston")
-                logger.info(f"[FB Scrape] Extracted {len(fb_results)} listings from HTML")
+                response = session.get(url, allow_redirects=True, timeout=30)
+                logger.info(f"[FB Scrape] Response: {response.status_code}, URL: {response.url[:80]}, HTML: {len(response.text)} bytes")
+
+                if "/login" in response.url:
+                    logger.warning("[FB Scrape] Redirected to login — cookies invalid")
+                    break
+                else:
+                    results = FBScraper._extract_json_from_html(response.text, city_label)
+                    logger.info(f"[FB Scrape] Extracted {len(results)} listings from {city_label}")
+                    fb_results.extend(results)
+
+                # Delay between requests to avoid detection
+                import time
+                time.sleep(rand.uniform(5, 12))
         except Exception as http_err:
             logger.error(f"[FB Scrape] HTTP error: {http_err}")
 
@@ -1023,25 +1090,46 @@ async def scrape_facebook_only(
 
         saved = 0
         skipped_price = 0
+        skipped_unqualified = 0
         for fb in fb_results:
             if fb.price <= 0:
                 skipped_price += 1
                 continue
             city_name = fb.city or "Houston"
+            state_name = fb.state or "TX"
+
+            # Real qualification using qualify_listing()
+            from api.utils.qualification import qualify_listing
+            qual = qualify_listing(
+                listing_price=fb.price,
+                market_value=fb.price,  # No ARV available from FB
+                city=city_name,
+                state=state_name,
+            )
+
+            if not qual["is_qualified"]:
+                skipped_unqualified += 1
+                continue
+
             try:
                 listing_data = {
                     "source": "facebook",
                     "source_url": fb.url or f"fb-{hash(fb.title)}",
                     "address": fb.title or "Facebook Marketplace",
                     "city": city_name,
-                    "state": fb.state or "TX",
+                    "state": state_name,
                     "listing_price": fb.price,
                     "year_built": fb.year_built,
                     "sqft": fb.sqft,
                     "bedrooms": fb.bedrooms,
                     "bathrooms": fb.bathrooms,
                     "thumbnail_url": fb.image_url,
-                    "is_qualified": True,
+                    "is_qualified": qual["is_qualified"],
+                    "qualification_score": qual["qualification_score"],
+                    "qualification_reasons": qual["qualification_reasons"],
+                    "passes_70_rule": qual["passes_60_rule"],
+                    "passes_age_rule": qual["passes_price_range"],
+                    "passes_location_rule": qual["passes_zone_rule"],
                     "status": "available",
                     "scraped_at": datetime.now().isoformat(),
                 }
@@ -1049,12 +1137,6 @@ async def scrape_facebook_only(
                 saved += 1
             except Exception as e:
                 logger.warning(f"[FB Scrape] Save error: {e}")
-
-        # Ensure ALL Facebook listings are marked as qualified
-        try:
-            supabase.table("market_listings").update({"is_qualified": True}).eq("source", "facebook").execute()
-        except Exception:
-            pass
 
         # Update the latest market_analysis to include Facebook count
         if saved > 0:
@@ -1077,6 +1159,224 @@ async def scrape_facebook_only(
     except Exception as e:
         logger.error(f"[FB Scrape] Error: {e}")
         return {"success": False, "facebook": 0, "message": str(e)}
+
+
+# ============================================
+# MHVILLAGE SCRAPE ENDPOINT
+# ============================================
+
+@router.post("/scrape-mhvillage")
+async def scrape_mhvillage(
+    min_price: float = Query(default=5000),
+    max_price: float = Query(default=80000),
+    max_listings: int = Query(default=50),
+):
+    """Scrape MHVillage.com for mobile homes in Texas."""
+    import requests as req
+    import re as re_mod
+
+    logger.info(f"[MHVillage] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
+    saved = 0
+
+    try:
+        from api.utils.qualification import qualify_listing
+
+        # MHVillage has a public search API
+        cities = ["Houston", "Dallas", "San+Antonio", "Austin"]
+        all_results = []
+
+        for city in cities:
+            try:
+                url = f"https://www.mhvillage.com/api/v2/homes?state=TX&city={city}&minPrice={int(min_price)}&maxPrice={int(max_price)}&limit=25"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
+                    "Accept": "application/json",
+                    "Referer": "https://www.mhvillage.com/",
+                }
+                response = req.get(url, headers=headers, timeout=45)
+                if response.status_code == 200:
+                    data = response.json()
+                    homes = data.get("homes") or data.get("results") or data.get("data") or []
+                    all_results.extend(homes)
+                    logger.info(f"[MHVillage] {city}: {len(homes)} results")
+                else:
+                    # Fallback: scrape HTML search page
+                    html_url = f"https://www.mhvillage.com/homes-for-sale/TX/{city.replace('+', '-')}?min_price={int(min_price)}&max_price={int(max_price)}"
+                    html_resp = req.get(html_url, headers={**headers, "Accept": "text/html"}, timeout=45)
+                    if html_resp.status_code == 200:
+                        # Extract listing data from HTML (JSON-LD or embedded data)
+                        import json
+                        json_matches = re_mod.findall(r'<script type="application/ld\+json">(.*?)</script>', html_resp.text, re_mod.DOTALL)
+                        for jm in json_matches:
+                            try:
+                                parsed = json.loads(jm)
+                                if isinstance(parsed, list):
+                                    all_results.extend(parsed)
+                                elif isinstance(parsed, dict) and parsed.get("@type") in ("Product", "RealEstateListing"):
+                                    all_results.append(parsed)
+                            except json.JSONDecodeError:
+                                pass
+                        logger.info(f"[MHVillage] {city}: {len(json_matches)} JSON-LD blocks from HTML")
+            except Exception as city_err:
+                logger.warning(f"[MHVillage] Error for {city}: {city_err}")
+                continue
+
+        # Save to database
+        for item in all_results[:max_listings]:
+            try:
+                price = float(item.get("price") or item.get("listing_price") or item.get("offers", {}).get("price") or 0)
+                address = item.get("address") or item.get("name") or ""
+                city_name = item.get("city") or item.get("addressLocality") or "TX"
+                if isinstance(address, dict):
+                    city_name = address.get("addressLocality", city_name)
+                    address = address.get("streetAddress", str(address))
+
+                if price <= 0:
+                    continue
+
+                qual = qualify_listing(listing_price=price, market_value=price, city=city_name, state="TX")
+
+                source_url = item.get("url") or item.get("source_url") or f"mhvillage-{hash(str(item))}"
+                listing_data = {
+                    "source": "mhvillage",
+                    "source_url": source_url,
+                    "address": str(address)[:500],
+                    "city": city_name,
+                    "state": "TX",
+                    "listing_price": price,
+                    "year_built": item.get("year_built") or item.get("year"),
+                    "sqft": item.get("sqft") or item.get("square_feet"),
+                    "bedrooms": item.get("bedrooms") or item.get("beds"),
+                    "bathrooms": item.get("bathrooms") or item.get("baths"),
+                    "thumbnail_url": item.get("thumbnail_url") or item.get("image") or (item.get("photos") or [None])[0],
+                    "is_qualified": qual["is_qualified"],
+                    "qualification_score": qual["qualification_score"],
+                    "status": "available",
+                    "scraped_at": datetime.now().isoformat(),
+                }
+                supabase.table("market_listings").upsert(listing_data, on_conflict="source_url").execute()
+                saved += 1
+            except Exception as save_err:
+                logger.warning(f"[MHVillage] Save error: {save_err}")
+
+        logger.info(f"[MHVillage] ✅ Saved {saved} listings from {len(all_results)} results")
+        return {"success": True, "mhvillage": saved, "total_raw": len(all_results)}
+
+    except Exception as e:
+        logger.error(f"[MHVillage] Error: {e}")
+        return {"success": False, "mhvillage": 0, "message": str(e)}
+
+
+# ============================================
+# MOBILEHOME.NET SCRAPE ENDPOINT
+# ============================================
+
+@router.post("/scrape-mobilehome")
+async def scrape_mobilehome_net(
+    min_price: float = Query(default=5000),
+    max_price: float = Query(default=80000),
+    max_listings: int = Query(default=50),
+):
+    """Scrape MobileHome.net for mobile homes in Texas."""
+    import requests as req
+    import re as re_mod
+
+    logger.info(f"[MobileHome.net] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
+    saved = 0
+
+    try:
+        from api.utils.qualification import qualify_listing
+        import json
+
+        all_results = []
+        cities = ["houston-tx", "dallas-tx", "san-antonio-tx", "austin-tx"]
+
+        for city_slug in cities:
+            try:
+                url = f"https://www.mobilehome.net/mobile-homes-for-sale/{city_slug}?min_price={int(min_price)}&max_price={int(max_price)}"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Referer": "https://www.mobilehome.net/",
+                }
+                response = req.get(url, headers=headers, timeout=45)
+                if response.status_code == 200:
+                    # Extract JSON-LD or embedded listing data
+                    json_matches = re_mod.findall(r'<script type="application/ld\+json">(.*?)</script>', response.text, re_mod.DOTALL)
+                    for jm in json_matches:
+                        try:
+                            parsed = json.loads(jm)
+                            if isinstance(parsed, list):
+                                all_results.extend(parsed)
+                            elif isinstance(parsed, dict):
+                                if parsed.get("@type") in ("Product", "RealEstateListing", "Residence"):
+                                    all_results.append(parsed)
+                                elif "itemListElement" in parsed:
+                                    for elem in parsed["itemListElement"]:
+                                        if "item" in elem:
+                                            all_results.append(elem["item"])
+                        except json.JSONDecodeError:
+                            pass
+
+                    # Also try to find embedded JSON data objects
+                    data_matches = re_mod.findall(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', response.text, re_mod.DOTALL)
+                    for dm in data_matches:
+                        try:
+                            parsed = json.loads(dm)
+                            listings = parsed.get("listings") or parsed.get("homes") or []
+                            all_results.extend(listings)
+                        except json.JSONDecodeError:
+                            pass
+
+                    logger.info(f"[MobileHome.net] {city_slug}: found {len(json_matches)} JSON-LD blocks")
+            except Exception as city_err:
+                logger.warning(f"[MobileHome.net] Error for {city_slug}: {city_err}")
+                continue
+
+        # Save to database
+        for item in all_results[:max_listings]:
+            try:
+                price = float(item.get("price") or item.get("listing_price") or item.get("offers", {}).get("price") or 0)
+                address = item.get("address") or item.get("name") or ""
+                city_name = "TX"
+                if isinstance(address, dict):
+                    city_name = address.get("addressLocality", "TX")
+                    address = address.get("streetAddress", str(address))
+
+                if price <= 0:
+                    continue
+
+                qual = qualify_listing(listing_price=price, market_value=price, city=city_name, state="TX")
+
+                source_url = item.get("url") or f"mobilehome-{hash(str(item))}"
+                listing_data = {
+                    "source": "mobilehome",
+                    "source_url": source_url,
+                    "address": str(address)[:500],
+                    "city": city_name,
+                    "state": "TX",
+                    "listing_price": price,
+                    "year_built": item.get("year_built") or item.get("year"),
+                    "sqft": item.get("sqft") or item.get("square_feet"),
+                    "bedrooms": item.get("bedrooms") or item.get("beds"),
+                    "bathrooms": item.get("bathrooms") or item.get("baths"),
+                    "thumbnail_url": item.get("thumbnail_url") or item.get("image"),
+                    "is_qualified": qual["is_qualified"],
+                    "qualification_score": qual["qualification_score"],
+                    "status": "available",
+                    "scraped_at": datetime.now().isoformat(),
+                }
+                supabase.table("market_listings").upsert(listing_data, on_conflict="source_url").execute()
+                saved += 1
+            except Exception as save_err:
+                logger.warning(f"[MobileHome.net] Save error: {save_err}")
+
+        logger.info(f"[MobileHome.net] ✅ Saved {saved} listings from {len(all_results)} results")
+        return {"success": True, "mobilehome": saved, "total_raw": len(all_results)}
+
+    except Exception as e:
+        logger.error(f"[MobileHome.net] Error: {e}")
+        return {"success": False, "mobilehome": 0, "message": str(e)}
 
 
 # ============================================

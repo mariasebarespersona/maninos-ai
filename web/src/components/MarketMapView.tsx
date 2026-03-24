@@ -44,6 +44,12 @@ interface MarketListing {
   scraped_at: string | null;
   price_type: string | null;
   estimated_full_price: number | null;
+  // Manual override fields for prediction
+  manual_price: number | null;
+  manual_bedrooms: number | null;
+  manual_bathrooms: number | null;
+  manual_sqft: number | null;
+  manual_year: number | null;
 }
 
 interface MarketMapViewProps {

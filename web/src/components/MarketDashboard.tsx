@@ -31,6 +31,9 @@ import {
   ChevronDown,
   ChevronUp,
   Target,
+  Pencil,
+  Filter,
+  HeartHandshake,
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
@@ -84,6 +87,12 @@ interface MarketListing {
   scraped_at: string | null;
   price_type: string | null;  // "full" or "down_payment"
   estimated_full_price: number | null;
+  // Manual override fields for prediction
+  manual_price: number | null;
+  manual_bedrooms: number | null;
+  manual_bathrooms: number | null;
+  manual_sqft: number | null;
+  manual_year: number | null;
 }
 
 interface MarketAnalysis {
@@ -284,24 +293,46 @@ export default function MarketDashboard() {
   
   // Dismiss animation state
   const [dismissingIds, setDismissingIds] = useState<Set<string>>(new Set());
+
+  // Show unqualified toggle (debug mode)
+  const [showUnqualified, setShowUnqualified] = useState(false);
+
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [bedroomsFilter, setBedroomsFilter] = useState<string>('');
+  const [minYearFilter, setMinYearFilter] = useState<string>('');
+  const [maxYearFilter, setMaxYearFilter] = useState<string>('');
+  const [sourceFilter, setSourceFilter] = useState<string>('');
   
   // Expanded prediction detail (which listing ID has its prediction panel open)
   const [expandedPrediction, setExpandedPrediction] = useState<string | null>(null);
+
+  // Manual field editing state
+  const [editingField, setEditingField] = useState<{ listingId: string; field: string } | null>(null);
+  const [editingValue, setEditingValue] = useState('');
 
   // Fetch listings
   const fetchListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.append('qualified_only', 'false');
-      params.append('limit', '50');
+      params.append('qualified_only', showUnqualified ? 'false' : 'true');
+      params.append('limit', '500');
       if (cityFilter) params.append('city', cityFilter);
       if (maxPriceFilter) params.append('max_price', String(maxPriceFilter));
+      if (bedroomsFilter) params.append('bedrooms', bedroomsFilter);
+      if (minYearFilter) params.append('min_year', minYearFilter);
+      if (maxYearFilter) params.append('max_year', maxYearFilter);
+      if (sourceFilter) params.append('source', sourceFilter);
 
       const response = await fetch(`/api/market-listings?${params}`);
       if (!response.ok) throw new Error('Failed to fetch listings');
       const data = await response.json();
-      // Sort: Facebook first, then by price
+      // Sort: Negotiating first, then Facebook, then rest
       const sorted = (data.listings || []).sort((a: MarketListing, b: MarketListing) => {
+        // Negotiating always first
+        if (a.status === 'negotiating' && b.status !== 'negotiating') return -1;
+        if (a.status !== 'negotiating' && b.status === 'negotiating') return 1;
+        // Then Facebook
         if (a.source === 'facebook' && b.source !== 'facebook') return -1;
         if (a.source !== 'facebook' && b.source === 'facebook') return 1;
         return 0;
@@ -311,7 +342,7 @@ export default function MarketDashboard() {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
     }
-  }, [cityFilter, maxPriceFilter, toast]);
+  }, [cityFilter, maxPriceFilter, showUnqualified, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
@@ -353,10 +384,10 @@ export default function MarketDashboard() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                listing_price: listing.listing_price,
-                sqft: listing.sqft,
-                bedrooms: listing.bedrooms,
-                bathrooms: listing.bathrooms,
+                listing_price: listing.manual_price || listing.listing_price,
+                sqft: listing.manual_sqft || listing.sqft,
+                bedrooms: listing.manual_bedrooms || listing.bedrooms,
+                bathrooms: listing.manual_bathrooms || listing.bathrooms,
                 description: listing.address || '',
               }),
             }).then(r => r.json()).then(data => ({
@@ -479,6 +510,47 @@ export default function MarketDashboard() {
     }, 300); // 300ms matches the CSS transition duration
   };
 
+  // Save a manual override field for a listing
+  const saveManualField = async (listingId: string, field: string, value: string) => {
+    const numValue = value ? parseFloat(value) : null;
+    if (value && isNaN(numValue as number)) return;
+    try {
+      const res = await fetch(`/api/market-listings/${listingId}/manual-fields`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: numValue }),
+      });
+      if (res.ok) {
+        // Update local state
+        setListings(prev => prev.map(l =>
+          l.id === listingId ? { ...l, [field]: numValue } : l
+        ));
+        toast.success('Campo guardado');
+      }
+    } catch {
+      toast.error('Error guardando campo');
+    }
+    setEditingField(null);
+  };
+
+  // Toggle negotiation status on a listing
+  const toggleNegotiation = async (listing: MarketListing) => {
+    const newStatus = listing.status === 'negotiating' ? 'available' : 'negotiating';
+    try {
+      const res = await fetch(`/api/market-listings/${listing.id}/status?status=${newStatus}&force=true`, {
+        method: 'PATCH',
+      });
+      if (res.ok) {
+        setListings(prev => prev.map(l =>
+          l.id === listing.id ? { ...l, status: newStatus } : l
+        ));
+        toast.success(newStatus === 'negotiating' ? 'Marcada en negociación' : 'Vuelta a disponible');
+      }
+    } catch {
+      toast.error('Error cambiando estado');
+    }
+  };
+
   // Load data on mount (only show full loading spinner on first load)
   useEffect(() => {
     const loadData = async () => {
@@ -501,15 +573,18 @@ export default function MarketDashboard() {
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      // Call BOTH via Next.js proxy routes (NOT direct to Railway)
-      // Facebook runs separately to avoid timeout from heavy VMF/21st scrape
-      const [mainRes, fbRes] = await Promise.allSettled([
+      // Call ALL sources in parallel via Next.js proxy routes
+      const [mainRes, fbRes, mhvRes, mhnetRes] = await Promise.allSettled([
         fetch('/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000', { method: 'POST' }),
         fetch('/api/market-listings/scrape-facebook?min_price=0&max_price=80000', { method: 'POST' }),
+        fetch('/api/market-listings/scrape-mhvillage?min_price=5000&max_price=80000', { method: 'POST' }),
+        fetch('/api/market-listings/scrape-mobilehome?min_price=5000&max_price=80000', { method: 'POST' }),
       ]);
 
       let mainResult: any = null;
       let fbResult: any = null;
+      let mhvResult: any = null;
+      let mhnetResult: any = null;
 
       if (mainRes.status === 'fulfilled' && mainRes.value.ok) {
         mainResult = await mainRes.value.json();
@@ -517,13 +592,28 @@ export default function MarketDashboard() {
       if (fbRes.status === 'fulfilled' && fbRes.value.ok) {
         fbResult = await fbRes.value.json();
       }
+      if (mhvRes.status === 'fulfilled' && mhvRes.value.ok) {
+        mhvResult = await mhvRes.value.json();
+      }
+      if (mhnetRes.status === 'fulfilled' && mhnetRes.value.ok) {
+        mhnetResult = await mhnetRes.value.json();
+      }
 
-      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0) + (fbResult?.facebook || 0);
-      const qualified = (mainResult?.qualified || 0) + (fbResult?.facebook || 0);
+      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0)
+        + (fbResult?.facebook || 0)
+        + (mhvResult?.mhvillage || 0)
+        + (mhnetResult?.mobilehome || 0);
       const fbCount = fbResult?.facebook || 0;
+      const mhvCount = mhvResult?.mhvillage || 0;
+      const mhnetCount = mhnetResult?.mobilehome || 0;
+
+      const sourceParts = [];
+      if (fbCount > 0) sourceParts.push(`${fbCount} Facebook`);
+      if (mhvCount > 0) sourceParts.push(`${mhvCount} MHVillage`);
+      if (mhnetCount > 0) sourceParts.push(`${mhnetCount} MobileHome`);
 
       toast.success(
-        `✓ Encontradas ${qualified} casas calificadas de ${totalScraped} analizadas${fbCount > 0 ? ` (${fbCount} de Facebook)` : ''}`
+        `✓ ${totalScraped} casas encontradas${sourceParts.length ? ` (${sourceParts.join(', ')})` : ''}`
       );
 
       // Refresh listings
@@ -1331,6 +1421,103 @@ export default function MarketDashboard() {
         </div>
       )}
 
+      {/* Filter Bar */}
+      <div className="card p-3">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-navy-900 transition-colors w-full"
+        >
+          <Filter className="w-4 h-4" />
+          Filtros
+          {(bedroomsFilter || minYearFilter || maxYearFilter || sourceFilter || showUnqualified) && (
+            <span className="px-1.5 py-0.5 bg-gold-100 text-gold-800 text-xs rounded-full font-bold">activos</span>
+          )}
+          {showFilters ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
+        </button>
+
+        {showFilters && (
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Habitaciones</label>
+              <select
+                value={bedroomsFilter}
+                onChange={(e) => setBedroomsFilter(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">Todas</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4+</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Año mín</label>
+              <input
+                type="number"
+                value={minYearFilter}
+                onChange={(e) => setMinYearFilter(e.target.value)}
+                placeholder="1990"
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Año máx</label>
+              <input
+                type="number"
+                value={maxYearFilter}
+                onChange={(e) => setMaxYearFilter(e.target.value)}
+                placeholder="2024"
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Fuente</label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">Todas</option>
+                <option value="facebook">Facebook</option>
+                <option value="mhvillage">MHVillage</option>
+                <option value="mobilehome">MobileHome.net</option>
+                <option value="vmf_homes">VMF Homes</option>
+                <option value="21st_mortgage">21st Mortgage</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showUnqualified}
+                  onChange={(e) => setShowUnqualified(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                No calificadas
+              </label>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setBedroomsFilter('');
+                  setMinYearFilter('');
+                  setMaxYearFilter('');
+                  setSourceFilter('');
+                  setShowUnqualified(false);
+                  setCityFilter('');
+                  setMaxPriceFilter('');
+                }}
+                className="text-xs text-red-500 hover:text-red-700 underline"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {/* View Toggle — Grid / Map (like VMF Homes) */}
@@ -1403,12 +1590,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando en {fbConnected ? 5 : 4} fuentes...
+                Buscando en {fbConnected ? 7 : 6} fuentes...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                🔍 Buscar Casas ({fbConnected ? '5 fuentes' : '4 fuentes'})
+                🔍 Buscar Casas ({fbConnected ? '7 fuentes' : '6 fuentes'})
             </>
           )}
         </button>
@@ -1484,6 +1671,13 @@ export default function MarketDashboard() {
                 <span className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium bg-navy-900 text-white">
                   {listing.qualification_score}/100
                 </span>
+
+                {/* Negotiating badge */}
+                {listing.status === 'negotiating' && (
+                  <span className="absolute bottom-2 left-2 px-2 py-1 rounded text-xs font-bold bg-yellow-400 text-yellow-900 border border-yellow-500 shadow">
+                    En Negociación
+                  </span>
+                )}
               </div>
               
               {/* Content */}
@@ -1534,23 +1728,43 @@ export default function MarketDashboard() {
                   {listing.city}, {listing.state}
                 </p>
                 
-                {/* Specs */}
-                <div className="flex items-center gap-3 text-xs text-gray-600 mb-3">
-                  {listing.bedrooms && (
-                    <span>{listing.bedrooms} hab</span>
-                  )}
-                  {listing.bathrooms && (
-                    <span>{listing.bathrooms} baño</span>
-                  )}
-                  {listing.sqft && (
-                    <span>{listing.sqft} sqft</span>
-                  )}
-                  {listing.year_built && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {listing.year_built}
-                    </span>
-                  )}
+                {/* Specs — with inline manual edit */}
+                <div className="flex items-center gap-3 text-xs text-gray-600 mb-3 flex-wrap">
+                  {[
+                    { field: 'manual_bedrooms', val: listing.manual_bedrooms || listing.bedrooms, label: 'hab', manual: listing.manual_bedrooms },
+                    { field: 'manual_bathrooms', val: listing.manual_bathrooms || listing.bathrooms, label: 'baño', manual: listing.manual_bathrooms },
+                    { field: 'manual_sqft', val: listing.manual_sqft || listing.sqft, label: 'sqft', manual: listing.manual_sqft },
+                    { field: 'manual_year', val: listing.manual_year || listing.year_built, label: '', manual: listing.manual_year },
+                  ].map(({ field, val, label, manual }) => (
+                    val || editingField?.listingId === listing.id && editingField?.field === field ? (
+                      <span key={field} className={`flex items-center gap-0.5 ${manual ? 'text-blue-600 font-semibold' : ''}`}>
+                        {editingField?.listingId === listing.id && editingField?.field === field ? (
+                          <input
+                            type="number"
+                            className="w-14 px-1 py-0.5 border rounded text-xs"
+                            defaultValue={val || ''}
+                            autoFocus
+                            onBlur={(e) => saveManualField(listing.id, field, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveManualField(listing.id, field, (e.target as HTMLInputElement).value);
+                              if (e.key === 'Escape') setEditingField(null);
+                            }}
+                          />
+                        ) : (
+                          <>
+                            {field === 'manual_year' && <Calendar className="w-3 h-3" />}
+                            {val} {label}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingField({ listingId: listing.id, field }); setEditingValue(String(val || '')); }}
+                              className="text-gray-300 hover:text-blue-500 transition-colors"
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    ) : null
+                  ))}
                 </div>
                 
                 {/* Rules status */}
@@ -1812,6 +2026,18 @@ export default function MarketDashboard() {
                   >
                     <CheckCircle className="w-3 h-3" />
                     Revisar Casa
+                  </button>
+                  <button
+                    onClick={() => toggleNegotiation(listing)}
+                    className={`px-3 py-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                      listing.status === 'negotiating'
+                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700 border border-gray-200'
+                    }`}
+                    title={listing.status === 'negotiating' ? 'Volver a disponible' : 'Marcar en negociación'}
+                  >
+                    <HeartHandshake className="w-3 h-3" />
+                    {listing.status === 'negotiating' ? 'Negociando' : 'Negociar'}
                   </button>
                   <button
                     onClick={() => dismissListing(listing.id, listing.address)}
@@ -2301,7 +2527,18 @@ export default function MarketDashboard() {
                             <div><span className="font-semibold text-gray-600">Fecha Transferencia:</span> <span className="text-gray-900">{tdhcaResult.transfer_date}</span></div>
                           )}
                           {tdhcaResult.lien_info && (
-                            <div className="col-span-2"><span className="font-semibold text-gray-600">Gravamen:</span> <span className="text-gray-900">{tdhcaResult.lien_info}</span></div>
+                            <div className="col-span-2 bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                              <span className="font-semibold text-red-600">Gravamen:</span>
+                              <span className="text-red-700 font-semibold">{tdhcaResult.lien_info}</span>
+                            </div>
+                          )}
+                          {tdhcaResult.tax_lien_status && (
+                            <div className="col-span-2 bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                              <span className="font-semibold text-red-600">Tax Lien:</span>
+                              <span className="text-red-700 font-semibold">{tdhcaResult.tax_lien_status}</span>
+                            </div>
                           )}
                         </div>
                         <p className="text-[10px] text-gray-400 mt-2">Los campos en rojo (—) no están disponibles en el registro TDHCA para este título.</p>

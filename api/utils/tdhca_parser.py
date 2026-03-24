@@ -1268,6 +1268,29 @@ def build_structured_tdhca_data(
         logger.info(f"[TDHCA-struct] Rejecting lien value (date or too short): '{lien_raw}'")
         lien_raw = ""
 
+    # ── Tax Lien Status: extract from page text and raw fields ──
+    tax_lien_status = ""
+    text_lower = clean_text.lower()
+    # Check page text for tax lien indicators
+    if "tax lien" in text_lower:
+        # Try to extract the tax lien line
+        for line in clean_text.split('\n'):
+            ll = line.strip().lower()
+            if "tax lien" in ll and len(line.strip()) > 8:
+                # Skip pure nav items like "view tax lien records"
+                if any(nav in ll for nav in ("view tax lien", "download tax lien", "check tax lien status")):
+                    continue
+                tax_lien_status = line.strip()
+                break
+    # Also check raw fields for lien-related data
+    if not tax_lien_status:
+        lien_date = normalized.get("Lien Date") or ""
+        lien_holder = normalized.get("Lien Holder") or ""
+        if lien_date and lien_holder:
+            tax_lien_status = f"{lien_holder} (fecha: {lien_date})"
+        elif lien_holder:
+            tax_lien_status = lien_holder
+
     # ── Election: real TDHCA shows "Home elected as Personal Property" in page text ──
     election = normalized.get("Election") or ""
     if not election:
@@ -1337,5 +1360,6 @@ def build_structured_tdhca_data(
             or normalized.get("Date of Sale")  # Real TDHCA field name
         ),
         "lien_info": _scrub(lien_raw),
+        "tax_lien_status": _scrub(tax_lien_status) if tax_lien_status else None,
         "election": _scrub(election),
     }

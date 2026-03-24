@@ -198,10 +198,10 @@ maninos-ai/
 │   ├── core.md                   # Core agent rules
 │   └── policies/                 # Safety, tone, property policies
 │
-├── migrations/                   # ⭐ SQL migrations (001-047)
+├── migrations/                   # ⭐ SQL migrations (001-073)
 │   ├── 001_initial_schema.sql    # Core tables (users, properties, clients, sales, etc.)
 │   ├── ...                       # Incremental schema changes
-│   └── 047_property_document_data.sql  # Latest migration
+│   └── 073_manual_prediction_fields.sql  # Latest migration
 │
 ├── docs/                         # Documentation
 │   ├── DEVELOPER_BIBLE_V2.md     # Development principles (MUST READ)
@@ -569,6 +569,18 @@ The most recent development has focused on:
 5. **Promissory notes** — Simple interest, flexible payments for investors
 6. **Listing images** — Persisting scraped listing images in Supabase Storage
 7. **Property code system** — Auto-generated codes (A1, A2...) + dimensions (length × width)
+8. **Casas del Mercado V3** (Mar 24, 2026) — 11 improvements:
+   - Gravamen/Tax Lien shown in red with alert icons in TDHCA results
+   - `tax_lien_status` field extracted from TDHCA page text
+   - VMF pending listings filtered from client portal (`.eq("is_qualified", True)`)
+   - Facebook scraper uses real `qualify_listing()` instead of hardcoded `is_qualified: True`
+   - Manual override fields (`manual_price`, `manual_bedrooms`, `manual_bathrooms`, `manual_sqft`, `manual_year`) for price prediction — migration 073
+   - "En negociación" status with yellow badge, Negociar button, and toggle back to available
+   - Interactive filter bar: bedrooms, year range, source, unqualified toggle, "Limpiar filtros"
+   - Listings limit raised from 50 to 500 (load all qualified)
+   - Facebook anti-detection: 11 user agents, 5-12s delays, 2 req/session limit, Referer headers
+   - Facebook expanded: Dallas city, "trailer home" + "casa movil" terms, max_listings=50
+   - MHVillage + MobileHome.net scrape endpoints with Next.js proxy routes
 
 ---
 

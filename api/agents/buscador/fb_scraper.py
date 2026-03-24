@@ -200,18 +200,31 @@ SEARCH_CONFIGS = [
     },
 ]
 
-# Search terms that find mobile homes
+# Search terms that find mobile homes (expanded)
 SEARCH_TERMS = [
     "mobile home for sale",
     "manufactured home for sale",
+    "trailer home for sale",
+    "casa movil",
 ]
 
-# User-Agent rotation
+# User-Agent rotation (11 agents — Chrome, Safari, Firefox, Edge on Mac/Win)
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 OPR/107.0.0.0",
 ]
+
+# Max requests per session to avoid detection (rotate city/term combos)
+MAX_REQUESTS_PER_SESSION = 2
 
 
 class FacebookMarketplaceScraper:
@@ -249,7 +262,7 @@ class FacebookMarketplaceScraper:
     
     @staticmethod
     async def scrape(
-        max_listings: int = 30,
+        max_listings: int = 50,
         min_price: float = 0,
         max_price: float = 80000,
     ) -> List[FBListing]:
@@ -271,25 +284,33 @@ class FacebookMarketplaceScraper:
         logger.info(f"[FB Marketplace] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
         
         all_listings: List[FBListing] = []
-        
+
+        # Build all city/term combos and shuffle for randomization
+        combos = [(config["center"].split(",")[0], term) for config in SEARCH_CONFIGS for term in SEARCH_TERMS]
+        random.shuffle(combos)
+
         # Try HTTP requests first (bypasses headless browser detection)
-        for config in SEARCH_CONFIGS:
-            city = config["center"].split(",")[0]
-            
-            for term in SEARCH_TERMS:
-                try:
-                    listings = await FacebookMarketplaceScraper._scrape_with_requests(
-                        query=term,
-                        city=city,
-                        min_price=int(min_price),
-                        max_price=int(max_price),
-                        max_listings=max(max_listings // 2, 10),
-                    )
-                    all_listings.extend(listings)
-                    await asyncio.sleep(random.uniform(2, 5))
-                except Exception as e:
-                    logger.warning(f"[FB Marketplace] Requests scrape error for '{term}' in {city}: {e}")
-                    continue
+        # Limit requests per session to avoid detection
+        request_count = 0
+        for city, term in combos:
+            if request_count >= MAX_REQUESTS_PER_SESSION:
+                logger.info(f"[FB Marketplace] Reached {MAX_REQUESTS_PER_SESSION} requests limit — stopping session")
+                break
+
+            try:
+                listings = await FacebookMarketplaceScraper._scrape_with_requests(
+                    query=term,
+                    city=city,
+                    min_price=int(min_price),
+                    max_price=int(max_price),
+                    max_listings=max(max_listings // 2, 10),
+                )
+                all_listings.extend(listings)
+                request_count += 1
+                await asyncio.sleep(random.uniform(5, 12))
+            except Exception as e:
+                logger.warning(f"[FB Marketplace] Requests scrape error for '{term}' in {city}: {e}")
+                continue
         
         # If requests approach found nothing, try Playwright as fallback (only if proxy is set)
         if not all_listings and PROXY_URL:
@@ -304,7 +325,7 @@ class FacebookMarketplaceScraper:
                             max_listings=max(max_listings // 2, 10),
                         )
                         all_listings.extend(listings)
-                        await asyncio.sleep(random.uniform(3, 7))
+                        await asyncio.sleep(random.uniform(5, 12))
                     except Exception as e:
                         logger.warning(f"[FB Marketplace] Playwright error for '{term}' in {city}: {e}")
                         continue
@@ -374,14 +395,15 @@ class FacebookMarketplaceScraper:
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Cache-Control": "max-age=0",
+            "Referer": "https://www.facebook.com/marketplace/",
             "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"macOS"',
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-User": "?1",
             "Upgrade-Insecure-Requests": "1",
         })

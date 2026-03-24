@@ -77,7 +77,8 @@ async def list_partner_properties(
     try:
         query = sb.table("market_listings") \
             .select("id, address, city, state, zip_code, listing_price, bedrooms, bathrooms, sqft, year_built, photos, thumbnail_url, source, source_url, scraped_at") \
-            .eq("status", "available")
+            .eq("status", "available") \
+            .eq("is_qualified", True)
         
         # Filter to partner sources only
         if source and source in PARTNER_SOURCES:
