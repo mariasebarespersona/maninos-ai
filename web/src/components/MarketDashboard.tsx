@@ -299,6 +299,8 @@ export default function MarketDashboard() {
 
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
+  const [minPriceFilter, setMinPriceFilter] = useState<string>('');
+  const [maxPriceFilterNew, setMaxPriceFilterNew] = useState<string>('');
   const [bedroomsFilter, setBedroomsFilter] = useState<string>('');
   const [minYearFilter, setMinYearFilter] = useState<string>('');
   const [maxYearFilter, setMaxYearFilter] = useState<string>('');
@@ -318,7 +320,9 @@ export default function MarketDashboard() {
       params.append('qualified_only', showUnqualified ? 'false' : 'true');
       params.append('limit', '500');
       if (cityFilter) params.append('city', cityFilter);
-      if (maxPriceFilter) params.append('max_price', String(maxPriceFilter));
+      if (minPriceFilter) params.append('min_price', minPriceFilter);
+      if (maxPriceFilterNew) params.append('max_price', maxPriceFilterNew);
+      else if (maxPriceFilter) params.append('max_price', String(maxPriceFilter));
       if (bedroomsFilter) params.append('bedrooms', bedroomsFilter);
       if (minYearFilter) params.append('min_year', minYearFilter);
       if (maxYearFilter) params.append('max_year', maxYearFilter);
@@ -342,7 +346,7 @@ export default function MarketDashboard() {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
     }
-  }, [cityFilter, maxPriceFilter, showUnqualified, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
+  }, [cityFilter, maxPriceFilter, minPriceFilter, maxPriceFilterNew, showUnqualified, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
@@ -1287,7 +1291,7 @@ export default function MarketDashboard() {
             </span>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+          <div className="grid grid-cols-3 gap-3 sm:gap-6">
             <div className="space-y-1">
               <p className="text-navy-300 text-xs sm:text-sm">Valor Mercado (Media)</p>
               <p className="text-xl sm:text-3xl font-bold text-white">
@@ -1298,12 +1302,6 @@ export default function MarketDashboard() {
               <p className="text-navy-300 text-xs sm:text-sm">Máx. Oferta (60%)</p>
               <p className="text-xl sm:text-3xl font-bold text-gold-400">
                 ${(stats.market_analysis.max_offer_60_percent || stats.market_analysis.max_offer_70_percent || 0).toLocaleString()}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-navy-300 text-xs sm:text-sm">Rango Precio</p>
-              <p className="text-base sm:text-xl font-semibold text-white">
-                $5K - $80K
               </p>
             </div>
             <div className="space-y-1">
@@ -1429,14 +1427,34 @@ export default function MarketDashboard() {
         >
           <Filter className="w-4 h-4" />
           Filtros
-          {(bedroomsFilter || minYearFilter || maxYearFilter || sourceFilter || showUnqualified) && (
+          {(minPriceFilter || maxPriceFilterNew || bedroomsFilter || minYearFilter || maxYearFilter || sourceFilter || showUnqualified) && (
             <span className="px-1.5 py-0.5 bg-gold-100 text-gold-800 text-xs rounded-full font-bold">activos</span>
           )}
           {showFilters ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
         </button>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Precio mín</label>
+              <input
+                type="number"
+                value={minPriceFilter}
+                onChange={(e) => setMinPriceFilter(e.target.value)}
+                placeholder="$5,000"
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Precio máx</label>
+              <input
+                type="number"
+                value={maxPriceFilterNew}
+                onChange={(e) => setMaxPriceFilterNew(e.target.value)}
+                placeholder="$80,000"
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Habitaciones</label>
               <select
@@ -1501,6 +1519,8 @@ export default function MarketDashboard() {
             <div className="flex items-end">
               <button
                 onClick={() => {
+                  setMinPriceFilter('');
+                  setMaxPriceFilterNew('');
                   setBedroomsFilter('');
                   setMinYearFilter('');
                   setMaxYearFilter('');
