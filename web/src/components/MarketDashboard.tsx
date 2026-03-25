@@ -232,7 +232,6 @@ export default function MarketDashboard() {
   const initialLoadDone = useRef(false);
   const [searching, setSearching] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
-  const [maxPriceFilter, setMaxPriceFilter] = useState<number | ''>('');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const toast = useToast();
   
@@ -319,7 +318,6 @@ export default function MarketDashboard() {
       if (cityFilter) params.append('city', cityFilter);
       if (minPriceFilter) params.append('min_price', minPriceFilter);
       if (maxPriceFilterNew) params.append('max_price', maxPriceFilterNew);
-      else if (maxPriceFilter) params.append('max_price', String(maxPriceFilter));
       if (bedroomsFilter) params.append('bedrooms', bedroomsFilter);
       if (minYearFilter) params.append('min_year', minYearFilter);
       if (maxYearFilter) params.append('max_year', maxYearFilter);
@@ -343,7 +341,7 @@ export default function MarketDashboard() {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
     }
-  }, [cityFilter, maxPriceFilter, minPriceFilter, maxPriceFilterNew, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
+  }, [cityFilter, minPriceFilter, maxPriceFilterNew, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
@@ -1504,7 +1502,7 @@ export default function MarketDashboard() {
                   setMaxYearFilter('');
                   setSourceFilter('');
                   setCityFilter('');
-                  setMaxPriceFilter('');
+                  setMaxPriceFilterNew('');
                 }}
                 className="text-xs text-red-500 hover:text-red-700 underline"
               >
