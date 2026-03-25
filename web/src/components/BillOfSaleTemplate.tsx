@@ -172,16 +172,19 @@ export default function BillOfSaleTemplate({
     await new Promise(r => setTimeout(r, 200))
 
     const canvas = await html2canvas(el, {
-      scale: 2,
+      scale: 1,
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
+      imageTimeout: 5000,
+      removeContainer: true,
+      allowTaint: true,
     })
 
     // Restore editing mode
     if (wasEditing) setEditing(true)
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95)
+    const imgData = canvas.toDataURL('image/jpeg', 0.85)
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
     const pageWidth = pdf.internal.pageSize.getWidth()

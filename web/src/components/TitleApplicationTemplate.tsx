@@ -329,9 +329,9 @@ export default function TitleApplicationTemplate({
     if (!el) throw new Error('Ref not found')
     const was = editing; if (was) setEditing(false)
     await new Promise(r => setTimeout(r, 250))
-    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
+    const canvas = await html2canvas(el, { scale: 1, useCORS: true, backgroundColor: '#fff', logging: false, imageTimeout: 5000, removeContainer: true, allowTaint: true })
     if (was) setEditing(true)
-    const img = canvas.toDataURL('image/jpeg', 0.95)
+    const img = canvas.toDataURL('image/jpeg', 0.85)
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
     const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), mg = 6
     const uw = pw - mg * 2, ratio = uw / canvas.width, sh = canvas.height * ratio
