@@ -375,6 +375,38 @@ def _job_facebook_auto_scrape():
         return {"ok": False, "error": str(e)}
 
 
+def _job_expire_old_listings():
+    """
+    Job: Mark listings older than 14 days as expired.
+    Keeps the dashboard fresh — old listings are likely already sold.
+    Only expires 'available' listings (not negotiating, reviewing, etc.)
+    """
+    from datetime import datetime as dt, timedelta
+    try:
+        from tools.supabase_client import sb
+
+        cutoff = (dt.now() - timedelta(days=14)).isoformat()
+
+        # Expire old available listings
+        result = sb.table("market_listings")\
+            .update({"status": "expired"})\
+            .eq("status", "available")\
+            .lt("scraped_at", cutoff)\
+            .execute()
+
+        expired_count = len(result.data) if result.data else 0
+
+        _log_job("expire_old_listings", {"ok": True, "expired": expired_count, "cutoff": cutoff[:10]})
+        if expired_count > 0:
+            logger.info(f"[scheduler] Expired {expired_count} listings older than 14 days")
+        return {"ok": True, "expired": expired_count}
+
+    except Exception as e:
+        logger.error(f"[scheduler] Expire listings error: {e}")
+        _log_job("expire_old_listings", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """
     Initialize and start the APScheduler with all email jobs.
@@ -470,18 +502,28 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
-    # Job 9: Facebook Marketplace auto-scrape — every 10 minutes
-    # Accumulates new qualified listings over time
+    # Job 9: Facebook Marketplace auto-scrape — Monday & Thursday 7:00 AM CT
+    # Uses Apify ($2-3 per run) — 2x/week fits in $29/month Starter plan
     _scheduler.add_job(
         _job_facebook_auto_scrape,
-        trigger=IntervalTrigger(minutes=10),
+        trigger=CronTrigger(day_of_week="mon,thu", hour=7, minute=0),
         id="facebook_auto_scrape",
-        name="Facebook Marketplace Auto-Scrape (every 10 min)",
+        name="Facebook Marketplace Auto-Scrape (Mon & Thu 7am)",
+        replace_existing=True,
+    )
+
+    # Job 10: Auto-expire old listings — daily at 6:00 AM CT
+    # Marks listings older than 14 days as expired
+    _scheduler.add_job(
+        _job_expire_old_listings,
+        trigger=CronTrigger(hour=6, minute=0),
+        id="expire_old_listings",
+        name="Expire Old Listings (>14 days)",
         replace_existing=True,
     )
 
     _scheduler.start()
-    logger.info("[scheduler] ✅ Scheduler started with 9 jobs")
+    logger.info("[scheduler] ✅ Scheduler started with 10 jobs")
     return _scheduler
 
 

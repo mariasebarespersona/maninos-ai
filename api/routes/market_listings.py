@@ -1073,7 +1073,7 @@ async def scrape_facebook_only(
             },
             json={
                 "startUrls": search_urls,
-                "maxItems": 100,
+                "maxItems": 30,
             },
             timeout=320,
         )
