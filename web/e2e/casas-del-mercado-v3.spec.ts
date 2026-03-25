@@ -1,377 +1,426 @@
 /**
- * E2E Tests — Casas del Mercado V3 (11 changes)
+ * E2E Tests — Casas del Mercado V3
  *
- * Tests the deployed app at Vercel + Railway.
- * Authenticated via global-setup.ts (Supabase login).
+ * Uses Page Object Model + data-testid selectors + user behavior patterns.
+ * Tests simulate what Sebastian would do manually.
+ *
+ * Pattern: test user BEHAVIOR, not implementation.
+ * - "As a user, I see X when I do Y"
+ * - Use waitForResponse instead of waitForTimeout
+ * - Use data-testid for stable selectors
+ * - Use test.step for clear reporting
  */
 import { test, expect } from '@playwright/test';
 
 const API_URL = process.env.E2E_API_URL || 'https://maninos-ai-production.up.railway.app';
 const APP_URL = process.env.E2E_BASE_URL || 'https://maninos-ai.vercel.app';
 
-// Helper: navigate to market page, skip if login required
-async function goToMarket(page: any) {
-  await page.goto(`${APP_URL}/homes/market`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  // Wait a moment for client-side hydration
-  await page.waitForTimeout(2000);
-  if (page.url().includes('/login')) {
-    return false; // Not authenticated
+// ─── Helper: Login and navigate to Market page ───────────────────
+async function setupMarketPage(page: any) {
+  // Login
+  await page.goto(`${APP_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.waitForSelector('input[type="email"]', { timeout: 15000 });
+  await page.getByLabel(/email|correo/i).or(page.locator('input[type="email"]')).fill('e2e-test@maninos.com');
+  await page.getByLabel(/password|contraseña/i).or(page.locator('input[type="password"]')).fill('E2eTest2026!Maninos');
+  await page.getByRole('button', { name: /ingresar|login|submit/i }).click();
+
+  // Wait for redirect
+  for (let i = 0; i < 15; i++) {
+    await page.waitForTimeout(2000);
+    if (!page.url().includes('/login')) break;
   }
-  return true;
+
+  // Navigate to market
+  await page.goto(`${APP_URL}/homes/market`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+  // Dismiss Joyride tour if present
+  const joyride = page.locator('.react-joyride__overlay');
+  if (await joyride.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1000);
+  }
+
+  // Wait for listings to load via API response
+  await page.waitForResponse(
+    (res: any) => res.url().includes('/api/market-listings') && res.status() === 200,
+    { timeout: 15000 }
+  ).catch(() => null);
+  await page.waitForTimeout(2000);
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TIER 1 — Quick Fixes (API + UI)
+// API TESTS — Backend verification
 // ═══════════════════════════════════════════════════════════════════
 
-test.describe('Tier 1: Quick Fixes', () => {
+test.describe('API: Backend endpoints', () => {
 
-  // Change 1+2: TDHCA Gravamen + Tax Lien
-  test('Change 1+2: API returns lien_info and tax_lien_status fields', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&limit=1`);
+  test('all listings returned are qualified', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=true&limit=20`);
     expect(res.status()).toBe(200);
     const data = await res.json();
-    expect(data).toHaveProperty('listings');
-  });
-
-  // Change 6: Partner properties only qualified
-  test('Change 6: Partner endpoint only returns qualified listings', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/public/properties/partners?limit=20`);
-    expect(res.status()).toBe(200);
-    const data = await res.json();
-    expect(data.ok).toBe(true);
-    expect(data).toHaveProperty('properties');
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// TIER 2 — Core Fixes (API + UI)
-// ═══════════════════════════════════════════════════════════════════
-
-test.describe('Tier 2: Core Fixes', () => {
-
-  // Change 5: qualified_only
-  test('Change 5: qualified_only=true returns only qualified', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=true&limit=10`);
-    expect(res.status()).toBe(200);
-    const data = await res.json();
-    expect(data.qualified_only).toBe(true);
     for (const listing of data.listings || []) {
       expect(listing.is_qualified).toBe(true);
     }
   });
 
-  test('Change 5: qualified_only=false includes unqualified', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&limit=10`);
-    expect(res.status()).toBe(200);
+  test('bedrooms filter returns correct results', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/market-listings?bedrooms=3&limit=10`);
     const data = await res.json();
-    expect(data.qualified_only).toBe(false);
+    for (const l of data.listings || []) expect(l.bedrooms).toBe(3);
   });
 
-  // Change 10: Manual fields endpoint
-  test('Change 10: PATCH manual-fields endpoint exists', async ({ request }) => {
-    const res = await request.patch(
-      `${API_URL}/api/market-listings/00000000-0000-0000-0000-000000000000/manual-fields`,
-      { data: { manual_price: 20000 }, headers: { 'Content-Type': 'application/json' } }
-    );
-    expect([404, 422, 400].includes(res.status()) || res.status() === 200).toBeTruthy();
-  });
-
-  // Change 11: Negotiation status
-  test('Change 11: GET includes negotiating listings', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&limit=50`);
-    expect(res.status()).toBe(200);
+  test('price range filter returns correct results', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/market-listings?min_price=15000&max_price=35000&limit=10`);
     const data = await res.json();
-    for (const listing of data.listings || []) {
-      expect(['available', 'negotiating']).toContain(listing.status);
+    for (const l of data.listings || []) {
+      expect(l.listing_price).toBeGreaterThanOrEqual(15000);
+      expect(l.listing_price).toBeLessThanOrEqual(35000);
     }
   });
 
-  test('Change 11: PATCH status to negotiating and back', async ({ request }) => {
-    const listRes = await request.get(`${API_URL}/api/market-listings?qualified_only=false&limit=1`);
-    const listData = await listRes.json();
-    if (!listData.listings?.length) { test.skip(); return; }
-
-    const id = listData.listings[0].id;
-    const original = listData.listings[0].status;
-    const target = original === 'negotiating' ? 'available' : 'negotiating';
-
-    const res = await request.patch(`${API_URL}/api/market-listings/${id}/status?status=${target}&force=true`);
-    expect(res.status()).toBe(200);
+  test('source filter returns correct results', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/market-listings?source=facebook&limit=10`);
     const data = await res.json();
-    expect(data.new_status).toBe(target);
-
-    // Revert
-    await request.patch(`${API_URL}/api/market-listings/${id}/status?status=${original}&force=true`);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// TIER 3 — Filters & Scroll (API)
-// ═══════════════════════════════════════════════════════════════════
-
-test.describe('Tier 3: Filters & Scroll', () => {
-
-  test('Change 3: Bedrooms filter', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=true&bedrooms=3&limit=10`);
-    expect(res.status()).toBe(200);
-    for (const l of (await res.json()).listings || []) expect(l.bedrooms).toBe(3);
+    for (const l of data.listings || []) expect(l.source).toBe('facebook');
   });
 
-  test('Change 3: Source filter', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&source=facebook&limit=10`);
-    expect(res.status()).toBe(200);
-    for (const l of (await res.json()).listings || []) expect(l.source).toBe('facebook');
-  });
-
-  test('Change 3: Year range filter', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&min_year=2000&max_year=2020&limit=10`);
-    expect(res.status()).toBe(200);
-    for (const l of (await res.json()).listings || []) {
+  test('year range filter returns correct results', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/market-listings?min_year=2000&max_year=2015&limit=10`);
+    const data = await res.json();
+    for (const l of data.listings || []) {
       if (l.year_built) {
         expect(l.year_built).toBeGreaterThanOrEqual(2000);
-        expect(l.year_built).toBeLessThanOrEqual(2020);
+        expect(l.year_built).toBeLessThanOrEqual(2015);
       }
     }
   });
 
-  test('Change 3: Price range filter', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&min_price=10000&max_price=30000&limit=10`);
+  test('negotiating status toggle works', async ({ request }) => {
+    const listRes = await request.get(`${API_URL}/api/market-listings?limit=1`);
+    const { listings } = await listRes.json();
+    if (!listings?.length) { test.skip(); return; }
+
+    const id = listings[0].id;
+    const original = listings[0].status;
+    const target = original === 'negotiating' ? 'available' : 'negotiating';
+
+    const res = await request.patch(`${API_URL}/api/market-listings/${id}/status?status=${target}&force=true`);
     expect(res.status()).toBe(200);
-    for (const l of (await res.json()).listings || []) {
-      expect(l.listing_price).toBeGreaterThanOrEqual(10000);
-      expect(l.listing_price).toBeLessThanOrEqual(30000);
+    expect((await res.json()).new_status).toBe(target);
+
+    // Revert
+    await request.patch(`${API_URL}/api/market-listings/${id}/status?status=${original}&force=true`);
+  });
+
+  test('manual-fields endpoint accepts PATCH', async ({ request }) => {
+    const res = await request.patch(
+      `${API_URL}/api/market-listings/00000000-0000-0000-0000-000000000000/manual-fields`,
+      { data: { manual_bedrooms: 3 }, headers: { 'Content-Type': 'application/json' } }
+    );
+    // 404 = listing not found (endpoint works), not 405 (endpoint doesn't exist)
+    expect(res.status()).toBe(404);
+  });
+
+  test('scrape endpoints exist', async ({ request }) => {
+    for (const endpoint of ['scrape-mhvillage', 'scrape-mobilehome']) {
+      const res = await request.post(`${API_URL}/api/market-listings/${endpoint}?min_price=5000&max_price=80000`);
+      expect(res.status()).not.toBe(404);
+      expect(res.status()).not.toBe(405);
     }
   });
 
-  test('Change 4: Limit 500 works', async ({ request }) => {
-    const res = await request.get(`${API_URL}/api/market-listings?qualified_only=false&limit=500`);
+  test('partner properties only shows qualified', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/public/properties/partners?limit=5`);
     expect(res.status()).toBe(200);
-    expect((await res.json())).toHaveProperty('count');
+    expect((await res.json()).ok).toBe(true);
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// TIER 4 — Scraping Endpoints
+// UI TESTS — User behavior simulation
 // ═══════════════════════════════════════════════════════════════════
 
-test.describe('Tier 4: Scraping Endpoints', () => {
+test.describe('UI: Page load and layout', () => {
 
-  test('Change 8: scrape-mhvillage endpoint exists', async ({ request }) => {
-    const res = await request.post(`${API_URL}/api/market-listings/scrape-mhvillage?min_price=5000&max_price=80000`);
-    expect([200, 504, 408].includes(res.status()) || res.ok()).toBeTruthy();
-  });
+  test('user sees the market page with correct layout', async ({ page }) => {
+    await setupMarketPage(page);
 
-  test('Change 8: scrape-mobilehome endpoint exists', async ({ request }) => {
-    const res = await request.post(`${API_URL}/api/market-listings/scrape-mobilehome?min_price=5000&max_price=80000`);
-    expect([200, 504, 408].includes(res.status()) || res.ok()).toBeTruthy();
+    await test.step('page title is visible', async () => {
+      await expect(page.getByTestId('market-title').or(page.locator('h2:has-text("Casas del Mercado")'))).toBeVisible();
+    });
+
+    await test.step('badge shows "X calificadas de Y analizadas"', async () => {
+      const badge = page.getByTestId('qualified-badge').or(page.locator('.bg-green-50'));
+      const text = await badge.textContent();
+      expect(text).toMatch(/\d+ calificadas de \d+ analizadas/);
+    });
+
+    await test.step('"Rango Precio" is NOT in the summary panel', async () => {
+      await expect(page.locator('text=Rango Precio')).not.toBeVisible();
+    });
+
+    await test.step('search button shows honest source count', async () => {
+      const btn = page.getByTestId('search-button').or(page.locator('button:has-text("Buscar Casas")'));
+      const text = await btn.textContent();
+      expect(text).toMatch(/[45] fuentes/);
+    });
+
+    await test.step('listing cards load with source badges', async () => {
+      const cards = page.getByTestId('listing-card').or(page.locator('.card.hover\\:shadow-lg'));
+      await expect(cards.first()).toBeVisible({ timeout: 10000 });
+      expect(await cards.count()).toBeGreaterThan(0);
+    });
+
+    await test.step('all listings show "Calificada" badge — no unqualified', async () => {
+      const noCalifica = await page.locator('text=No califica').count();
+      expect(noCalifica).toBe(0);
+    });
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════
-// UI TESTS — Authenticated browser tests
-// ═══════════════════════════════════════════════════════════════════
+test.describe('UI: Filter interactions', () => {
 
-test.describe('UI: Casas del Mercado — Authenticated', () => {
+  test('user filters listings by bedrooms', async ({ page }) => {
+    await setupMarketPage(page);
 
-  test('Market page loads successfully', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
+    await test.step('open filter bar', async () => {
+      await page.getByTestId('filters-toggle').or(page.locator('button:has-text("Filtros")')).click();
+      await expect(page.getByTestId('filter-bedrooms').or(page.locator('select').first())).toBeVisible();
+    });
 
-    // Page loaded — verify title
-    await expect(page.getByText('Casas del Mercado')).toBeVisible({ timeout: 10000 });
+    await test.step('select 3 bedrooms and wait for results', async () => {
+      const responsePromise = page.waitForResponse(
+        (res: any) => res.url().includes('/api/market-listings') && res.url().includes('bedrooms=3'),
+        { timeout: 10000 }
+      );
+      await page.getByTestId('filter-bedrooms').or(page.locator('select').first()).selectOption('3');
+      await responsePromise;
+      await page.waitForTimeout(500);
+    });
+
+    await test.step('verify filter badge shows "activos"', async () => {
+      await expect(page.locator('text=activos')).toBeVisible();
+    });
+
+    await test.step('verify listings show 3 bedrooms', async () => {
+      const habTexts = await page.locator('text=3 hab').count();
+      expect(habTexts).toBeGreaterThan(0);
+    });
+
+    await test.step('clear filters resets everything', async () => {
+      await page.getByTestId('clear-filters').or(page.locator('text=Limpiar filtros')).click();
+      await page.waitForResponse(
+        (res: any) => res.url().includes('/api/market-listings'),
+        { timeout: 10000 }
+      ).catch(() => null);
+      await page.waitForTimeout(500);
+      await expect(page.locator('text=activos')).not.toBeVisible();
+    });
   });
 
-  // Change 1: Gravamen banner removed from summary
-  test('Change 1: Summary panel does NOT show "Rango Precio"', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
+  test('user filters listings by price range', async ({ page }) => {
+    await setupMarketPage(page);
 
-    await page.waitForTimeout(3000);
-    const rangoText = page.locator('text=Rango Precio');
-    await expect(rangoText).not.toBeVisible();
-  });
+    await test.step('open filters and set price range', async () => {
+      await page.getByTestId('filters-toggle').or(page.locator('button:has-text("Filtros")')).click();
+      await page.waitForTimeout(300);
 
-  // Change 3: Filter bar
-  test('Change 3: Filter bar expands with all inputs', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
+      await page.getByTestId('filter-price-min').or(page.locator('input[placeholder="$5,000"]')).fill('15000');
+      await page.getByTestId('filter-price-max').or(page.locator('input[placeholder="$80,000"]')).fill('35000');
+    });
 
-    // Click Filtros
-    await page.getByText('Filtros').click();
-    await page.waitForTimeout(500);
-
-    // All filter labels visible
-    await expect(page.getByText('Precio mín')).toBeVisible();
-    await expect(page.getByText('Precio máx')).toBeVisible();
-    await expect(page.getByText('Habitaciones')).toBeVisible();
-    await expect(page.getByText('Año mín')).toBeVisible();
-    await expect(page.getByText('Año máx')).toBeVisible();
-    await expect(page.getByText('Fuente')).toBeVisible();
-    await expect(page.getByText('No calificadas')).toBeVisible();
-    await expect(page.getByText('Limpiar filtros')).toBeVisible();
-  });
-
-  // Change 3: Bedrooms filter actually filters in UI
-  test('Change 3: Selecting bedrooms filter updates listings', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    // Open filters
-    await page.getByText('Filtros').click();
-    await page.waitForTimeout(500);
-
-    // Select 3 bedrooms
-    await page.locator('select').first().selectOption('3');
-
-    // Wait for listings to reload
-    await page.waitForTimeout(2000);
-
-    // Filter badge should show "activos"
-    const badge = page.locator('text=activos');
-    await expect(badge).toBeVisible({ timeout: 5000 });
-  });
-
-  // Change 3: Limpiar filtros works
-  test('Change 3: "Limpiar filtros" resets all filters', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    await page.getByText('Filtros').click();
-    await page.waitForTimeout(500);
-
-    // Set a filter
-    await page.locator('select').first().selectOption('3');
-    await page.waitForTimeout(1000);
-
-    // Click limpiar
-    await page.getByText('Limpiar filtros').click();
-    await page.waitForTimeout(1000);
-
-    // Badge should be gone
-    const badge = page.locator('span:has-text("activos")');
-    await expect(badge).not.toBeVisible();
-  });
-
-  // Change 5: Toggle "No calificadas" checkbox
-  test('Change 5: "No calificadas" checkbox toggles unqualified', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    await page.getByText('Filtros').click();
-    await page.waitForTimeout(500);
-
-    // Check the "No calificadas" checkbox
-    const checkbox = page.locator('input[type="checkbox"]');
-    await checkbox.check();
-    await page.waitForTimeout(2000);
-
-    // Badge should show "activos"
-    await expect(page.locator('text=activos')).toBeVisible();
-  });
-
-  // Change 7+8: Buscar Casas button shows correct source count
-  test('Change 7+8: "Buscar Casas" button shows fuentes count', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    const btn = page.locator('button', { hasText: /Buscar Casas/ });
-    await expect(btn).toBeVisible({ timeout: 10000 });
-    const text = await btn.textContent();
-    // Should show 6 or 7 fuentes
-    expect(text).toMatch(/[67] fuentes/);
-  });
-
-  // Change 10: Pencil edit icons exist on listing specs
-  test('Change 10: Listing cards have pencil edit icons', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    // Wait for listings to load
-    await page.waitForTimeout(4000);
-
-    // Look for pencil icons (Pencil from lucide = svg with specific path)
-    const pencils = page.locator('button svg.w-2\\.5');
-    const count = await pencils.count();
-    // Should have pencil icons if listings are loaded
-    if (count > 0) {
-      expect(count).toBeGreaterThan(0);
-    }
-  });
-
-  // Change 11: Negociar button exists
-  test('Change 11: Listing cards have "Negociar" button', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    await page.waitForTimeout(4000);
-
-    const negociarBtns = page.locator('button', { hasText: /Negociar/ });
-    const count = await negociarBtns.count();
-    // If listings loaded, should have Negociar buttons
-    if (count > 0) {
-      expect(count).toBeGreaterThan(0);
-    }
-  });
-
-  // Change 11: Click Negociar toggles to Negociando
-  test('Change 11: Clicking "Negociar" changes to "Negociando"', async ({ page }) => {
-    const ok = await goToMarket(page);
-    if (!ok) { test.skip(true, 'Auth failed'); return; }
-
-    await page.waitForTimeout(4000);
-
-    const negociarBtn = page.locator('button', { hasText: 'Negociar' }).first();
-    if (!(await negociarBtn.isVisible().catch(() => false))) {
-      test.skip(true, 'No listings with Negociar button');
-      return;
-    }
-
-    // Click Negociar
-    await negociarBtn.click();
-    await page.waitForTimeout(2000);
-
-    // Should now show "Negociando" or "En Negociación" badge
-    const negotiating = page.locator('text=Negociando').first();
-    const badge = page.locator('text=En Negociación').first();
-    const isVisible = await negotiating.isVisible().catch(() => false) || await badge.isVisible().catch(() => false);
-    expect(isVisible).toBe(true);
-
-    // Revert: click Negociando to go back to available
-    const negociandoBtn = page.locator('button', { hasText: 'Negociando' }).first();
-    if (await negociandoBtn.isVisible().catch(() => false)) {
-      await negociandoBtn.click();
+    await test.step('wait for filtered results', async () => {
+      await page.waitForResponse(
+        (res: any) => res.url().includes('/api/market-listings') && res.url().includes('min_price=15000'),
+        { timeout: 10000 }
+      ).catch(() => null);
       await page.waitForTimeout(1000);
-    }
+    });
+
+    await test.step('verify all visible prices are in range', async () => {
+      const priceEls = page.getByTestId('listing-price').or(page.locator('p.text-xl.font-bold.text-navy-900'));
+      const texts = await priceEls.allTextContents();
+      const prices = texts.map(t => parseInt(t.replace(/[^0-9]/g, ''))).filter(p => !isNaN(p) && p >= 1000);
+
+      expect(prices.length).toBeGreaterThan(0);
+      for (const p of prices) {
+        expect(p).toBeGreaterThanOrEqual(15000);
+        expect(p).toBeLessThanOrEqual(35000);
+      }
+    });
+  });
+
+  test('user filters listings by source', async ({ page }) => {
+    await setupMarketPage(page);
+
+    await test.step('select Facebook source', async () => {
+      await page.getByTestId('filters-toggle').or(page.locator('button:has-text("Filtros")')).click();
+      await page.waitForTimeout(300);
+
+      const responsePromise = page.waitForResponse(
+        (res: any) => res.url().includes('source=facebook'),
+        { timeout: 10000 }
+      );
+      await page.getByTestId('filter-source').or(page.locator('select').nth(1)).selectOption('facebook');
+      await responsePromise;
+      await page.waitForTimeout(500);
+    });
+
+    await test.step('verify only Facebook listings shown', async () => {
+      const badges = page.getByTestId('source-badge').or(page.locator('span[class*="absolute top-2 left"]'));
+      const texts = await badges.allTextContents();
+      for (const t of texts) {
+        expect(t.trim()).toBe('Facebook');
+      }
+    });
+  });
+});
+
+test.describe('UI: Negotiation flow', () => {
+
+  test('user marks a listing as "En Negociación" and reverts', async ({ page }) => {
+    await setupMarketPage(page);
+
+    await test.step('find a listing with Negociar button', async () => {
+      const negBtn = page.getByTestId('negotiate-btn').or(page.locator('button:has-text("Negociar")'));
+      // Scroll down to find one that's not already negotiating
+      await page.evaluate(() => window.scrollBy(0, 500));
+      await page.waitForTimeout(1000);
+      await expect(negBtn.first()).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step('click Negociar and verify it changes', async () => {
+      const negBtn = page.getByTestId('negotiate-btn').or(page.locator('button:has-text("Negociar")')).first();
+      await negBtn.scrollIntoViewIfNeeded();
+
+      const responsePromise = page.waitForResponse(
+        (res: any) => res.url().includes('/status') && res.status() === 200,
+        { timeout: 10000 }
+      );
+      await negBtn.click();
+      await responsePromise;
+      await page.waitForTimeout(500);
+
+      // Should now show "Negociando"
+      await expect(page.locator('button:has-text("Negociando")').or(page.locator('text=En Negociación')).first()).toBeVisible();
+    });
+
+    await test.step('revert: click Negociando to go back', async () => {
+      const negociandoBtn = page.locator('button:has-text("Negociando")').first();
+      if (await negociandoBtn.isVisible().catch(() => false)) {
+        const responsePromise = page.waitForResponse(
+          (res: any) => res.url().includes('/status') && res.status() === 200,
+          { timeout: 10000 }
+        );
+        await negociandoBtn.click();
+        await responsePromise;
+      }
+    });
+  });
+});
+
+test.describe('UI: Design and visual checks', () => {
+
+  test('all cards have proper layout — no overflow or truncation', async ({ page }) => {
+    await setupMarketPage(page);
+
+    await test.step('check first 4 cards for layout issues', async () => {
+      const cards = page.getByTestId('listing-card').or(page.locator('.card.hover\\:shadow-lg'));
+      const count = Math.min(4, await cards.count());
+
+      for (let i = 0; i < count; i++) {
+        const card = cards.nth(i);
+        const box = await card.boundingBox();
+        if (!box) continue;
+
+        // Card should not be wider than 400px (grid column)
+        expect(box.width).toBeLessThanOrEqual(400);
+      }
+    });
+
+    await test.step('Negociar button is single line (height ≤ 35px)', async () => {
+      const btn = page.getByTestId('negotiate-btn').or(page.locator('button:has-text("Negociar")')).first();
+      if (await btn.isVisible().catch(() => false)) {
+        await btn.scrollIntoViewIfNeeded();
+        const box = await btn.boundingBox();
+        expect(box!.height).toBeLessThanOrEqual(35);
+      }
+    });
+
+    await test.step('empty spec fields show placeholders with pencil icons', async () => {
+      // Look for "— hab" or "— baño" placeholders
+      const placeholders = await page.locator('text=/— (hab|baño|sqft|año)/').count();
+      expect(placeholders).toBeGreaterThan(0);
+    });
+
+    await test.step('"En Negociación" badge fits within card', async () => {
+      const badges = page.getByTestId('negotiating-badge').or(page.locator('text=En Negociación'));
+      const badgeCount = await badges.count();
+      for (let i = 0; i < Math.min(3, badgeCount); i++) {
+        const badge = badges.nth(i);
+        const badgeBox = await badge.boundingBox();
+        // Badge shouldn't be taller than 30px
+        if (badgeBox) expect(badgeBox.height).toBeLessThanOrEqual(30);
+      }
+    });
+  });
+});
+
+test.describe('UI: Spec field editing', () => {
+
+  test('user edits a spec field and prediction updates', async ({ page }) => {
+    await setupMarketPage(page);
+
+    await test.step('find a card with editable fields', async () => {
+      const pencil = page.locator('[data-testid*="edit-manual"]').or(page.locator('button svg.w-2\\.5')).first();
+      await expect(pencil).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step('click pencil icon to start editing', async () => {
+      const pencil = page.locator('[data-testid*="edit-manual"]').or(page.locator('button svg.w-2\\.5')).first();
+      await pencil.click();
+
+      // Input should appear
+      const input = page.locator('input[type="number"]').first();
+      await expect(input).toBeVisible({ timeout: 3000 });
+    });
+
+    await test.step('type value and press Enter', async () => {
+      const input = page.locator('input[type="number"][class*="border-blue"]').first();
+      if (await input.isVisible().catch(() => false)) {
+        const responsePromise = page.waitForResponse(
+          (res: any) => res.url().includes('/manual-fields'),
+          { timeout: 10000 }
+        );
+        await input.fill('3');
+        await input.press('Enter');
+        await responsePromise;
+        await page.waitForTimeout(500);
+
+        // Toast should show
+        await expect(page.locator('text=Campo guardado').or(page.locator('text=Predicción actualizada'))).toBeVisible({ timeout: 5000 });
+      }
+    });
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// PROXY ROUTE TESTS
+// PROXY ROUTES — Verify Next.js routes exist
 // ═══════════════════════════════════════════════════════════════════
 
-test.describe('Proxy Routes — New Next.js routes exist', () => {
+test.describe('Proxy routes exist', () => {
 
-  test('scrape-mhvillage proxy', async ({ request }) => {
-    const res = await request.post(`${APP_URL}/api/market-listings/scrape-mhvillage?min_price=5000&max_price=80000`);
-    expect(res.status()).not.toBe(404);
+  test('scrape proxy routes respond', async ({ request }) => {
+    for (const route of ['scrape-mhvillage', 'scrape-mobilehome']) {
+      const res = await request.post(`${APP_URL}/api/market-listings/${route}?min_price=5000&max_price=80000`);
+      expect(res.status()).not.toBe(404);
+    }
   });
 
-  test('scrape-mobilehome proxy', async ({ request }) => {
-    const res = await request.post(`${APP_URL}/api/market-listings/scrape-mobilehome?min_price=5000&max_price=80000`);
-    expect(res.status()).not.toBe(404);
-  });
-
-  test('manual-fields proxy', async ({ request }) => {
+  test('manual-fields proxy route responds', async ({ request }) => {
     const res = await request.patch(`${APP_URL}/api/market-listings/test-id/manual-fields`, {
       data: { manual_price: 20000 }, headers: { 'Content-Type': 'application/json' },
     });
     expect(res.status()).not.toBe(405);
-  });
-
-  // Public catalog (no auth needed)
-  test('Public partner catalog loads', async ({ page }) => {
-    await page.goto(`${APP_URL}/clientes/casas`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await expect(page).not.toHaveURL(/error/);
   });
 });

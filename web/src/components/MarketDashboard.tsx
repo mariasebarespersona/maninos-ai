@@ -1238,14 +1238,14 @@ export default function MarketDashboard() {
   const QualificationBadge = ({ listing }: { listing: MarketListing }) => {
     if (listing.is_qualified) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200" data-testid="qual-badge">
           <CheckCircle className="w-3 h-3" />
           Calificada
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200" data-testid="qual-badge">
         <XCircle className="w-3 h-3" />
         No califica
       </span>
@@ -1283,7 +1283,7 @@ export default function MarketDashboard() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-display font-semibold text-navy-900">
+          <h2 className="text-2xl font-display font-semibold text-navy-900" data-testid="market-title">
             🏠 Casas del Mercado
           </h2>
           <p className="text-gray-600 mt-1">
@@ -1294,7 +1294,7 @@ export default function MarketDashboard() {
         {/* Stats badges */}
         {stats && (
           <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg border border-green-200">
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg border border-green-200" data-testid="qualified-badge">
               <CheckCircle className="w-5 h-5 text-green-600" />
               <span className="text-sm font-medium text-green-800">
                 {stats.qualified_in_db} calificadas de {stats.total_in_db} analizadas
@@ -1306,7 +1306,7 @@ export default function MarketDashboard() {
 
       {/* 📊 MARKET VALUE ANALYSIS PANEL */}
       {stats?.market_analysis && (
-        <div className="bg-gradient-to-r from-navy-900 to-navy-800 rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-r from-navy-900 to-navy-800 rounded-2xl p-6 text-white shadow-lg" data-testid="market-analysis">
           <div className="flex items-center gap-3 mb-4">
             <TrendingUp className="w-6 h-6 text-gold-400" />
             <h3 className="text-lg font-semibold">Análisis de Mercado - {stats.market_analysis.city}</h3>
@@ -1448,6 +1448,7 @@ export default function MarketDashboard() {
         <button
           onClick={() => setShowFilters(!showFilters)}
           className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-navy-900 transition-colors w-full"
+          data-testid="filters-toggle"
         >
           <Filter className="w-4 h-4" />
           Filtros
@@ -1458,7 +1459,7 @@ export default function MarketDashboard() {
         </button>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3" data-testid="filter-bar">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Precio mín</label>
               <input
@@ -1467,6 +1468,7 @@ export default function MarketDashboard() {
                 onChange={(e) => setMinPriceFilter(e.target.value)}
                 placeholder="$5,000"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-price-min"
               />
             </div>
             <div>
@@ -1477,6 +1479,7 @@ export default function MarketDashboard() {
                 onChange={(e) => setMaxPriceFilterNew(e.target.value)}
                 placeholder="$80,000"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-price-max"
               />
             </div>
             <div>
@@ -1485,6 +1488,7 @@ export default function MarketDashboard() {
                 value={bedroomsFilter}
                 onChange={(e) => setBedroomsFilter(e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-bedrooms"
               >
                 <option value="">Todas</option>
                 <option value="1">1</option>
@@ -1501,6 +1505,7 @@ export default function MarketDashboard() {
                 onChange={(e) => setMinYearFilter(e.target.value)}
                 placeholder="1990"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-year-min"
               />
             </div>
             <div>
@@ -1511,6 +1516,7 @@ export default function MarketDashboard() {
                 onChange={(e) => setMaxYearFilter(e.target.value)}
                 placeholder="2024"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-year-max"
               />
             </div>
             <div>
@@ -1519,6 +1525,7 @@ export default function MarketDashboard() {
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                data-testid="filter-source"
               >
                 <option value="">Todas</option>
                 <option value="facebook">Facebook</option>
@@ -1542,6 +1549,7 @@ export default function MarketDashboard() {
                   setMaxPriceFilterNew('');
                 }}
                 className="text-xs text-red-500 hover:text-red-700 underline"
+                data-testid="clear-filters"
               >
                 Limpiar filtros
               </button>
@@ -1582,6 +1590,7 @@ export default function MarketDashboard() {
         <button
           onClick={() => fetchListings()}
           className="btn-secondary flex items-center gap-2 text-xs sm:text-sm"
+          data-testid="refresh-btn"
         >
           <RefreshCw className="w-4 h-4" />
           <span className="hidden sm:inline">Refrescar</span>
@@ -1618,6 +1627,7 @@ export default function MarketDashboard() {
           onClick={triggerSearch}
           disabled={searching}
           className="btn-gold flex items-center gap-2"
+          data-testid="search-button"
         >
           {searching ? (
             <>
@@ -1663,10 +1673,11 @@ export default function MarketDashboard() {
         />
       ) : (
         /* ===== GRID VIEW (original cards) ===== */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="listings-grid">
           {listings.map((listing) => (
             <div
               key={listing.id}
+              data-testid="listing-card"
               className={`card hover:shadow-lg transition-all duration-300 overflow-hidden ${
                 dismissingIds.has(listing.id) ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
               }`}
@@ -1695,7 +1706,7 @@ export default function MarketDashboard() {
                 )}
                 
                 {/* Source badge */}
-                <span className={`absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium border ${sourceColors[listing.source] || 'bg-gray-100 text-gray-800'}`}>
+                <span data-testid="source-badge" className={`absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium border ${sourceColors[listing.source] || 'bg-gray-100 text-gray-800'}`}>
                   {sourceLabels[listing.source] || listing.source}
                 </span>
                 
@@ -1706,7 +1717,7 @@ export default function MarketDashboard() {
 
                 {/* Negotiating badge */}
                 {listing.status === 'negotiating' && (
-                  <span className="absolute bottom-2 left-2 px-2 py-1 rounded text-xs font-bold bg-yellow-400 text-yellow-900 border border-yellow-500 shadow">
+                  <span className="absolute bottom-2 left-2 px-2 py-1 rounded text-xs font-bold bg-yellow-400 text-yellow-900 border border-yellow-500 shadow" data-testid="negotiating-badge">
                     En Negociación
                   </span>
                 )}
@@ -1720,7 +1731,7 @@ export default function MarketDashboard() {
                     {listing.price_type === 'down_payment' ? (
                       <>
                         <div className="flex items-center gap-1.5">
-                          <p className="text-xl font-bold text-amber-700">
+                          <p className="text-xl font-bold text-amber-700" data-testid="listing-price">
                             ${listing.listing_price.toLocaleString()}
                           </p>
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wide">
@@ -1738,7 +1749,7 @@ export default function MarketDashboard() {
                         )}
                       </>
                     ) : (
-                      <p className="text-xl font-bold text-navy-900">
+                      <p className="text-xl font-bold text-navy-900" data-testid="listing-price">
                         ${listing.listing_price.toLocaleString()}
                       </p>
                     )}
@@ -1768,7 +1779,7 @@ export default function MarketDashboard() {
                     { field: 'manual_sqft', val: listing.manual_sqft || listing.sqft, label: 'sqft', placeholder: 'sqft', manual: listing.manual_sqft },
                     { field: 'manual_year', val: listing.manual_year || listing.year_built, label: '', placeholder: 'año', manual: listing.manual_year },
                   ].map(({ field, val, label, placeholder, manual }) => (
-                    <span key={field} className={`flex items-center gap-0.5 ${manual ? 'text-blue-600 font-semibold' : val ? '' : 'text-gray-300 italic'}`}>
+                    <span key={field} data-testid={`spec-${field}`} className={`flex items-center gap-0.5 ${manual ? 'text-blue-600 font-semibold' : val ? '' : 'text-gray-300 italic'}`}>
                       {editingField?.listingId === listing.id && editingField?.field === field ? (
                         <input
                           type="number"
@@ -1789,6 +1800,7 @@ export default function MarketDashboard() {
                           <button
                             onClick={(e) => { e.stopPropagation(); setEditingField({ listingId: listing.id, field }); }}
                             className="text-gray-300 hover:text-blue-500 transition-colors ml-0.5"
+                            data-testid={`edit-${field}`}
                           >
                             <Pencil className="w-2.5 h-2.5" />
                           </button>
@@ -2043,6 +2055,7 @@ export default function MarketDashboard() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 btn-secondary text-xs py-2 flex items-center justify-center gap-1"
+                      data-testid="view-original"
                     >
                       <ExternalLink className="w-3 h-3" />
                       Ver Original
@@ -2050,6 +2063,7 @@ export default function MarketDashboard() {
                     <button
                       onClick={() => startReview(listing)}
                       disabled={!listing.is_qualified}
+                      data-testid="review-btn"
                       className={`flex-1 text-xs py-2 flex items-center justify-center gap-1 rounded-lg font-medium transition-colors ${
                         listing.is_qualified
                           ? 'btn-gold'
@@ -2069,6 +2083,7 @@ export default function MarketDashboard() {
                           : 'bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700 border border-gray-200'
                       }`}
                       title={listing.status === 'negotiating' ? 'Volver a disponible' : 'Marcar en negociación'}
+                      data-testid="negotiate-btn"
                     >
                       <HeartHandshake className="w-3 h-3" />
                       {listing.status === 'negotiating' ? 'Negociando' : 'Negociar'}
@@ -2077,6 +2092,7 @@ export default function MarketDashboard() {
                       onClick={() => dismissListing(listing.id, listing.address)}
                       className="px-3 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-gray-200"
                       title="Descartar — no volverá a aparecer"
+                      data-testid="dismiss-btn"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
