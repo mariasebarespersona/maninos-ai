@@ -123,7 +123,7 @@ interface MarketStats {
 const sourceColors: Record<string, string> = {
   mhvillage: 'bg-blue-100 text-blue-800 border-blue-200',
   mobilehome: 'bg-green-100 text-green-800 border-green-200',
-  mhbay: 'bg-amber-100 text-amber-800 border-amber-200',
+  mhbay: 'bg-orange-100 text-orange-800 border-orange-200',
   vmf_homes: 'bg-violet-100 text-violet-800 border-violet-200',
   '21st_mortgage': 'bg-rose-100 text-rose-800 border-rose-200',
   facebook: 'bg-sky-100 text-sky-800 border-sky-200',
@@ -618,14 +618,16 @@ export default function MarketDashboard() {
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      // Call working sources in parallel: VMF+21st (main), Facebook
-      const [mainRes, fbRes] = await Promise.allSettled([
+      // Call all working sources in parallel: VMF+21st (main), Facebook, MHBay
+      const [mainRes, fbRes, mhbayRes] = await Promise.allSettled([
         fetch('/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000', { method: 'POST' }),
         fetch('/api/market-listings/scrape-facebook?min_price=0&max_price=80000', { method: 'POST' }),
+        fetch('/api/market-listings/scrape-mhvillage?min_price=5000&max_price=80000', { method: 'POST' }),
       ]);
 
       let mainResult: any = null;
       let fbResult: any = null;
+      let mhbayResult: any = null;
 
       if (mainRes.status === 'fulfilled' && mainRes.value.ok) {
         mainResult = await mainRes.value.json();
@@ -633,17 +635,24 @@ export default function MarketDashboard() {
       if (fbRes.status === 'fulfilled' && fbRes.value.ok) {
         fbResult = await fbRes.value.json();
       }
+      if (mhbayRes.status === 'fulfilled' && mhbayRes.value.ok) {
+        mhbayResult = await mhbayRes.value.json();
+      }
 
-      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0) + (fbResult?.facebook || 0);
       const fbCount = fbResult?.facebook || 0;
+      const mhbayCount = mhbayResult?.mhvillage || 0;
 
-      toast.success(
-        `✓ ${totalScraped} casas encontradas${fbCount > 0 ? ` (${fbCount} de Facebook)` : ''}`
-      );
+      const parts = [];
+      if (fbCount > 0) parts.push(`${fbCount} Facebook`);
+      if (mhbayCount > 0) parts.push(`${mhbayCount} MHBay`);
 
-      // Refresh listings
+      // Refresh listings to get accurate count
       await fetchListings();
       await fetchStats();
+
+      toast.success(
+        `✓ Búsqueda completa${parts.length ? ` (${parts.join(', ')})` : ''}`
+      );
 
     } catch (error) {
       console.error('Search error:', error);
@@ -1300,7 +1309,7 @@ export default function MarketDashboard() {
             <TrendingUp className="w-6 h-6 text-gold-400" />
             <h3 className="text-lg font-semibold">Análisis de Mercado - {stats.market_analysis.city}</h3>
             <span className="text-xs bg-gold-500/20 text-gold-300 px-2 py-1 rounded-full">
-              {stats.market_analysis.total_scraped} casas analizadas
+              {stats.total_in_db} casas analizadas
             </span>
           </div>
           
@@ -1577,14 +1586,6 @@ export default function MarketDashboard() {
 
         <div className="flex gap-2 sm:gap-3 flex-wrap">
         <button
-          onClick={() => fetchListings()}
-          className="btn-secondary flex items-center gap-2 text-xs sm:text-sm"
-          data-testid="refresh-btn"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span className="hidden sm:inline">Refrescar</span>
-        </button>
-        <button
           onClick={async () => {
             if (!window.confirm(`¿Eliminar TODAS las ${listings.length} propiedades del mercado? Esta acción no se puede deshacer.`)) return;
             try {
@@ -1614,12 +1615,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando en {fbConnected ? 3 : 2} fuentes...
+                Buscando en {fbConnected ? 4 : 3} fuentes...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                🔍 Buscar Casas ({fbConnected ? '3 fuentes' : '2 fuentes'})
+                🔍 Buscar Casas ({fbConnected ? '4 fuentes' : '3 fuentes'})
             </>
           )}
         </button>

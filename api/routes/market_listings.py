@@ -1192,84 +1192,97 @@ async def scrape_mhvillage(
     max_price: float = Query(default=80000),
     max_listings: int = Query(default=50),
 ):
-    """Scrape MHVillage.com for mobile homes in Texas."""
+    """Scrape MHBay.com for mobile homes in Texas (replaces MHVillage which is SPA-only)."""
     import requests as req
     import re as re_mod
 
-    logger.info(f"[MHVillage] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
+    logger.info(f"[MHBay] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
     saved = 0
 
     try:
         from api.utils.qualification import qualify_listing
 
-        # MHVillage has a public search API
-        cities = ["Houston", "Dallas", "San+Antonio", "Austin"]
-        all_results = []
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "text/html",
+        }
 
-        for city in cities:
+        # MHBay has server-rendered HTML with listing data
+        search_urls = [
+            "https://www.mhbay.com/mobile-homes-for-sale/TX",
+            "https://www.mhbay.com/mobile-homes-for-sale/TX/houston",
+            "https://www.mhbay.com/mobile-homes-for-sale/TX/dallas",
+            "https://www.mhbay.com/mobile-homes-for-sale/TX/san-antonio",
+        ]
+
+        all_listings = []
+        for search_url in search_urls:
             try:
-                url = f"https://www.mhvillage.com/api/v2/homes?state=TX&city={city}&minPrice={int(min_price)}&maxPrice={int(max_price)}&limit=25"
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
-                    "Accept": "application/json",
-                    "Referer": "https://www.mhvillage.com/",
-                }
-                response = req.get(url, headers=headers, timeout=45)
-                if response.status_code == 200:
-                    data = response.json()
-                    homes = data.get("homes") or data.get("results") or data.get("data") or []
-                    all_results.extend(homes)
-                    logger.info(f"[MHVillage] {city}: {len(homes)} results")
-                else:
-                    # Fallback: scrape HTML search page
-                    html_url = f"https://www.mhvillage.com/homes-for-sale/TX/{city.replace('+', '-')}?min_price={int(min_price)}&max_price={int(max_price)}"
-                    html_resp = req.get(html_url, headers={**headers, "Accept": "text/html"}, timeout=45)
-                    if html_resp.status_code == 200:
-                        # Extract listing data from HTML (JSON-LD or embedded data)
-                        import json
-                        json_matches = re_mod.findall(r'<script type="application/ld\+json">(.*?)</script>', html_resp.text, re_mod.DOTALL)
-                        for jm in json_matches:
-                            try:
-                                parsed = json.loads(jm)
-                                if isinstance(parsed, list):
-                                    all_results.extend(parsed)
-                                elif isinstance(parsed, dict) and parsed.get("@type") in ("Product", "RealEstateListing"):
-                                    all_results.append(parsed)
-                            except json.JSONDecodeError:
-                                pass
-                        logger.info(f"[MHVillage] {city}: {len(json_matches)} JSON-LD blocks from HTML")
-            except Exception as city_err:
-                logger.warning(f"[MHVillage] Error for {city}: {city_err}")
-                continue
-
-        # Save to database
-        for item in all_results[:max_listings]:
-            try:
-                price = float(item.get("price") or item.get("listing_price") or item.get("offers", {}).get("price") or 0)
-                address = item.get("address") or item.get("name") or ""
-                city_name = item.get("city") or item.get("addressLocality") or "TX"
-                if isinstance(address, dict):
-                    city_name = address.get("addressLocality", city_name)
-                    address = address.get("streetAddress", str(address))
-
-                if price <= 0:
+                response = req.get(search_url, headers=headers, timeout=45)
+                if response.status_code != 200:
                     continue
 
-                qual = qualify_listing(listing_price=price, market_value=price, city=city_name, state="TX")
+                html = response.text
 
-                source_url = item.get("url") or item.get("source_url") or f"mhvillage-{hash(str(item))}"
+                # Extract listing links and prices from HTML
+                # MHBay format: /mobile-homes/ID-title-in-city-state
+                listing_links = re_mod.findall(r'href="(/mobile-homes/\d+[^"]*)"', html)
+                prices_raw = re_mod.findall(r'\$(\d{1,3}(?:,\d{3})*)', html)
+                prices = [int(p.replace(',', '')) for p in prices_raw if int(p.replace(',', '')) >= min_price and int(p.replace(',', '')) <= max_price]
+
+                # Extract listing titles for addresses
+                titles = re_mod.findall(r'<a[^>]*href="/mobile-homes/\d+[^"]*"[^>]*>\s*([^<]+)', html)
+
+                # Parse city from links
+                for i, link in enumerate(listing_links[:max_listings]):
+                    try:
+                        # Extract city from URL: /mobile-homes/123-title-in-city-state
+                        city_match = re_mod.search(r'in-([a-z-]+)-(?:tx|texas)', link.lower())
+                        city = city_match.group(1).replace('-', ' ').title() if city_match else "TX"
+
+                        price = prices[i] if i < len(prices) else 0
+                        title = titles[i].strip() if i < len(titles) else link
+                        source_url = f"https://www.mhbay.com{link}"
+
+                        if price <= 0:
+                            continue
+
+                        all_listings.append({
+                            "price": price,
+                            "title": title,
+                            "city": city,
+                            "source_url": source_url,
+                        })
+                    except Exception:
+                        continue
+
+                logger.info(f"[MHBay] {search_url}: {len(listing_links)} links, {len(prices)} prices")
+            except Exception as e:
+                logger.warning(f"[MHBay] Error scraping {search_url}: {e}")
+                continue
+
+        # Deduplicate by source_url
+        seen = set()
+        unique = []
+        for l in all_listings:
+            if l["source_url"] not in seen:
+                seen.add(l["source_url"])
+                unique.append(l)
+        all_listings = unique
+
+        # Save to database
+        for item in all_listings[:max_listings]:
+            try:
+                price = item["price"]
+                qual = qualify_listing(listing_price=price, market_value=price, city=item["city"], state="TX")
+
                 listing_data = {
-                    "source": "mhvillage",
-                    "source_url": source_url,
-                    "address": str(address)[:500],
-                    "city": city_name,
+                    "source": "mhbay",
+                    "source_url": item["source_url"],
+                    "address": item["title"][:500],
+                    "city": item["city"],
                     "state": "TX",
                     "listing_price": price,
-                    "year_built": item.get("year_built") or item.get("year"),
-                    "sqft": item.get("sqft") or item.get("square_feet"),
-                    "bedrooms": item.get("bedrooms") or item.get("beds"),
-                    "bathrooms": item.get("bathrooms") or item.get("baths"),
-                    "thumbnail_url": item.get("thumbnail_url") or item.get("image") or (item.get("photos") or [None])[0],
                     "is_qualified": qual["is_qualified"],
                     "qualification_score": qual["qualification_score"],
                     "status": "available",
@@ -1278,13 +1291,13 @@ async def scrape_mhvillage(
                 supabase.table("market_listings").upsert(listing_data, on_conflict="source_url").execute()
                 saved += 1
             except Exception as save_err:
-                logger.warning(f"[MHVillage] Save error: {save_err}")
+                logger.warning(f"[MHBay] Save error: {save_err}")
 
-        logger.info(f"[MHVillage] ✅ Saved {saved} listings from {len(all_results)} results")
-        return {"success": True, "mhvillage": saved, "total_raw": len(all_results)}
+        logger.info(f"[MHBay] ✅ Saved {saved} listings from {len(all_listings)} results")
+        return {"success": True, "mhvillage": saved, "total_raw": len(all_listings)}
 
     except Exception as e:
-        logger.error(f"[MHVillage] Error: {e}")
+        logger.error(f"[MHBay] Error: {e}")
         return {"success": False, "mhvillage": 0, "message": str(e)}
 
 
