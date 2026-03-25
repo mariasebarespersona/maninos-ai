@@ -1067,7 +1067,7 @@ async def scrape_facebook_only(
             ]
             rand.shuffle(search_configs)
 
-            for city_slug, query_term, city_label in search_configs[:4]:  # 4 searches per session
+            for city_slug, query_term, city_label in search_configs:  # Search all combos
                 url = f"https://www.facebook.com/marketplace/{city_slug}/search?query={query_term}&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
                 logger.info(f"[FB Scrape] Fetching: {url}")
 
@@ -1119,10 +1119,16 @@ async def scrape_facebook_only(
                 state=state_name,
             )
 
-            # Skip ONLY if price is clearly garbage (< $500) AND no full price estimate
-            if not qual["is_qualified"] and qualification_price < 500:
-                skipped_unqualified += 1
-                continue
+            # Include ALL listings from Facebook — even with low/garbage prices
+            # Gabriel can negotiate the real price later
+            # Low prices are marked as "down_payment" so prediction ignores them
+            is_low_price = fb.price < 5000
+            if is_low_price:
+                price_type = "down_payment"  # Mark as not the real price
+
+            # Facebook listings in TX are always qualified (Gabriel decides)
+            is_qualified = True
+            qualification_score = qual["qualification_score"] if qual["is_qualified"] else 50
 
             try:
                 listing_data = {
@@ -1137,11 +1143,11 @@ async def scrape_facebook_only(
                     "bedrooms": fb.bedrooms,
                     "bathrooms": fb.bathrooms,
                     "thumbnail_url": fb.image_url,
-                    "is_qualified": qual["is_qualified"],
-                    "qualification_score": qual["qualification_score"],
+                    "is_qualified": is_qualified,
+                    "qualification_score": qualification_score,
                     "qualification_reasons": qual["qualification_reasons"],
                     "passes_70_rule": qual["passes_60_rule"],
-                    "passes_age_rule": qual["passes_price_range"],
+                    "passes_age_rule": True,  # Always pass for FB
                     "passes_location_rule": qual["passes_zone_rule"],
                     "price_type": price_type,
                     "estimated_full_price": estimated_full,

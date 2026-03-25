@@ -518,7 +518,7 @@ export default function MarketDashboard() {
     }, 300); // 300ms matches the CSS transition duration
   };
 
-  // Save a manual override field for a listing
+  // Save a manual override field for a listing, then re-predict
   const saveManualField = async (listingId: string, field: string, value: string) => {
     const numValue = value ? parseFloat(value) : null;
     if (value && isNaN(numValue as number)) return;
@@ -530,10 +530,36 @@ export default function MarketDashboard() {
       });
       if (res.ok) {
         // Update local state
-        setListings(prev => prev.map(l =>
+        const updatedListings = listings.map(l =>
           l.id === listingId ? { ...l, [field]: numValue } : l
-        ));
+        );
+        setListings(updatedListings);
         toast.success('Campo guardado');
+
+        // Re-predict for this listing with updated values
+        const listing = updatedListings.find(l => l.id === listingId);
+        if (listing) {
+          try {
+            const predRes = await fetch('/api/market-listings/predict-price', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                listing_price: listing.manual_price || listing.listing_price,
+                sqft: listing.manual_sqft || listing.sqft,
+                bedrooms: listing.manual_bedrooms || listing.bedrooms,
+                bathrooms: listing.manual_bathrooms || listing.bathrooms,
+                description: listing.address || '',
+              }),
+            });
+            const predData = await predRes.json();
+            if (predData.success) {
+              setPredictions(prev => ({ ...prev, [listingId]: predData.prediction }));
+              toast.success('Predicción actualizada');
+            }
+          } catch {
+            // Prediction update failed — not critical
+          }
+        }
       }
     } catch {
       toast.error('Error guardando campo');
@@ -1734,42 +1760,41 @@ export default function MarketDashboard() {
                   {listing.city}, {listing.state}
                 </p>
                 
-                {/* Specs — with inline manual edit */}
-                <div className="flex items-center gap-3 text-xs text-gray-600 mb-3 flex-wrap">
+                {/* Specs — always show all 4 fields, editable with pencil */}
+                <div className="flex items-center gap-2 text-xs text-gray-600 mb-3 flex-wrap">
                   {[
-                    { field: 'manual_bedrooms', val: listing.manual_bedrooms || listing.bedrooms, label: 'hab', manual: listing.manual_bedrooms },
-                    { field: 'manual_bathrooms', val: listing.manual_bathrooms || listing.bathrooms, label: 'baño', manual: listing.manual_bathrooms },
-                    { field: 'manual_sqft', val: listing.manual_sqft || listing.sqft, label: 'sqft', manual: listing.manual_sqft },
-                    { field: 'manual_year', val: listing.manual_year || listing.year_built, label: '', manual: listing.manual_year },
-                  ].map(({ field, val, label, manual }) => (
-                    val || editingField?.listingId === listing.id && editingField?.field === field ? (
-                      <span key={field} className={`flex items-center gap-0.5 ${manual ? 'text-blue-600 font-semibold' : ''}`}>
-                        {editingField?.listingId === listing.id && editingField?.field === field ? (
-                          <input
-                            type="number"
-                            className="w-14 px-1 py-0.5 border rounded text-xs"
-                            defaultValue={val || ''}
-                            autoFocus
-                            onBlur={(e) => saveManualField(listing.id, field, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveManualField(listing.id, field, (e.target as HTMLInputElement).value);
-                              if (e.key === 'Escape') setEditingField(null);
-                            }}
-                          />
-                        ) : (
-                          <>
-                            {field === 'manual_year' && <Calendar className="w-3 h-3" />}
-                            {val} {label}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setEditingField({ listingId: listing.id, field }); setEditingValue(String(val || '')); }}
-                              className="text-gray-300 hover:text-blue-500 transition-colors"
-                            >
-                              <Pencil className="w-2.5 h-2.5" />
-                            </button>
-                          </>
-                        )}
-                      </span>
-                    ) : null
+                    { field: 'manual_bedrooms', val: listing.manual_bedrooms || listing.bedrooms, label: 'hab', placeholder: 'hab', manual: listing.manual_bedrooms },
+                    { field: 'manual_bathrooms', val: listing.manual_bathrooms || listing.bathrooms, label: 'baño', placeholder: 'baño', manual: listing.manual_bathrooms },
+                    { field: 'manual_sqft', val: listing.manual_sqft || listing.sqft, label: 'sqft', placeholder: 'sqft', manual: listing.manual_sqft },
+                    { field: 'manual_year', val: listing.manual_year || listing.year_built, label: '', placeholder: 'año', manual: listing.manual_year },
+                  ].map(({ field, val, label, placeholder, manual }) => (
+                    <span key={field} className={`flex items-center gap-0.5 ${manual ? 'text-blue-600 font-semibold' : val ? '' : 'text-gray-300 italic'}`}>
+                      {editingField?.listingId === listing.id && editingField?.field === field ? (
+                        <input
+                          type="number"
+                          className="w-14 px-1 py-0.5 border border-blue-300 rounded text-xs bg-blue-50"
+                          defaultValue={val || ''}
+                          placeholder={placeholder}
+                          autoFocus
+                          onBlur={(e) => saveManualField(listing.id, field, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveManualField(listing.id, field, (e.target as HTMLInputElement).value);
+                            if (e.key === 'Escape') setEditingField(null);
+                          }}
+                        />
+                      ) : (
+                        <>
+                          {field === 'manual_year' && <Calendar className="w-3 h-3" />}
+                          {val ? `${val} ${label}` : `— ${placeholder}`}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingField({ listingId: listing.id, field }); }}
+                            className="text-gray-300 hover:text-blue-500 transition-colors ml-0.5"
+                          >
+                            <Pencil className="w-2.5 h-2.5" />
+                          </button>
+                        </>
+                      )}
+                    </span>
                   ))}
                 </div>
                 

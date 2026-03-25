@@ -279,6 +279,132 @@ def _job_title_monitor():
 # SCHEDULER LIFECYCLE
 # =========================================================================
 
+def _job_facebook_auto_scrape():
+    """
+    Job: Auto-scrape Facebook Marketplace every 10 minutes.
+    Accumulates new qualified listings over time. Each run searches
+    a different city/term combo to build up inventory.
+    Uses upsert on source_url so duplicates are ignored.
+    """
+    import asyncio
+    import requests as req
+    import random
+    from datetime import datetime as dt
+
+    try:
+        from api.agents.buscador.fb_auth import FacebookAuth
+        if not FacebookAuth.is_authenticated():
+            logger.debug("[scheduler] Facebook not authenticated — skipping auto-scrape")
+            _log_job("facebook_auto_scrape", {"ok": True, "skipped": "not_authenticated"})
+            return {"ok": True, "skipped": True}
+
+        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper as FBScraper, USER_AGENTS, PROXY_URL, FBListing
+        from api.agents.buscador.fb_scraper import detect_price_type
+        from api.utils.qualification import qualify_listing
+        from tools.supabase_client import sb
+
+        cookies = FacebookAuth.load_cookies()
+        session = req.Session()
+        for c in cookies:
+            session.cookies.set(c["name"], c["value"], domain=c.get("domain", ".facebook.com"), path=c.get("path", "/"))
+        if PROXY_URL:
+            session.proxies = {"http": PROXY_URL, "https": PROXY_URL}
+
+        ua = random.choice(USER_AGENTS)
+        session.headers.update({
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Referer": "https://www.facebook.com/marketplace/",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+        })
+
+        # Rotate through search combos — each run picks 1 random combo
+        search_configs = [
+            ("houston", "mobile%20home", "Houston"),
+            ("houston", "manufactured%20home", "Houston"),
+            ("houston", "trailer%20home", "Houston"),
+            ("dallas", "mobile%20home", "Dallas"),
+            ("dallas", "manufactured%20home", "Dallas"),
+            ("sanantonio", "mobile%20home", "San Antonio"),
+            ("dallas", "casa%20movil", "Dallas"),
+        ]
+        city_slug, query_term, city_label = random.choice(search_configs)
+
+        url = f"https://www.facebook.com/marketplace/{city_slug}/search?query={query_term}&minPrice=5000&maxPrice=80000&exact=false"
+        logger.info(f"[scheduler] FB auto-scrape: {city_label} / {query_term}")
+
+        response = session.get(url, allow_redirects=True, timeout=30)
+        if "/login" in response.url:
+            logger.warning("[scheduler] FB redirected to login — cookies expired")
+            _log_job("facebook_auto_scrape", {"ok": False, "error": "cookies_expired"})
+            return {"ok": False, "error": "cookies_expired"}
+
+        fb_results = FBScraper._extract_json_from_html(response.text, city_label)
+        logger.info(f"[scheduler] FB auto-scrape: extracted {len(fb_results)} listings")
+
+        saved = 0
+        for fb in fb_results:
+            if fb.price <= 0:
+                continue
+
+            city_name = fb.city or city_label
+            state_name = fb.state or "TX"
+            price_type, estimated_full = detect_price_type(fb.title or "", fb.description or "", fb.price)
+            qualification_price = estimated_full if (price_type == "down_payment" and estimated_full) else fb.price
+
+            qual = qualify_listing(listing_price=qualification_price, market_value=qualification_price, city=city_name, state=state_name)
+
+            # Facebook in TX always qualified — Gabriel decides the real price
+            is_low_price = fb.price < 5000
+            if is_low_price:
+                price_type = "down_payment"
+
+            try:
+                sb.table("market_listings").upsert({
+                    "source": "facebook",
+                    "source_url": fb.url or f"fb-{hash(fb.title)}",
+                    "address": fb.title or "Facebook Marketplace",
+                    "city": city_name,
+                    "state": state_name,
+                    "listing_price": fb.price,
+                    "year_built": fb.year_built,
+                    "sqft": fb.sqft,
+                    "bedrooms": fb.bedrooms,
+                    "bathrooms": fb.bathrooms,
+                    "thumbnail_url": fb.image_url,
+                    "is_qualified": True,
+                    "qualification_score": qual["qualification_score"] if qual["is_qualified"] else 50,
+                    "passes_70_rule": True,
+                    "passes_age_rule": True,
+                    "passes_location_rule": qual["passes_zone_rule"],
+                    "price_type": price_type,
+                    "estimated_full_price": estimated_full,
+                    "status": "available",
+                    "scraped_at": dt.now().isoformat(),
+                }, on_conflict="source_url").execute()
+                saved += 1
+            except Exception:
+                pass
+
+        result = {"ok": True, "city": city_label, "raw": len(fb_results), "saved": saved}
+        _log_job("facebook_auto_scrape", result)
+        if saved > 0:
+            logger.info(f"[scheduler] ✅ FB auto-scrape: {saved} new listings from {city_label}")
+        return result
+
+    except Exception as e:
+        logger.error(f"[scheduler] FB auto-scrape error: {e}")
+        _log_job("facebook_auto_scrape", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """
     Initialize and start the APScheduler with all email jobs.
@@ -374,8 +500,18 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Job 9: Facebook Marketplace auto-scrape — every 10 minutes
+    # Accumulates new qualified listings over time
+    _scheduler.add_job(
+        _job_facebook_auto_scrape,
+        trigger=IntervalTrigger(minutes=10),
+        id="facebook_auto_scrape",
+        name="Facebook Marketplace Auto-Scrape (every 10 min)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("[scheduler] ✅ Scheduler started with 7 jobs")
+    logger.info("[scheduler] ✅ Scheduler started with 9 jobs")
     return _scheduler
 
 
