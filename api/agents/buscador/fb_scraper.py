@@ -224,7 +224,7 @@ USER_AGENTS = [
 ]
 
 # Max requests per session to avoid detection (rotate city/term combos)
-MAX_REQUESTS_PER_SESSION = 2
+MAX_REQUESTS_PER_SESSION = 4
 
 
 class FacebookMarketplaceScraper:

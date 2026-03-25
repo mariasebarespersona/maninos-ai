@@ -1055,17 +1055,19 @@ async def scrape_facebook_only(
                 "Upgrade-Insecure-Requests": "1",
             })
 
-            # Search both Houston and Dallas with multiple terms
+            # Search Houston, Dallas, San Antonio with multiple terms
             search_configs = [
                 ("houston", "mobile%20home", "Houston"),
-                ("dallas", "mobile%20home", "Dallas"),
                 ("houston", "manufactured%20home", "Houston"),
                 ("houston", "trailer%20home", "Houston"),
+                ("dallas", "mobile%20home", "Dallas"),
+                ("dallas", "manufactured%20home", "Dallas"),
+                ("sanantonio", "mobile%20home", "San Antonio"),
                 ("dallas", "casa%20movil", "Dallas"),
             ]
             rand.shuffle(search_configs)
 
-            for city_slug, query_term, city_label in search_configs[:2]:  # Limit to 2 requests per session
+            for city_slug, query_term, city_label in search_configs[:4]:  # 4 searches per session
                 url = f"https://www.facebook.com/marketplace/{city_slug}/search?query={query_term}&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
                 logger.info(f"[FB Scrape] Fetching: {url}")
 

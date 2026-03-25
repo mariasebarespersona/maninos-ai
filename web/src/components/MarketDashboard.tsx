@@ -294,9 +294,6 @@ export default function MarketDashboard() {
   // Dismiss animation state
   const [dismissingIds, setDismissingIds] = useState<Set<string>>(new Set());
 
-  // Show unqualified toggle (debug mode)
-  const [showUnqualified, setShowUnqualified] = useState(false);
-
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
   const [minPriceFilter, setMinPriceFilter] = useState<string>('');
@@ -317,7 +314,7 @@ export default function MarketDashboard() {
   const fetchListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.append('qualified_only', showUnqualified ? 'false' : 'true');
+      params.append('qualified_only', 'true');
       params.append('limit', '500');
       if (cityFilter) params.append('city', cityFilter);
       if (minPriceFilter) params.append('min_price', minPriceFilter);
@@ -346,7 +343,7 @@ export default function MarketDashboard() {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
     }
-  }, [cityFilter, maxPriceFilter, minPriceFilter, maxPriceFilterNew, showUnqualified, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
+  }, [cityFilter, maxPriceFilter, minPriceFilter, maxPriceFilterNew, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
@@ -1265,17 +1262,9 @@ export default function MarketDashboard() {
             <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg border border-green-200">
               <CheckCircle className="w-5 h-5 text-green-600" />
               <span className="text-sm font-medium text-green-800">
-                {stats.qualified_in_db} / {stats.target} calificadas
+                {stats.qualified_in_db} calificadas de {stats.total_in_db} analizadas
               </span>
             </div>
-            {stats.qualified_in_db < stats.target && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
-                <AlertCircle className="w-5 h-5 text-amber-600" />
-                <span className="text-sm font-medium text-amber-800">
-                  Necesita {stats.target - stats.qualified_in_db} más
-                </span>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1427,14 +1416,14 @@ export default function MarketDashboard() {
         >
           <Filter className="w-4 h-4" />
           Filtros
-          {(minPriceFilter || maxPriceFilterNew || bedroomsFilter || minYearFilter || maxYearFilter || sourceFilter || showUnqualified) && (
+          {(minPriceFilter || maxPriceFilterNew || bedroomsFilter || minYearFilter || maxYearFilter || sourceFilter) && (
             <span className="px-1.5 py-0.5 bg-gold-100 text-gold-800 text-xs rounded-full font-bold">activos</span>
           )}
           {showFilters ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
         </button>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Precio mín</label>
               <input
@@ -1506,17 +1495,6 @@ export default function MarketDashboard() {
               </select>
             </div>
             <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showUnqualified}
-                  onChange={(e) => setShowUnqualified(e.target.checked)}
-                  className="rounded border-gray-300"
-                />
-                No calificadas
-              </label>
-            </div>
-            <div className="flex items-end">
               <button
                 onClick={() => {
                   setMinPriceFilter('');
@@ -1525,7 +1503,6 @@ export default function MarketDashboard() {
                   setMinYearFilter('');
                   setMaxYearFilter('');
                   setSourceFilter('');
-                  setShowUnqualified(false);
                   setCityFilter('');
                   setMaxPriceFilter('');
                 }}
@@ -1610,12 +1587,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando en {fbConnected ? 7 : 6} fuentes...
+                Buscando en {fbConnected ? 5 : 4} fuentes...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                🔍 Buscar Casas ({fbConnected ? '7 fuentes' : '6 fuentes'})
+                🔍 Buscar Casas ({fbConnected ? '5 fuentes' : '4 fuentes'})
             </>
           )}
         </button>
