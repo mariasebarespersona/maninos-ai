@@ -223,6 +223,118 @@ class FacebookAuth:
                 "last_login": last_login,
             }
     
+    # ── Auto-Login with Playwright ──────────────────────────────────────
+
+    @staticmethod
+    async def auto_login() -> bool:
+        """
+        Automatically log into Facebook using Playwright and save cookies.
+
+        Uses FB_EMAIL and FB_PASSWORD env vars. Gabriel sets these ONCE
+        and the system auto-renews cookies when they expire.
+
+        Returns True if login succeeded and cookies were saved.
+        """
+        fb_email = os.environ.get("FB_EMAIL", "")
+        fb_password = os.environ.get("FB_PASSWORD", "")
+
+        if not fb_email or not fb_password:
+            logger.warning("[FB Auth] No FB_EMAIL/FB_PASSWORD env vars — cannot auto-login")
+            return False
+
+        logger.info(f"[FB Auth] Auto-login starting for {fb_email}...")
+
+        try:
+            from playwright.async_api import async_playwright
+
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 720},
+                )
+                page = await context.new_page()
+
+                # Navigate to Facebook login
+                await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(2000)
+
+                # Fill login form
+                await page.fill('input[name="email"]', fb_email)
+                await page.fill('input[name="pass"]', fb_password)
+                await page.click('button[name="login"]')
+
+                # Wait for login to complete
+                await page.wait_for_timeout(5000)
+
+                # Check if login succeeded (redirected away from /login)
+                current_url = page.url
+                if "/login" in current_url or "/checkpoint" in current_url:
+                    logger.error(f"[FB Auth] Auto-login failed — still on {current_url}")
+                    await browser.close()
+                    return False
+
+                # Extract cookies from browser
+                cookies = await context.cookies()
+                fb_cookies = [
+                    {
+                        "name": c["name"],
+                        "value": c["value"],
+                        "domain": c["domain"],
+                        "path": c["path"],
+                        "httpOnly": c.get("httpOnly", False),
+                        "secure": c.get("secure", False),
+                        "sameSite": c.get("sameSite", "Lax"),
+                    }
+                    for c in cookies
+                    if "facebook.com" in c.get("domain", "")
+                ]
+
+                if len(fb_cookies) < 3:
+                    logger.error(f"[FB Auth] Auto-login: only {len(fb_cookies)} cookies — likely failed")
+                    await browser.close()
+                    return False
+
+                # Save cookies
+                FacebookAuth.save_cookies(fb_cookies)
+                logger.info(f"[FB Auth] ✅ Auto-login successful — saved {len(fb_cookies)} cookies")
+
+                await browser.close()
+                return True
+
+        except Exception as e:
+            logger.error(f"[FB Auth] Auto-login error: {e}")
+            return False
+
+    @staticmethod
+    async def ensure_authenticated() -> bool:
+        """
+        Ensure Facebook is authenticated. If cookies expired, try auto-login.
+        Returns True if authenticated (either existing cookies or auto-login worked).
+        """
+        if FacebookAuth.is_authenticated():
+            # Verify cookies still work by making a test request
+            try:
+                import requests
+                cookies = FacebookAuth.load_cookies()
+                session = requests.Session()
+                for c in cookies:
+                    session.cookies.set(c["name"], c["value"], domain=c.get("domain", ".facebook.com"))
+
+                resp = session.get("https://www.facebook.com/marketplace/",
+                    headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
+                    allow_redirects=False, timeout=10)
+
+                if resp.status_code == 200 or (resp.status_code == 302 and "/login" not in resp.headers.get("Location", "")):
+                    return True  # Cookies still valid
+
+                logger.info("[FB Auth] Cookies expired (redirected to login) — trying auto-login")
+            except Exception as e:
+                logger.warning(f"[FB Auth] Cookie validation failed: {e}")
+
+        # Try auto-login
+        return await FacebookAuth.auto_login()
+
     # ── Cookie Import ───────────────────────────────────────────────────
     
     @staticmethod

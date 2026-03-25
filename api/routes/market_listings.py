@@ -1013,8 +1013,11 @@ async def scrape_facebook_only(
     """Scrape Facebook Marketplace only and save results to DB."""
     try:
         from api.agents.buscador.fb_auth import FacebookAuth
-        if not FacebookAuth.is_authenticated():
-            return {"success": True, "facebook": 0, "message": "Facebook not connected"}
+
+        # Auto-login if cookies expired
+        is_auth = await FacebookAuth.ensure_authenticated()
+        if not is_auth:
+            return {"success": True, "facebook": 0, "message": "Facebook not connected — set FB_EMAIL/FB_PASSWORD env vars for auto-login"}
 
         from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
         from api.agents.buscador.scraper import ScrapedListing

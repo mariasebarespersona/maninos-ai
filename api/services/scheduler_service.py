@@ -293,7 +293,12 @@ def _job_facebook_auto_scrape():
 
     try:
         from api.agents.buscador.fb_auth import FacebookAuth
-        if not FacebookAuth.is_authenticated():
+        import asyncio as _asyncio
+
+        # Auto-login if cookies expired
+        loop = _asyncio.get_event_loop()
+        is_auth = loop.run_until_complete(FacebookAuth.ensure_authenticated()) if loop.is_running() else _asyncio.run(FacebookAuth.ensure_authenticated())
+        if not is_auth:
             logger.debug("[scheduler] Facebook not authenticated — skipping auto-scrape")
             _log_job("facebook_auto_scrape", {"ok": True, "skipped": "not_authenticated"})
             return {"ok": True, "skipped": True}
