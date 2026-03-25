@@ -666,6 +666,8 @@ export default function MarketDashboard() {
   const startReview = (listing: MarketListing) => {
     setSelectedListing(listing);
     setPurchaseStep('documents');
+    // Switch to grid view when reviewing — map interferes with the modal
+    setViewMode('grid');
     // Initialize checklist from saved data or empty
     setChecklist({});
     setDocuments({ billOfSale: null, title: null, titleApplication: null });
