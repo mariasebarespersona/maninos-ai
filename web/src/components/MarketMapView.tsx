@@ -50,6 +50,9 @@ interface MarketListing {
   manual_bathrooms: number | null;
   manual_sqft: number | null;
   manual_year: number | null;
+  // Review progress
+  review_progress: any | null;
+  review_started_at: string | null;
 }
 
 interface MarketMapViewProps {

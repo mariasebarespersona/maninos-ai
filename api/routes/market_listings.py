@@ -584,6 +584,34 @@ class ManualFieldsUpdate(BaseModel):
     manual_year: Optional[int] = None
 
 
+@router.patch("/{listing_id}/review-progress")
+async def save_review_progress(listing_id: str, data: dict):
+    """
+    Save the review progress for a listing so users can resume later.
+    Stores the entire review state: step, documents, checklist, TDHCA, etc.
+    """
+    try:
+        response = supabase.table("market_listings")\
+            .update({
+                "review_progress": data.get("progress", {}),
+                "review_started_at": data.get("started_at") or datetime.now().isoformat(),
+                "review_started_by": data.get("started_by", "staff"),
+            })\
+            .eq("id", listing_id)\
+            .execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Listing not found")
+
+        return {"success": True, "listing_id": listing_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving review progress: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/{listing_id}/manual-fields")
 async def update_manual_fields(listing_id: str, data: ManualFieldsUpdate):
     """

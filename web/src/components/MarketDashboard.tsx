@@ -93,6 +93,9 @@ interface MarketListing {
   manual_bathrooms: number | null;
   manual_sqft: number | null;
   manual_year: number | null;
+  // Review progress (saved state for resume later)
+  review_progress: any | null;
+  review_started_at: string | null;
 }
 
 interface MarketAnalysis {
@@ -326,11 +329,14 @@ export default function MarketDashboard() {
       const response = await fetch(`/api/market-listings?${params}`);
       if (!response.ok) throw new Error('Failed to fetch listings');
       const data = await response.json();
-      // Sort: Negotiating first, then Facebook, then rest
+      // Sort: Negotiating first, then In Review, then Facebook, then rest
       const sorted = (data.listings || []).sort((a: MarketListing, b: MarketListing) => {
         // Negotiating always first
         if (a.status === 'negotiating' && b.status !== 'negotiating') return -1;
         if (a.status !== 'negotiating' && b.status === 'negotiating') return 1;
+        // Then listings with review progress (En Revisión)
+        if (a.review_progress && !b.review_progress) return -1;
+        if (!a.review_progress && b.review_progress) return 1;
         // Then Facebook
         if (a.source === 'facebook' && b.source !== 'facebook') return -1;
         if (a.source !== 'facebook' && b.source === 'facebook') return 1;
@@ -663,36 +669,75 @@ export default function MarketDashboard() {
   };
 
   // Start review process - Opens documents modal first (docs before evaluation)
+  // If the listing has saved progress, restore it
   const startReview = (listing: MarketListing) => {
     setSelectedListing(listing);
-    setPurchaseStep('documents');
-    // Switch to grid view when reviewing — map interferes with the modal
     setViewMode('grid');
-    // Initialize checklist from saved data or empty
-    setChecklist({});
-    setDocuments({ billOfSale: null, title: null, titleApplication: null });
-    setPayment({
-      method: 'transferencia',
-      reference: '',
-      date: new Date().toISOString().split('T')[0],
-      amount: listing.listing_price,
-    });
-    // Reset payee state
+
+    const saved = listing.review_progress;
+    if (saved) {
+      // Restore saved progress
+      setPurchaseStep(saved.purchaseStep || 'documents');
+      setChecklist(saved.checklist || {});
+      setDocuments(saved.documents || { billOfSale: null, title: null, titleApplication: null });
+      setPayment(saved.payment || { method: 'transferencia', reference: '', date: new Date().toISOString().split('T')[0], amount: listing.listing_price });
+      setBillOfSaleData(saved.billOfSaleData || null);
+      setTitleAppData(saved.titleAppData || null);
+      setTdhcaResult(saved.tdhcaResult || null);
+      setTdhcaSearchValue(saved.tdhcaSearchValue || '');
+      setTdhcaError(null);
+      setShowBillOfSale(false);
+      setShowTitleApp(false);
+      toast.info('Progreso restaurado — puedes continuar donde lo dejaste');
+    } else {
+      // Fresh start
+      setPurchaseStep('documents');
+      setChecklist({});
+      setDocuments({ billOfSale: null, title: null, titleApplication: null });
+      setPayment({ method: 'transferencia', reference: '', date: new Date().toISOString().split('T')[0], amount: listing.listing_price });
+      setBillOfSaleData(null);
+      setTitleAppData(null);
+      setTdhcaSearchValue('');
+      setTdhcaResult(null);
+      setTdhcaError(null);
+      setShowBillOfSale(false);
+      setShowTitleApp(false);
+    }
+
     payee.resetPayee();
     payee.fetchPayees();
-    // Initialize templates
-    setShowBillOfSale(false);
-    setBillOfSaleData(null);
-    setShowTitleApp(false);
-    setTitleAppData(null);
-    // Reset TDHCA lookup
-    setTdhcaSearchValue('');
-    setTdhcaResult(null);
-    setTdhcaError(null);
   };
 
-  // Close modal
-  const closeModal = () => {
+  // Close modal — save progress so user can resume later
+  const closeModal = async () => {
+    // Save progress to DB if there's any meaningful state
+    if (selectedListing && (billOfSaleData || tdhcaResult || Object.keys(checklist).length > 0)) {
+      try {
+        const progress = {
+          purchaseStep,
+          billOfSaleData,
+          titleAppData,
+          tdhcaResult,
+          tdhcaSearchValue,
+          checklist,
+          documents: { billOfSale: null, title: null, titleApplication: null }, // Files can't be serialized
+          payment,
+        };
+        await fetch(`/api/market-listings/${selectedListing.id}/review-progress`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ progress }),
+        });
+        // Update local state so the listing shows "En revisión"
+        setListings(prev => prev.map(l =>
+          l.id === selectedListing.id ? { ...l, review_progress: progress, review_started_at: new Date().toISOString() } : l
+        ));
+        toast.success('Progreso guardado — puedes retomarlo cuando quieras');
+      } catch {
+        // Silent fail — progress saving is best-effort
+      }
+    }
+
     setSelectedListing(null);
     setPurchaseStep('documents');
     setChecklist({});
@@ -1706,6 +1751,12 @@ export default function MarketDashboard() {
                     En Negociación
                   </span>
                 )}
+                {/* Review in progress badge */}
+                {listing.review_progress && listing.status !== 'negotiating' && (
+                  <span className="absolute bottom-2 left-2 px-2 py-1 rounded text-xs font-bold bg-blue-400 text-white border border-blue-500 shadow">
+                    En Revisión
+                  </span>
+                )}
               </div>
               
               {/* Content */}
@@ -2431,6 +2482,44 @@ export default function MarketDashboard() {
                           </div>
                           <ChevronRight className="w-5 h-5 text-gray-400" />
                         </button>
+
+                        {/* Send for e-signature */}
+                        {billOfSaleData && (
+                          <button
+                            onClick={async () => {
+                              const sellerEmail = prompt('Email del vendedor para enviar firma:');
+                              if (!sellerEmail) return;
+                              try {
+                                const res = await fetch('/api/esign/envelopes', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    name: `Bill of Sale — ${selectedListing?.address || 'Casa'}`,
+                                    document_type: 'bill_of_sale',
+                                    transaction_type: 'purchase',
+                                    property_id: null,
+                                    signers: [
+                                      { role: 'seller', name: billOfSaleData.seller_name || 'Vendedor', email: sellerEmail },
+                                      { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+                                    ],
+                                    send_immediately: true,
+                                  }),
+                                });
+                                if (res.ok) {
+                                  toast.success(`Firma enviada a ${sellerEmail} — recibirá un email para firmar`);
+                                } else {
+                                  toast.error('Error enviando firma — verifica que la migración 074 está corrida');
+                                }
+                              } catch {
+                                toast.error('Error de conexión');
+                              }
+                            }}
+                            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
+                          </button>
+                        )}
 
                         {/* OR upload a signed one */}
                         <div className="text-center text-xs text-gray-400 font-medium">— o sube un Bill of Sale firmado —</div>
