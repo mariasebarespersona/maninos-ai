@@ -164,25 +164,29 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
     if not prop.data:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Calculate total: precio = mano_obra + materiales per item
+    # Calculate total: precio = (mano_obra × dias) + materiales per item
     total = 0.0
     for item_id, item_data in data.items.items():
         if isinstance(item_data, dict):
             mo = float(item_data.get("mano_obra", 0))
             mat = float(item_data.get("materiales", 0))
+            dias = int(item_data.get("dias", 1)) or 1
             # If only precio provided (backward compat), use it
             if mo == 0 and mat == 0 and "precio" in item_data:
                 mo = float(item_data["precio"])
-            total += mo + mat
+                dias = 1
+            total += (mo * dias) + mat
 
     # Add custom items
     custom_items = data.custom_items or []
     for ci in custom_items:
         mo = float(ci.get("mano_obra", 0))
         mat = float(ci.get("materiales", 0))
+        dias = int(ci.get("dias", 1)) or 1
         if mo == 0 and mat == 0 and "precio" in ci:
             mo = float(ci["precio"])
-        total += mo + mat
+            dias = 1
+        total += (mo * dias) + mat
 
     # Determine approval status
     approval_status = "draft"

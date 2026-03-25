@@ -223,9 +223,11 @@ export default function RenovationPage() {
       const updatedItems = prev.items.map(item => {
         if (item.id !== itemId) return item
         const updated = { ...item, [field]: value }
-        // Recompute precio when MO or Mat changes
-        if (field === 'mano_obra' || field === 'materiales') {
-          updated.precio = Math.round(((updated.mano_obra || 0) + (updated.materiales || 0)) * 100) / 100
+        // Recompute precio when MO, Mat, or dias changes
+        // Formula: (MO × días) + Materiales
+        if (field === 'mano_obra' || field === 'materiales' || field === 'dias') {
+          const dias = updated.dias || 1
+          updated.precio = Math.round(((updated.mano_obra || 0) * dias + (updated.materiales || 0)) * 100) / 100
         }
         return updated
       })

@@ -22,6 +22,7 @@ from api.routes.renovation import router as renovation_router
 from api.routes.evaluations import router as evaluations_router
 from api.routes.accounting import router as accounting_router
 from api.routes.moves import router as moves_router
+from api.routes.esign import router as esign_router
 from api.routes.payment_orders import router as payment_orders_router
 from api.routes.facebook_auth import router as facebook_router
 
@@ -122,6 +123,7 @@ app.include_router(accounting_router, prefix="/api/accounting", tags=["Accountin
 app.include_router(moves_router, prefix="/api/moves", tags=["Moves"])
 app.include_router(payment_orders_router, prefix="/api/payment-orders", tags=["Payment Orders"])
 app.include_router(facebook_router, prefix="/api/facebook", tags=["Facebook"])
+app.include_router(esign_router, prefix="/api", tags=["E-Signatures"])
 
 # Agents (CostosAgent, PrecioAgent, etc.)
 app.include_router(agents_router, tags=["Agents"])

@@ -1507,53 +1507,65 @@ ${price}
             </div>
           )}
 
-          {/* Generate Document buttons */}
+          {/* Generate Document buttons — grouped by transaction type */}
           {!showBosTemplate && !showTitleAppTemplate && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                onClick={() => setShowBosTemplate('purchase')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.bos_purchase
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                }`}
-              >
-                {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Bill of Sale (Compra)
-              </button>
-              <button
-                onClick={() => setShowBosTemplate('sale')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.bos_sale
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                }`}
-              >
-                {property.document_data?.bos_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Bill of Sale (Venta)
-              </button>
-              <button
-                onClick={() => setShowTitleAppTemplate('purchase')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.title_app_purchase
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                }`}
-              >
-                {property.document_data?.title_app_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Aplicación Título (Compra)
-              </button>
-              <button
-                onClick={() => setShowTitleAppTemplate('sale')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.title_app_sale
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                {property.document_data?.title_app_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Aplicación Título (Venta)
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {/* Purchase docs */}
+              <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/50">
+                <p className="text-xs font-semibold text-blue-800 mb-2">Documentos de Compra</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => setShowBosTemplate('purchase')}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                      property.document_data?.bos_purchase
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                    }`}
+                  >
+                    {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                    Bill of Sale
+                  </button>
+                  <button
+                    onClick={() => setShowTitleAppTemplate('purchase')}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                      property.document_data?.title_app_purchase
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                    }`}
+                  >
+                    {property.document_data?.title_app_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                    Aplicación Título
+                  </button>
+                </div>
+              </div>
+              {/* Sale docs */}
+              <div className="border border-purple-200 rounded-lg p-3 bg-purple-50/50">
+                <p className="text-xs font-semibold text-purple-800 mb-2">Documentos de Venta</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => setShowBosTemplate('sale')}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                      property.document_data?.bos_sale
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+                    }`}
+                  >
+                    {property.document_data?.bos_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                    Bill of Sale
+                  </button>
+                  <button
+                    onClick={() => setShowTitleAppTemplate('sale')}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                      property.document_data?.title_app_sale
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+                    }`}
+                  >
+                    {property.document_data?.title_app_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                    Aplicación Título
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
