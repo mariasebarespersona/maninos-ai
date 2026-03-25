@@ -1093,6 +1093,9 @@ async def scrape_facebook_only(
         saved = 0
         skipped_price = 0
         skipped_unqualified = 0
+        from api.utils.qualification import qualify_listing
+        from api.agents.buscador.fb_scraper import detect_price_type
+
         for fb in fb_results:
             if fb.price <= 0:
                 skipped_price += 1
@@ -1100,16 +1103,24 @@ async def scrape_facebook_only(
             city_name = fb.city or "Houston"
             state_name = fb.state or "TX"
 
-            # Real qualification using qualify_listing()
-            from api.utils.qualification import qualify_listing
+            # Detect if price is down payment vs full price
+            price_type, estimated_full = detect_price_type(
+                fb.title or "", fb.description or "", fb.price
+            )
+
+            # Use estimated full price for qualification if it's a down payment
+            qualification_price = estimated_full if (price_type == "down_payment" and estimated_full) else fb.price
+
+            # Qualify using the real/estimated price
             qual = qualify_listing(
-                listing_price=fb.price,
-                market_value=fb.price,  # No ARV available from FB
+                listing_price=qualification_price,
+                market_value=qualification_price,
                 city=city_name,
                 state=state_name,
             )
 
-            if not qual["is_qualified"]:
+            # Skip ONLY if price is clearly garbage (< $500) AND no full price estimate
+            if not qual["is_qualified"] and qualification_price < 500:
                 skipped_unqualified += 1
                 continue
 
@@ -1132,6 +1143,8 @@ async def scrape_facebook_only(
                     "passes_70_rule": qual["passes_60_rule"],
                     "passes_age_rule": qual["passes_price_range"],
                     "passes_location_rule": qual["passes_zone_rule"],
+                    "price_type": price_type,
+                    "estimated_full_price": estimated_full,
                     "status": "available",
                     "scraped_at": datetime.now().isoformat(),
                 }

@@ -560,15 +560,17 @@ export default function MarketDashboard() {
   };
 
   // Load data on mount (only show full loading spinner on first load)
+  // NOTE: fetchListings is NOT in deps — it's handled by the debounce effect above
   useEffect(() => {
     const loadData = async () => {
       if (!initialLoadDone.current) setLoading(true);
-      await Promise.all([fetchListings(), fetchStats(), checkFbStatus(), fetchHistoricalStats()]);
+      await Promise.all([fetchStats(), checkFbStatus(), fetchHistoricalStats()]);
       setLoading(false);
       initialLoadDone.current = true;
     };
     loadData();
-  }, [fetchListings, fetchStats, checkFbStatus, fetchHistoricalStats]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchStats, checkFbStatus, fetchHistoricalStats]);
 
   // Fetch predictions when listings change
   useEffect(() => {
@@ -2033,7 +2035,7 @@ export default function MarketDashboard() {
                   </button>
                   <button
                     onClick={() => toggleNegotiation(listing)}
-                    className={`px-3 py-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                    className={`px-2 py-2 text-[11px] rounded-lg font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                       listing.status === 'negotiating'
                         ? 'bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-200'
                         : 'bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700 border border-gray-200'
