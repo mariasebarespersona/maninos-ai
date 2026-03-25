@@ -309,7 +309,7 @@ export default function MarketDashboard() {
   const [editingField, setEditingField] = useState<{ listingId: string; field: string } | null>(null);
   const [editingValue, setEditingValue] = useState('');
 
-  // Fetch listings
+  // Fetch listings with current filter values
   const fetchListings = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -341,7 +341,16 @@ export default function MarketDashboard() {
       console.error('Error fetching listings:', error);
       toast.error('Error al cargar propiedades del mercado');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cityFilter, minPriceFilter, maxPriceFilterNew, bedroomsFilter, minYearFilter, maxYearFilter, sourceFilter, toast]);
+
+  // Debounce filter changes — wait 800ms after user stops typing before fetching
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchListings();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [fetchListings]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
