@@ -329,23 +329,21 @@ export default function MarketDashboard() {
       const response = await fetch(`/api/market-listings?${params}`);
       if (!response.ok) throw new Error('Failed to fetch listings');
       const data = await response.json();
-      // Sort: Negotiating → In Review → listings with complete data → rest
-      // Within each group, Facebook first
+      // Sort: Negotiating → In Review → Facebook → rest (by data completeness)
       const sorted = (data.listings || []).sort((a: MarketListing, b: MarketListing) => {
-        // Negotiating always first
+        // 1. Negotiating always first
         if (a.status === 'negotiating' && b.status !== 'negotiating') return -1;
         if (a.status !== 'negotiating' && b.status === 'negotiating') return 1;
-        // Then listings with review progress (En Revisión)
+        // 2. Then listings with review progress (En Revisión)
         if (a.review_progress && !b.review_progress) return -1;
         if (!a.review_progress && b.review_progress) return 1;
-        // Then by data completeness (listings with bedrooms/sqft/year go first)
-        const aComplete = (a.bedrooms || a.manual_bedrooms ? 1 : 0) + (a.sqft || a.manual_sqft ? 1 : 0) + (a.year_built || a.manual_year ? 1 : 0);
-        const bComplete = (b.bedrooms || b.manual_bedrooms ? 1 : 0) + (b.sqft || b.manual_sqft ? 1 : 0) + (b.year_built || b.manual_year ? 1 : 0);
-        if (aComplete !== bComplete) return bComplete - aComplete;
-        // Then Facebook before other sources (within same completeness)
+        // 3. Then Facebook always before other sources
         if (a.source === 'facebook' && b.source !== 'facebook') return -1;
         if (a.source !== 'facebook' && b.source === 'facebook') return 1;
-        return 0;
+        // 4. Within same source, listings with more data first
+        const aData = (a.bedrooms || a.manual_bedrooms ? 1 : 0) + (a.sqft || a.manual_sqft ? 1 : 0) + (a.year_built || a.manual_year ? 1 : 0);
+        const bData = (b.bedrooms || b.manual_bedrooms ? 1 : 0) + (b.sqft || b.manual_sqft ? 1 : 0) + (b.year_built || b.manual_year ? 1 : 0);
+        return bData - aData;
       });
       setListings(sorted);
     } catch (error) {
