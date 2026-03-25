@@ -1140,8 +1140,8 @@ async def scrape_facebook_only(
             except Exception as ma_err:
                 logger.warning(f"[FB Scrape] Could not update market_analysis: {ma_err}")
 
-        logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings (skipped: {skipped_price} no price)")
-        return {"success": True, "facebook": saved, "total_raw": len(fb_results), "skipped_no_price": skipped_price, "message": f"{saved} casas de Facebook guardadas"}
+        logger.info(f"[FB Scrape] ✅ Saved {saved} Facebook listings from {len(items)} Apify results")
+        return {"success": True, "facebook": saved, "total_raw": len(items), "message": f"{saved} casas de Facebook guardadas"}
     except Exception as e:
         logger.error(f"[FB Scrape] Error: {e}")
         return {"success": False, "facebook": 0, "message": str(e)}
