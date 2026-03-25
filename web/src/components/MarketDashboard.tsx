@@ -2011,47 +2011,51 @@ export default function MarketDashboard() {
                 ) : null}
                 
                 {/* Actions */}
-                <div className="flex gap-2">
-                  <a
-                    href={listing.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 btn-secondary text-xs py-2 flex items-center justify-center gap-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Ver Original
-                  </a>
-                  <button
-                    onClick={() => startReview(listing)}
-                    disabled={!listing.is_qualified}
-                    className={`flex-1 text-xs py-2 flex items-center justify-center gap-1 rounded-lg font-medium transition-colors ${
-                      listing.is_qualified
-                        ? 'btn-gold'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <CheckCircle className="w-3 h-3" />
-                    Revisar Casa
-                  </button>
-                  <button
-                    onClick={() => toggleNegotiation(listing)}
-                    className={`px-2 py-2 text-[11px] rounded-lg font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
-                      listing.status === 'negotiating'
-                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700 border border-gray-200'
-                    }`}
-                    title={listing.status === 'negotiating' ? 'Volver a disponible' : 'Marcar en negociación'}
-                  >
-                    <HeartHandshake className="w-3 h-3" />
-                    {listing.status === 'negotiating' ? 'Negociando' : 'Negociar'}
-                  </button>
-                  <button
-                    onClick={() => dismissListing(listing.id, listing.address)}
-                    className="px-2 py-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Descartar — no volverá a aparecer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <a
+                      href={listing.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 btn-secondary text-xs py-2 flex items-center justify-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Ver Original
+                    </a>
+                    <button
+                      onClick={() => startReview(listing)}
+                      disabled={!listing.is_qualified}
+                      className={`flex-1 text-xs py-2 flex items-center justify-center gap-1 rounded-lg font-medium transition-colors ${
+                        listing.is_qualified
+                          ? 'btn-gold'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      Revisar Casa
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => toggleNegotiation(listing)}
+                      className={`flex-1 py-1.5 text-xs rounded-lg font-medium transition-colors flex items-center justify-center gap-1 ${
+                        listing.status === 'negotiating'
+                          ? 'bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-200'
+                          : 'bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700 border border-gray-200'
+                      }`}
+                      title={listing.status === 'negotiating' ? 'Volver a disponible' : 'Marcar en negociación'}
+                    >
+                      <HeartHandshake className="w-3 h-3" />
+                      {listing.status === 'negotiating' ? 'Negociando' : 'Negociar'}
+                    </button>
+                    <button
+                      onClick={() => dismissListing(listing.id, listing.address)}
+                      className="px-3 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-gray-200"
+                      title="Descartar — no volverá a aparecer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
