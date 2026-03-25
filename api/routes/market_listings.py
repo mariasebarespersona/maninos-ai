@@ -1124,6 +1124,34 @@ async def scrape_facebook_only(
                 # Extract title/address from marketplace_listing_title or URL
                 title = item.get("marketplace_listing_title") or item.get("title") or f"Facebook Marketplace - {city}"
 
+                # Parse beds/baths/year/sqft from title text
+                import re as _re
+                _title_lower = title.lower()
+                _beds = None
+                _baths = None
+                _year = None
+                _sqft = None
+
+                # Beds: "3 bed", "3 Beds", "3 habitaciones", "3 hab", "3 BR"
+                _m = _re.search(r'(\d)\s*(?:bed|hab|BR|bedroom|habitacion)', _title_lower)
+                if _m: _beds = int(_m.group(1))
+
+                # Baths: "2 bath", "2 baño", "2 BA"
+                _m = _re.search(r'(\d)\s*(?:bath|baño|bano|BA)', _title_lower)
+                if _m: _baths = float(_m.group(1))
+
+                # Year: 4-digit year 1970-2026
+                _m = _re.search(r'\b(19[7-9]\d|20[0-2]\d)\b', title)
+                if _m: _year = int(_m.group(1))
+
+                # Sqft: "1200 sqft", "1200 sq ft", "16x60" (compute as width*length)
+                _m = _re.search(r'(\d{3,5})\s*(?:sq\s*ft|sqft|square)', _title_lower)
+                if _m:
+                    _sqft = int(_m.group(1))
+                else:
+                    _m = _re.search(r'(\d{2,3})\s*[xX×]\s*(\d{2,3})', title)
+                    if _m: _sqft = int(_m.group(1)) * int(_m.group(2))
+
                 # Qualify — FB listings in TX always qualified (Gabriel decides)
                 is_low_price = price < 5000
                 price_type = "down_payment" if is_low_price else "full"
@@ -1137,6 +1165,10 @@ async def scrape_facebook_only(
                     "city": city,
                     "state": state,
                     "listing_price": price,
+                    "bedrooms": _beds,
+                    "bathrooms": _baths,
+                    "year_built": _year,
+                    "sqft": _sqft,
                     "thumbnail_url": thumbnail,
                     "is_qualified": True,
                     "qualification_score": qual["qualification_score"] if qual["is_qualified"] else 50,
