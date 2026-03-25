@@ -522,6 +522,15 @@ export default function MarketDashboard() {
   const saveManualField = async (listingId: string, field: string, value: string) => {
     const numValue = value ? parseFloat(value) : null;
     if (value && isNaN(numValue as number)) return;
+
+    // Don't save if value hasn't changed
+    const currentListing = listings.find(l => l.id === listingId);
+    const currentVal = currentListing?.[field as keyof typeof currentListing];
+    if (numValue === currentVal) {
+      setEditingField(null);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/market-listings/${listingId}/manual-fields`, {
         method: 'PATCH',
@@ -554,7 +563,6 @@ export default function MarketDashboard() {
             const predData = await predRes.json();
             if (predData.success) {
               setPredictions(prev => ({ ...prev, [listingId]: predData.prediction }));
-              toast.success('Predicción actualizada');
             }
           } catch {
             // Prediction update failed — not critical
@@ -564,7 +572,8 @@ export default function MarketDashboard() {
     } catch {
       toast.error('Error guardando campo');
     }
-    setEditingField(null);
+    // Only clear editing if not already editing another field
+    setEditingField(prev => prev?.listingId === listingId && prev?.field === field ? null : prev);
   };
 
   // Toggle negotiation status on a listing
@@ -609,18 +618,14 @@ export default function MarketDashboard() {
   const triggerSearch = async () => {
     setSearching(true);
     try {
-      // Call ALL sources in parallel via Next.js proxy routes
-      const [mainRes, fbRes, mhvRes, mhnetRes] = await Promise.allSettled([
+      // Call working sources in parallel: VMF+21st (main), Facebook
+      const [mainRes, fbRes] = await Promise.allSettled([
         fetch('/api/market-listings/scrape?city=Houston&min_price=0&max_price=80000', { method: 'POST' }),
         fetch('/api/market-listings/scrape-facebook?min_price=0&max_price=80000', { method: 'POST' }),
-        fetch('/api/market-listings/scrape-mhvillage?min_price=5000&max_price=80000', { method: 'POST' }),
-        fetch('/api/market-listings/scrape-mobilehome?min_price=5000&max_price=80000', { method: 'POST' }),
       ]);
 
       let mainResult: any = null;
       let fbResult: any = null;
-      let mhvResult: any = null;
-      let mhnetResult: any = null;
 
       if (mainRes.status === 'fulfilled' && mainRes.value.ok) {
         mainResult = await mainRes.value.json();
@@ -628,28 +633,12 @@ export default function MarketDashboard() {
       if (fbRes.status === 'fulfilled' && fbRes.value.ok) {
         fbResult = await fbRes.value.json();
       }
-      if (mhvRes.status === 'fulfilled' && mhvRes.value.ok) {
-        mhvResult = await mhvRes.value.json();
-      }
-      if (mhnetRes.status === 'fulfilled' && mhnetRes.value.ok) {
-        mhnetResult = await mhnetRes.value.json();
-      }
 
-      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0)
-        + (fbResult?.facebook || 0)
-        + (mhvResult?.mhvillage || 0)
-        + (mhnetResult?.mobilehome || 0);
+      const totalScraped = (mainResult?.market_analysis?.total_scraped || 0) + (fbResult?.facebook || 0);
       const fbCount = fbResult?.facebook || 0;
-      const mhvCount = mhvResult?.mhvillage || 0;
-      const mhnetCount = mhnetResult?.mobilehome || 0;
-
-      const sourceParts = [];
-      if (fbCount > 0) sourceParts.push(`${fbCount} Facebook`);
-      if (mhvCount > 0) sourceParts.push(`${mhvCount} MHVillage`);
-      if (mhnetCount > 0) sourceParts.push(`${mhnetCount} MobileHome`);
 
       toast.success(
-        `✓ ${totalScraped} casas encontradas${sourceParts.length ? ` (${sourceParts.join(', ')})` : ''}`
+        `✓ ${totalScraped} casas encontradas${fbCount > 0 ? ` (${fbCount} de Facebook)` : ''}`
       );
 
       // Refresh listings
@@ -1596,13 +1585,6 @@ export default function MarketDashboard() {
           <span className="hidden sm:inline">Refrescar</span>
         </button>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="btn-secondary flex items-center gap-2 border-sky-300 text-sky-700 hover:bg-sky-50 text-xs sm:text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Agregar Manual</span>
-        </button>
-        <button
           onClick={async () => {
             if (!window.confirm(`¿Eliminar TODAS las ${listings.length} propiedades del mercado? Esta acción no se puede deshacer.`)) return;
             try {
@@ -1632,12 +1614,12 @@ export default function MarketDashboard() {
           {searching ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-                Buscando en {fbConnected ? 5 : 4} fuentes...
+                Buscando en {fbConnected ? 3 : 2} fuentes...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-                🔍 Buscar Casas ({fbConnected ? '5 fuentes' : '4 fuentes'})
+                🔍 Buscar Casas ({fbConnected ? '3 fuentes' : '2 fuentes'})
             </>
           )}
         </button>
