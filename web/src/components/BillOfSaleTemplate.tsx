@@ -184,7 +184,7 @@ export default function BillOfSaleTemplate({
     pdf.setFontSize(10); pdf.setFont('helvetica', 'bold')
     line('SELLER:', M, y); pdf.setFont('helvetica', 'normal')
     line(data.seller_name || '________________________________', M + 22, y); y += 6
-    if (data.seller_name_2) { pdf.setFont('helvetica', 'bold'); line('SELLER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(data.seller_name_2, M + 25, y); y += 6 }
+    if ((data as any).seller_name_2) { pdf.setFont('helvetica', 'bold'); line('SELLER 2:', M, y); pdf.setFont('helvetica', 'normal'); line((data as any).seller_name_2, M + 25, y); y += 6 }
     pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
     line(data.seller_address || '________________________________', M + 25, y); y += 6
     pdf.setFont('helvetica', 'bold'); line('PHONE:', M, y); pdf.setFont('helvetica', 'normal')
@@ -195,7 +195,7 @@ export default function BillOfSaleTemplate({
 
     pdf.setFont('helvetica', 'bold'); line('BUYER:', M, y); pdf.setFont('helvetica', 'normal')
     line(data.buyer_name || 'MANINOS HOMES', M + 20, y); y += 6
-    if (data.buyer_name_2) { pdf.setFont('helvetica', 'bold'); line('BUYER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(data.buyer_name_2, M + 23, y); y += 6 }
+    if ((data as any).buyer_name_2) { pdf.setFont('helvetica', 'bold'); line('BUYER 2:', M, y); pdf.setFont('helvetica', 'normal'); line((data as any).buyer_name_2, M + 23, y); y += 6 }
     pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
     line(data.buyer_address || '________________________________', M + 25, y); y += 6
     pdf.setFont('helvetica', 'bold'); line('DATE:', M, y); pdf.setFont('helvetica', 'normal')
@@ -239,7 +239,7 @@ export default function BillOfSaleTemplate({
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
     line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
     line('Seller Signature', M, y); line('Buyer Signature', W/2 + 5, y); y += 3
-    line(data.seller_date || '', M, y); line(data.buyer_date || '', W/2 + 5, y); y += 8
+    line((data as any).seller_date || '', M, y); line(data.buyer_date || '', W/2 + 5, y); y += 8
     line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
     line('Seller 2 Signature', M, y); line('Buyer 2 Signature', W/2 + 5, y)
 
