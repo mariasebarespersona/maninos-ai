@@ -109,11 +109,11 @@ def send_signing_emails(envelope_id: str, base_url: str = "") -> Dict[str, Any]:
             signing_url = f"{base_url}/firmar/{sig['token']}"
 
             # Send email via Resend
-            from api.services.email_service import send_custom_email
-            send_custom_email(
-                to_email=sig["signer_email"],
+            from tools.email_tool import send_email as _send_email
+            _send_email(
+                to=[sig["signer_email"]],
                 subject=f"Firma requerida: {envelope.data['name']}",
-                html_body=f"""
+                html=f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <div style="background: linear-gradient(135deg, #1a2744 0%, #2d3a5c 100%); padding: 30px; text-align: center; border-radius: 12px 12px 0 0;">
                         <h1 style="color: white; margin: 0; font-size: 24px;">Maninos Homes</h1>
