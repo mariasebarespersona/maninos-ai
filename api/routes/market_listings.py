@@ -1010,150 +1010,112 @@ async def scrape_facebook_only(
     min_price: float = Query(default=5000),
     max_price: float = Query(default=80000),
 ):
-    """Scrape Facebook Marketplace only and save results to DB."""
+    """
+    Scrape Facebook Marketplace via Apify (no cookies/login needed).
+
+    Uses Apify's Facebook Marketplace Scraper actor which handles
+    authentication, proxies, and anti-detection automatically.
+    Requires APIFY_API_TOKEN env var.
+    """
+    import requests as req
+
     try:
-        from api.agents.buscador.fb_auth import FacebookAuth
-
-        # Auto-login if cookies expired
-        is_auth = await FacebookAuth.ensure_authenticated()
-        if not is_auth:
-            return {"success": True, "facebook": 0, "message": "Facebook not connected — set FB_EMAIL/FB_PASSWORD env vars for auto-login"}
-
-        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper
-        from api.agents.buscador.scraper import ScrapedListing
-        from api.utils.qualification import is_within_zone, MIN_PRICE, MAX_PRICE
-
-        # Use SAME logic as test-scrape diagnostic (which returns 22 listings)
-        # Instead of _scrape_with_requests which returns 0 for unknown reasons
-        import requests as req
-        import re as re_mod
-        import random as rand
-        from api.agents.buscador.fb_scraper import FacebookMarketplaceScraper as FBScraper, USER_AGENTS, PROXY_URL, FBListing
-
-        logger.info("[FB Scrape] Starting Facebook-only scrape (direct HTTP)...")
-        cookies = FacebookAuth.load_cookies()
-        fb_results = []
-
-        try:
-            session = req.Session()
-            for c in cookies:
-                session.cookies.set(c["name"], c["value"], domain=c.get("domain", ".facebook.com"), path=c.get("path", "/"))
-            if PROXY_URL:
-                session.proxies = {"http": PROXY_URL, "https": PROXY_URL}
-
-            ua = rand.choice(USER_AGENTS)
-            session.headers.update({
-                "User-Agent": ua,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Referer": "https://www.facebook.com/marketplace/",
-                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"macOS"',
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-origin",
-                "Sec-Fetch-User": "?1",
-                "Upgrade-Insecure-Requests": "1",
-            })
-
-            # Search Houston, Dallas, San Antonio with multiple terms
-            search_configs = [
-                ("houston", "mobile%20home", "Houston"),
-                ("houston", "manufactured%20home", "Houston"),
-                ("houston", "trailer%20home", "Houston"),
-                ("dallas", "mobile%20home", "Dallas"),
-                ("dallas", "manufactured%20home", "Dallas"),
-                ("sanantonio", "mobile%20home", "San Antonio"),
-                ("dallas", "casa%20movil", "Dallas"),
-            ]
-            rand.shuffle(search_configs)
-
-            for city_slug, query_term, city_label in search_configs:  # Search all combos
-                url = f"https://www.facebook.com/marketplace/{city_slug}/search?query={query_term}&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
-                logger.info(f"[FB Scrape] Fetching: {url}")
-
-                response = session.get(url, allow_redirects=True, timeout=30)
-                logger.info(f"[FB Scrape] Response: {response.status_code}, URL: {response.url[:80]}, HTML: {len(response.text)} bytes")
-
-                if "/login" in response.url:
-                    logger.warning("[FB Scrape] Redirected to login — cookies invalid")
-                    break
-                else:
-                    results = FBScraper._extract_json_from_html(response.text, city_label)
-                    logger.info(f"[FB Scrape] Extracted {len(results)} listings from {city_label}")
-                    fb_results.extend(results)
-
-                # Delay between requests to avoid detection
-                import time
-                time.sleep(rand.uniform(5, 12))
-        except Exception as http_err:
-            logger.error(f"[FB Scrape] HTTP error: {http_err}")
-
-        logger.info(f"[FB Scrape] Got {len(fb_results)} raw FBListing objects")
-
-        saved = 0
-        skipped_price = 0
-        skipped_unqualified = 0
         from api.utils.qualification import qualify_listing
-        from api.agents.buscador.fb_scraper import detect_price_type
 
-        for fb in fb_results:
-            if fb.price <= 0:
-                skipped_price += 1
-                continue
-            city_name = fb.city or "Houston"
-            state_name = fb.state or "TX"
+        apify_token = os.environ.get("APIFY_API_TOKEN", "")
+        if not apify_token:
+            return {"success": False, "facebook": 0, "message": "APIFY_API_TOKEN not set"}
 
-            # Detect if price is down payment vs full price
-            price_type, estimated_full = detect_price_type(
-                fb.title or "", fb.description or "", fb.price
-            )
+        logger.info(f"[FB Scrape] Starting Apify Facebook scrape: ${min_price:,.0f}-${max_price:,.0f}")
 
-            # Use estimated full price for qualification if it's a down payment
-            qualification_price = estimated_full if (price_type == "down_payment" and estimated_full) else fb.price
+        # Build search URLs for Houston, Dallas, San Antonio
+        search_urls = [
+            {"url": f"https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
+            {"url": f"https://www.facebook.com/marketplace/dallas/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
+            {"url": f"https://www.facebook.com/marketplace/houston/search?query=manufactured%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
+            {"url": f"https://www.facebook.com/marketplace/sanantonio/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
+        ]
 
-            # Qualify using the real/estimated price
-            qual = qualify_listing(
-                listing_price=qualification_price,
-                market_value=qualification_price,
-                city=city_name,
-                state=state_name,
-            )
+        # Start Apify run
+        run_response = req.post(
+            "https://api.apify.com/v2/acts/apify~facebook-marketplace-scraper/runs?waitForFinish=300",
+            headers={
+                "Authorization": f"Bearer {apify_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "startUrls": search_urls,
+                "maxItems": 100,
+            },
+            timeout=320,
+        )
 
-            # Include ALL listings from Facebook — even with low/garbage prices
-            # Gabriel can negotiate the real price later
-            # Low prices are marked as "down_payment" so prediction ignores them
-            is_low_price = fb.price < 5000
-            if is_low_price:
-                price_type = "down_payment"  # Mark as not the real price
+        if run_response.status_code != 201:
+            logger.error(f"[FB Scrape] Apify run failed: {run_response.status_code} {run_response.text[:200]}")
+            return {"success": False, "facebook": 0, "message": f"Apify error: {run_response.status_code}"}
 
-            # Facebook listings in TX are always qualified (Gabriel decides)
-            is_qualified = True
-            qualification_score = qual["qualification_score"] if qual["is_qualified"] else 50
+        run_data = run_response.json().get("data", {})
+        dataset_id = run_data.get("defaultDatasetId")
+        run_status = run_data.get("status")
 
+        logger.info(f"[FB Scrape] Apify run: status={run_status}, dataset={dataset_id}")
+
+        if not dataset_id:
+            return {"success": False, "facebook": 0, "message": "Apify run did not produce dataset"}
+
+        # Fetch results from dataset
+        items_response = req.get(
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items?limit=200",
+            headers={"Authorization": f"Bearer {apify_token}"},
+            timeout=30,
+        )
+        items = items_response.json() if items_response.status_code == 200 else []
+        logger.info(f"[FB Scrape] Apify returned {len(items)} items")
+
+        # Save to database
+        saved = 0
+        for item in items:
             try:
+                # Extract price
+                price_data = item.get("listing_price", {})
+                price = float(price_data.get("amount", 0)) if isinstance(price_data, dict) else float(price_data or 0)
+                if price <= 0:
+                    continue
+
+                # Extract location
+                location = item.get("location", {})
+                reverse = location.get("reverse_geocode", {}) if isinstance(location, dict) else {}
+                city = reverse.get("city", "TX")
+                state = reverse.get("state", "TX")
+
+                # Extract URL and photo
+                source_url = item.get("listingUrl") or item.get("facebookUrl") or ""
+                photo = item.get("primary_listing_photo", {})
+                thumbnail = photo.get("photo_image_url", "") if isinstance(photo, dict) else ""
+
+                # Extract title/address from marketplace_listing_title or URL
+                title = item.get("marketplace_listing_title") or item.get("title") or f"Facebook Marketplace - {city}"
+
+                # Qualify — FB listings in TX always qualified (Gabriel decides)
+                is_low_price = price < 5000
+                price_type = "down_payment" if is_low_price else "full"
+
+                qual = qualify_listing(listing_price=price, market_value=price, city=city, state=state)
+
                 listing_data = {
                     "source": "facebook",
-                    "source_url": fb.url or f"fb-{hash(fb.title)}",
-                    "address": fb.title or "Facebook Marketplace",
-                    "city": city_name,
-                    "state": state_name,
-                    "listing_price": fb.price,
-                    "year_built": fb.year_built,
-                    "sqft": fb.sqft,
-                    "bedrooms": fb.bedrooms,
-                    "bathrooms": fb.bathrooms,
-                    "thumbnail_url": fb.image_url,
-                    "is_qualified": is_qualified,
-                    "qualification_score": qualification_score,
-                    "qualification_reasons": qual["qualification_reasons"],
-                    "passes_70_rule": qual["passes_60_rule"],
-                    "passes_age_rule": True,  # Always pass for FB
+                    "source_url": source_url,
+                    "address": title[:500],
+                    "city": city,
+                    "state": state,
+                    "listing_price": price,
+                    "thumbnail_url": thumbnail,
+                    "is_qualified": True,
+                    "qualification_score": qual["qualification_score"] if qual["is_qualified"] else 50,
+                    "passes_70_rule": True,
+                    "passes_age_rule": True,
                     "passes_location_rule": qual["passes_zone_rule"],
                     "price_type": price_type,
-                    "estimated_full_price": estimated_full,
                     "status": "available",
                     "scraped_at": datetime.now().isoformat(),
                 }
