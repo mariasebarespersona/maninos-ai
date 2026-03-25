@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Printer, Save, X, Download, Edit3, Eye, Loader2 } from 'lucide-react'
-import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -161,57 +160,88 @@ export default function BillOfSaleTemplate({
   // ─── Generate PDF from the template ───────────────────────────────────────
 
   const generatePDF = async (): Promise<File> => {
-    const el = printRef.current
-    if (!el) throw new Error('Template ref not found')
-
-    // Temporarily switch to preview mode for clean capture
-    const wasEditing = editing
-    if (wasEditing) setEditing(false)
-
-    // Wait for re-render
-    await new Promise(r => setTimeout(r, 200))
-
-    const canvas = await html2canvas(el, {
-      scale: 1,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      imageTimeout: 5000,
-      removeContainer: true,
-      allowTaint: true,
-    })
-
-    // Restore editing mode
-    if (wasEditing) setEditing(true)
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.85)
+    // Generate PDF directly with jsPDF text — NO html2canvas (instant)
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+    const W = pdf.internal.pageSize.getWidth()
+    const M = 15 // margin
+    let y = M
 
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 8
-    const usableW = pageWidth - margin * 2
-
-    const imgW = canvas.width
-    const imgH = canvas.height
-    const ratio = usableW / imgW
-    const scaledH = imgH * ratio
-
-    // If content fits in one page
-    if (scaledH <= pageHeight - margin * 2) {
-      pdf.addImage(imgData, 'JPEG', margin, margin, usableW, scaledH)
-    } else {
-      // Multi-page: split the image
-      const usableH = pageHeight - margin * 2
-      let yOffset = 0
-      let page = 0
-      while (yOffset < scaledH) {
-        if (page > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', margin, margin - yOffset, usableW, scaledH)
-        yOffset += usableH
-        page++
-      }
+    const line = (text: string, x: number, yPos: number, opts?: any) => {
+      pdf.text(text, x, yPos, opts)
     }
+    const hline = (yPos: number) => {
+      pdf.setDrawColor(0); pdf.setLineWidth(0.3); pdf.line(M, yPos, W - M, yPos)
+    }
+
+    // Header
+    pdf.setFontSize(18); pdf.setFont('helvetica', 'bold')
+    line('MANINOS HOMES', W / 2, y, { align: 'center' }); y += 8
+    pdf.setFontSize(14)
+    line('BILL OF SALE', W / 2, y, { align: 'center' }); y += 4
+    hline(y); y += 8
+
+    // Seller/Buyer info
+    pdf.setFontSize(10); pdf.setFont('helvetica', 'bold')
+    line('SELLER:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.seller_name || '________________________________', M + 22, y); y += 6
+    if (data.seller_name_2) { pdf.setFont('helvetica', 'bold'); line('SELLER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(data.seller_name_2, M + 25, y); y += 6 }
+    pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.seller_address || '________________________________', M + 25, y); y += 6
+    pdf.setFont('helvetica', 'bold'); line('PHONE:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.seller_phone || '________________', M + 20, y)
+    pdf.setFont('helvetica', 'bold'); line('EMAIL:', W/2, y); pdf.setFont('helvetica', 'normal')
+    line(data.seller_email || '________________', W/2 + 18, y); y += 8
+    hline(y); y += 6
+
+    pdf.setFont('helvetica', 'bold'); line('BUYER:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.buyer_name || 'MANINOS HOMES', M + 20, y); y += 6
+    if (data.buyer_name_2) { pdf.setFont('helvetica', 'bold'); line('BUYER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(data.buyer_name_2, M + 23, y); y += 6 }
+    pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.buyer_address || '________________________________', M + 25, y); y += 6
+    pdf.setFont('helvetica', 'bold'); line('DATE:', M, y); pdf.setFont('helvetica', 'normal')
+    line(data.buyer_date || new Date().toISOString().split('T')[0], M + 16, y); y += 8
+    hline(y); y += 6
+
+    // Property info
+    pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+    line('PROPERTY INFORMATION', M, y); y += 6
+    pdf.setFontSize(10); pdf.setFont('helvetica', 'normal')
+
+    const propFields = [
+      ['Manufacturer', data.manufacturer],
+      ['Make/Model', data.make],
+      ['Date Manufactured', data.date_manufactured],
+      ['Bedrooms', data.bedrooms],
+      ['Baths', data.baths],
+      ['Dimensions', data.dimensions],
+      ['Serial Number', data.serial_number],
+      ['HUD Label #', data.hud_label_number],
+      ['Location', data.location_of_home],
+    ]
+    for (const [label, value] of propFields) {
+      pdf.setFont('helvetica', 'bold'); line(`${label}:`, M, y)
+      pdf.setFont('helvetica', 'normal'); line(String(value || '—'), M + 40, y); y += 5
+    }
+    y += 4; hline(y); y += 6
+
+    // Payment
+    pdf.setFont('helvetica', 'bold'); line('TOTAL PAYMENT:', M, y)
+    pdf.setFont('helvetica', 'normal'); line(data.total_payment || '$0', M + 42, y); y += 5
+    const condition = data.is_new ? 'NEW' : data.is_used ? 'USED' : '—'
+    pdf.setFont('helvetica', 'bold'); line('CONDITION:', M, y); pdf.setFont('helvetica', 'normal'); line(condition, M + 30, y); y += 8
+    hline(y); y += 8
+
+    // Signatures
+    pdf.setFontSize(9); pdf.setFont('helvetica', 'italic')
+    line('The undersigned seller(s) hereby sell, transfer, and deliver to the buyer(s) the above described manufactured home.', M, y); y += 5
+    line('Seller warrants that said property is free and clear of all liens and encumbrances.', M, y); y += 10
+
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
+    line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
+    line('Seller Signature', M, y); line('Buyer Signature', W/2 + 5, y); y += 3
+    line(data.seller_date || '', M, y); line(data.buyer_date || '', W/2 + 5, y); y += 8
+    line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
+    line('Seller 2 Signature', M, y); line('Buyer 2 Signature', W/2 + 5, y)
 
     const blob = pdf.output('blob')
     const filename = `bill_of_sale_${transactionType}_${Date.now()}.pdf`

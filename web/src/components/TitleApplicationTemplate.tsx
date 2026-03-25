@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Printer, Save, X, Edit3, Eye, Loader2 } from 'lucide-react'
-import html2canvas from 'html2canvas'
+// html2canvas removed — PDF generated directly with jsPDF (instant)
 import { jsPDF } from 'jspdf'
 import { getMissingBlock2AFields } from '@/lib/titleApplicationValidation'
 
@@ -325,18 +325,67 @@ export default function TitleApplicationTemplate({
   // ─── PDF ──────────────────────────────────────────────────────────────────
 
   const generatePDF = async (): Promise<File> => {
-    const el = printRef.current
-    if (!el) throw new Error('Ref not found')
-    const was = editing; if (was) setEditing(false)
-    await new Promise(r => setTimeout(r, 250))
-    const canvas = await html2canvas(el, { scale: 1, useCORS: true, backgroundColor: '#fff', logging: false, imageTimeout: 5000, removeContainer: true, allowTaint: true })
-    if (was) setEditing(true)
-    const img = canvas.toDataURL('image/jpeg', 0.85)
+    // Generate PDF with jsPDF text — NO html2canvas (instant generation)
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
-    const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), mg = 6
-    const uw = pw - mg * 2, ratio = uw / canvas.width, sh = canvas.height * ratio
-    if (sh <= ph - mg * 2) { pdf.addImage(img, 'JPEG', mg, mg, uw, sh) }
-    else { const uh = ph - mg * 2; let y = 0, p = 0; while (y < sh) { if (p > 0) pdf.addPage(); pdf.addImage(img, 'JPEG', mg, mg - y, uw, sh); y += uh; p++ } }
+    const W = pdf.internal.pageSize.getWidth()
+    const M = 12
+    let y = M
+
+    const ln = (t: string, x: number, yy: number, o?: any) => pdf.text(t, x, yy, o)
+    const hl = (yy: number) => { pdf.setDrawColor(0); pdf.setLineWidth(0.2); pdf.line(M, yy, W - M, yy) }
+
+    // Header
+    pdf.setFontSize(10); pdf.setFont('times', 'bold')
+    ln('TEXAS DEPARTMENT OF HOUSING AND COMMUNITY AFFAIRS', W/2, y, { align: 'center' }); y += 4
+    ln('MANUFACTURED HOUSING DIVISION', W/2, y, { align: 'center' }); y += 4
+    pdf.setFontSize(9); pdf.setFont('times', 'normal')
+    ln('STATEMENT OF OWNERSHIP AND LOCATION', W/2, y, { align: 'center' }); y += 3
+    ln('(Form 1023)', W/2, y, { align: 'center' }); y += 4
+    hl(y); y += 5
+
+    // Block 2A: Description
+    pdf.setFontSize(9); pdf.setFont('times', 'bold')
+    ln('BLOCK 2(a): DESCRIPTION OF HOME', M, y); y += 5
+    pdf.setFont('times', 'normal')
+
+    const fields2a = [
+      ['Manufacturer', data.manufacturer],
+      ['Address', data.manufacturer_address],
+      ['City, State, Zip', data.manufacturer_city_state_zip],
+      ['Make', data.make],
+      ['Date Manufactured', data.date_of_manufacture || data.year],
+      ['Total Sq Ft', data.total_sqft],
+      ['Wind Zone', data.wind_zone],
+    ]
+    for (const [label, val] of fields2a) {
+      pdf.setFont('times', 'bold'); ln(`${label}:`, M, y)
+      pdf.setFont('times', 'normal'); ln(String(val || ''), M + 35, y); y += 4.5
+    }
+    y += 2; hl(y); y += 5
+
+    // Section info
+    pdf.setFont('times', 'bold'); ln('SECTION 1:', M, y); y += 4.5
+    pdf.setFont('times', 'normal')
+    ln(`Label/Seal #: ${data.section1_label || '—'}`, M, y); y += 4.5
+    ln(`Serial #: ${data.section1_serial || '—'}`, M, y); y += 4.5
+    ln(`Width: ${data.section1_width || '—'}  Length: ${data.section1_length || '—'}`, M, y); y += 4.5
+    if (data.section2_label || data.section2_serial) {
+      y += 2; pdf.setFont('times', 'bold'); ln('SECTION 2:', M, y); y += 4.5
+      pdf.setFont('times', 'normal')
+      ln(`Label/Seal #: ${data.section2_label || '—'}`, M, y); y += 4.5
+      ln(`Serial #: ${data.section2_serial || '—'}`, M, y); y += 4.5
+    }
+    y += 2; hl(y); y += 5
+
+    // Block 10: Signatures
+    pdf.setFont('times', 'bold'); ln('BLOCK 10: SIGNATURES', M, y); y += 6
+    pdf.setFont('times', 'normal')
+    ln('________________________________', M, y); ln('________________________________', W/2 + 5, y); y += 4
+    ln('10(a) Seller/Transferor', M, y); ln('10(b) Buyer/Transferee', W/2 + 5, y); y += 4
+    ln('Date: ________________', M, y); ln('Date: ________________', W/2 + 5, y); y += 6
+    ln('________________________________', M, y); ln('________________________________', W/2 + 5, y); y += 4
+    ln('Seller/Transferor 2', M, y); ln('Buyer/Transferee 2', W/2 + 5, y)
+
     return new File([pdf.output('blob')], `title_application_${transactionType}_${Date.now()}.pdf`, { type: 'application/pdf' })
   }
 
