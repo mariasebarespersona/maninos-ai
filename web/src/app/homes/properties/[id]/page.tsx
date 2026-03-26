@@ -1297,85 +1297,100 @@ ${price}
                 Financiero
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-navy-500">Compra</span>
-                  <span className="font-semibold text-navy-900">
-                    ${Math.round(Number(property.purchase_price || 0)).toLocaleString() || '—'}
-                  </span>
-                </div>
-                {/* Renovación — always show */}
-                <div className="flex justify-between items-center">
-                  <span className="text-navy-500 flex items-center gap-1">
-                    Renovación
-                    {costBreakdown && costBreakdown.renovation_cost > 0 && (
-                      <button
-                        onClick={handleRequestRenoPayment}
-                        disabled={requestingRenoPayment}
-                        className="text-[10px] px-1.5 py-0.5 bg-gold-50 text-gold-700 border border-gold-200 rounded hover:bg-gold-100"
-                        title="Solicitar pago de renovación"
-                      >
-                        {requestingRenoPayment ? '...' : '💰 Pagar'}
-                      </button>
-                    )}
-                  </span>
-                  <span className={costBreakdown?.renovation_cost ? 'text-navy-700' : 'text-gray-400 italic'}>
-                    {costBreakdown?.renovation_cost ? `$${costBreakdown.renovation_cost.toLocaleString()}` : '$0'}
-                  </span>
-                </div>
-                {/* Movida — always show */}
-                <div className="flex justify-between items-center">
-                  <span className="text-navy-500">Movida</span>
-                  <span className={costBreakdown?.move_cost ? 'text-navy-700' : 'text-gray-400 italic'}>
-                    {costBreakdown?.move_cost ? `$${costBreakdown.move_cost.toLocaleString()}` : '$0'}
-                  </span>
-                </div>
-                {costBreakdown && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-navy-500">Comisión</span>
-                      <span className="text-navy-700">${costBreakdown.commission.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-navy-500">Margen</span>
-                      <span className="text-navy-700">${costBreakdown.margin.toLocaleString()}</span>
-                    </div>
-                    <div className="pt-2 border-t border-navy-100">
-                      <div className="flex justify-between items-center text-xs text-navy-400">
-                        <span>Total inversión</span>
-                        <span>${Math.round(Number(property.purchase_price || 0) + Number(costBreakdown.renovation_cost || 0) + Number(costBreakdown.move_cost || 0)).toLocaleString()}</span>
+                {(() => {
+                  const purchase = Math.round(Number(property.purchase_price || 0));
+                  const reno = Math.round(Number(costBreakdown?.renovation_cost || 0));
+                  const move = Math.round(Number(costBreakdown?.move_cost || 0));
+                  const commission = Math.round(Number(costBreakdown?.commission || 1500));
+                  const margin = Math.round(Number(costBreakdown?.margin || 9500));
+                  const totalInversion = purchase + reno + move;
+                  const precioMinimo = totalInversion + commission + margin;
+                  const salePrice = Math.round(Number(property.sale_price || 0));
+                  const ganancia = salePrice > 0 ? salePrice - precioMinimo + margin : 0;
+
+                  // Editable field helper
+                  const EditableField = ({ label, value, field, bold, color }: { label: string; value: number; field: string; bold?: boolean; color?: string }) => {
+                    const [editing, setEditing] = React.useState(false);
+                    const [val, setVal] = React.useState(String(value));
+
+                    const save = async () => {
+                      setEditing(false);
+                      const num = Math.round(Number(val) || 0);
+                      if (num === value) return;
+                      try {
+                        await fetch(`/api/properties/${property.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ [field]: num }),
+                        });
+                        await fetchProperty();
+                        await fetchCostBreakdown();
+                        toast.success(`${label} actualizado`);
+                      } catch { toast.error('Error guardando'); }
+                    };
+
+                    return (
+                      <div className="flex justify-between items-center group">
+                        <span className="text-navy-500">{label}</span>
+                        {editing ? (
+                          <input
+                            type="number"
+                            className="w-24 px-2 py-0.5 border border-blue-300 rounded text-right text-sm bg-blue-50"
+                            value={val}
+                            onChange={e => setVal(e.target.value)}
+                            onBlur={save}
+                            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            className={`cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 rounded transition-colors ${bold ? 'font-bold' : 'font-semibold'} ${color || (value ? 'text-navy-900' : 'text-gray-400 italic')}`}
+                            onClick={() => { setVal(String(value)); setEditing(true); }}
+                            title="Click para editar"
+                          >
+                            ${value.toLocaleString()}
+                            <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover:opacity-50" />
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    <div className="pt-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-navy-500 font-medium">Precio mínimo venta</span>
-                        <span className="font-bold text-amber-600">
-                          ${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}
-                        </span>
+                    );
+                  };
+
+                  return (
+                    <>
+                      <EditableField label="Compra" value={purchase} field="purchase_price" bold />
+                      <EditableField label="Renovación" value={reno} field="renovation_cost" />
+                      <EditableField label="Movida" value={move} field="move_cost" />
+                      <EditableField label="Comisión" value={commission} field="commission" />
+                      <EditableField label="Margen" value={margin} field="margin" />
+                      <div className="pt-2 border-t border-navy-100">
+                        <div className="flex justify-between items-center text-xs text-navy-400">
+                          <span>Total inversión</span>
+                          <span>${totalInversion.toLocaleString()}</span>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
-                <div className="pt-2 border-t border-navy-100">
-                  <div className="flex justify-between items-center">
-                    <span className="text-navy-500 font-medium">Precio de venta</span>
-                    <span className="font-bold text-gold-600">
-                      ${property.sale_price?.toLocaleString() || '—'}
-                    </span>
-                  </div>
-                </div>
-                {property.purchase_price && property.sale_price && costBreakdown && (
-                  <div className="pt-2 border-t border-navy-100">
-                    <div className="flex justify-between items-center">
-                      <span className="text-navy-500">Ganancia real</span>
-                      <span className={`font-bold ${
-                        property.sale_price - costBreakdown.recommended_sale_price + costBreakdown.margin >= 0
-                          ? 'text-emerald-600' : 'text-red-600'
-                      }`}>
-                        ${(property.sale_price - costBreakdown.recommended_sale_price + costBreakdown.margin).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                      <div className="pt-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-navy-500 font-medium">Precio mínimo venta</span>
+                          <span className="font-bold text-amber-600">${precioMinimo.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-navy-100">
+                        <EditableField label="Precio de venta" value={salePrice} field="sale_price" bold color="text-gold-600" />
+                      </div>
+                      {salePrice > 0 && (
+                        <div className="pt-2 border-t border-navy-100">
+                          <div className="flex justify-between items-center">
+                            <span className="text-navy-500">Ganancia real</span>
+                            <span className={`font-bold ${ganancia >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              ${ganancia.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
