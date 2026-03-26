@@ -547,6 +547,24 @@ async def create_sale(data: SaleCreate):
     # Auto-generate commission_payments rows
     _create_commission_payments(sale_record)
 
+    # Create notification for new sale
+    try:
+        from api.services.notification_service import notify_new_sale, notify_commission
+        notify_new_sale(
+            sale_id=sale_record["id"],
+            property_id=data.property_id,
+            sale_type=data.sale_type.value,
+            sale_price=float(data.sale_price),
+            client_name=client_result.data.get("name", ""),
+        )
+        # Notify commissions
+        if commission["commission_found_by"] > 0 and data.found_by_employee_id:
+            notify_commission(sale_record["id"], data.property_id, "Empleado (encontró)", commission["commission_found_by"], "found_by")
+        if commission["commission_sold_by"] > 0 and data.sold_by_employee_id:
+            notify_commission(sale_record["id"], data.property_id, "Empleado (vendió)", commission["commission_sold_by"], "sold_by")
+    except Exception as e:
+        logger.warning(f"[sales] Notification error: {e}")
+
     return _format_sale(
         sale_record,
         prop["address"],

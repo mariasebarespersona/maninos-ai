@@ -243,6 +243,11 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
     if data.submit_for_approval:
         _send_approval_notification(property_id, round(total, 2), data.responsable or "")
         logger.info(f"[renovation] Quote submitted for approval: {property_id}")
+        try:
+            from api.services.notification_service import notify_renovation_submitted
+            notify_renovation_submitted(property_id, round(total, 2), data.responsable or "")
+        except Exception:
+            pass
 
     return {
         "success": True,
@@ -289,6 +294,14 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
 
     # Send notification to treasury (Abigail)
     _send_approved_notification(property_id, reno.get("total_cost", 0))
+
+    # Create DB notification
+    try:
+        from api.services.notification_service import notify_renovation_approved
+        approved_by = (data.approved_by if data else None) or "admin"
+        notify_renovation_approved(property_id, reno.get("total_cost", 0), approved_by)
+    except Exception:
+        pass
 
     # Create ONE payment order PER concepto (not one lump sum)
     # So each item (pisos, electricidad, etc.) can be approved/executed individually

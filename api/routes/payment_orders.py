@@ -102,6 +102,13 @@ async def create_payment_order(req: PaymentOrderCreate):
     order = result.data[0]
     logger.info(f"[payment_orders] Created order {order['id']} for ${req.amount:,.2f} to {req.payee_name}")
 
+    # Create notification
+    try:
+        from api.services.notification_service import notify_payment_order_created
+        notify_payment_order_created(order["id"], req.property_id, req.amount, req.payee_name)
+    except Exception:
+        pass
+
     return {"ok": True, "data": order, "message": f"Orden de pago creada por ${req.amount:,.2f}"}
 
 
@@ -167,6 +174,13 @@ async def approve_payment_order(order_id: str, approved_by: Optional[str] = Quer
         raise HTTPException(status_code=500, detail="Error al aprobar orden")
 
     logger.info(f"[payment_orders] Approved order {order_id} by {approved_by}")
+
+    try:
+        from api.services.notification_service import notify_payment_order_approved
+        notify_payment_order_approved(order_id, order.get("property_id"), order.get("amount", 0), approved_by or "admin")
+    except Exception:
+        pass
+
     return {"ok": True, "data": result.data[0], "message": "Orden aprobada. Tesorería puede ejecutar el pago."}
 
 
@@ -246,6 +260,12 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
             logger.warning(f"[payment_orders] Could not update property status: {e}")
 
     logger.info(f"[payment_orders] Completed order {order_id}: ref={req.reference}")
+
+    try:
+        from api.services.notification_service import notify_payment_completed
+        notify_payment_completed(order_id, property_id, order.get("amount", 0), req.method or "transferencia")
+    except Exception:
+        pass
 
     return {
         "ok": True,
