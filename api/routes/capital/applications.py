@@ -145,6 +145,27 @@ async def review_application(application_id: str, review: ApplicationReview):
                 "rto_term_months": term_months,
                 "rto_down_payment": down_payment,
             }).eq("id", application["sale_id"]).execute()
+
+            # Notify Homes: Capital is buying this property (internal sale)
+            try:
+                from api.services.notification_service import create_notification
+                client_name = application.get("clients", {}).get("name", "") if isinstance(application.get("clients"), dict) else ""
+                create_notification(
+                    type="capital_payment",
+                    title=f"Capital compra propiedad: ${sale_price:,.0f}",
+                    message=f"Capital aprobó RTO para {client_name}. Capital debe pagar ${sale_price:,.0f} a Homes por la propiedad. Contrato RTO: ${monthly_rent:,.0f}/mes × {term_months} meses. Enganche: ${down_payment:,.0f}.",
+                    category="both",
+                    property_id=application.get("property_id"),
+                    related_entity_type="sale",
+                    related_entity_id=application.get("sale_id"),
+                    amount=sale_price,
+                    priority="urgent",
+                    action_required=True,
+                    action_type="pay",
+                    created_by="capital",
+                )
+            except Exception:
+                pass
             
             # Update client status to rto_active
             sb.table("clients").update({

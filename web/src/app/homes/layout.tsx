@@ -71,13 +71,15 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
       fetch('/api/sales/pending-transfers').then(r => r.json()).catch(() => ({})),
       fetch('/api/payment-orders?status=pending').then(r => r.json()).catch(() => ({})),
       fetch('/api/renovation/pending-approvals').then(r => r.json()).catch(() => ({})),
-    ]).then(([transfersData, ordersData, renoData]) => {
+      fetch('/api/notifications/unread-count').then(r => r.json()).catch(() => ({ count: 0 })),
+    ]).then(([transfersData, ordersData, renoData, notifData]) => {
       const transfers = transfersData.transfers || transfersData || []
       const transferCount = Array.isArray(transfers) ? transfers.length : 0
       const orders = ordersData.data || []
       const orderCount = Array.isArray(orders) ? orders.length : 0
       const renoCount = renoData.count || 0
-      setPendingNotifCount(transferCount + orderCount + renoCount)
+      const notifCount = notifData.count || 0
+      setPendingNotifCount(transferCount + orderCount + renoCount + notifCount)
     }).catch(() => {})
   }, [pathname])
 
