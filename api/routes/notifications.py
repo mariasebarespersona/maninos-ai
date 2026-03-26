@@ -24,7 +24,7 @@ async def list_notifications(
         query = sb.table("notifications").select("*")
 
         if category:
-            query = query.in_("category", [category, "both"])
+            query = query.or_(f"category.eq.{category},category.eq.both")
         if type:
             query = query.eq("type", type)
         if unread_only:
@@ -36,7 +36,7 @@ async def list_notifications(
         return {"ok": True, "notifications": result.data or [], "count": len(result.data or [])}
     except Exception as e:
         logger.error(f"Error listing notifications: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": True, "notifications": [], "count": 0, "error": str(e)}
 
 
 @router.patch("/{notification_id}/read")
@@ -71,7 +71,7 @@ async def mark_all_read(category: Optional[str] = Query(None)):
         }).eq("is_read", False)
 
         if category:
-            query = query.in_("category", [category, "both"])
+            query = query.or_(f"category.eq.{category},category.eq.both")
 
         result = query.execute()
         return {"ok": True, "marked": len(result.data or [])}
