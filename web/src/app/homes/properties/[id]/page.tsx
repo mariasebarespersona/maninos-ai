@@ -1272,30 +1272,34 @@ ${price}
                     ${property.purchase_price?.toLocaleString() || '—'}
                   </span>
                 </div>
+                {/* Renovación — always show */}
+                <div className="flex justify-between items-center">
+                  <span className="text-navy-500 flex items-center gap-1">
+                    Renovación
+                    {costBreakdown && costBreakdown.renovation_cost > 0 && (
+                      <button
+                        onClick={handleRequestRenoPayment}
+                        disabled={requestingRenoPayment}
+                        className="text-[10px] px-1.5 py-0.5 bg-gold-50 text-gold-700 border border-gold-200 rounded hover:bg-gold-100"
+                        title="Solicitar pago de renovación"
+                      >
+                        {requestingRenoPayment ? '...' : '💰 Pagar'}
+                      </button>
+                    )}
+                  </span>
+                  <span className={costBreakdown?.renovation_cost ? 'text-navy-700' : 'text-gray-400 italic'}>
+                    {costBreakdown?.renovation_cost ? `$${costBreakdown.renovation_cost.toLocaleString()}` : '$0'}
+                  </span>
+                </div>
+                {/* Movida — always show */}
+                <div className="flex justify-between items-center">
+                  <span className="text-navy-500">Movida</span>
+                  <span className={costBreakdown?.move_cost ? 'text-navy-700' : 'text-gray-400 italic'}>
+                    {costBreakdown?.move_cost ? `$${costBreakdown.move_cost.toLocaleString()}` : '$0'}
+                  </span>
+                </div>
                 {costBreakdown && (
                   <>
-                    {costBreakdown.renovation_cost > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-navy-500 flex items-center gap-1">
-                          Renovación
-                          <button
-                            onClick={handleRequestRenoPayment}
-                            disabled={requestingRenoPayment}
-                            className="text-[10px] px-1.5 py-0.5 bg-gold-50 text-gold-700 border border-gold-200 rounded hover:bg-gold-100"
-                            title="Solicitar pago de renovación"
-                          >
-                            {requestingRenoPayment ? '...' : '💰 Pagar'}
-                          </button>
-                        </span>
-                        <span className="text-navy-700">${costBreakdown.renovation_cost.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {costBreakdown.move_cost > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-navy-500">Movida</span>
-                        <span className="text-navy-700">${costBreakdown.move_cost.toLocaleString()}</span>
-                      </div>
-                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-navy-500">Comisión</span>
                       <span className="text-navy-700">${costBreakdown.commission.toLocaleString()}</span>
@@ -1305,6 +1309,12 @@ ${price}
                       <span className="text-navy-700">${costBreakdown.margin.toLocaleString()}</span>
                     </div>
                     <div className="pt-2 border-t border-navy-100">
+                      <div className="flex justify-between items-center text-xs text-navy-400">
+                        <span>Total inversión</span>
+                        <span>${((property.purchase_price || 0) + (costBreakdown.renovation_cost || 0) + (costBreakdown.move_cost || 0)).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="pt-1">
                       <div className="flex justify-between items-center">
                         <span className="text-navy-500 font-medium">Precio mínimo venta</span>
                         <span className="font-bold text-amber-600">
@@ -1946,14 +1956,18 @@ ${price}
         defaultValue={
           recommendedPrice?.recommended_price
             ? Math.round(recommendedPrice.recommended_price).toString()
-            : property?.purchase_price?.toString() || ''
+            : costBreakdown?.recommended_sale_price
+              ? Math.round(costBreakdown.recommended_sale_price).toString()
+              : property?.purchase_price?.toString() || ''
         }
         type="number"
         min={0}
         helpText={
-          recommendedPrice?.market_value
-            ? `Regla 80%: Valor mercado $${recommendedPrice.market_value.toLocaleString()} → Máximo venta $${recommendedPrice.max_sell_price_80?.toLocaleString() || '—'}. Recomendado: $${recommendedPrice.recommended_price?.toLocaleString() || '—'}`
-            : 'Este será el precio visible para compradores potenciales (Regla: máx. 80% valor de mercado)'
+          costBreakdown
+            ? `Inversión total: $${((property?.purchase_price || 0) + (costBreakdown.renovation_cost || 0) + (costBreakdown.move_cost || 0)).toLocaleString()} (Compra $${(property?.purchase_price || 0).toLocaleString()} + Reno $${(costBreakdown.renovation_cost || 0).toLocaleString()} + Movida $${(costBreakdown.move_cost || 0).toLocaleString()}) → Precio mínimo: $${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}`
+            : recommendedPrice?.market_value
+              ? `Regla 80%: Valor mercado $${recommendedPrice.market_value.toLocaleString()} → Máximo venta $${recommendedPrice.max_sell_price_80?.toLocaleString() || '—'}`
+              : 'Este será el precio visible para compradores potenciales'
         }
         confirmText="Publicar"
       />
