@@ -38,6 +38,7 @@ import {
   MessageCircle,
   Copy,
   Send,
+  ExternalLink,
 } from 'lucide-react'
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
