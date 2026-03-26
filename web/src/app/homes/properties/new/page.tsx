@@ -19,6 +19,7 @@ import {
   AlertCircle,
   ExternalLink,
   Search,
+  Pencil,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { useFormValidation, commonSchemas } from '@/hooks/useFormValidation'
@@ -788,6 +789,43 @@ export default function NewPropertyPage() {
                     </div>
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </button>
+
+                  {/* Send for e-signature */}
+                  {billOfSaleData && (
+                    <button
+                      onClick={async () => {
+                        const sellerEmail = prompt('Email del vendedor para enviar firma:');
+                        if (!sellerEmail) return;
+                        try {
+                          const res = await fetch('/api/esign/envelopes', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              name: `Bill of Sale — ${form.address || 'Nueva Propiedad'}`,
+                              document_type: 'bill_of_sale',
+                              transaction_type: 'purchase',
+                              signers: [
+                                { role: 'seller', name: billOfSaleData.seller_name || 'Vendedor', email: sellerEmail },
+                                { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+                              ],
+                              send_immediately: true,
+                            }),
+                          });
+                          if (res.ok) {
+                            toast.success(`Firma enviada a ${sellerEmail}`);
+                          } else {
+                            toast.error('Error enviando firma');
+                          }
+                        } catch {
+                          toast.error('Error de conexión');
+                        }
+                      }}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
+                    </button>
+                  )}
 
                   <div className="text-center text-xs text-gray-400 font-medium">— o sube un Bill of Sale firmado —</div>
                   <div className={`border-2 border-dashed rounded-lg p-4 text-center ${
