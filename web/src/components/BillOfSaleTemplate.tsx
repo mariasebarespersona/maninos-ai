@@ -614,7 +614,7 @@ export default function BillOfSaleTemplate({
               )}
               <div className="bos-sig-date">
                 <span className="bos-label-sm">DATE:</span>
-                <span className="bos-sig-line-short"></span>
+                <span>{(data as any).seller_date || ''}</span>
               </div>
             </div>
             <div className="bos-sig-right">
