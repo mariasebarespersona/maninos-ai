@@ -260,6 +260,11 @@ export default function PropertyDetailPage() {
     fetchMoves()
     fetchMoverProviders()
     fetchCostBreakdown()
+
+    // Re-fetch financiero when tab regains focus (e.g. after editing renovation)
+    const handleFocus = () => fetchCostBreakdown()
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
   }, [params.id])
 
   const fetchMoverProviders = async () => {
