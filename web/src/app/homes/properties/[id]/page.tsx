@@ -1557,42 +1557,17 @@ ${price}
             </div>
           )}
 
-          <div className="space-y-4">
-            {/* Purchase Transfer: Seller → Maninos */}
-            {transfers.purchase ? (
-              <TitleTransferCard 
-                transfer={transfers.purchase} 
-                onUpdate={fetchTransfers}
-              />
-            ) : (
-              <div className="p-4 bg-navy-50 rounded-lg text-center text-navy-500 text-sm">
-                No hay transferencia de compra registrada
-              </div>
-            )}
-
-            {/* Sale Transfer: Maninos → Capital (RTO) or Maninos → Client */}
-            {transfers.sale ? (
-              <>
-                {transfers.sale.to_name === 'Maninos Homes LLC' && (
-                  <div className="text-xs text-purple-600 font-medium flex items-center gap-1 mb-1 ml-1">
-                    <Landmark className="w-3 h-3" /> Transferencia RTO a Capital
-                  </div>
-                )}
-              <TitleTransferCard 
-                transfer={transfers.sale} 
-                onUpdate={fetchTransfers}
-              />
-              </>
-            ) : property.status === 'sold' ? (
-              <div className="p-4 bg-amber-50 rounded-lg text-center text-amber-700 text-sm">
-                Transferencia de venta pendiente de registro
-              </div>
-            ) : property.status === 'reserved' ? (
-              <div className="p-4 bg-purple-50 rounded-lg text-center text-purple-600 text-sm">
-                Propiedad reservada — los documentos de venta se generarán cuando Capital apruebe la solicitud RTO
-              </div>
-            ) : null}
-          </div>
+          {/* Transfer status info (without TitleTransferCard) */}
+          {transfers.sale && transfers.sale.to_name === 'Maninos Homes LLC' && (
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-700 flex items-center gap-2">
+              <Landmark className="w-4 h-4" /> Transferencia RTO a Capital en proceso
+            </div>
+          )}
+          {property.status === 'sold' && !transfers.sale && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center text-amber-700 text-sm">
+              Transferencia de venta pendiente de registro
+            </div>
+          )}
         </div>
 
         {/* ========== MOVIDA (MOVES) SECTION ========== */}
