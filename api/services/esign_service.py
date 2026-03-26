@@ -231,11 +231,42 @@ def apply_signature(
 
     logger.info(f"[ESign] Signature applied: {sig['signer_name']} ({sig['signer_role']}) on envelope {sig['envelope_id']}")
 
-    # Create internal notification for each signature
+    # Update property document_data with the signature
     try:
-        envelope_data = sb.table("signature_envelopes").select("name, related_property_id").eq("id", sig.get("envelope_id")).single().execute()
+        envelope_data = sb.table("signature_envelopes").select("name, related_property_id, document_type, transaction_type").eq("id", sig.get("envelope_id")).single().execute()
         env_name = envelope_data.data.get("name", "Documento") if envelope_data.data else "Documento"
         prop_id = envelope_data.data.get("related_property_id") if envelope_data.data else None
+        doc_type = envelope_data.data.get("document_type") if envelope_data.data else None
+        txn_type = envelope_data.data.get("transaction_type", "purchase") if envelope_data.data else "purchase"
+
+        # If this is a bill_of_sale signature, update the property's document_data
+        if prop_id and doc_type == "bill_of_sale":
+            doc_key = f"bos_{txn_type}"  # e.g. "bos_purchase" or "bos_sale"
+            try:
+                prop = sb.table("properties").select("document_data").eq("id", prop_id).single().execute()
+                if prop.data:
+                    doc_data = prop.data.get("document_data") or {}
+                    bos_data = doc_data.get(doc_key) or {}
+
+                    # Update the seller/buyer name based on signer role
+                    if sig["signer_role"] == "seller":
+                        bos_data["seller_name"] = sig["signer_name"]
+                        bos_data["seller_signed_at"] = now
+                        bos_data["seller_signature_type"] = signature_data.get("type", "typed")
+                    elif sig["signer_role"] in ("buyer", "buyer2"):
+                        bos_data["buyer_name"] = sig["signer_name"]
+                        bos_data["buyer_signed_at"] = now
+
+                    doc_data[doc_key] = bos_data
+                    sb.table("properties").update({"document_data": doc_data}).eq("id", prop_id).execute()
+                    logger.info(f"[ESign] Updated property {prop_id} document_data.{doc_key} with {sig['signer_role']} signature")
+            except Exception as prop_err:
+                logger.warning(f"[ESign] Could not update property document_data: {prop_err}")
+
+        # Also check: if no property yet (purchase from market), update the market listing's review_progress
+        if not prop_id and sig.get("related_sale_id") is None:
+            # Try to find the listing via the envelope name or other link
+            pass  # Market listings get the property created on confirmPurchase
 
         sb.table("notifications").insert({
             "type": "signature_received",
