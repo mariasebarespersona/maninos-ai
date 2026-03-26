@@ -261,10 +261,33 @@ export default function PropertyDetailPage() {
     fetchMoverProviders()
     fetchCostBreakdown()
 
-    // Re-fetch financiero when tab regains focus (e.g. after editing renovation)
-    const handleFocus = () => fetchCostBreakdown()
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    // Re-fetch financiero when renovation/move is updated (cross-page signal)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'renovation_updated' || e.key === 'move_updated') {
+        fetchCostBreakdown()
+        fetchMoves()
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Check if renovation was updated while we were away
+        const lastUpdate = localStorage.getItem('renovation_updated')
+        if (lastUpdate) {
+          fetchCostBreakdown()
+          fetchMoves()
+          localStorage.removeItem('renovation_updated')
+        }
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+    }
   }, [params.id])
 
   const fetchMoverProviders = async () => {

@@ -398,6 +398,8 @@ export default function RenovationPage() {
           toast.success(`Cotización guardada — $${result.total?.toLocaleString() || '0'} (${result.active_items} items)`)
         }
         setHasUnsavedChanges(false)
+        // Signal property page to refresh financiero
+        localStorage.setItem('renovation_updated', Date.now().toString())
       } else {
         toast.error('Error al guardar')
       }
