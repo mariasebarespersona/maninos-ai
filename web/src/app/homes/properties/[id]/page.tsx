@@ -1554,6 +1554,27 @@ ${price}
                 {property.document_data?.title_app_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Aplicación Título (Venta)
               </button>
+
+              {/* TDHCA Title Link — always visible if serial/label exists */}
+              {(() => {
+                const titleData = property.document_data?.title_app_purchase || {};
+                const serial = titleData.section1_serial || property.hud_number || '';
+                const label = titleData.section1_label || '';
+                if (!serial && !label) return null;
+                const searchParam = serial ? `serialNum=${encodeURIComponent(serial)}` : `labelNum=${encodeURIComponent(label)}`;
+                const tdhcaUrl = `https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp?${searchParam}`;
+                return (
+                  <a
+                    href={tdhcaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Ver Título TDHCA {serial ? `(Serial: ${serial})` : `(Label: ${label})`}
+                  </a>
+                );
+              })()}
             </div>
           )}
 

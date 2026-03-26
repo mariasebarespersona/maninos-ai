@@ -13,7 +13,8 @@ import {
   Shield,
   ShieldCheck,
   ShieldAlert,
-  Eye
+  Eye,
+  ExternalLink
 } from 'lucide-react'
 import TitleTransferCard from '@/components/TitleTransferCard'
 import { useToast } from '@/components/ui/Toast'
@@ -310,7 +311,17 @@ export default function TransfersPage() {
                           <span className="font-medium" style={{ color: 'var(--ink)' }}>{t.to_name}</span>
                         </td>
                         <td className="px-4 py-3 font-mono text-xs">
-                          {t.tdhca_serial || t.tdhca_label || (
+                          {(t.tdhca_serial || t.tdhca_label) ? (
+                            <a
+                              href={`https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp?${t.tdhca_serial ? `serialNum=${encodeURIComponent(t.tdhca_serial)}` : `labelNum=${encodeURIComponent(t.tdhca_label)}`}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                            >
+                              {t.tdhca_serial || t.tdhca_label}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
                             <span className="text-amber-600 italic">Sin serial</span>
                           )}
                         </td>
