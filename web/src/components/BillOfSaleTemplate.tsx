@@ -607,35 +607,29 @@ export default function BillOfSaleTemplate({
           <div className="bos-sig-row">
             <div className="bos-sig-left">
               <span className="bos-label-sm bos-bold">SELLER:</span>
-              <span className="bos-sig-name">MANINOS HOMES</span>
-            </div>
-            <div className="bos-sig-right">
-              <span className="bos-label-sm bos-bold">BUYER 1:</span> X
-              <span className="bos-sig-line"></span>
+              {data.seller_name ? (
+                <span className="bos-sig-name" style={{ fontFamily: '"Dancing Script", cursive', fontSize: '18px', color: '#1a2744' }}>{data.seller_name}</span>
+              ) : (
+                <>X <span className="bos-sig-line"></span></>
+              )}
               <div className="bos-sig-date">
                 <span className="bos-label-sm">DATE:</span>
                 <span className="bos-sig-line-short"></span>
               </div>
             </div>
-          </div>
-          <div className="bos-sig-x">
-            X <span className="bos-sig-line"></span>
-          </div>
-          <div className="bos-sig-row">
-            <div className="bos-sig-left">
-              <span className="bos-label-sm bos-bold">SELLER:</span>
-              <span className="bos-sig-line"></span>
-            </div>
             <div className="bos-sig-right">
-              <span className="bos-label-sm bos-bold">BUYER 2:</span> X
-              <span className="bos-sig-line"></span>
+              <span className="bos-label-sm bos-bold">BUYER:</span>
+              <span className="bos-sig-name" style={{ fontFamily: '"Dancing Script", cursive', fontSize: '18px', color: '#1a2744' }}>{data.buyer_name || 'MANINOS HOMES'}</span>
               <div className="bos-sig-date">
                 <span className="bos-label-sm">DATE:</span>
-                <span className="bos-sig-line-short"></span>
+                <span>{data.buyer_date || ''}</span>
               </div>
             </div>
           </div>
         </div>
+        {/* Signature font */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet" />
       </div>
 
       {/* Scoped styles */}
