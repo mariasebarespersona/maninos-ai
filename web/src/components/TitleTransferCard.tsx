@@ -256,7 +256,7 @@ export default function TitleTransferCard({ transfer, onUpdate, showProperty = f
 
   // Better labels for the transaction type
   const TransactionIcon = isPurchase ? ShoppingCart : UserCheck
-  const transactionTitle = isPurchase ? 'Documentos de Compra' : 'Documentos de Venta'
+  const transactionTitle = isPurchase ? 'Transferencia de Compra' : 'Transferencia de Venta'
   const transactionSubtitle = isPurchase 
     ? `Compra a: ${transfer.from_name}` 
     : `Venta a: ${transfer.to_name}`
