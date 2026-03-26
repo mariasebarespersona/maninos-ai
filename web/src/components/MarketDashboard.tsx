@@ -1252,16 +1252,17 @@ export default function MarketDashboard() {
       }
 
       // 4. Update market listing status to purchased (critical — prevents re-showing)
-      const statusRes = await fetch(`/api/market-listings/${selectedListing.id}/status?status=purchased`, {
+      const statusRes = await fetch(`/api/market-listings/${selectedListing.id}/status?status=purchased&force=true`, {
         method: 'PATCH',
       });
       if (!statusRes.ok) {
         console.warn('Warning: Could not mark market listing as purchased, retrying...');
-        // Retry once
-        await fetch(`/api/market-listings/${selectedListing.id}/status?status=purchased`, {
+        await fetch(`/api/market-listings/${selectedListing.id}/status?status=purchased&force=true`, {
           method: 'PATCH',
         });
       }
+      // Also remove from local listings immediately
+      setListings(prev => prev.filter(l => l.id !== selectedListing.id));
       
       toast.success('¡Casa comprada! Orden de pago creada. Abigail la procesara en Notificaciones.');
       

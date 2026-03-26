@@ -433,29 +433,35 @@ async def generate_report(evaluation_id: str):
     checklist = evaluation.get("checklist") or []
     extra_notes = evaluation.get("extra_notes") or []
 
-    # Build summary
+    # Build summary — count ALL items including pending
     statuses = [i.get("status", "pending") for i in checklist]
     passed = statuses.count("pass")
     failed = statuses.count("fail")
     warnings = statuses.count("warning")
+    pending = statuses.count("pending") + statuses.count("needs_photo") + statuses.count("not_evaluable")
+    total = len(statuses)
     total_evaluated = passed + failed + warnings
 
-    # Calculate score
-    if total_evaluated > 0:
-        score = int((passed / total_evaluated) * 100)
+    # Calculate score — pending items count AGAINST the score (not ignored)
+    if total > 0:
+        # Score based on ALL items: only 'pass' counts positively
+        score = int((passed / total) * 100)
     else:
         score = 0
 
-    # Determine recommendation
+    # Determine recommendation — pending items are a red flag
     if failed >= 5 or score < 40:
         recommendation = "NO COMPRAR"
         recommendation_reason = f"Demasiadas fallas ({failed}) detectadas. Riesgo alto de costos excesivos de renovación."
+    elif pending > total * 0.5:
+        recommendation = "REVISAR CON CUIDADO"
+        recommendation_reason = f"Evaluación incompleta: {pending} de {total} puntos sin evaluar. Necesita inspección más detallada."
     elif failed >= 3 or warnings >= 5 or score < 60:
         recommendation = "REVISAR CON CUIDADO"
         recommendation_reason = f"Se encontraron {failed} fallas y {warnings} alertas. Necesita inspección detallada antes de decidir."
     else:
         recommendation = "COMPRAR"
-        recommendation_reason = f"Casa en buenas condiciones ({passed} puntos aprobados). Reparaciones menores esperadas."
+        recommendation_reason = f"Casa en buenas condiciones ({passed}/{total} puntos aprobados, {pending} sin evaluar). Reparaciones menores esperadas."
 
     # Generate AI summary using checklist + notes
     try:
