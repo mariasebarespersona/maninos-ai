@@ -402,6 +402,7 @@ export default function PropertyDetailPage() {
         setShowNewMoveModal(false)
         setNewMove({ move_type: 'purchase', origin_address: '', origin_city: '', destination_address: '', destination_city: '', destination_yard: '', moving_company: '', driver_name: '', driver_phone: '', estimated_distance_miles: '', requires_escort: false, requires_wide_load_permit: false, scheduled_date: '', quoted_cost: '', notes: '', special_instructions: '' })
         fetchMoves()
+        fetchCostBreakdown() // Update financiero with new move cost
       } else {
         const d = await res.json()
         toast.error(d.detail || 'Error al crear movida')
@@ -441,6 +442,7 @@ export default function PropertyDetailPage() {
       if (res.ok) {
         toast.success('Movida eliminada')
         fetchMoves()
+        fetchCostBreakdown() // Update financiero
       }
     } catch { toast.error('Error de conexión') }
   }
@@ -882,6 +884,7 @@ ${price}
       if (res.ok) {
         toast.success('¡Renovación completada!')
         await fetchProperty()
+        await fetchCostBreakdown() // Update financiero with final renovation cost
       } else {
         const data = await res.json()
         toast.error(data.detail || 'Error al completar renovación')
