@@ -1300,7 +1300,7 @@ ${price}
                 <div className="flex justify-between items-center">
                   <span className="text-navy-500">Compra</span>
                   <span className="font-semibold text-navy-900">
-                    ${property.purchase_price?.toLocaleString() || '—'}
+                    ${Math.round(Number(property.purchase_price || 0)).toLocaleString() || '—'}
                   </span>
                 </div>
                 {/* Renovación — always show */}
@@ -1342,7 +1342,7 @@ ${price}
                     <div className="pt-2 border-t border-navy-100">
                       <div className="flex justify-between items-center text-xs text-navy-400">
                         <span>Total inversión</span>
-                        <span>${((property.purchase_price || 0) + (costBreakdown.renovation_cost || 0) + (costBreakdown.move_cost || 0)).toLocaleString()}</span>
+                        <span>${Math.round(Number(property.purchase_price || 0) + Number(costBreakdown.renovation_cost || 0) + Number(costBreakdown.move_cost || 0)).toLocaleString()}</span>
                       </div>
                     </div>
                     <div className="pt-1">
@@ -1995,7 +1995,7 @@ ${price}
         min={0}
         helpText={
           costBreakdown
-            ? `Inversión total: $${((property?.purchase_price || 0) + (costBreakdown.renovation_cost || 0) + (costBreakdown.move_cost || 0)).toLocaleString()} (Compra $${(property?.purchase_price || 0).toLocaleString()} + Reno $${(costBreakdown.renovation_cost || 0).toLocaleString()} + Movida $${(costBreakdown.move_cost || 0).toLocaleString()}) → Precio mínimo: $${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}`
+            ? `Inversión total: $${Math.round(Number(property?.purchase_price || 0) + Number(costBreakdown.renovation_cost || 0) + Number(costBreakdown.move_cost || 0)).toLocaleString()} (Compra $${Math.round(Number(property?.purchase_price || 0)).toLocaleString()} + Reno $${Math.round(Number(costBreakdown.renovation_cost || 0)).toLocaleString()} + Movida $${Math.round(Number(costBreakdown.move_cost || 0)).toLocaleString()}) → Precio mínimo: $${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}`
             : recommendedPrice?.market_value
               ? `Regla 80%: Valor mercado $${recommendedPrice.market_value.toLocaleString()} → Máximo venta $${recommendedPrice.max_sell_price_80?.toLocaleString() || '—'}`
               : 'Este será el precio visible para compradores potenciales'
