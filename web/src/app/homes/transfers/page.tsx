@@ -313,7 +313,7 @@ export default function TransfersPage() {
                         <td className="px-4 py-3 font-mono text-xs">
                           {(t.tdhca_serial || t.tdhca_label) ? (
                             <a
-                              href={`https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp?${t.tdhca_serial ? `serialNum=${encodeURIComponent(t.tdhca_serial)}` : `labelNum=${encodeURIComponent(t.tdhca_label)}`}`}
+                              href={`https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp?${t.tdhca_serial ? `serialNum=${encodeURIComponent(t.tdhca_serial)}` : `labelNum=${encodeURIComponent(t.tdhca_label || '')}`}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
