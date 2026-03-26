@@ -231,6 +231,24 @@ def apply_signature(
 
     logger.info(f"[ESign] Signature applied: {sig['signer_name']} ({sig['signer_role']}) on envelope {sig['envelope_id']}")
 
+    # Create internal notification for each signature
+    try:
+        envelope_data = sb.table("signature_envelopes").select("name, related_property_id").eq("id", sig.get("envelope_id")).single().execute()
+        env_name = envelope_data.data.get("name", "Documento") if envelope_data.data else "Documento"
+        prop_id = envelope_data.data.get("related_property_id") if envelope_data.data else None
+
+        sb.table("notifications").insert({
+            "type": "signature_received",
+            "title": f"Firma recibida: {sig['signer_name']}",
+            "message": f"{sig['signer_name']} ({sig['signer_role']}) ha firmado el documento '{env_name}'",
+            "related_entity_type": "property",
+            "related_entity_id": prop_id,
+            "priority": "high",
+        }).execute()
+        logger.info(f"[ESign] Notification created for signature by {sig['signer_name']}")
+    except Exception as notif_err:
+        logger.warning(f"[ESign] Could not create notification: {notif_err}")
+
     # Check if all signatures in envelope are complete
     envelope_id = sig.get("envelope_id")
     if envelope_id:
@@ -242,6 +260,19 @@ def apply_signature(
                 "status": "completed",
                 "completed_at": now,
             }).eq("id", envelope_id).execute()
+
+            # Notify: all signatures complete
+            try:
+                sb.table("notifications").insert({
+                    "type": "document_completed",
+                    "title": f"Documento completado: {env_name}",
+                    "message": f"Todas las firmas recibidas para '{env_name}'. El documento está listo.",
+                    "related_entity_type": "property",
+                    "related_entity_id": prop_id,
+                    "priority": "high",
+                }).execute()
+            except Exception:
+                pass
             logger.info(f"[ESign] ✅ Envelope {envelope_id} fully signed!")
 
             # TODO: Generate final signed PDF with all signatures overlaid
