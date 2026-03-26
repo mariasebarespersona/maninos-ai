@@ -248,13 +248,18 @@ def apply_signature(
                     doc_data = prop.data.get("document_data") or {}
                     bos_data = doc_data.get(doc_key) or {}
 
-                    # Update the seller/buyer name based on signer role
+                    # Use the ACTUAL signed value (what they typed/drew), not the pre-set signer_name
+                    signed_name = signature_data.get("value", sig["signer_name"])
+                    signed_date = now[:10]  # YYYY-MM-DD
+
                     if sig["signer_role"] == "seller":
-                        bos_data["seller_name"] = sig["signer_name"]
+                        bos_data["seller_name"] = signed_name
+                        bos_data["seller_date"] = signed_date
                         bos_data["seller_signed_at"] = now
                         bos_data["seller_signature_type"] = signature_data.get("type", "typed")
                     elif sig["signer_role"] in ("buyer", "buyer2"):
-                        bos_data["buyer_name"] = sig["signer_name"]
+                        bos_data["buyer_name"] = signed_name
+                        bos_data["buyer_date"] = signed_date
                         bos_data["buyer_signed_at"] = now
 
                     doc_data[doc_key] = bos_data
