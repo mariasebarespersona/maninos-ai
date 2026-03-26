@@ -793,9 +793,9 @@ export default function RenovationPage() {
       <div className="bg-white border-b sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href={`/homes/properties/${propertyId}`} className="text-gray-500 hover:text-navy-700">
+            <a href={`/homes/properties/${propertyId}`} className="text-gray-500 hover:text-navy-700">
                 <ArrowLeft className="w-5 h-5" />
-              </Link>
+              </a>
               <div>
               <h1 className="text-lg font-bold text-navy-900">Cotización de Renovación</h1>
               <p className="text-xs text-gray-500">{quote.address}</p>
