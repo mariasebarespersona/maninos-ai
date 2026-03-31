@@ -405,6 +405,142 @@ async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., descri
     return {"ok": True, "payment": result.data[0], "accounting_transaction_id": accounting_txn_id}
 
 
+# ============================================================================
+# SALE PAYMENTS (must be before /{sale_id} to avoid route conflict)
+# ============================================================================
+
+@router.get("/{sale_id}/payments")
+async def list_sale_payments(sale_id: str):
+    """List all payments for a sale."""
+    # Verify sale exists
+    sale = sb.table("sales").select("id").eq("id", sale_id).execute()
+    if not sale.data:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    result = sb.table("sale_payments") \
+        .select("*") \
+        .eq("sale_id", sale_id) \
+        .order("created_at", desc=False) \
+        .execute()
+
+    return {"ok": True, "payments": result.data or []}
+
+
+@router.post("/{sale_id}/payments")
+async def register_sale_payment(sale_id: str, data: dict):
+    """
+    Register a payment on a sale (manual by staff).
+    Staff payments are auto-confirmed. Client payments stay pending.
+    Triggers notification for Abi.
+    """
+    from api.models.schemas import SalePaymentCreate
+    payment_data = SalePaymentCreate(**data)
+
+    # Verify sale exists and get info
+    sale = sb.table("sales").select("*, properties(address, id), clients(name)") \
+        .eq("id", sale_id).single().execute()
+    if not sale.data:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    reported_by = data.get("reported_by", "staff")
+    is_staff = reported_by == "staff"
+
+    insert = {
+        "sale_id": sale_id,
+        "payment_type": payment_data.payment_type,
+        "amount": float(payment_data.amount),
+        "payment_method": payment_data.payment_method,
+        "payment_reference": payment_data.payment_reference,
+        "payment_date": payment_data.payment_date or datetime.utcnow().strftime("%Y-%m-%d"),
+        "notes": payment_data.notes,
+        "status": "confirmed" if is_staff else "pending",
+        "reported_by": reported_by,
+    }
+    if is_staff:
+        insert["confirmed_by"] = "staff"
+        insert["confirmed_at"] = datetime.utcnow().isoformat()
+
+    result = sb.table("sale_payments").insert(insert).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to register payment")
+
+    # Notification
+    try:
+        from api.services.notification_service import notify_sale_payment
+        client_name = sale.data.get("clients", {}).get("name", "")
+        property_id = sale.data.get("property_id")
+        notify_sale_payment(
+            sale_id=sale_id,
+            property_id=property_id,
+            amount=float(payment_data.amount),
+            payment_type=payment_data.payment_type,
+            reported_by=reported_by,
+            client_name=client_name,
+        )
+    except Exception as e:
+        logger.warning(f"[sales] Payment notification error: {e}")
+
+    return {"ok": True, "payment": result.data[0]}
+
+
+@router.patch("/{sale_id}/payments/{payment_id}")
+async def edit_sale_payment(sale_id: str, payment_id: str, data: dict):
+    """
+    Edit an existing sale payment (amount, method, notes, status).
+    Triggers notification if amount changes.
+    """
+    from api.models.schemas import SalePaymentUpdate
+    update_data = SalePaymentUpdate(**data)
+
+    # Get existing payment
+    existing = sb.table("sale_payments").select("*") \
+        .eq("id", payment_id).eq("sale_id", sale_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    old_amount = float(existing.data["amount"])
+
+    # Build update dict (only provided fields)
+    update = {}
+    if update_data.amount is not None:
+        update["amount"] = float(update_data.amount)
+    if update_data.payment_method is not None:
+        update["payment_method"] = update_data.payment_method
+    if update_data.payment_reference is not None:
+        update["payment_reference"] = update_data.payment_reference
+    if update_data.notes is not None:
+        update["notes"] = update_data.notes
+    if update_data.status is not None:
+        update["status"] = update_data.status
+        if update_data.status == "confirmed" and not existing.data.get("confirmed_at"):
+            update["confirmed_at"] = datetime.utcnow().isoformat()
+            update["confirmed_by"] = "staff"
+
+    if not update:
+        return {"ok": True, "payment": existing.data}
+
+    result = sb.table("sale_payments").update(update) \
+        .eq("id", payment_id).execute()
+
+    # Notification if amount changed
+    if update_data.amount is not None and float(update_data.amount) != old_amount:
+        try:
+            from api.services.notification_service import notify_sale_payment_edited
+            sale = sb.table("sales").select("property_id, clients(name)") \
+                .eq("id", sale_id).single().execute()
+            notify_sale_payment_edited(
+                sale_id=sale_id,
+                property_id=sale.data.get("property_id") if sale.data else None,
+                old_amount=old_amount,
+                new_amount=float(update_data.amount),
+                client_name=sale.data.get("clients", {}).get("name", "") if sale.data else "",
+            )
+        except Exception as e:
+            logger.warning(f"[sales] Payment edit notification error: {e}")
+
+    return {"ok": True, "payment": result.data[0] if result.data else existing.data}
+
+
 @router.get("/{sale_id}", response_model=SaleResponse)
 async def get_sale(sale_id: str):
     """Get a single sale by ID."""
@@ -547,6 +683,27 @@ async def create_sale(data: SaleCreate):
     # Auto-generate commission_payments rows
     _create_commission_payments(sale_record)
 
+    # Register initial payment if provided
+    if data.initial_payment_amount and float(data.initial_payment_amount) > 0:
+        try:
+            ptype = data.initial_payment_type or "down_payment"
+            if float(data.initial_payment_amount) >= float(data.sale_price):
+                ptype = "full"
+            sb.table("sale_payments").insert({
+                "sale_id": sale_record["id"],
+                "payment_type": ptype,
+                "amount": float(data.initial_payment_amount),
+                "payment_method": data.initial_payment_method,
+                "payment_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "status": "confirmed",
+                "reported_by": "staff",
+                "confirmed_by": "staff",
+                "confirmed_at": datetime.utcnow().isoformat(),
+            }).execute()
+            logger.info(f"[sales] Initial payment of ${data.initial_payment_amount} registered for sale {sale_record['id']}")
+        except Exception as e:
+            logger.warning(f"[sales] Failed to register initial payment: {e}")
+
     # Create notification for new sale
     try:
         from api.services.notification_service import notify_new_sale, notify_commission
@@ -667,6 +824,16 @@ async def confirm_transfer(sale_id: str):
             "payment_method": "transferencia",
             "completed_at": datetime.utcnow().isoformat(),
         }).eq("id", sale_id).execute()
+
+        # 2b. Confirm any pending sale_payments for this sale
+        try:
+            sb.table("sale_payments").update({
+                "status": "confirmed",
+                "confirmed_by": "treasury",
+                "confirmed_at": datetime.utcnow().isoformat(),
+            }).eq("sale_id", sale_id).eq("status", "pending").execute()
+        except Exception as e:
+            logger.warning(f"[sales] Failed to confirm sale_payments: {e}")
 
         # 3. Update property status to sold
         sb.table("properties").update({
@@ -792,6 +959,18 @@ async def confirm_transfer(sale_id: str):
             logger.info(f"[sales] Accounting transaction {txn_number} created for sale {sale_id}")
         except Exception as acct_error:
             logger.warning(f"Failed to create accounting transaction: {acct_error}")
+
+        # 10. Create notification for confirmed transfer
+        try:
+            from api.services.notification_service import notify_cash_payment
+            notify_cash_payment(
+                property_id=sale["property_id"],
+                amount=float(sale["sale_price"]),
+                from_name=sale["clients"]["name"],
+                description=f"Transferencia confirmada — {sale['properties']['address']}",
+            )
+        except Exception as notif_error:
+            logger.warning(f"[sales] Notification error: {notif_error}")
 
         return {
             "ok": True,
@@ -1262,6 +1441,9 @@ def _format_sale(
         commission_sold_by=Decimal(str(data["commission_sold_by"])) if data.get("commission_sold_by") else None,
         found_by_name=_resolve_employee_name(data.get("found_by_employee_id")),
         sold_by_name=_resolve_employee_name(data.get("sold_by_employee_id")),
+        # Payment tracking
+        amount_paid=Decimal(str(data.get("amount_paid") or 0)),
+        amount_pending=Decimal(str(data.get("amount_pending") or data.get("sale_price", 0))),
         property_address=property_address,
         client_name=client_name,
     )

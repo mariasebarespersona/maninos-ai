@@ -247,6 +247,10 @@ class SaleCreate(BaseModel):
     sale_type: SaleType = SaleType.CONTADO
     found_by_employee_id: Optional[str] = None  # Employee who found the client
     sold_by_employee_id: Optional[str] = None   # Employee who closed the sale
+    # Optional initial payment (down payment or full)
+    initial_payment_amount: Optional[Decimal] = None
+    initial_payment_method: Optional[str] = None
+    initial_payment_type: Optional[str] = "down_payment"  # down_payment | full
 
 
 class SaleComplete(BaseModel):
@@ -277,14 +281,37 @@ class SaleResponse(BaseModel):
     commission_found_by: Optional[Decimal] = None
     commission_sold_by: Optional[Decimal] = None
     
+    # Payment tracking
+    amount_paid: Optional[Decimal] = Decimal("0")
+    amount_pending: Optional[Decimal] = None
+
     # Populated from joins
     property_address: Optional[str] = None
     client_name: Optional[str] = None
     found_by_name: Optional[str] = None
     sold_by_name: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
+
+
+class SalePaymentCreate(BaseModel):
+    """Schema for registering a payment on a sale."""
+    payment_type: str = "partial"  # down_payment, remaining, full, partial, adjustment
+    amount: Decimal
+    payment_method: Optional[str] = None  # bank_transfer, cash, zelle, check, other
+    payment_reference: Optional[str] = None
+    payment_date: Optional[str] = None  # ISO date string
+    notes: Optional[str] = None
+
+
+class SalePaymentUpdate(BaseModel):
+    """Schema for editing an existing sale payment."""
+    amount: Optional[Decimal] = None
+    payment_method: Optional[str] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # pending, confirmed, cancelled
 
 
 # ============================================================================

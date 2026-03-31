@@ -255,3 +255,46 @@ def notify_cash_payment(property_id: str, amount: float, from_name: str = "", de
         action_required=True,
         action_type="confirm",
     )
+
+
+def notify_sale_payment(sale_id: str, property_id: str, amount: float, payment_type: str = "partial", reported_by: str = "staff", client_name: str = ""):
+    """Payment registered on a sale (down payment, remaining, full, etc.)."""
+    type_labels = {
+        "down_payment": "Enganche",
+        "remaining": "Saldo restante",
+        "full": "Pago total",
+        "partial": "Pago parcial",
+        "adjustment": "Ajuste",
+    }
+    label = type_labels.get(payment_type, "Pago")
+    source = "cliente" if reported_by == "client" else "empleado"
+    return create_notification(
+        type="sale_payment",
+        title=f"Pago venta: ${amount:,.0f} ({label})",
+        message=f"{label} de ${amount:,.0f} registrado por {source}. Cliente: {client_name or 'N/A'}. Pendiente confirmación de tesorería.",
+        category="homes",
+        property_id=property_id,
+        related_entity_type="sale",
+        related_entity_id=sale_id,
+        amount=amount,
+        priority="high",
+        action_required=True,
+        action_type="confirm",
+    )
+
+
+def notify_sale_payment_edited(sale_id: str, property_id: str, old_amount: float, new_amount: float, client_name: str = ""):
+    """Sale payment was edited (amount changed)."""
+    return create_notification(
+        type="sale_payment",
+        title=f"Pago editado: ${old_amount:,.0f} → ${new_amount:,.0f}",
+        message=f"Pago de venta modificado de ${old_amount:,.0f} a ${new_amount:,.0f}. Cliente: {client_name or 'N/A'}. Verificar en contabilidad.",
+        category="homes",
+        property_id=property_id,
+        related_entity_type="sale",
+        related_entity_id=sale_id,
+        amount=new_amount,
+        priority="high",
+        action_required=True,
+        action_type="confirm",
+    )

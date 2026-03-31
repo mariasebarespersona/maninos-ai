@@ -327,6 +327,36 @@ async def report_transfer(request: PurchaseInitRequest):
             }).eq("id", request.property_id).execute()
             logger.info(f"[purchases] Property {request.property_id} RESERVED for client {client_id} (sale {sale_id}, transfer reported)")
 
+        # 3b. Create a sale_payment record (client-reported, pending confirmation)
+        try:
+            sb.table("sale_payments").insert({
+                "sale_id": sale_id,
+                "payment_type": "full",
+                "amount": float(property_data["sale_price"]),
+                "payment_method": "bank_transfer",
+                "payment_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "status": "pending",
+                "reported_by": "client",
+                "notes": f"Reportado por cliente via portal - {request.client_name}",
+            }).execute()
+            logger.info(f"[purchases] Sale payment record created for sale {sale_id} (client-reported)")
+        except Exception as sp_err:
+            logger.warning(f"[purchases] Failed to create sale_payment: {sp_err}")
+
+        # 3c. Notify about incoming payment
+        try:
+            from api.services.notification_service import notify_sale_payment
+            notify_sale_payment(
+                sale_id=sale_id,
+                property_id=request.property_id,
+                amount=float(property_data["sale_price"]),
+                payment_type="full",
+                reported_by="client",
+                client_name=request.client_name,
+            )
+        except Exception as notif_err:
+            logger.warning(f"[purchases] Notification error: {notif_err}")
+
         # 4. Send acknowledgment email (NOT payment confirmation)
         try:
             send_transfer_reported_email(

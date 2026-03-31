@@ -64,6 +64,9 @@ interface Sale {
   rto_monthly_payment?: number
   rto_term_months?: number
   rto_down_payment?: number
+  // Payment tracking
+  amount_paid?: number
+  amount_pending?: number
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
@@ -261,6 +264,20 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
 
   // Modal states
   const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showPayments, setShowPayments] = useState(false)
+  const [payments, setPayments] = useState<any[]>([])
+  const [loadingPayments, setLoadingPayments] = useState(false)
+  const [showAddPayment, setShowAddPayment] = useState(false)
+  const [addingPayment, setAddingPayment] = useState(false)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState('')
+  const [newPayment, setNewPayment] = useState({
+    payment_type: 'partial',
+    amount: '',
+    payment_method: 'bank_transfer',
+    payment_reference: '',
+    notes: '',
+  })
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -310,6 +327,64 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
     } finally {
       setActionLoading(false)
     }
+  }
+
+  const fetchPayments = async () => {
+    setLoadingPayments(true)
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/payments`)
+      const data = await res.json()
+      if (data.ok) setPayments(data.payments || [])
+    } catch (e) { console.error('Error fetching payments:', e) }
+    finally { setLoadingPayments(false) }
+  }
+
+  const handleTogglePayments = () => {
+    if (!showPayments && payments.length === 0) fetchPayments()
+    setShowPayments(!showPayments)
+  }
+
+  const handleAddPayment = async () => {
+    if (!newPayment.amount || Number(newPayment.amount) <= 0) return
+    setAddingPayment(true)
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newPayment,
+          amount: Number(newPayment.amount),
+          reported_by: 'staff',
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Pago registrado')
+        setShowAddPayment(false)
+        setNewPayment({ payment_type: 'partial', amount: '', payment_method: 'bank_transfer', payment_reference: '', notes: '' })
+        fetchPayments()
+        onUpdate()
+      } else toast.error(data.detail || 'Error al registrar pago')
+    } catch { toast.error('Error de conexion') }
+    finally { setAddingPayment(false) }
+  }
+
+  const handleEditPaymentAmount = async (paymentId: string) => {
+    if (!editAmount || Number(editAmount) <= 0) return
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: Number(editAmount) }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Monto actualizado')
+        setEditingPaymentId(null)
+        fetchPayments()
+        onUpdate()
+      } else toast.error('Error al actualizar')
+    } catch { toast.error('Error de conexion') }
   }
 
   return (
@@ -396,6 +471,21 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 {showDocs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
 
+              {/* Payments toggle (contado sales only) */}
+              {sale.sale_type === 'contado' && (
+                <button
+                  onClick={handleTogglePayments}
+                  className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full hover:bg-emerald-100 transition-colors"
+                >
+                  <CreditCard className="w-3 h-3" />
+                  Pagos
+                  {sale.amount_paid != null && sale.amount_paid > 0 && (
+                    <span className="font-semibold">${Number(sale.amount_paid).toLocaleString()}</span>
+                  )}
+                  {showPayments ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              )}
+
               {/* Payment method badge */}
               {sale.payment_method && (
                 <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
@@ -463,6 +553,172 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               <div className="mt-3 p-2 bg-blue-100 rounded-lg text-xs text-blue-700">
                 <strong>Referencia:</strong> Venta #{sale.id.slice(0, 8)} — ${sale.sale_price.toLocaleString()}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Payments Section (expandable) */}
+        {showPayments && sale.sale_type === 'contado' && (
+          <div className="mt-3 pt-3 border-t border-navy-100">
+            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+              {/* Payment Summary */}
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-emerald-800 flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" />
+                  Pagos — ${Number(sale.amount_paid || 0).toLocaleString()} de ${sale.sale_price.toLocaleString()}
+                </h4>
+                <span className="text-xs font-bold text-emerald-700">
+                  {sale.sale_price > 0 ? Math.round((Number(sale.amount_paid || 0) / sale.sale_price) * 100) : 0}%
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full h-2.5 bg-emerald-200 rounded-full mb-4">
+                <div
+                  className="h-full bg-emerald-600 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, sale.sale_price > 0 ? (Number(sale.amount_paid || 0) / sale.sale_price) * 100 : 0)}%` }}
+                />
+              </div>
+
+              {/* Pending amount */}
+              {Number(sale.amount_pending || 0) > 0 && (
+                <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                  Pendiente: <strong>${Number(sale.amount_pending).toLocaleString()}</strong>
+                </div>
+              )}
+
+              {/* Payment List */}
+              {loadingPayments ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-600">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Cargando pagos...
+                </div>
+              ) : payments.length === 0 ? (
+                <p className="text-sm text-emerald-600 mb-3">No hay pagos registrados aún.</p>
+              ) : (
+                <div className="space-y-2 mb-3">
+                  {payments.map((p: any) => {
+                    const typeLabels: Record<string, string> = {
+                      down_payment: 'Enganche', remaining: 'Saldo', full: 'Pago total',
+                      partial: 'Parcial', adjustment: 'Ajuste',
+                    }
+                    const statusBadges: Record<string, { label: string; cls: string }> = {
+                      pending: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-700' },
+                      confirmed: { label: 'Confirmado', cls: 'bg-emerald-100 text-emerald-700' },
+                      cancelled: { label: 'Cancelado', cls: 'bg-red-100 text-red-700' },
+                    }
+                    const badge = statusBadges[p.status] || statusBadges.pending
+                    const isEditing = editingPaymentId === p.id
+
+                    return (
+                      <div key={p.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-emerald-100">
+                        <span className="text-xs font-medium text-emerald-600 w-16">{typeLabels[p.payment_type] || p.payment_type}</span>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="w-24 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleEditPaymentAmount(p.id); if (e.key === 'Escape') setEditingPaymentId(null) }}
+                            onBlur={() => handleEditPaymentAmount(p.id)}
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            className="font-bold text-navy-900 cursor-pointer hover:text-blue-600 transition-colors"
+                            onClick={() => { setEditingPaymentId(p.id); setEditAmount(String(p.amount)) }}
+                            title="Click para editar"
+                          >
+                            ${Number(p.amount).toLocaleString()}
+                          </span>
+                        )}
+                        <span className="text-xs text-navy-400">{p.payment_method || '—'}</span>
+                        <span className="text-xs text-navy-400">{p.payment_date ? new Date(p.payment_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
+                        {p.reported_by === 'client' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Cliente</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Add Payment Form */}
+              {showAddPayment ? (
+                <div className="p-3 bg-white rounded-lg border border-emerald-200 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={newPayment.payment_type}
+                      onChange={(e) => setNewPayment({ ...newPayment, payment_type: e.target.value })}
+                      className="text-sm border border-navy-200 rounded px-2 py-1.5"
+                    >
+                      <option value="down_payment">Enganche</option>
+                      <option value="remaining">Saldo restante</option>
+                      <option value="full">Pago total</option>
+                      <option value="partial">Pago parcial</option>
+                      <option value="adjustment">Ajuste</option>
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="Monto $"
+                      value={newPayment.amount}
+                      onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+                      className="text-sm border border-navy-200 rounded px-2 py-1.5"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={newPayment.payment_method}
+                      onChange={(e) => setNewPayment({ ...newPayment, payment_method: e.target.value })}
+                      className="text-sm border border-navy-200 rounded px-2 py-1.5"
+                    >
+                      <option value="bank_transfer">Transferencia</option>
+                      <option value="zelle">Zelle</option>
+                      <option value="cash">Efectivo</option>
+                      <option value="check">Cheque</option>
+                      <option value="other">Otro</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Referencia"
+                      value={newPayment.payment_reference}
+                      onChange={(e) => setNewPayment({ ...newPayment, payment_reference: e.target.value })}
+                      className="text-sm border border-navy-200 rounded px-2 py-1.5"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Notas (opcional)"
+                    value={newPayment.notes}
+                    onChange={(e) => setNewPayment({ ...newPayment, notes: e.target.value })}
+                    className="w-full text-sm border border-navy-200 rounded px-2 py-1.5"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAddPayment}
+                      disabled={addingPayment || !newPayment.amount}
+                      className="flex-1 text-sm py-1.5 rounded-lg font-medium text-white disabled:opacity-50"
+                      style={{ backgroundColor: 'var(--navy-800)' }}
+                    >
+                      {addingPayment ? 'Guardando...' : 'Guardar Pago'}
+                    </button>
+                    <button
+                      onClick={() => setShowAddPayment(false)}
+                      className="text-sm py-1.5 px-3 rounded-lg border border-navy-200 text-navy-600"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddPayment(true)}
+                  className="flex items-center gap-1.5 text-sm text-emerald-700 font-medium hover:text-emerald-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  Registrar Pago
+                </button>
+              )}
             </div>
           </div>
         )}
