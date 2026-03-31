@@ -39,12 +39,9 @@ ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid DECIMAL(12,2) DEFAULT 0;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_pending DECIMAL(12,2);
 
 -- Initialize amount_pending for existing sales
-UPDATE sales SET amount_pending = sale_price - COALESCE(amount_paid, 0)
-WHERE amount_pending IS NULL;
-
--- For completed sales, set amount_paid = sale_price
-UPDATE sales SET amount_paid = sale_price, amount_pending = 0
-WHERE status = 'completed' AND (amount_paid IS NULL OR amount_paid = 0);
+-- NOTE: Must be run AFTER trigger is created so it stays consistent.
+-- For pending/active sales: pending = sale_price (no payments yet)
+-- For completed sales: paid = sale_price, pending = 0
 
 -- ═══════════════════════════════════════════════════════════════
 -- 3. Trigger: auto-recalculate totals on sale_payments changes

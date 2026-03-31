@@ -748,7 +748,7 @@ test.describe('Integration: Notifications appear in correct portals', () => {
       const validTypes = [
         'purchase', 'sale', 'commission', 'payment_order',
         'renovation', 'move', 'signature', 'capital_payment',
-        'cash_payment', 'test'
+        'cash_payment', 'sale_payment', 'test'
       ];
       expect(validTypes).toContain(n.type);
     }
