@@ -108,6 +108,161 @@ async def list_properties(
     return [_format_property(p) for p in result.data]
 
 
+@router.get("/financial-summary")
+async def financial_summary():
+    """
+    Consolidated financial summary for ALL properties.
+    Returns costs, sale data, payment totals — used by Resumen Financiero page (admin only).
+    """
+    try:
+        # 1. All properties
+        props_result = sb.table("properties") \
+            .select("id, address, property_code, city, status, purchase_price, sale_price") \
+            .order("created_at", desc=True) \
+            .execute()
+        properties = props_result.data or []
+        if not properties:
+            return {"ok": True, "properties": []}
+
+        prop_ids = [p["id"] for p in properties]
+
+        # 2. Renovation costs (latest per property)
+        reno_map = {}
+        try:
+            renos = sb.table("renovations") \
+                .select("property_id, total_cost, created_at") \
+                .in_("property_id", prop_ids) \
+                .order("created_at", desc=True) \
+                .execute()
+            for r in (renos.data or []):
+                pid = r["property_id"]
+                if pid not in reno_map:  # Keep latest only
+                    reno_map[pid] = float(r.get("total_cost") or 0)
+        except Exception as e:
+            logger.warning(f"[financial-summary] reno error: {e}")
+
+        # 3. Move costs (sum per property)
+        move_map = {}
+        try:
+            moves = sb.table("moves") \
+                .select("property_id, quoted_cost, final_cost") \
+                .in_("property_id", prop_ids) \
+                .execute()
+            for m in (moves.data or []):
+                pid = m["property_id"]
+                cost = float(m.get("final_cost") or m.get("quoted_cost") or 0)
+                move_map[pid] = move_map.get(pid, 0) + cost
+        except Exception as e:
+            logger.warning(f"[financial-summary] moves error: {e}")
+
+        # 4. Sale data per property (latest active/completed sale)
+        sale_map = {}
+        try:
+            sales = sb.table("sales") \
+                .select("id, property_id, sale_price, sale_type, status, amount_paid, amount_pending, commission_amount, client_id") \
+                .in_("property_id", prop_ids) \
+                .neq("status", "cancelled") \
+                .order("created_at", desc=True) \
+                .execute()
+
+            # Get client names
+            client_ids = list(set(s["client_id"] for s in (sales.data or []) if s.get("client_id")))
+            client_map = {}
+            if client_ids:
+                clients = sb.table("clients").select("id, name").in_("id", client_ids).execute()
+                client_map = {c["id"]: c["name"] for c in (clients.data or [])}
+
+            for s in (sales.data or []):
+                pid = s["property_id"]
+                if pid not in sale_map:  # Keep latest
+                    sale_map[pid] = {
+                        "sale_id": s["id"],
+                        "sale_price": float(s.get("sale_price") or 0),
+                        "sale_type": s.get("sale_type"),
+                        "sale_status": s.get("status"),
+                        "amount_paid": float(s.get("amount_paid") or 0),
+                        "amount_pending": float(s.get("amount_pending") or 0),
+                        "commission": float(s.get("commission_amount") or 0),
+                        "client_name": client_map.get(s.get("client_id"), ""),
+                    }
+        except Exception as e:
+            logger.warning(f"[financial-summary] sales error: {e}")
+
+        # 5. Payment orders per property (count + total)
+        po_map = {}
+        try:
+            pos = sb.table("payment_orders") \
+                .select("property_id, amount, status") \
+                .in_("property_id", prop_ids) \
+                .execute()
+            for po in (pos.data or []):
+                pid = po["property_id"]
+                if pid not in po_map:
+                    po_map[pid] = {"count": 0, "total": 0}
+                po_map[pid]["count"] += 1
+                po_map[pid]["total"] += float(po.get("amount") or 0)
+        except Exception as e:
+            logger.warning(f"[financial-summary] payment_orders error: {e}")
+
+        # 6. Accounting transaction count per property
+        txn_map = {}
+        try:
+            txns = sb.table("accounting_transactions") \
+                .select("property_id") \
+                .in_("property_id", prop_ids) \
+                .execute()
+            for t in (txns.data or []):
+                pid = t.get("property_id")
+                if pid:
+                    txn_map[pid] = txn_map.get(pid, 0) + 1
+        except Exception as e:
+            logger.warning(f"[financial-summary] txn error: {e}")
+
+        # Build response
+        result = []
+        for p in properties:
+            pid = p["id"]
+            pp = float(p.get("purchase_price") or 0)
+            reno = reno_map.get(pid, 0)
+            move = move_map.get(pid, 0)
+            sale = sale_map.get(pid, {})
+            sp = sale.get("sale_price") or float(p.get("sale_price") or 0)
+            commission = sale.get("commission", COMMISSION_MAX)
+            total_inv = pp + reno + move
+            profit = sp - total_inv - commission - MARGIN_FIXED if sp > 0 else 0
+            po = po_map.get(pid, {"count": 0, "total": 0})
+
+            result.append({
+                "id": pid,
+                "address": p.get("address", ""),
+                "property_code": p.get("property_code", ""),
+                "city": p.get("city", ""),
+                "status": p.get("status", ""),
+                "purchase_price": round(pp, 2),
+                "renovation_cost": round(reno, 2),
+                "move_cost": round(move, 2),
+                "commission": round(commission, 2),
+                "margin": MARGIN_FIXED,
+                "total_investment": round(total_inv, 2),
+                "sale_price": round(sp, 2),
+                "profit": round(profit, 2),
+                "amount_paid": sale.get("amount_paid", 0),
+                "amount_pending": sale.get("amount_pending", 0),
+                "sale_id": sale.get("sale_id"),
+                "sale_status": sale.get("sale_status"),
+                "sale_type": sale.get("sale_type"),
+                "client_name": sale.get("client_name", ""),
+                "payment_orders_count": po["count"],
+                "payment_orders_total": round(po["total"], 2),
+                "accounting_txn_count": txn_map.get(pid, 0),
+            })
+
+        return {"ok": True, "properties": result}
+    except Exception as e:
+        logger.error(f"[financial-summary] Error: {e}")
+        return {"ok": False, "properties": [], "error": str(e)}
+
+
 @router.get("/stats")
 async def get_property_stats():
     """Get property statistics for the dashboard."""

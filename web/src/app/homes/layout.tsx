@@ -17,7 +17,8 @@ import {
   Search,
   Award,
   Calculator,
-  Bell
+  Bell,
+  BarChart3
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -40,12 +41,14 @@ const allNavigation: NavItem[] = [
   { name: 'Titulos', href: '/homes/transfers', icon: FileText },
   { name: 'Notificaciones', href: '/homes/notificaciones', icon: Bell },
   { name: 'Contabilidad', href: '/homes/accounting', icon: Calculator },
+  { name: 'Resumen Financiero', href: '/homes/resumen-financiero', icon: BarChart3 },
 ]
 
 // Nav visibility per role
 const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
   treasury: ['/homes', '/homes/commissions', '/homes/notificaciones', '/homes/accounting'],
   operations: ['/homes', '/homes/market', '/homes/properties', '/homes/clients', '/homes/sales', '/homes/transfers'],
+  yard_manager: ['/homes', '/homes/market', '/homes/properties'],
 }
 
 function getNavForRole(role?: string): NavItem[] {
