@@ -53,6 +53,7 @@ class PaymentOrderCreate(BaseModel):
     method: str = "transferencia"
     notes: Optional[str] = None
     created_by: Optional[str] = None
+    concept: Optional[str] = None  # compra, renovacion, movida, otro
 
 
 class PaymentOrderComplete(BaseModel):
@@ -91,6 +92,7 @@ async def create_payment_order(req: PaymentOrderCreate):
         "status": "pending",
         "notes": req.notes,
         "created_by": req.created_by,
+        "concept": req.concept,
     }
     if req.payee_id:
         data["payee_id"] = req.payee_id
@@ -100,12 +102,18 @@ async def create_payment_order(req: PaymentOrderCreate):
         raise HTTPException(status_code=500, detail="Error creating payment order")
 
     order = result.data[0]
-    logger.info(f"[payment_orders] Created order {order['id']} for ${req.amount:,.2f} to {req.payee_name}")
+    logger.info(f"[payment_orders] Created order {order['id']} for ${req.amount:,.2f} to {req.payee_name} concept={req.concept}")
 
-    # Create notification
+    # Create notification with full context
     try:
         from api.services.notification_service import notify_payment_order_created
-        notify_payment_order_created(order["id"], req.property_id, req.amount, req.payee_name, property_address=req.property_address or "")
+        concept_label = {"compra": "Compra de casa", "renovacion": "Renovación", "movida": "Movida/Transporte", "otro": "Otro"}.get(req.concept or "", "")
+        full_notes = f"{concept_label}. {req.notes}" if concept_label and req.notes else (concept_label or req.notes or "")
+        notify_payment_order_created(
+            order["id"], req.property_id, req.amount, req.payee_name,
+            property_address=req.property_address or "",
+            concept=full_notes,
+        )
     except Exception:
         pass
 
@@ -268,7 +276,12 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
 
     try:
         from api.services.notification_service import notify_payment_completed
-        notify_payment_completed(order_id, property_id, order.get("amount", 0), req.method or "transferencia")
+        notify_payment_completed(
+            order_id, property_id, order.get("amount", 0),
+            method=req.method or "transferencia",
+            payee_name=order.get("payee_name", ""),
+            concept=order.get("notes", ""),
+        )
     except Exception:
         pass
 

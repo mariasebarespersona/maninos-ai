@@ -566,20 +566,32 @@ function ExpandedDetail({ property: p, onRefresh }: { property: PropertyFinancia
           </h4>
           {!payment_orders || payment_orders.length === 0 ? <p className="text-xs text-navy-400">Sin ordenes</p> : (
             <div className="space-y-1">
-              {payment_orders.map((o: any) => (
-                <div key={o.id} className="text-[11px] bg-blue-50 rounded px-2 py-1.5 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-navy-900">{fmt(Number(o.amount))}</span>
-                    <span className="text-navy-500">{o.payee_name || 'Vendedor'}</span>
-                    {badge(o.status)}
+              {payment_orders.map((o: any) => {
+                const conceptLabels: Record<string, { label: string; cls: string }> = {
+                  compra: { label: 'Compra', cls: 'bg-blue-100 text-blue-700' },
+                  renovacion: { label: 'Renovación', cls: 'bg-amber-100 text-amber-700' },
+                  movida: { label: 'Movida', cls: 'bg-purple-100 text-purple-700' },
+                  otro: { label: 'Otro', cls: 'bg-gray-100 text-gray-600' },
+                }
+                const cpt = conceptLabels[o.concept] || (o.concept ? { label: o.concept, cls: 'bg-gray-100 text-gray-600' } : null)
+                return (
+                  <div key={o.id} className="text-[11px] bg-blue-50 rounded px-2 py-1.5 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      {cpt && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${cpt.cls}`}>{cpt.label}</span>}
+                      <span className="font-bold text-navy-900">{fmt(Number(o.amount))}</span>
+                      <span className="text-navy-500">{o.payee_name || 'Vendedor'}</span>
+                      {badge(o.status)}
+                    </div>
+                    {o.notes && <div className="text-[10px] text-navy-400 truncate" title={o.notes}>{o.notes.substring(0, 80)}{o.notes.length > 80 ? '...' : ''}</div>}
+                    <div className="flex items-center gap-2 text-[10px] text-navy-400">
+                      {o.method && <span>{o.method}</span>}
+                      {o.reference && <span>Ref: {o.reference}</span>}
+                      {o.payment_date && <span>{fmtDate(o.payment_date)}</span>}
+                      {o.created_at && <span>{fmtDate(o.created_at)}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-navy-400">
-                    {o.method && <span>{o.method}</span>}
-                    {o.reference && <span>Ref: {o.reference}</span>}
-                    {o.payment_date && <span>{fmtDate(o.payment_date)}</span>}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

@@ -415,11 +415,11 @@ async def request_move_payment(move_id: str):
             "amount": cost,
             "method": "transferencia",
             "status": "pending",
+            "concept": "movida",
             "notes": (
-                f"Pago movida: {move.get('origin_city', '')} → {move.get('destination_city', '')}\n"
-                f"Conductor: {driver}\n"
-                f"Telefono: {driver_phone}\n"
-                f"Movida ID: {move_id[:8]}"
+                f"Movida: {move.get('origin_city', '')} → {move.get('destination_city', '')}. "
+                f"Empresa: {company}. Conductor: {driver}. Tel: {driver_phone}. "
+                f"Propiedad: {prop_address}. Movida ID: {move_id[:8]}"
             ),
             "created_by": "sistema_movidas",
         }

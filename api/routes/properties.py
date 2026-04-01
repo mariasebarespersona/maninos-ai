@@ -400,7 +400,7 @@ async def financial_detail(property_id: str):
         payment_orders = []
         try:
             po_result = sb.table("payment_orders") \
-                .select("id, amount, status, payee_name, method, reference, payment_date, notes, created_at, completed_at") \
+                .select("id, amount, status, payee_name, method, reference, payment_date, notes, concept, created_by, created_at, completed_at") \
                 .eq("property_id", property_id) \
                 .order("created_at", desc=True).execute()
             payment_orders = po_result.data or []

@@ -90,11 +90,13 @@ def create_notification(
 # ═══════════════════════════════════════════════════════════════════
 
 def notify_property_purchased(property_id: str, address: str, purchase_price: float, seller: str = ""):
-    """Property was purchased from market."""
+    """Property was purchased from market — full context."""
+    prop = _get_property_info(property_id) if property_id else {"address": address, "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="purchase",
-        title=f"Casa comprada: {address[:50]}",
-        message=f"Se ha comprado la propiedad '{address}' por ${purchase_price:,.0f}. Vendedor: {seller or 'N/A'}. Orden de pago creada para Abigail.",
+        title=f"Casa comprada: {address[:40]}{code_str} — ${purchase_price:,.0f}",
+        message=f"Se ha comprado '{address}' por ${purchase_price:,.0f}. Vendedor: {seller or 'N/A'}. Orden de pago creada para Abigail.",
         property_id=property_id,
         amount=purchase_price,
         priority="high",
@@ -104,12 +106,15 @@ def notify_property_purchased(property_id: str, address: str, purchase_price: fl
 
 
 def notify_new_sale(sale_id: str, property_id: str, sale_type: str, sale_price: float, client_name: str = ""):
-    """New sale created (contado or RTO)."""
+    """New sale created (contado or RTO) — full context."""
     tipo = "Contado" if sale_type == "contado" else "RTO"
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    next_step = "Pendiente transferencia bancaria." if sale_type == "contado" else "Pendiente aprobación de contrato RTO en Capital."
     return create_notification(
         type="sale",
-        title=f"Nueva venta {tipo}: ${sale_price:,.0f}",
-        message=f"Venta {tipo} registrada por ${sale_price:,.0f} a {client_name or 'cliente'}. {'Pendiente transferencia bancaria.' if sale_type == 'contado' else 'Pendiente aprobación de contrato RTO en Capital.'}",
+        title=f"Venta {tipo}: ${sale_price:,.0f} — {prop['address'][:35]}{code_str}",
+        message=f"Venta {tipo} de '{prop['address']}' por ${sale_price:,.0f} a {client_name or 'cliente'}. {next_step}",
         category="both",
         property_id=property_id,
         related_entity_type="sale",
@@ -122,11 +127,14 @@ def notify_new_sale(sale_id: str, property_id: str, sale_type: str, sale_price: 
 
 
 def notify_commission(sale_id: str, property_id: str, employee_name: str, amount: float, role: str = ""):
-    """Commission created for an employee."""
+    """Commission created for an employee — includes property info."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    role_label = {"found_by": "encontró al cliente", "sold_by": "cerró la venta"}.get(role, role)
     return create_notification(
         type="commission",
-        title=f"Comisión: ${amount:,.0f} para {employee_name}",
-        message=f"Comisión de ${amount:,.0f} generada para {employee_name} ({role}). Pendiente de pago. Registrar en contabilidad.",
+        title=f"Comisión: ${amount:,.0f} — {employee_name} — {prop['address'][:30]}{code_str}",
+        message=f"Comisión de ${amount:,.0f} para {employee_name} ({role_label}). Propiedad: {prop['address']}. Pendiente de pago.",
         property_id=property_id,
         related_entity_type="sale",
         related_entity_id=sale_id,
@@ -138,7 +146,7 @@ def notify_commission(sale_id: str, property_id: str, employee_name: str, amount
 
 
 def notify_payment_order_created(order_id: str, property_id: str, amount: float, payee_name: str = "", property_address: str = "", concept: str = ""):
-    """Payment order created (pending approval)."""
+    """Payment order created (pending approval). Includes full context."""
     prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
     addr = property_address or prop["address"]
     code_str = f" ({prop['code']})" if prop.get("code") else ""
@@ -146,7 +154,7 @@ def notify_payment_order_created(order_id: str, property_id: str, amount: float,
     return create_notification(
         type="payment_order",
         title=f"Orden de pago: ${amount:,.0f} — {addr[:40]}{code_str}",
-        message=f"Orden de pago por ${amount:,.0f} a {payee_name or 'vendedor'}{concept_str}. Propiedad: {addr}. Pendiente aprobación.",
+        message=f"${amount:,.0f} a {payee_name or 'vendedor'}{concept_str}. Propiedad: {addr}{code_str}. Pendiente aprobación de administrador.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -175,12 +183,15 @@ def notify_payment_order_approved(order_id: str, property_id: str, amount: float
     )
 
 
-def notify_payment_completed(order_id: str, property_id: str, amount: float, method: str = ""):
-    """Payment completed."""
+def notify_payment_completed(order_id: str, property_id: str, amount: float, method: str = "", payee_name: str = "", concept: str = ""):
+    """Payment completed — includes full context."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    concept_str = f" [{concept}]" if concept else ""
     return create_notification(
         type="payment_order",
-        title=f"Pago completado: ${amount:,.0f}",
-        message=f"Pago de ${amount:,.0f} realizado via {method or 'transferencia'}. Registrado en contabilidad.",
+        title=f"Pago completado: ${amount:,.0f} — {prop['address'][:35]}{code_str}",
+        message=f"Pago de ${amount:,.0f} a {payee_name or 'vendedor'} via {method or 'transferencia'}{concept_str}. Propiedad: {prop['address']}. Registrado en contabilidad.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -224,12 +235,16 @@ def notify_renovation_approved(property_id: str, total_cost: float, approved_by:
     )
 
 
-def notify_move_created(property_id: str, move_cost: float, origin: str = "", destination: str = ""):
-    """Move/transport contracted."""
+def notify_move_created(property_id: str, move_cost: float, origin: str = "", destination: str = "", company: str = "", driver: str = ""):
+    """Move/transport contracted — includes full context."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    company_str = f" Empresa: {company}." if company else ""
+    driver_str = f" Conductor: {driver}." if driver else ""
     return create_notification(
         type="move",
-        title=f"Movida contratada: ${move_cost:,.0f}",
-        message=f"Movida de '{origin}' a '{destination}' por ${move_cost:,.0f}.",
+        title=f"Movida contratada: ${move_cost:,.0f} — {prop['address'][:30]}{code_str}",
+        message=f"Movida de '{origin}' a '{destination}' por ${move_cost:,.0f}. Propiedad: {prop['address']}.{company_str}{driver_str}",
         property_id=property_id,
         related_entity_type="move",
         amount=move_cost,
