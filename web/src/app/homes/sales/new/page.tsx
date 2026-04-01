@@ -66,14 +66,13 @@ type Step = 'property' | 'client' | 'employees' | 'payment-info' | 'confirm'
 
 // Commission amounts (must match backend: api/utils/commissions.py)
 const COMMISSION_CASH = 1500
-const COMMISSION_RTO = 1000
 
 function calculateCommissionPreview(
   saleType: PaymentType | null,
   foundById: string | null,
   soldById: string | null
 ) {
-  const total = saleType === 'rto' ? COMMISSION_RTO : COMMISSION_CASH
+  const total = COMMISSION_CASH
 
   if (!foundById && !soldById) {
     return { total, foundBy: 0, soldBy: 0, note: 'Sin asignar — comisión pendiente' }
