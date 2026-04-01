@@ -203,6 +203,7 @@ export default function NotificacionesPage() {
       if (data.ok) {
         toast.success('Orden aprobada')
         fetchOrders()
+        fetchInboundReceived() // Refresh Recibidos tab for inbound orders
       } else {
         toast.error(data.detail || 'Error al aprobar')
       }
