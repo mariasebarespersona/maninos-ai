@@ -464,11 +464,13 @@ async def register_sale_payment(sale_id: str, data: dict):
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to register payment")
 
-    # Notification
+    # Notification with full payment progress
     try:
         from api.services.notification_service import notify_sale_payment
         client_name = sale.data.get("clients", {}).get("name", "")
         property_id = sale.data.get("property_id")
+        sale_price = float(sale.data.get("sale_price", 0))
+        amount_paid_so_far = float(sale.data.get("amount_paid", 0))
         notify_sale_payment(
             sale_id=sale_id,
             property_id=property_id,
@@ -476,6 +478,8 @@ async def register_sale_payment(sale_id: str, data: dict):
             payment_type=payment_data.payment_type,
             reported_by=reported_by,
             client_name=client_name,
+            sale_price=sale_price,
+            amount_paid_so_far=amount_paid_so_far,
         )
     except Exception as e:
         logger.warning(f"[sales] Payment notification error: {e}")
@@ -704,23 +708,9 @@ async def create_sale(data: SaleCreate):
         except Exception as e:
             logger.warning(f"[sales] Failed to register initial payment: {e}")
 
-    # Create notification for new sale
-    try:
-        from api.services.notification_service import notify_new_sale, notify_commission
-        notify_new_sale(
-            sale_id=sale_record["id"],
-            property_id=data.property_id,
-            sale_type=data.sale_type.value,
-            sale_price=float(data.sale_price),
-            client_name=client_result.data.get("name", ""),
-        )
-        # Notify commissions
-        if commission["commission_found_by"] > 0 and data.found_by_employee_id:
-            notify_commission(sale_record["id"], data.property_id, "Empleado (encontró)", commission["commission_found_by"], "found_by")
-        if commission["commission_sold_by"] > 0 and data.sold_by_employee_id:
-            notify_commission(sale_record["id"], data.property_id, "Empleado (vendió)", commission["commission_sold_by"], "sold_by")
-    except Exception as e:
-        logger.warning(f"[sales] Notification error: {e}")
+    # NOTE: No notification on sale creation. Notifications trigger when PAYMENTS
+    # are registered (notify_sale_payment). Commissions are visible in Resumen Financiero.
+    logger.info(f"[sales] Sale {sale_record['id']} created (no notification — payments will trigger notifications)")
 
     return _format_sale(
         sale_record,

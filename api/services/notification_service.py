@@ -283,8 +283,8 @@ def notify_cash_payment(property_id: str, amount: float, from_name: str = "", de
     )
 
 
-def notify_sale_payment(sale_id: str, property_id: str, amount: float, payment_type: str = "partial", reported_by: str = "staff", client_name: str = ""):
-    """Payment registered on a sale (down payment, remaining, full, etc.)."""
+def notify_sale_payment(sale_id: str, property_id: str, amount: float, payment_type: str = "partial", reported_by: str = "staff", client_name: str = "", sale_price: float = 0, amount_paid_so_far: float = 0):
+    """Payment registered on a sale — includes full context with payment progress."""
     type_labels = {
         "down_payment": "Enganche",
         "remaining": "Saldo restante",
@@ -294,10 +294,18 @@ def notify_sale_payment(sale_id: str, property_id: str, amount: float, payment_t
     }
     label = type_labels.get(payment_type, "Pago")
     source = "cliente" if reported_by == "client" else "empleado"
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+
+    # Payment progress
+    total_paid = amount_paid_so_far + amount
+    pending = max(0, sale_price - total_paid) if sale_price > 0 else 0
+    progress = f" Pagado: ${total_paid:,.0f} de ${sale_price:,.0f}, falta ${pending:,.0f}." if sale_price > 0 else ""
+
     return create_notification(
         type="sale_payment",
-        title=f"Pago venta: ${amount:,.0f} ({label})",
-        message=f"{label} de ${amount:,.0f} registrado por {source}. Cliente: {client_name or 'N/A'}. Pendiente confirmación de tesorería.",
+        title=f"Pago recibido: ${amount:,.0f} ({label}) — {prop['address'][:35]}{code_str}",
+        message=f"{label} de ${amount:,.0f} de {client_name or 'cliente'} (registrado por {source}). Propiedad: {prop['address']}.{progress} Pendiente confirmación.",
         category="homes",
         property_id=property_id,
         related_entity_type="sale",
