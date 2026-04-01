@@ -371,247 +371,235 @@ function PropertyRow({
 
 function ExpandedDetail({ property: p, onRefresh }: { property: PropertyFinancial; onRefresh: () => void }) {
   const toast = useToast()
-  const [payments, setPayments] = useState<any[]>([])
-  const [orders, setOrders] = useState<any[]>([])
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [loadingPayments, setLoadingPayments] = useState(true)
-  const [loadingOrders, setLoadingOrders] = useState(true)
-  const [loadingTxns, setLoadingTxns] = useState(true)
-
-  // Add payment form
+  const [detail, setDetail] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [showAddPayment, setShowAddPayment] = useState(false)
   const [addingPayment, setAddingPayment] = useState(false)
-  const [newPayment, setNewPayment] = useState({
-    payment_type: 'partial', amount: '', payment_method: 'bank_transfer', payment_reference: '', notes: '',
-  })
-
-  // Edit payment
+  const [newPayment, setNewPayment] = useState({ payment_type: 'partial', amount: '', payment_method: 'bank_transfer' })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
 
-  useEffect(() => {
-    // Fetch sale payments
-    if (p.sale_id) {
-      setLoadingPayments(true)
-      fetch(`/api/sales/${p.sale_id}/payments`)
-        .then(r => r.json())
-        .then(d => setPayments(d.payments || []))
-        .catch(() => {})
-        .finally(() => setLoadingPayments(false))
-    } else {
-      setLoadingPayments(false)
+  const fetchDetail = () => {
+    setLoading(true)
+    fetch(`/api/properties/${p.id}/financial-detail`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setDetail(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { fetchDetail() }, [p.id])
+
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const typeLabels: Record<string, string> = { down_payment: 'Enganche', remaining: 'Saldo', full: 'Total', partial: 'Parcial', adjustment: 'Ajuste' }
+  const badge = (s: string) => {
+    const m: Record<string, { l: string; c: string }> = {
+      pending: { l: 'Pendiente', c: 'bg-amber-100 text-amber-700' }, confirmed: { l: 'Confirmado', c: 'bg-emerald-100 text-emerald-700' },
+      approved: { l: 'Aprobado', c: 'bg-blue-100 text-blue-700' }, completed: { l: 'Completado', c: 'bg-emerald-100 text-emerald-700' },
+      cancelled: { l: 'Cancelado', c: 'bg-red-100 text-red-700' }, in_progress: { l: 'En progreso', c: 'bg-blue-100 text-blue-700' },
+      pending_approval: { l: 'Por aprobar', c: 'bg-amber-100 text-amber-700' }, draft: { l: 'Borrador', c: 'bg-gray-100 text-gray-600' },
     }
-
-    // Fetch payment orders for this property
-    setLoadingOrders(true)
-    fetch(`/api/payment-orders?property_id=${p.id}`)
-      .then(r => r.json())
-      .then(d => setOrders(d.data || []))
-      .catch(() => {})
-      .finally(() => setLoadingOrders(false))
-
-    // Fetch accounting transactions
-    setLoadingTxns(true)
-    fetch(`/api/accounting/reports/property/${p.id}`)
-      .then(r => r.json())
-      .then(d => setTransactions(d.transactions || []))
-      .catch(() => {})
-      .finally(() => setLoadingTxns(false))
-  }, [p.id, p.sale_id])
+    const b = m[s] || { l: s, c: 'bg-gray-100 text-gray-600' }
+    return <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${b.c}`}>{b.l}</span>
+  }
 
   const handleAddPayment = async () => {
-    if (!p.sale_id || !newPayment.amount) return
+    if (!detail?.sale?.id || !newPayment.amount) return
     setAddingPayment(true)
     try {
-      const res = await fetch(`/api/sales/${p.sale_id}/payments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/sales/${detail.sale.id}/payments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newPayment, amount: Number(newPayment.amount), reported_by: 'staff' }),
       })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success('Pago registrado')
-        setShowAddPayment(false)
-        setNewPayment({ payment_type: 'partial', amount: '', payment_method: 'bank_transfer', payment_reference: '', notes: '' })
-        // Refresh payments
-        const r = await fetch(`/api/sales/${p.sale_id}/payments`)
-        const d = await r.json()
-        setPayments(d.payments || [])
-        onRefresh()
-      } else toast.error(data.detail || 'Error')
-    } catch { toast.error('Error de conexion') }
-    finally { setAddingPayment(false) }
+      if ((await res.json()).ok) { toast.success('Pago registrado'); setShowAddPayment(false); fetchDetail(); onRefresh() }
+      else toast.error('Error')
+    } catch { toast.error('Error') } finally { setAddingPayment(false) }
   }
 
   const handleEditPayment = async (paymentId: string) => {
-    if (!p.sale_id || !editAmount) return
+    if (!detail?.sale?.id || !editAmount) return
     try {
-      const res = await fetch(`/api/sales/${p.sale_id}/payments/${paymentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/sales/${detail.sale.id}/payments/${paymentId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: Number(editAmount) }),
       })
-      if ((await res.json()).ok) {
-        toast.success('Monto actualizado')
-        setEditingId(null)
-        const r = await fetch(`/api/sales/${p.sale_id}/payments`)
-        setPayments((await r.json()).payments || [])
-        onRefresh()
-      }
+      if ((await res.json()).ok) { toast.success('Actualizado'); setEditingId(null); fetchDetail(); onRefresh() }
     } catch { toast.error('Error') }
   }
 
-  const typeLabels: Record<string, string> = {
-    down_payment: 'Enganche', remaining: 'Saldo', full: 'Pago total',
-    partial: 'Parcial', adjustment: 'Ajuste',
-  }
-  const statusBadge = (s: string) => {
-    const map: Record<string, { label: string; cls: string }> = {
-      pending: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-700' },
-      confirmed: { label: 'Confirmado', cls: 'bg-emerald-100 text-emerald-700' },
-      approved: { label: 'Aprobado', cls: 'bg-blue-100 text-blue-700' },
-      completed: { label: 'Completado', cls: 'bg-emerald-100 text-emerald-700' },
-      cancelled: { label: 'Cancelado', cls: 'bg-red-100 text-red-700' },
-    }
-    const b = map[s] || { label: s, cls: 'bg-gray-100 text-gray-600' }
-    return <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${b.cls}`}>{b.label}</span>
-  }
+  if (loading) return <div className="px-6 py-6 bg-slate-50 border-t border-navy-200 flex items-center gap-2 text-sm text-navy-400"><Loader2 className="w-4 h-4 animate-spin" /> Cargando detalle financiero...</div>
+  if (!detail) return <div className="px-6 py-4 bg-slate-50 border-t text-xs text-red-500">Error cargando detalle</div>
+
+  const { property: prop, renovation: reno, moves, sale, payments, payment_orders, title_transfer: tt, transactions } = detail
 
   return (
     <div className="px-6 py-4 bg-slate-50 border-t border-navy-200 space-y-4">
-      <div className="flex items-center gap-2 text-sm text-navy-600 font-medium">
-        <Building2 className="w-4 h-4" />
-        {p.property_code && <span className="bg-navy-100 text-navy-600 px-1.5 py-0.5 rounded text-xs font-bold">{p.property_code}</span>}
-        {p.address}, {p.city}
-        {p.sale_type && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full ml-2">{p.sale_type === 'rto' ? 'RTO' : 'Contado'}</span>}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-navy-700 font-semibold">
+          <Building2 className="w-4 h-4" />
+          {p.property_code && <span className="bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded text-xs font-bold">{p.property_code}</span>}
+          {prop?.address}, {prop?.city}
+        </div>
+        <span className="text-[10px] text-navy-400">Creada: {fmtDate(prop?.created_at)}</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Sale Payments */}
-        <div className="bg-white rounded-lg border border-emerald-200 p-3">
-          <h4 className="text-xs font-semibold text-emerald-700 mb-2 flex items-center gap-1.5">
-            <CreditCard className="w-3.5 h-3.5" /> Pagos Recibidos
-            {p.sale_id && p.amount_paid > 0 && (
-              <span className="ml-auto text-emerald-600">{fmt(p.amount_paid)} / {fmt(p.sale_price)}</span>
-            )}
-          </h4>
+      {/* Top 4 info cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* COMPRA */}
+        <div className="bg-white rounded-lg border border-blue-200 p-3">
+          <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-2">Compra</h4>
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between"><span className="text-navy-500">Precio</span><span className="font-bold text-navy-900">{fmt(p.purchase_price)}</span></div>
+            <div className="flex justify-between"><span className="text-navy-500">Vendedor</span><span className="text-navy-700">{prop?.seller_name || '—'}</span></div>
+            <div className="flex justify-between"><span className="text-navy-500">Fecha</span><span className="text-navy-700">{fmtDate(prop?.created_at)}</span></div>
+          </div>
+        </div>
 
-          {!p.sale_id ? (
-            <p className="text-xs text-navy-400">Sin venta asociada</p>
-          ) : loadingPayments ? (
-            <div className="flex items-center gap-1 text-xs text-navy-400"><Loader2 className="w-3 h-3 animate-spin" /> Cargando...</div>
-          ) : payments.length === 0 ? (
-            <p className="text-xs text-navy-400 mb-2">Sin pagos registrados</p>
-          ) : (
-            <div className="space-y-1.5 mb-2">
+        {/* RENOVACION */}
+        <div className="bg-white rounded-lg border border-amber-200 p-3">
+          <h4 className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-2">Renovacion</h4>
+          {reno ? (
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between"><span className="text-navy-500">Costo</span><span className="font-bold text-navy-900">{fmt(reno.total_cost)}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">Responsable</span><span className="text-navy-700">{reno.responsable || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">Estado</span>{badge(reno.approval_status || reno.status)}</div>
+              {reno.items_summary && <div className="text-[10px] text-navy-400 mt-1">{reno.items_summary}</div>}
+            </div>
+          ) : <p className="text-xs text-navy-400">Sin renovacion</p>}
+        </div>
+
+        {/* VENTA */}
+        <div className="bg-white rounded-lg border border-emerald-200 p-3">
+          <h4 className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mb-2">Venta</h4>
+          {sale ? (
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between"><span className="text-navy-500">Precio</span><span className="font-bold text-navy-900">{fmt(sale.price)}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">Cliente</span><span className="text-navy-700">{sale.client_name || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">Tipo</span><span className="text-navy-700">{sale.type === 'rto' ? 'RTO' : 'Contado'}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">Estado</span>{badge(sale.status)}</div>
+              <div className="flex justify-between"><span className="text-navy-500">Comision</span><span className="text-navy-700">{fmt(sale.commission_total)}</span></div>
+              {sale.found_by && <div className="text-[10px] text-navy-400">Encontro: {sale.found_by} ({fmt(sale.commission_found)})</div>}
+              {sale.sold_by && <div className="text-[10px] text-navy-400">Vendio: {sale.sold_by} ({fmt(sale.commission_sold)})</div>}
+            </div>
+          ) : <p className="text-xs text-navy-400">Sin venta</p>}
+        </div>
+
+        {/* TITULO + MOVIDAS */}
+        <div className="bg-white rounded-lg border border-purple-200 p-3">
+          <h4 className="text-[10px] font-bold text-purple-600 uppercase tracking-wide mb-2">Titulo / Movidas</h4>
+          {tt ? (
+            <div className="space-y-1 text-xs mb-2">
+              <div className="flex justify-between"><span className="text-navy-500">Estado</span>{badge(tt.status)}</div>
+              <div className="flex justify-between"><span className="text-navy-500">De</span><span className="text-navy-700 text-[10px]">{tt.from_name || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-navy-500">A</span><span className="text-navy-700 text-[10px]">{tt.to_name || '—'}</span></div>
+            </div>
+          ) : <p className="text-xs text-navy-400 mb-2">Sin transferencia titulo</p>}
+          {moves && moves.length > 0 ? moves.map((m: any, i: number) => (
+            <div key={i} className="text-[10px] text-navy-500 border-t border-purple-100 pt-1 mt-1">
+              Movida: {m.origin || '?'} → {m.destination || '?'} · {fmt(m.cost)} · {badge(m.status)}
+            </div>
+          )) : null}
+        </div>
+      </div>
+
+      {/* Bottom: Payments + Orders + Transactions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* PAGOS RECIBIDOS */}
+        <div className="bg-white rounded-lg border border-emerald-200 p-3">
+          <h4 className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <CreditCard className="w-3 h-3" /> Pagos Recibidos
+            {sale && <span className="ml-auto text-emerald-600 normal-case font-normal">{fmt(sale.amount_paid)} / {fmt(sale.price)}</span>}
+          </h4>
+          {sale && sale.price > 0 && (
+            <div className="w-full h-1.5 bg-emerald-200 rounded-full mb-2">
+              <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${Math.min(100, (sale.amount_paid / sale.price) * 100)}%` }} />
+            </div>
+          )}
+          {!sale ? <p className="text-xs text-navy-400">Sin venta</p>
+          : !payments || payments.length === 0 ? <p className="text-xs text-navy-400 mb-2">Sin pagos</p>
+          : (
+            <div className="space-y-1 mb-2">
               {payments.map((pay: any) => (
-                <div key={pay.id} className="flex items-center gap-2 text-xs bg-emerald-50 rounded px-2 py-1.5">
-                  <span className="font-medium text-emerald-700 w-14">{typeLabels[pay.payment_type] || pay.payment_type}</span>
+                <div key={pay.id} className="flex items-center gap-1.5 text-[11px] bg-emerald-50 rounded px-2 py-1">
+                  <span className="font-medium text-emerald-700 w-12">{typeLabels[pay.payment_type] || pay.payment_type}</span>
                   {editingId === pay.id ? (
-                    <input
-                      type="number"
-                      className="w-16 px-1 py-0.5 border border-blue-400 rounded text-xs bg-blue-50"
-                      value={editAmount}
+                    <input type="number" className="w-14 px-1 py-0.5 border border-blue-400 rounded text-[11px] bg-blue-50" value={editAmount}
                       onChange={e => setEditAmount(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleEditPayment(pay.id); if (e.key === 'Escape') setEditingId(null) }}
-                      onBlur={() => handleEditPayment(pay.id)}
-                      autoFocus
-                    />
+                      onBlur={() => handleEditPayment(pay.id)} autoFocus />
                   ) : (
-                    <span
-                      className="font-bold text-navy-900 cursor-pointer hover:text-blue-600"
-                      onClick={() => { setEditingId(pay.id); setEditAmount(String(pay.amount)) }}
-                    >
+                    <span className="font-bold text-navy-900 cursor-pointer hover:text-blue-600" onClick={() => { setEditingId(pay.id); setEditAmount(String(pay.amount)) }}>
                       {fmt(Number(pay.amount))}
                     </span>
                   )}
                   <span className="text-navy-400">{pay.payment_method || ''}</span>
-                  {statusBadge(pay.status)}
+                  <span className="text-navy-400">{pay.payment_date ? fmtDate(pay.payment_date) : ''}</span>
+                  {badge(pay.status)}
                   {pay.reported_by === 'client' && <span className="text-[9px] bg-blue-100 text-blue-600 px-1 rounded">Cliente</span>}
                 </div>
               ))}
             </div>
           )}
-
-          {p.sale_id && !showAddPayment && (
-            <button onClick={() => setShowAddPayment(true)} className="text-xs text-emerald-600 font-medium flex items-center gap-1 hover:text-emerald-800">
-              <Plus className="w-3 h-3" /> Registrar Pago
-            </button>
+          {sale && !showAddPayment && (
+            <button onClick={() => setShowAddPayment(true)} className="text-[11px] text-emerald-600 font-medium flex items-center gap-1"><Plus className="w-3 h-3" /> Registrar Pago</button>
           )}
           {showAddPayment && (
-            <div className="space-y-1.5 mt-2 p-2 bg-emerald-50 rounded border border-emerald-200">
-              <div className="grid grid-cols-2 gap-1.5">
-                <select value={newPayment.payment_type} onChange={e => setNewPayment({ ...newPayment, payment_type: e.target.value })} className="text-xs border rounded px-1.5 py-1">
-                  <option value="down_payment">Enganche</option>
-                  <option value="remaining">Saldo</option>
-                  <option value="full">Total</option>
-                  <option value="partial">Parcial</option>
+            <div className="space-y-1 mt-1 p-2 bg-emerald-50 rounded border border-emerald-200">
+              <div className="grid grid-cols-2 gap-1">
+                <select value={newPayment.payment_type} onChange={e => setNewPayment({ ...newPayment, payment_type: e.target.value })} className="text-[11px] border rounded px-1 py-0.5">
+                  <option value="down_payment">Enganche</option><option value="remaining">Saldo</option><option value="full">Total</option><option value="partial">Parcial</option>
                 </select>
-                <input type="number" placeholder="$" value={newPayment.amount} onChange={e => setNewPayment({ ...newPayment, amount: e.target.value })} className="text-xs border rounded px-1.5 py-1" />
+                <input type="number" placeholder="$" value={newPayment.amount} onChange={e => setNewPayment({ ...newPayment, amount: e.target.value })} className="text-[11px] border rounded px-1 py-0.5" />
               </div>
-              <select value={newPayment.payment_method} onChange={e => setNewPayment({ ...newPayment, payment_method: e.target.value })} className="w-full text-xs border rounded px-1.5 py-1">
-                <option value="bank_transfer">Transferencia</option>
-                <option value="zelle">Zelle</option>
-                <option value="cash">Efectivo</option>
-                <option value="check">Cheque</option>
-              </select>
-              <div className="flex gap-1.5">
-                <button onClick={handleAddPayment} disabled={addingPayment || !newPayment.amount} className="flex-1 text-xs py-1 rounded text-white font-medium disabled:opacity-50" style={{ backgroundColor: 'var(--navy-800)' }}>
-                  {addingPayment ? 'Guardando...' : 'Guardar'}
-                </button>
-                <button onClick={() => setShowAddPayment(false)} className="text-xs py-1 px-2 rounded border text-navy-600">Cancelar</button>
+              <div className="flex gap-1">
+                <button onClick={handleAddPayment} disabled={addingPayment || !newPayment.amount} className="flex-1 text-[11px] py-0.5 rounded text-white font-medium disabled:opacity-50" style={{ backgroundColor: 'var(--navy-800)' }}>{addingPayment ? '...' : 'Guardar'}</button>
+                <button onClick={() => setShowAddPayment(false)} className="text-[11px] py-0.5 px-2 rounded border text-navy-500">X</button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Payment Orders */}
+        {/* ORDENES DE PAGO */}
         <div className="bg-white rounded-lg border border-blue-200 p-3">
-          <h4 className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5" /> Ordenes de Pago
-            {p.payment_orders_count > 0 && <span className="ml-auto text-blue-600">{p.payment_orders_count} — {fmt(p.payment_orders_total)}</span>}
+          <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <FileText className="w-3 h-3" /> Ordenes de Pago
           </h4>
-          {loadingOrders ? (
-            <div className="flex items-center gap-1 text-xs text-navy-400"><Loader2 className="w-3 h-3 animate-spin" /> Cargando...</div>
-          ) : orders.length === 0 ? (
-            <p className="text-xs text-navy-400">Sin ordenes de pago</p>
-          ) : (
-            <div className="space-y-1.5">
-              {orders.map((o: any) => (
-                <div key={o.id} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5">
-                  <span className="font-medium text-navy-900">{fmt(Number(o.amount))}</span>
-                  <span className="text-navy-400 truncate max-w-[80px]">{o.payee_name || 'Vendedor'}</span>
-                  {statusBadge(o.status)}
+          {!payment_orders || payment_orders.length === 0 ? <p className="text-xs text-navy-400">Sin ordenes</p> : (
+            <div className="space-y-1">
+              {payment_orders.map((o: any) => (
+                <div key={o.id} className="text-[11px] bg-blue-50 rounded px-2 py-1.5 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-navy-900">{fmt(Number(o.amount))}</span>
+                    <span className="text-navy-500">{o.payee_name || 'Vendedor'}</span>
+                    {badge(o.status)}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-navy-400">
+                    {o.method && <span>{o.method}</span>}
+                    {o.reference && <span>Ref: {o.reference}</span>}
+                    {o.payment_date && <span>{fmtDate(o.payment_date)}</span>}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Accounting Transactions */}
+        {/* TRANSACCIONES CONTABLES */}
         <div className="bg-white rounded-lg border border-navy-200 p-3">
-          <h4 className="text-xs font-semibold text-navy-700 mb-2 flex items-center gap-1.5">
-            <DollarSign className="w-3.5 h-3.5" /> Transacciones Contables
-            {p.accounting_txn_count > 0 && <span className="ml-auto text-navy-500">{p.accounting_txn_count}</span>}
+          <h4 className="text-[10px] font-bold text-navy-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <DollarSign className="w-3 h-3" /> Contabilidad
           </h4>
-          {loadingTxns ? (
-            <div className="flex items-center gap-1 text-xs text-navy-400"><Loader2 className="w-3 h-3 animate-spin" /> Cargando...</div>
-          ) : transactions.length === 0 ? (
-            <p className="text-xs text-navy-400">Sin transacciones</p>
-          ) : (
-            <div className="space-y-1.5">
+          {!transactions || transactions.length === 0 ? <p className="text-xs text-navy-400">Sin transacciones</p> : (
+            <div className="space-y-1">
               {transactions.slice(0, 8).map((t: any) => (
-                <div key={t.id} className="flex items-center gap-2 text-xs bg-navy-50 rounded px-2 py-1.5">
-                  <span className={`font-bold ${t.is_income ? 'text-emerald-700' : 'text-red-600'}`}>
-                    {t.is_income ? '+' : '-'}{fmt(Number(t.amount))}
-                  </span>
-                  <span className="text-navy-400 truncate max-w-[100px]">{t.transaction_type}</span>
-                  {statusBadge(t.status)}
+                <div key={t.id} className="flex items-center gap-1.5 text-[11px] bg-navy-50 rounded px-2 py-1">
+                  <span className={`font-bold ${t.is_income ? 'text-emerald-700' : 'text-red-600'}`}>{t.is_income ? '+' : '-'}{fmt(Number(t.amount))}</span>
+                  <span className="text-navy-400 truncate max-w-[80px]">{t.transaction_type}</span>
+                  <span className="text-navy-400">{t.transaction_date ? fmtDate(t.transaction_date) : ''}</span>
+                  {badge(t.status)}
                 </div>
               ))}
-              {transactions.length > 8 && (
-                <p className="text-[10px] text-navy-400">+{transactions.length - 8} mas...</p>
-              )}
+              {transactions.length > 8 && <p className="text-[10px] text-navy-400">+{transactions.length - 8} mas</p>}
             </div>
           )}
         </div>

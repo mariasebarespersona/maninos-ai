@@ -26,6 +26,7 @@ from api.routes.esign import router as esign_router
 from api.routes.payment_orders import router as payment_orders_router
 from api.routes.facebook_auth import router as facebook_router
 from api.routes.notifications import router as notifications_router
+from api.routes.payees import router as payees_router
 
 # Agents
 from api.agents.router import router as agents_router
@@ -126,6 +127,7 @@ app.include_router(payment_orders_router, prefix="/api/payment-orders", tags=["P
 app.include_router(facebook_router, prefix="/api/facebook", tags=["Facebook"])
 app.include_router(esign_router, prefix="/api", tags=["E-Signatures"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(payees_router, prefix="/api/purchase-payments/payees", tags=["Payees"])
 
 # Agents (CostosAgent, PrecioAgent, etc.)
 app.include_router(agents_router, tags=["Agents"])

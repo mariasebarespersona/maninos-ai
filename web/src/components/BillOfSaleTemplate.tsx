@@ -607,7 +607,12 @@ export default function BillOfSaleTemplate({
           <div className="bos-sig-row">
             <div className="bos-sig-left">
               <span className="bos-label-sm bos-bold">SELLER:</span>
-              {data.seller_name ? (
+              {(data as any).seller_signature_type === 'drawn' && (data as any).seller_signature_image ? (
+                <div>
+                  <img src={(data as any).seller_signature_image} alt="Firma vendedor" style={{ height: '40px', maxWidth: '200px', objectFit: 'contain' }} />
+                  <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{data.seller_name}</div>
+                </div>
+              ) : data.seller_name ? (
                 <span className="bos-sig-name" style={{ fontFamily: '"Dancing Script", cursive', fontSize: '18px', color: '#1a2744' }}>{data.seller_name}</span>
               ) : (
                 <>X <span className="bos-sig-line"></span></>
@@ -619,7 +624,14 @@ export default function BillOfSaleTemplate({
             </div>
             <div className="bos-sig-right">
               <span className="bos-label-sm bos-bold">BUYER:</span>
-              <span className="bos-sig-name" style={{ fontFamily: '"Dancing Script", cursive', fontSize: '18px', color: '#1a2744' }}>{data.buyer_name || 'MANINOS HOMES'}</span>
+              {(data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image ? (
+                <div>
+                  <img src={(data as any).buyer_signature_image} alt="Firma comprador" style={{ height: '40px', maxWidth: '200px', objectFit: 'contain' }} />
+                  <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{data.buyer_name}</div>
+                </div>
+              ) : (
+                <span className="bos-sig-name" style={{ fontFamily: '"Dancing Script", cursive', fontSize: '18px', color: '#1a2744' }}>{data.buyer_name || 'MANINOS HOMES'}</span>
+              )}
               <div className="bos-sig-date">
                 <span className="bos-label-sm">DATE:</span>
                 <span>{data.buyer_date || ''}</span>

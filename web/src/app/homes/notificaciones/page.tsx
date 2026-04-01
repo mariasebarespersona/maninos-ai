@@ -87,6 +87,7 @@ export default function NotificacionesPage() {
   // Centralized notifications
   const [notifications, setNotifications] = useState<any[]>([])
   const [notifCount, setNotifCount] = useState(0)
+  const [showAllNotifs, setShowAllNotifs] = useState(false)
 
   // Approval state
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -353,7 +354,7 @@ export default function NotificacionesPage() {
             </button>
           </div>
           <div className="space-y-2">
-            {notifications.slice(0, 10).map((n: any) => {
+            {notifications.slice(0, showAllNotifs ? 20 : 5).map((n: any) => {
               const typeIcons: Record<string, string> = {
                 purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
                 renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
@@ -393,6 +394,22 @@ export default function NotificacionesPage() {
                 </div>
               )
             })}
+            {!showAllNotifs && notifications.length > 5 && (
+              <button
+                onClick={() => setShowAllNotifs(true)}
+                className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 font-medium"
+              >
+                Ver más ({notifications.length - 5} más)
+              </button>
+            )}
+            {showAllNotifs && notifications.length > 5 && (
+              <button
+                onClick={() => setShowAllNotifs(false)}
+                className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2"
+              >
+                Mostrar menos
+              </button>
+            )}
           </div>
         </div>
       )}

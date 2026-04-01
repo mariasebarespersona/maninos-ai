@@ -105,7 +105,7 @@ async def create_payment_order(req: PaymentOrderCreate):
     # Create notification
     try:
         from api.services.notification_service import notify_payment_order_created
-        notify_payment_order_created(order["id"], req.property_id, req.amount, req.payee_name)
+        notify_payment_order_created(order["id"], req.property_id, req.amount, req.payee_name, property_address=req.property_address or "")
     except Exception:
         pass
 
@@ -113,11 +113,16 @@ async def create_payment_order(req: PaymentOrderCreate):
 
 
 @router.get("")
-async def list_payment_orders(status: Optional[str] = Query(None)):
-    """List payment orders, optionally filtered by status."""
+async def list_payment_orders(
+    status: Optional[str] = Query(None),
+    property_id: Optional[str] = Query(None),
+):
+    """List payment orders, optionally filtered by status and/or property."""
     q = sb.table("payment_orders").select("*").order("created_at", desc=True)
     if status:
         q = q.eq("status", status)
+    if property_id:
+        q = q.eq("property_id", property_id)
     result = q.execute()
     return {"ok": True, "data": result.data or []}
 

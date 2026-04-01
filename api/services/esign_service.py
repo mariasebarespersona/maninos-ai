@@ -249,18 +249,29 @@ def apply_signature(
                     bos_data = doc_data.get(doc_key) or {}
 
                     # Use the ACTUAL signed value (what they typed/drew), not the pre-set signer_name
-                    signed_name = signature_data.get("value", sig["signer_name"])
+                    sig_type = signature_data.get("type", "typed")
+                    sig_value = signature_data.get("value", sig["signer_name"])
                     signed_date = now[:10]  # YYYY-MM-DD
 
                     if sig["signer_role"] == "seller":
-                        bos_data["seller_name"] = signed_name
                         bos_data["seller_date"] = signed_date
                         bos_data["seller_signed_at"] = now
-                        bos_data["seller_signature_type"] = signature_data.get("type", "typed")
+                        bos_data["seller_signature_type"] = sig_type
+                        if sig_type == "drawn":
+                            # Keep human name as text, store drawing as separate image
+                            bos_data["seller_name"] = sig["signer_name"]
+                            bos_data["seller_signature_image"] = sig_value
+                        else:
+                            bos_data["seller_name"] = sig_value
                     elif sig["signer_role"] in ("buyer", "buyer2"):
-                        bos_data["buyer_name"] = signed_name
                         bos_data["buyer_date"] = signed_date
                         bos_data["buyer_signed_at"] = now
+                        bos_data["buyer_signature_type"] = sig_type
+                        if sig_type == "drawn":
+                            bos_data["buyer_name"] = sig["signer_name"]
+                            bos_data["buyer_signature_image"] = sig_value
+                        else:
+                            bos_data["buyer_name"] = sig_value
 
                     doc_data[doc_key] = bos_data
                     sb.table("properties").update({"document_data": doc_data}).eq("id", prop_id).execute()

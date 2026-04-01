@@ -263,6 +263,192 @@ async def financial_summary():
         return {"ok": False, "properties": [], "error": str(e)}
 
 
+@router.get("/{property_id}/financial-detail")
+async def financial_detail(property_id: str):
+    """
+    Full financial detail for ONE property — used by Resumen Financiero expanded view.
+    Returns property info, renovation, moves, sale, payments, payment orders, title, transactions.
+    """
+    try:
+        # Property
+        prop_result = sb.table("properties") \
+            .select("id, address, property_code, city, status, purchase_price, sale_price, seller_name, seller_contact, created_at") \
+            .eq("id", property_id).single().execute()
+        if not prop_result.data:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Property not found")
+        prop = prop_result.data
+
+        # Renovation (latest)
+        renovation = None
+        try:
+            reno = sb.table("renovations") \
+                .select("total_cost, materials, status, notes, created_at, updated_at") \
+                .eq("property_id", property_id) \
+                .order("created_at", desc=True).limit(1).execute()
+            if reno.data:
+                r = reno.data[0]
+                mats = r.get("materials") or {}
+                # Extract items summary
+                items = mats.get("items", {})
+                active_items = [k for k, v in items.items() if isinstance(v, dict) and (float(v.get("mano_obra", 0)) + float(v.get("materiales", 0)) > 0)]
+                renovation = {
+                    "total_cost": float(r.get("total_cost") or 0),
+                    "status": r.get("status"),
+                    "responsable": mats.get("responsable", ""),
+                    "approval_status": mats.get("approval_status", ""),
+                    "fecha_inicio": mats.get("fecha_inicio", ""),
+                    "fecha_fin": mats.get("fecha_fin", ""),
+                    "items_summary": ", ".join(active_items[:8]),
+                    "items_count": len(active_items),
+                    "created_at": r.get("created_at"),
+                }
+        except Exception:
+            pass
+
+        # Moves
+        moves = []
+        try:
+            moves_result = sb.table("moves") \
+                .select("id, origin_yard, destination_yard, quoted_cost, final_cost, status, payment_status, transport_company, move_date, created_at") \
+                .eq("property_id", property_id) \
+                .order("created_at", desc=True).execute()
+            moves = [
+                {
+                    "origin": m.get("origin_yard", ""),
+                    "destination": m.get("destination_yard", ""),
+                    "quoted_cost": float(m.get("quoted_cost") or 0),
+                    "final_cost": float(m.get("final_cost") or 0),
+                    "cost": float(m.get("final_cost") or m.get("quoted_cost") or 0),
+                    "status": m.get("status"),
+                    "payment_status": m.get("payment_status"),
+                    "company": m.get("transport_company", ""),
+                    "date": m.get("move_date"),
+                }
+                for m in (moves_result.data or [])
+            ]
+        except Exception:
+            pass
+
+        # Sale (latest non-cancelled)
+        sale = None
+        sale_id = None
+        try:
+            sale_result = sb.table("sales") \
+                .select("id, sale_type, sale_price, status, amount_paid, amount_pending, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, payment_method, created_at, completed_at, client_id") \
+                .eq("property_id", property_id) \
+                .neq("status", "cancelled") \
+                .order("created_at", desc=True).limit(1).execute()
+            if sale_result.data:
+                s = sale_result.data[0]
+                sale_id = s["id"]
+                # Resolve client + employee names
+                client_name = ""
+                if s.get("client_id"):
+                    try:
+                        c = sb.table("clients").select("name, email, phone").eq("id", s["client_id"]).single().execute()
+                        client_name = c.data.get("name", "") if c.data else ""
+                    except Exception:
+                        pass
+                found_name = ""
+                sold_name = ""
+                if s.get("found_by_employee_id"):
+                    try:
+                        e = sb.table("users").select("name").eq("id", s["found_by_employee_id"]).single().execute()
+                        found_name = e.data.get("name", "") if e.data else ""
+                    except Exception:
+                        pass
+                if s.get("sold_by_employee_id"):
+                    try:
+                        e = sb.table("users").select("name").eq("id", s["sold_by_employee_id"]).single().execute()
+                        sold_name = e.data.get("name", "") if e.data else ""
+                    except Exception:
+                        pass
+                sale = {
+                    "id": sale_id,
+                    "type": s.get("sale_type"),
+                    "price": float(s.get("sale_price") or 0),
+                    "status": s.get("status"),
+                    "amount_paid": float(s.get("amount_paid") or 0),
+                    "amount_pending": float(s.get("amount_pending") or 0),
+                    "commission_total": float(s.get("commission_amount") or 0),
+                    "commission_found": float(s.get("commission_found_by") or 0),
+                    "commission_sold": float(s.get("commission_sold_by") or 0),
+                    "found_by": found_name,
+                    "sold_by": sold_name,
+                    "payment_method": s.get("payment_method"),
+                    "client_name": client_name,
+                    "created_at": s.get("created_at"),
+                    "completed_at": s.get("completed_at"),
+                }
+        except Exception:
+            pass
+
+        # Sale payments
+        payments = []
+        if sale_id:
+            try:
+                pay_result = sb.table("sale_payments") \
+                    .select("*") \
+                    .eq("sale_id", sale_id) \
+                    .order("created_at").execute()
+                payments = pay_result.data or []
+            except Exception:
+                pass
+
+        # Payment orders (for THIS property only)
+        payment_orders = []
+        try:
+            po_result = sb.table("payment_orders") \
+                .select("id, amount, status, payee_name, method, reference, payment_date, notes, created_at, completed_at") \
+                .eq("property_id", property_id) \
+                .order("created_at", desc=True).execute()
+            payment_orders = po_result.data or []
+        except Exception:
+            pass
+
+        # Title transfer
+        title_transfer = None
+        try:
+            tt_result = sb.table("title_transfers") \
+                .select("id, status, from_name, to_name, transfer_type, created_at, completed_at") \
+                .eq("property_id", property_id) \
+                .order("created_at", desc=True).limit(1).execute()
+            if tt_result.data:
+                title_transfer = tt_result.data[0]
+        except Exception:
+            pass
+
+        # Accounting transactions
+        transactions = []
+        try:
+            txn_result = sb.table("accounting_transactions") \
+                .select("id, transaction_type, amount, is_income, status, description, transaction_date, counterparty_name") \
+                .eq("property_id", property_id) \
+                .order("transaction_date", desc=True).execute()
+            transactions = txn_result.data or []
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "property": prop,
+            "renovation": renovation,
+            "moves": moves,
+            "sale": sale,
+            "payments": payments,
+            "payment_orders": payment_orders,
+            "title_transfer": title_transfer,
+            "transactions": transactions,
+        }
+    except Exception as e:
+        logger.error(f"[financial-detail] Error: {e}")
+        from fastapi import HTTPException
+        if isinstance(e, HTTPException):
+            raise
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/stats")
 async def get_property_stats():
     """Get property statistics for the dashboard."""

@@ -137,12 +137,16 @@ def notify_commission(sale_id: str, property_id: str, employee_name: str, amount
     )
 
 
-def notify_payment_order_created(order_id: str, property_id: str, amount: float, payee_name: str = ""):
+def notify_payment_order_created(order_id: str, property_id: str, amount: float, payee_name: str = "", property_address: str = "", concept: str = ""):
     """Payment order created (pending approval)."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    addr = property_address or prop["address"]
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    concept_str = f" — {concept}" if concept else ""
     return create_notification(
         type="payment_order",
-        title=f"Orden de pago: ${amount:,.0f}",
-        message=f"Orden de pago por ${amount:,.0f} a {payee_name or 'vendedor'}. Pendiente aprobación de administrador.",
+        title=f"Orden de pago: ${amount:,.0f} — {addr[:40]}{code_str}",
+        message=f"Orden de pago por ${amount:,.0f} a {payee_name or 'vendedor'}{concept_str}. Propiedad: {addr}. Pendiente aprobación.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -155,10 +159,12 @@ def notify_payment_order_created(order_id: str, property_id: str, amount: float,
 
 def notify_payment_order_approved(order_id: str, property_id: str, amount: float, approved_by: str = ""):
     """Payment order approved (ready for treasury)."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="payment_order",
-        title=f"Pago aprobado: ${amount:,.0f}",
-        message=f"Orden de pago por ${amount:,.0f} aprobada por {approved_by or 'admin'}. Abigail puede procesar el pago.",
+        title=f"Pago aprobado: ${amount:,.0f} — {prop['address'][:40]}{code_str}",
+        message=f"Orden de pago por ${amount:,.0f} aprobada por {approved_by or 'admin'}. Propiedad: {prop['address']}. Abigail puede procesar.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -183,12 +189,15 @@ def notify_payment_completed(order_id: str, property_id: str, amount: float, met
     )
 
 
-def notify_renovation_submitted(property_id: str, total_cost: float, responsable: str = ""):
+def notify_renovation_submitted(property_id: str, total_cost: float, responsable: str = "", items_summary: str = ""):
     """Renovation quote submitted for approval."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
+    items_str = f" — {items_summary}" if items_summary else ""
     return create_notification(
         type="renovation",
-        title=f"Cotización renovación: ${total_cost:,.0f}",
-        message=f"Cotización de renovación por ${total_cost:,.0f} enviada para aprobación. Responsable: {responsable or 'N/A'}.",
+        title=f"Renovación {prop['address'][:35]}{code_str}: ${total_cost:,.0f}",
+        message=f"Cotización de renovación por ${total_cost:,.0f} para {prop['address']}{items_str}. Responsable: {responsable or 'N/A'}. Pendiente aprobación.",
         property_id=property_id,
         related_entity_type="renovation",
         amount=total_cost,
@@ -200,10 +209,12 @@ def notify_renovation_submitted(property_id: str, total_cost: float, responsable
 
 def notify_renovation_approved(property_id: str, total_cost: float, approved_by: str = ""):
     """Renovation quote approved."""
+    prop = _get_property_info(property_id) if property_id else {"address": "", "code": ""}
+    code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="renovation",
-        title=f"Renovación aprobada: ${total_cost:,.0f}",
-        message=f"Cotización de ${total_cost:,.0f} aprobada por {approved_by or 'admin'}. Solicitar pago a Abigail.",
+        title=f"Renovación aprobada: ${total_cost:,.0f} — {prop['address'][:35]}{code_str}",
+        message=f"Cotización de ${total_cost:,.0f} para {prop['address']} aprobada por {approved_by or 'admin'}. Solicitar pago a Abigail.",
         property_id=property_id,
         related_entity_type="renovation",
         amount=total_cost,

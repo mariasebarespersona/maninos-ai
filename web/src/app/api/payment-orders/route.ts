@@ -4,10 +4,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function GET(request: NextRequest) {
   try {
+    const params = new URLSearchParams()
     const status = request.nextUrl.searchParams.get('status')
-    const url = status
-      ? `${API_URL}/api/payment-orders?status=${status}`
-      : `${API_URL}/api/payment-orders`
+    const propertyId = request.nextUrl.searchParams.get('property_id')
+    if (status) params.set('status', status)
+    if (propertyId) params.set('property_id', propertyId)
+    const qs = params.toString()
+    const url = qs ? `${API_URL}/api/payment-orders?${qs}` : `${API_URL}/api/payment-orders`
     const res = await fetch(url, { cache: 'no-store' })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })

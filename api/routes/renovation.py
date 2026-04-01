@@ -245,7 +245,10 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
         logger.info(f"[renovation] Quote submitted for approval: {property_id}")
         try:
             from api.services.notification_service import notify_renovation_submitted
-            notify_renovation_submitted(property_id, round(total, 2), data.responsable or "")
+            # Build items summary for notification
+            active_names = [k for k, v in data.items.items() if isinstance(v, dict) and (float(v.get("mano_obra", 0)) + float(v.get("materiales", 0)) > 0)]
+            items_summary = ", ".join(active_names[:5]) if active_names else ""
+            notify_renovation_submitted(property_id, round(total, 2), data.responsable or "", items_summary=items_summary)
         except Exception:
             pass
 
