@@ -757,11 +757,13 @@ export default function NotificacionesPage() {
                           order.concept === 'compra' ? 'bg-blue-100 text-blue-700' :
                           order.concept === 'renovacion' ? 'bg-amber-100 text-amber-700' :
                           order.concept === 'movida' ? 'bg-purple-100 text-purple-700' :
+                          order.concept === 'comision' ? 'bg-gold-100 text-gold-700' :
                           'bg-gray-100 text-gray-600'
                         }`}>
                           {order.concept === 'compra' ? 'Compra de Casa' :
                            order.concept === 'renovacion' ? 'Renovación' :
                            order.concept === 'movida' ? 'Movida / Transporte' :
+                           order.concept === 'comision' ? 'Comisión' :
                            order.concept}
                         </span>
                       )}

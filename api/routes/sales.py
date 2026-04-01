@@ -1562,35 +1562,76 @@ async def commission_report(
 # ============================================================================
 
 def _create_commission_payments(sale: dict):
-    """Auto-generate commission_payments rows when a sale is created."""
+    """
+    Auto-generate commission_payments rows + payment_orders when a sale is created.
+    Payment orders go to Notificaciones → Por Aprobar → Contabilidad.
+    """
     found_by = sale.get("found_by_employee_id")
     sold_by = sale.get("sold_by_employee_id")
     comm_found = float(sale.get("commission_found_by") or 0)
     comm_sold = float(sale.get("commission_sold_by") or 0)
+    property_id = sale.get("property_id")
+    sale_type = sale.get("sale_type", "contado")
+
+    # Resolve property address and employee names
+    prop_address = ""
+    prop_code = ""
+    try:
+        prop = sb.table("properties").select("address, property_code, city").eq("id", property_id).single().execute()
+        if prop.data:
+            prop_address = f"{prop.data.get('address', '')}, {prop.data.get('city', '')}"
+            prop_code = prop.data.get("property_code", "")
+    except Exception:
+        pass
 
     rows = []
     if found_by and comm_found > 0:
-        rows.append({
-            "sale_id": sale["id"],
-            "employee_id": found_by,
-            "role": "found_by",
-            "amount": comm_found,
-            "status": "pending",
-        })
+        rows.append({"sale_id": sale["id"], "employee_id": found_by, "role": "found_by", "amount": comm_found, "status": "pending"})
     if sold_by and comm_sold > 0 and sold_by != found_by:
-        rows.append({
-            "sale_id": sale["id"],
-            "employee_id": sold_by,
-            "role": "sold_by",
-            "amount": comm_sold,
-            "status": "pending",
-        })
+        rows.append({"sale_id": sale["id"], "employee_id": sold_by, "role": "sold_by", "amount": comm_sold, "status": "pending"})
 
     for row in rows:
         try:
             sb.table("commission_payments").insert(row).execute()
         except Exception as e:
             logger.warning(f"[commissions] Failed to create commission_payment: {e}")
+
+        # Also create a payment_order so it appears in Notificaciones
+        try:
+            emp_name = _resolve_employee_name(row["employee_id"]) or "Empleado"
+            role_label = "encontró al cliente" if row["role"] == "found_by" else "cerró la venta"
+            tipo = "RTO" if sale_type == "rto" else "Contado"
+            code_str = f" ({prop_code})" if prop_code else ""
+
+            order_data = {
+                "property_id": property_id,
+                "property_address": prop_address,
+                "payee_name": emp_name,
+                "amount": row["amount"],
+                "method": "transferencia",
+                "status": "pending",
+                "concept": "comision",
+                "notes": (
+                    f"Comisión venta {tipo}: ${row['amount']:,.0f} para {emp_name} ({role_label}). "
+                    f"Propiedad: {prop_address}{code_str}. "
+                    f"Precio venta: ${float(sale.get('sale_price', 0)):,.0f}. "
+                    f"Total comisión: ${float(sale.get('commission_amount', 0)):,.0f}."
+                ),
+                "created_by": "sistema_comisiones",
+            }
+            order_result = sb.table("payment_orders").insert(order_data).execute()
+
+            # Create notification for this commission payment order
+            if order_result.data:
+                from api.services.notification_service import notify_payment_order_created
+                notify_payment_order_created(
+                    order_result.data[0]["id"], property_id, row["amount"], emp_name,
+                    property_address=prop_address,
+                    concept=f"Comisión {tipo}: {emp_name} ({role_label}). {prop_address}{code_str}",
+                )
+            logger.info(f"[commissions] Payment order created for {emp_name}: ${row['amount']:,.0f}")
+        except Exception as e:
+            logger.warning(f"[commissions] Failed to create payment_order for commission: {e}")
 
 
 
