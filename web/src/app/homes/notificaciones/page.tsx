@@ -332,88 +332,7 @@ export default function NotificacionesPage() {
         </div>
       </div>
 
-      {/* ── ACTIVITY FEED: Centralized notifications ─────────────────── */}
-      {notifications.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                Actividad Reciente
-              </h2>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{notifications.filter((n: any) => !n.is_read).length} nuevas</span>
-            </div>
-            <button
-              onClick={async () => {
-                await fetch('/api/notifications/mark-all-read', { method: 'POST' })
-                fetchNotifications()
-                toast.success('Todas marcadas como leídas')
-              }}
-              className="text-xs text-blue-600 hover:text-blue-800"
-            >
-              Marcar todas como leídas
-            </button>
-          </div>
-          <div className="space-y-2">
-            {notifications.slice(0, showAllNotifs ? 20 : 5).map((n: any) => {
-              const typeIcons: Record<string, string> = {
-                purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
-                renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
-                cash_payment: '💵', test: '🔔',
-              }
-              const priorityColors: Record<string, string> = {
-                high: 'border-l-red-500', urgent: 'border-l-red-600',
-                normal: 'border-l-blue-400', low: 'border-l-gray-300',
-              }
-              return (
-                <div
-                  key={n.id}
-                  className={`p-3 rounded-lg border border-l-4 ${priorityColors[n.priority] || 'border-l-gray-300'} ${
-                    n.is_read ? 'bg-gray-50 opacity-70' : 'bg-white'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg">{typeIcons[n.type] || '🔔'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${n.is_read ? 'text-gray-600' : 'text-navy-900 font-semibold'}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
-                        {n.property_code && <span className="bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-medium">{n.property_code}</span>}
-                        {n.property_address && <span>{n.property_address.substring(0, 30)}</span>}
-                        {n.amount && <span className="font-medium text-navy-600">${Number(n.amount).toLocaleString()}</span>}
-                        <span>{new Date(n.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </div>
-                    {n.action_required && !n.action_completed && (
-                      <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-                        {n.action_type === 'approve' ? 'Por aprobar' : n.action_type === 'pay' ? 'Por pagar' : n.action_type === 'confirm' ? 'Por confirmar' : 'Acción'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-            {!showAllNotifs && notifications.length > 5 && (
-              <button
-                onClick={() => setShowAllNotifs(true)}
-                className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 font-medium"
-              >
-                Ver más ({notifications.length - 5} más)
-              </button>
-            )}
-            {showAllNotifs && notifications.length > 5 && (
-              <button
-                onClick={() => setShowAllNotifs(false)}
-                className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2"
-              >
-                Mostrar menos
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Actividad Reciente removed per user request — all actions go through the 4 tabs below */}
 
       {/* ── ADMIN: Renovation quotes pending approval ─────────────────── */}
       {isAdmin && pendingRenovations.length > 0 && (
@@ -817,22 +736,12 @@ export default function NotificacionesPage() {
                       Aprobar
                     </button>
                   )}
-                  {/* Treasury: complete approved orders */}
+                  {/* Treasury/Admin: complete approved orders (single button) */}
                   {isTreasury && order.status === 'approved' && (
                     <button
                       onClick={() => openCompleteModal(order)}
                       className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                       style={{ backgroundColor: 'var(--navy-800)' }}
-                    >
-                      Completar Pago
-                    </button>
-                  )}
-                  {/* Admin can also complete approved orders */}
-                  {isAdmin && order.status === 'approved' && (
-                    <button
-                      onClick={() => openCompleteModal(order)}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                      style={{ backgroundColor: '#16a34a' }}
                     >
                       Completar Pago
                     </button>
