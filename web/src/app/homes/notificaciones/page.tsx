@@ -331,88 +331,102 @@ export default function NotificacionesPage() {
         </div>
       </div>
 
-      {/* ── ACTIVITY FEED: Centralized notifications ─────────────────── */}
-      {notifications.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                Actividad Reciente
-              </h2>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{notifications.filter((n: any) => !n.is_read).length} nuevas</span>
-            </div>
-            <button
-              onClick={async () => {
-                await fetch('/api/notifications/mark-all-read', { method: 'POST' })
-                fetchNotifications()
-                toast.success('Todas marcadas como leídas')
-              }}
-              className="text-xs text-blue-600 hover:text-blue-800"
-            >
-              Marcar todas como leídas
-            </button>
-          </div>
-          <div className="space-y-2">
-            {notifications.slice(0, showAllNotifs ? 20 : 5).map((n: any) => {
-              const typeIcons: Record<string, string> = {
-                purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
-                renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
-                cash_payment: '💵', test: '🔔',
-              }
-              const priorityColors: Record<string, string> = {
-                high: 'border-l-red-500', urgent: 'border-l-red-600',
-                normal: 'border-l-blue-400', low: 'border-l-gray-300',
-              }
-              return (
-                <div
-                  key={n.id}
-                  className={`p-3 rounded-lg border border-l-4 ${priorityColors[n.priority] || 'border-l-gray-300'} ${
-                    n.is_read ? 'bg-gray-50 opacity-70' : 'bg-white'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg">{typeIcons[n.type] || '🔔'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${n.is_read ? 'text-gray-600' : 'text-navy-900 font-semibold'}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
-                        {n.property_code && <span className="bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-medium">{n.property_code}</span>}
-                        {n.property_address && <span>{n.property_address.substring(0, 30)}</span>}
-                        {n.amount && <span className="font-medium text-navy-600">${Number(n.amount).toLocaleString()}</span>}
-                        <span>{new Date(n.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </div>
-                    {n.action_required && !n.action_completed && (
-                      <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-                        {n.action_type === 'approve' ? 'Por aprobar' : n.action_type === 'pay' ? 'Por pagar' : n.action_type === 'confirm' ? 'Por confirmar' : 'Acción'}
-                      </span>
-                    )}
-                  </div>
+      {/* ── ACTION REQUIRED: Ventas, Comisiones, Pagos pendientes ──── */}
+      {(() => {
+        const actionNotifs = notifications.filter((n: any) => n.action_required && !n.action_completed)
+        const infoNotifs = notifications.filter((n: any) => !n.action_required || n.action_completed)
+        const typeIcons: Record<string, string> = {
+          purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
+          renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
+          cash_payment: '💵', sale_payment: '💳', test: '🔔',
+        }
+
+        const NotifCard = ({ n, showAction = false }: { n: any; showAction?: boolean }) => (
+          <div
+            key={n.id}
+            className={`p-3 rounded-lg border border-l-4 ${
+              n.priority === 'high' || n.priority === 'urgent' ? 'border-l-red-500' : n.priority === 'normal' ? 'border-l-blue-400' : 'border-l-gray-300'
+            } ${n.is_read ? 'bg-gray-50 opacity-70' : 'bg-white'}`}
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-lg">{typeIcons[n.type] || '🔔'}</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm ${n.is_read ? 'text-gray-600' : 'text-navy-900 font-semibold'}`}>{n.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+                <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
+                  {n.property_code && <span className="bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-medium">{n.property_code}</span>}
+                  {n.property_address && <span>{n.property_address.substring(0, 40)}</span>}
+                  {n.amount && <span className="font-medium text-navy-600">${Number(n.amount).toLocaleString()}</span>}
+                  <span>{new Date(n.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-              )
-            })}
-            {!showAllNotifs && notifications.length > 5 && (
-              <button
-                onClick={() => setShowAllNotifs(true)}
-                className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 font-medium"
-              >
-                Ver más ({notifications.length - 5} más)
-              </button>
-            )}
-            {showAllNotifs && notifications.length > 5 && (
-              <button
-                onClick={() => setShowAllNotifs(false)}
-                className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2"
-              >
-                Mostrar menos
-              </button>
-            )}
+              </div>
+              {showAction && n.action_required && !n.action_completed && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                  {n.action_type === 'approve' ? 'Por aprobar' : n.action_type === 'pay' ? 'Por pagar' : n.action_type === 'confirm' ? 'Por confirmar' : 'Acción'}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+
+        return (
+          <>
+            {/* Pending actions section */}
+            {actionNotifs.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+                    Pendientes de Acción
+                  </h2>
+                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">{actionNotifs.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {actionNotifs.slice(0, 10).map((n: any) => <NotifCard key={n.id} n={n} showAction />)}
+                </div>
+              </div>
+            )}
+
+            {/* Recent activity (informational) */}
+            {infoNotifs.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+                      Actividad Reciente
+                    </h2>
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{infoNotifs.filter((n: any) => !n.is_read).length} nuevas</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await fetch('/api/notifications/mark-all-read', { method: 'POST' })
+                      fetchNotifications()
+                      toast.success('Todas marcadas como leídas')
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    Marcar todas como leídas
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {infoNotifs.slice(0, showAllNotifs ? 20 : 5).map((n: any) => <NotifCard key={n.id} n={n} />)}
+                  {!showAllNotifs && infoNotifs.length > 5 && (
+                    <button onClick={() => setShowAllNotifs(true)} className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 font-medium">
+                      Ver más ({infoNotifs.length - 5} más)
+                    </button>
+                  )}
+                  {showAllNotifs && infoNotifs.length > 5 && (
+                    <button onClick={() => setShowAllNotifs(false)} className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2">
+                      Mostrar menos
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {/* ── ADMIN: Renovation quotes pending approval ─────────────────── */}
       {isAdmin && pendingRenovations.length > 0 && (
