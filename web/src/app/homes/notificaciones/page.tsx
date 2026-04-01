@@ -1,1043 +1,374 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Bell,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  Loader2,
-  AlertCircle,
-  Building2,
-  CreditCard,
-  X,
-  Calendar,
-  ShieldCheck,
-  Hammer,
-  ExternalLink,
-} from 'lucide-react'
-import Link from 'next/link'
+import { Bell, Clock, Loader2, Building2, ShieldCheck, Hammer, DollarSign, CreditCard, CheckCircle, X } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
-
-interface PaymentOrder {
-  id: string
-  property_id: string
-  property_address: string
-  status: 'pending' | 'approved' | 'completed' | 'cancelled'
-  payee_name: string
-  bank_name: string | null
-  routing_number: string | null
-  account_number: string | null
-  routing_number_last4: string | null
-  account_number_last4: string | null
-  account_type: string
-  payee_address: string | null
-  bank_address: string | null
-  amount: number
-  method: string
-  reference: string | null
-  payment_date: string | null
-  notes: string | null
-  created_by: string | null
-  completed_by: string | null
-  completed_at: string | null
-  approved_by: string | null
-  approved_at: string | null
-  created_at: string
-}
-
-interface BankAccount {
-  id: string
-  name: string
-  bank_name: string
-  current_balance: number
-}
 
 export default function NotificacionesPage() {
   const toast = useToast()
   const { teamUser } = useAuth()
-  const userRole = teamUser?.role || 'admin'
-  const isAdmin = userRole === 'admin'
-  const isTreasury = userRole === 'treasury' || userRole === 'admin'
+  const isAdmin = teamUser?.role === 'admin'
+  const isTreasury = teamUser?.role === 'treasury' || isAdmin
 
-  const [orders, setOrders] = useState<PaymentOrder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'completed' | 'received'>('pending')
-
-  // Completion modal state
-  const [completing, setCompleting] = useState<PaymentOrder | null>(null)
-  const [completeForm, setCompleteForm] = useState({ reference: '', payment_date: '', bank_account_id: '' })
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
-  const [submitting, setSubmitting] = useState(false)
-
-  // Transfer state
+  // Data sources
+  const [pendingOrders, setPendingOrders] = useState<any[]>([])
+  const [approvedOrders, setApprovedOrders] = useState<any[]>([])
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([])
-  const [loadingTransfers, setLoadingTransfers] = useState(true)
-  const [confirmingTransfer, setConfirmingTransfer] = useState<any | null>(null)
-  const [confirmingSubmitting, setConfirmingSubmitting] = useState(false)
-
-  const [confirmedTransfers, setConfirmedTransfers] = useState<any[]>([])
-  const [loadingConfirmed, setLoadingConfirmed] = useState(true)
-
-  // Renovation approvals
-  const [pendingRenovations, setPendingRenovations] = useState<any[]>([])
-  const [loadingRenovations, setLoadingRenovations] = useState(true)
-
-  // Centralized notifications
+  const [pendingRenos, setPendingRenos] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
-  const [notifCount, setNotifCount] = useState(0)
-  const [showAllNotifs, setShowAllNotifs] = useState(false)
-
-  // All pending payment orders (for unified "Pendientes de Acción" section)
-  const [allPendingOrders, setAllPendingOrders] = useState<PaymentOrder[]>([])
-
-  // Approval state
+  const [loading, setLoading] = useState(true)
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
-  // Default tab based on role (admin sees pending first, pure treasury sees approved)
-  useEffect(() => {
-    if (isTreasury && !isAdmin) setActiveTab('approved')
-    else setActiveTab('pending')
-  }, [isTreasury, isAdmin])
+  // Complete modal
+  const [completing, setCompleting] = useState<any>(null)
+  const [completeForm, setCompleteForm] = useState({ reference: '', payment_date: '', bank_account_id: '' })
+  const [bankAccounts, setBankAccounts] = useState<any[]>([])
+  const [submitting, setSubmitting] = useState(false)
 
-  const fetchOrders = useCallback(async () => {
+  // Confirm transfer
+  const [confirmingTransferId, setConfirmingTransferId] = useState<string | null>(null)
+  const [confirmingSubmitting, setConfirmingSubmitting] = useState(false)
+
+  // Active tab for history
+  const [historyTab, setHistoryTab] = useState<'activity' | 'completed'>('activity')
+
+  // ─── Fetchers ────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const status = activeTab === 'approved' ? 'approved' : activeTab
-      const res = await fetch(`/api/payment-orders?status=${status}`)
-      const data = await res.json()
-      if (data.ok) setOrders(data.data || [])
-    } catch (e) {
-      console.error('Error fetching orders:', e)
-    } finally {
-      setLoading(false)
-    }
-  }, [activeTab])
-
-  const fetchBankAccounts = async () => {
-    try {
-      const res = await fetch('/api/accounting/bank-accounts')
-      const data = await res.json()
-      setBankAccounts(data.bank_accounts || [])
-    } catch (e) {
-      console.error('Error fetching bank accounts:', e)
-    }
-  }
-
-  const fetchPendingTransfers = useCallback(async () => {
-    setLoadingTransfers(true)
-    try {
-      const res = await fetch('/api/sales/pending-transfers')
-      const data = await res.json()
-      if (data.ok) setPendingTransfers(data.transfers || [])
-    } catch (e) {
-      console.error('Error fetching pending transfers:', e)
-    } finally {
-      setLoadingTransfers(false)
-    }
+      const [ordPend, ordAppr, xfers, renos, notifs] = await Promise.allSettled([
+        fetch('/api/payment-orders?status=pending').then(r => r.json()),
+        fetch('/api/payment-orders?status=approved').then(r => r.json()),
+        fetch('/api/sales/pending-transfers').then(r => r.json()),
+        fetch('/api/renovation/pending-approvals').then(r => r.json()),
+        fetch('/api/notifications?category=homes&limit=30').then(r => r.json()),
+      ])
+      if (ordPend.status === 'fulfilled') setPendingOrders(ordPend.value.data || [])
+      if (ordAppr.status === 'fulfilled') setApprovedOrders(ordAppr.value.data || [])
+      if (xfers.status === 'fulfilled') setPendingTransfers(xfers.value.transfers || [])
+      if (renos.status === 'fulfilled') setPendingRenos(renos.value.pending || [])
+      if (notifs.status === 'fulfilled') setNotifications(notifs.value.notifications || [])
+    } catch {} finally { setLoading(false) }
   }, [])
 
-  const fetchConfirmedTransfers = useCallback(async () => {
-    setLoadingConfirmed(true)
-    try {
-      const res = await fetch('/api/sales/confirmed-transfers')
-      const data = await res.json()
-      if (data.ok) setConfirmedTransfers(data.transfers || [])
-    } catch (e) {
-      console.error('Error fetching confirmed transfers:', e)
-    } finally {
-      setLoadingConfirmed(false)
-    }
-  }, [])
+  useEffect(() => { fetchAll() }, [fetchAll])
 
-  const fetchPendingRenovations = useCallback(async () => {
-    setLoadingRenovations(true)
+  // ─── Actions ─────────────────────────────────────────────────────
+  const handleApproveOrder = async (id: string) => {
+    setApprovingId(id)
     try {
-      const res = await fetch('/api/renovation/pending-approvals')
-      const data = await res.json()
-      if (data.ok) setPendingRenovations(data.pending || [])
-    } catch (e) {
-      console.error('Error fetching pending renovations:', e)
-    } finally {
-      setLoadingRenovations(false)
-    }
-  }, [])
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await fetch('/api/notifications?category=homes&limit=20')
-      if (res.ok) {
-        const data = await res.json()
-        setNotifications(data.notifications || [])
-        setNotifCount(data.count || 0)
-      }
-    } catch {}
-  }, [])
-
-  // Fetch all pending orders for the unified action section (independent of tabs)
-  const fetchAllPendingOrders = useCallback(async () => {
-    try {
-      const res = await fetch('/api/payment-orders?status=pending')
-      const data = await res.json()
-      if (data.ok) setAllPendingOrders(data.data || [])
-    } catch {}
-  }, [])
-
-  useEffect(() => { fetchOrders() }, [fetchOrders])
-  useEffect(() => { fetchAllPendingOrders() }, [fetchAllPendingOrders])
-  useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
-  useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
-  useEffect(() => { fetchPendingRenovations() }, [fetchPendingRenovations])
-  useEffect(() => { fetchNotifications() }, [fetchNotifications])
-
-  // ── Approve (admin only) ──────────────────────────────────────────────
-  const handleApproveOrder = async (orderId: string) => {
-    setApprovingId(orderId)
-    try {
-      const res = await fetch(`/api/payment-orders/${orderId}/approve?approved_by=${teamUser?.id || ''}`, {
-        method: 'PATCH',
-      })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success('Orden aprobada')
-        fetchOrders()
-      } else {
-        toast.error(data.detail || 'Error al aprobar')
-      }
-    } catch (e) {
-      console.error('Error approving order:', e)
-    } finally {
-      setApprovingId(null)
-    }
+      const res = await fetch(`/api/payment-orders/${id}/approve?approved_by=${teamUser?.id || ''}`, { method: 'PATCH' })
+      if ((await res.json()).ok) { toast.success('Orden aprobada'); fetchAll() }
+      else toast.error('Error al aprobar')
+    } catch { toast.error('Error') } finally { setApprovingId(null) }
   }
 
   const handleApproveTransfer = async (saleId: string) => {
     setApprovingId(saleId)
     try {
-      const res = await fetch(`/api/sales/${saleId}/approve-transfer?approved_by=${teamUser?.id || ''}`, {
-        method: 'POST',
-      })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success('Transferencia aprobada')
-        fetchPendingTransfers()
-      } else {
-        toast.error(data.detail || 'Error al aprobar')
-      }
-    } catch (e) {
-      console.error('Error approving transfer:', e)
-    } finally {
-      setApprovingId(null)
-    }
+      const res = await fetch(`/api/sales/${saleId}/approve-transfer?approved_by=${teamUser?.id || ''}`, { method: 'POST' })
+      if ((await res.json()).ok) { toast.success('Transferencia aprobada'); fetchAll() }
+      else toast.error('Error')
+    } catch { toast.error('Error') } finally { setApprovingId(null) }
   }
 
-  // ── Approve renovation (admin only) ──────────────────────────────────
-  const handleApproveRenovation = async (propertyId: string) => {
+  const handleApproveReno = async (propertyId: string) => {
     setApprovingId(propertyId)
     try {
       const res = await fetch(`/api/renovation/${propertyId}/approve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved_by: teamUser?.name || teamUser?.id || 'admin' }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: teamUser?.name || 'admin' }),
       })
-      const data = await res.json()
-      if (data.success) {
-        toast.success('Cotización de renovación aprobada')
-        fetchPendingRenovations()
-      } else {
-        toast.error(data.detail || 'Error al aprobar')
-      }
-    } catch (e) {
-      console.error('Error approving renovation:', e)
-      toast.error('Error de conexión')
-    } finally {
-      setApprovingId(null)
-    }
+      if ((await res.json()).success) { toast.success('Renovación aprobada'); fetchAll() }
+      else toast.error('Error')
+    } catch { toast.error('Error') } finally { setApprovingId(null) }
   }
 
-  // ── Complete (treasury) ───────────────────────────────────────────────
-  const openCompleteModal = (order: PaymentOrder) => {
-    setCompleting(order)
-    setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '' })
-    if (bankAccounts.length === 0) fetchBankAccounts()
-  }
-
-  const handleComplete = async () => {
+  const handleCompleteOrder = async () => {
     if (!completing || !completeForm.reference) return
     setSubmitting(true)
     try {
       const res = await fetch(`/api/payment-orders/${completing.id}/complete`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(completeForm),
       })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success('Pago completado')
-        setCompleting(null)
-        fetchOrders()
-      } else {
-        toast.error(data.detail || 'Error al completar')
-      }
-    } catch (e) {
-      console.error('Error completing order:', e)
-    } finally {
-      setSubmitting(false)
-    }
+      if ((await res.json()).ok) { toast.success('Pago completado'); setCompleting(null); fetchAll() }
+      else toast.error('Error')
+    } catch { toast.error('Error') } finally { setSubmitting(false) }
   }
 
   const handleConfirmTransfer = async (saleId: string) => {
     setConfirmingSubmitting(true)
     try {
-      const res = await fetch(`/api/sales/${saleId}/confirm-transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success('Pago confirmado. Documentos generados y email enviado al cliente.')
-        setConfirmingTransfer(null)
-        fetchPendingTransfers()
-        fetchConfirmedTransfers()
-        fetchOrders()
-      } else {
-        toast.error(data.detail || 'Error al confirmar la transferencia')
-      }
-    } catch (e) {
-      console.error('Error confirming transfer:', e)
-      toast.error('Error de conexion al confirmar la transferencia')
-    } finally {
-      setConfirmingSubmitting(false)
-    }
+      const res = await fetch(`/api/sales/${saleId}/confirm-transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      if ((await res.json()).ok) { toast.success('Pago confirmado'); setConfirmingTransferId(null); fetchAll() }
+      else toast.error('Error')
+    } catch { toast.error('Error') } finally { setConfirmingSubmitting(false) }
   }
 
-  const formatCurrency = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+  // ─── Computed ────────────────────────────────────────────────────
+  const unapprovedTransfers = isAdmin ? pendingTransfers.filter(t => !t.transfer_approved_at) : []
+  const approvedTransfers = isTreasury ? pendingTransfers.filter(t => t.transfer_approved_at) : []
+  const actionNotifs = notifications.filter(n => n.action_required && !n.action_completed)
+  const infoNotifs = notifications.filter(n => !n.action_required || n.action_completed)
 
-  // Filter transfers: admin sees all, treasury only sees approved ones
-  const transfersForRole = isTreasury
-    ? pendingTransfers.filter((t: any) => t.transfer_approved_at)
-    : pendingTransfers
+  const totalPending = (isAdmin ? pendingOrders.length : 0) + unapprovedTransfers.length +
+    (isAdmin ? pendingRenos.length : 0) + (isTreasury ? approvedOrders.length + approvedTransfers.length : 0) +
+    actionNotifs.length
 
-  // Unapproved transfers (for admin to approve)
-  const unapprovedTransfers = pendingTransfers.filter((t: any) => !t.transfer_approved_at)
+  const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0 })}`
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+
+  if (loading) return <div className="flex items-center justify-center py-20 gap-2 text-navy-500"><Loader2 className="w-5 h-5 animate-spin" /> Cargando...</div>
 
   return (
-    <div className="max-w-4xl mx-auto animate-fade-in">
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--navy-800)' }}>
-            <Bell className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-serif text-2xl font-semibold" style={{ color: 'var(--ink)' }}>
-              Notificaciones
-            </h1>
-            <p className="text-sm" style={{ color: 'var(--slate)' }}>
-              {isAdmin
-                ? 'Aprueba ordenes de pago y transferencias'
-                : 'Ordenes de pago y transferencias pendientes'}
-            </p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--navy-800)' }}>
+          <Bell className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h1 className="font-serif text-2xl font-semibold" style={{ color: 'var(--ink)' }}>Notificaciones</h1>
+          <p className="text-sm" style={{ color: 'var(--slate)' }}>
+            {totalPending > 0 ? `${totalPending} pendientes de acción` : 'Todo al día'}
+          </p>
         </div>
       </div>
 
-      {/* ── ACTION REQUIRED: Unified — notifs + payment orders + transfers + renovations ──── */}
-      {(() => {
-        const actionNotifs = notifications.filter((n: any) => n.action_required && !n.action_completed)
-        const infoNotifs = notifications.filter((n: any) => !n.action_required || n.action_completed)
-
-        // All pending payment orders (fetched independently of tab)
-        const pendingOrders = allPendingOrders
-        // Merge unapproved transfers (admin)
-        const unapprovedXfers = isAdmin ? pendingTransfers.filter((t: any) => !t.transfer_approved_at) : []
-        // Merge pending renovations (admin)
-        const pendingRenos = isAdmin ? pendingRenovations : []
-
-        // Total action count
-        const totalActions = actionNotifs.length + pendingOrders.length + unapprovedXfers.length + pendingRenos.length
-        const typeIcons: Record<string, string> = {
-          purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
-          renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
-          cash_payment: '💵', sale_payment: '💳', test: '🔔',
-        }
-
-        const NotifCard = ({ n, showAction = false }: { n: any; showAction?: boolean }) => (
-          <div
-            key={n.id}
-            className={`p-3 rounded-lg border border-l-4 ${
-              n.priority === 'high' || n.priority === 'urgent' ? 'border-l-red-500' : n.priority === 'normal' ? 'border-l-blue-400' : 'border-l-gray-300'
-            } ${n.is_read ? 'bg-gray-50 opacity-70' : 'bg-white'}`}
-          >
-            <div className="flex items-start gap-3">
-              <span className="text-lg">{typeIcons[n.type] || '🔔'}</span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm ${n.is_read ? 'text-gray-600' : 'text-navy-900 font-semibold'}`}>{n.title}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
-                  {n.property_code && <span className="bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-medium">{n.property_code}</span>}
-                  {n.property_address && <span>{n.property_address.substring(0, 40)}</span>}
-                  {n.amount && <span className="font-medium text-navy-600">${Number(n.amount).toLocaleString()}</span>}
-                  <span>{new Date(n.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>
-              {showAction && n.action_required && !n.action_completed && (
-                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-                  {n.action_type === 'approve' ? 'Por aprobar' : n.action_type === 'pay' ? 'Por pagar' : n.action_type === 'confirm' ? 'Por confirmar' : 'Acción'}
-                </span>
-              )}
-            </div>
+      {/* ═══════════════ PENDIENTES DE ACCIÓN ═══════════════ */}
+      {totalPending > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>Pendientes de Acción</h2>
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">{totalPending}</span>
           </div>
-        )
 
-        return (
-          <>
-            {/* Pending actions section — ALL sources unified */}
-            {totalActions > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                    Pendientes de Acción
-                  </h2>
-                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">{totalActions}</span>
-                </div>
-                <div className="space-y-2">
-                  {/* Pending payment orders (compra, reno, movida) */}
-                  {pendingOrders.map((o: any) => (
-                    <div key={`po-${o.id}`} className="p-3 rounded-lg border border-l-4 border-l-red-500 bg-white">
-                      <div className="flex items-start gap-3">
-                        <span className="text-lg">📋</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-navy-900 font-semibold">
-                            Orden de pago: ${Number(o.amount).toLocaleString()} — {o.property_address || 'Propiedad'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            Pagar a {o.payee_name}. {o.notes ? o.notes.substring(0, 100) : ''}{o.concept ? ` [${o.concept}]` : ''}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
-                            <span className="font-medium text-navy-600">${Number(o.amount).toLocaleString()}</span>
-                            <span>{new Date(o.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                        </div>
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleApproveOrder(o.id)}
-                            disabled={approvingId === o.id}
-                            className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
-                            style={{ backgroundColor: 'var(--navy-800)' }}
-                          >
-                            {approvingId === o.id ? '...' : 'Aprobar'}
-                          </button>
-                        )}
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Unapproved transfers */}
-                  {unapprovedXfers.map((t: any) => (
-                    <div key={`xfer-${t.sale_id}`} className="p-3 rounded-lg border border-l-4 border-l-orange-500 bg-white">
-                      <div className="flex items-start gap-3">
-                        <span className="text-lg">💰</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-navy-900 font-semibold">
-                            Transferencia reportada: ${Number(t.sale_price).toLocaleString()} — {t.property_address || 'Propiedad'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            Cliente: {t.client_name}. {t.client_email} · {t.client_phone}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleApproveTransfer(t.sale_id)}
-                          disabled={approvingId === t.sale_id}
-                          className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
-                          style={{ backgroundColor: 'var(--navy-800)' }}
-                        >
-                          {approvingId === t.sale_id ? '...' : 'Aprobar'}
-                        </button>
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Pending renovation approvals */}
-                  {pendingRenos.map((reno: any) => (
-                    <div key={`reno-${reno.renovation_id}`} className="p-3 rounded-lg border border-l-4 border-l-purple-500 bg-white">
-                      <div className="flex items-start gap-3">
-                        <span className="text-lg">🔧</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-navy-900 font-semibold">
-                            Cotización renovación: ${Number(reno.total_cost || 0).toLocaleString()} — {reno.address || 'Propiedad'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            Responsable: {reno.responsable || 'N/A'}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleApproveRenovation(reno.property_id)}
-                          disabled={approvingId === reno.property_id}
-                          className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
-                          style={{ backgroundColor: 'var(--navy-800)' }}
-                        >
-                          {approvingId === reno.property_id ? '...' : 'Aprobar'}
-                        </button>
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Notification-based action items (sale payments, etc.) */}
-                  {actionNotifs.slice(0, 10).map((n: any) => <NotifCard key={n.id} n={n} showAction />)}
-                </div>
-              </div>
-            )}
-
-            {/* Recent activity (informational) */}
-            {infoNotifs.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                      Actividad Reciente
-                    </h2>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{infoNotifs.filter((n: any) => !n.is_read).length} nuevas</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      await fetch('/api/notifications/mark-all-read', { method: 'POST' })
-                      fetchNotifications()
-                      toast.success('Todas marcadas como leídas')
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    Marcar todas como leídas
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {infoNotifs.slice(0, showAllNotifs ? 20 : 5).map((n: any) => <NotifCard key={n.id} n={n} />)}
-                  {!showAllNotifs && infoNotifs.length > 5 && (
-                    <button onClick={() => setShowAllNotifs(true)} className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 font-medium">
-                      Ver más ({infoNotifs.length - 5} más)
-                    </button>
-                  )}
-                  {showAllNotifs && infoNotifs.length > 5 && (
-                    <button onClick={() => setShowAllNotifs(false)} className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2">
-                      Mostrar menos
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )
-      })()}
-
-      {/* ── OLD SECTIONS REMOVED: renovations + transfers now in unified "Pendientes de Acción" above ── */}
-      {/* Kept: Treasury confirmed-transfers section below */}
-      {false && isAdmin && pendingRenovations.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-              Cotizaciones de Renovación por Aprobar
-            </h2>
-            <span className="ml-auto bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              {pendingRenovations.length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {pendingRenovations.map((reno: any) => (
-              <div key={reno.renovation_id} className="bg-white rounded-xl border-2 border-purple-200 p-5 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Hammer className="w-4 h-4 text-purple-500" />
-                      <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-                        Cotización de Renovación
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                        <Clock className="w-3 h-3" />
-                        Pendiente
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-                        {reno.address || reno.property_id}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 mb-2">
-                      <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                        ${reno.total_cost?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                      {reno.responsable && <span>Responsable: <strong>{reno.responsable}</strong></span>}
-                      {reno.created_at && <span>Creada: {new Date(reno.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleApproveRenovation(reno.property_id)}
-                      disabled={approvingId === reno.property_id}
-                      className="px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-                      style={{ backgroundColor: 'var(--navy-800)' }}
-                    >
-                      {approvingId === reno.property_id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="w-4 h-4" />
-                      )}
-                      Aprobar
-                    </button>
-                    <Link
-                      href={`/homes/properties/${reno.property_id}/renovate`}
-                      className="px-4 py-2 rounded-lg text-xs font-medium text-center transition-colors border flex items-center justify-center gap-1.5"
-                      style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Ver detalle
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── OLD: Moved to unified section above ─────────────────────── */}
-      {false && isAdmin && unapprovedTransfers.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-              Transferencias por Aprobar
-            </h2>
-            <span className="ml-auto bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              {unapprovedTransfers.length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {unapprovedTransfers.map((transfer: any) => (
-              <TransferCard
-                key={transfer.sale_id}
-                transfer={transfer}
-                action={
-                  <button
-                    onClick={() => handleApproveTransfer(transfer.sale_id)}
-                    disabled={approvingId === transfer.sale_id}
-                    className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-                    style={{ backgroundColor: 'var(--navy-800)' }}
-                  >
-                    {approvingId === transfer.sale_id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="w-4 h-4" />
-                    )}
-                    Aprobar
-                  </button>
-                }
-                formatCurrency={formatCurrency}
-                formatDate={formatDate}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── TREASURY: Approved transfers to confirm ────────────────────── */}
-      {isTreasury && transfersForRole.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-              Transferencias Aprobadas — Confirmar Pago
-            </h2>
-            <span className="ml-auto bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              {transfersForRole.length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {transfersForRole.map((transfer: any) => (
-              <TransferCard
-                key={transfer.sale_id}
-                transfer={transfer}
-                action={
-                  confirmingTransfer?.sale_id === transfer.sale_id ? (
-                    <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[240px]">
-                      <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-                        ¿Confirmas que el pago ha sido recibido?
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setConfirmingTransfer(null)}
-                          className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-gray-50"
-                          style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          onClick={() => handleConfirmTransfer(transfer.sale_id)}
-                          disabled={confirmingSubmitting}
-                          className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
-                          style={{ backgroundColor: '#16a34a' }}
-                        >
-                          {confirmingSubmitting ? (
-                            <span className="flex items-center justify-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> ...
-                            </span>
-                          ) : 'Si, confirmar'}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmingTransfer(transfer)}
-                      className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
-                      style={{ backgroundColor: '#16a34a' }}
-                    >
-                      El pago ha sido recibido
-                    </button>
-                  )
-                }
-                formatCurrency={formatCurrency}
-                formatDate={formatDate}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1" style={{ borderColor: 'var(--sand)' }}>
-        {/* Admin sees "Pending" (to approve), Treasury sees "Approved" (to execute) */}
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'pending'
-                ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            Por Aprobar
-          </button>
-        )}
-        {isTreasury && (
-          <button
-            onClick={() => setActiveTab('approved')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'approved'
-                ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            Aprobadas
-          </button>
-        )}
-        <button
-          onClick={() => setActiveTab('received')}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'received'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <DollarSign className="w-4 h-4" />
-          Recibidos
-        </button>
-        <button
-          onClick={() => setActiveTab('completed')}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'completed'
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <CheckCircle className="w-4 h-4" />
-          Realizados
-        </button>
-      </div>
-
-      {/* Received Transfers (Recibidos tab) */}
-      {activeTab === 'received' && (
-        <>
-          {loadingConfirmed ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
-            </div>
-          ) : confirmedTransfers.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
-              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-                <DollarSign className="w-6 h-6 text-emerald-400" />
-              </div>
-              <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                No hay pagos recibidos aun
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {confirmedTransfers.map((ct: any) => (
-                <div key={ct.sale_id} className="bg-white rounded-xl border p-5" style={{ borderColor: 'var(--sand)' }}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
-                        <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-                          Pago Confirmado - {ct.payment_method || 'Transferencia'}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                          Completado
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                        <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                          {ct.property_address}{ct.property_city ? `, ${ct.property_city}` : ''}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                        <span>Cliente: <strong>{ct.client_name}</strong></span>
-                        {ct.completed_at && (
-                          <span>Confirmado: {formatDate(ct.completed_at)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                        {formatCurrency(ct.sale_price)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+          {/* ADMIN: Pending payment orders */}
+          {isAdmin && pendingOrders.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Órdenes de Pago ({pendingOrders.length})</p>
+              {pendingOrders.map(o => (
+                <ActionCard key={o.id} icon="📋" color="border-l-red-500"
+                  title={`${fmt(Number(o.amount))} → ${o.payee_name}`}
+                  subtitle={`${o.property_address || 'Propiedad'} ${o.concept ? `· ${o.concept}` : ''}`}
+                  detail={o.notes?.substring(0, 80) || ''}
+                  date={o.created_at}
+                  action={<button onClick={() => handleApproveOrder(o.id)} disabled={approvingId === o.id}
+                    className="text-xs px-3 py-1 rounded-lg font-medium text-white" style={{ backgroundColor: 'var(--navy-800)' }}>
+                    {approvingId === o.id ? '...' : 'Aprobar'}
+                  </button>}
+                />
               ))}
             </div>
           )}
-        </>
+
+          {/* TREASURY: Approved orders ready to execute */}
+          {isTreasury && approvedOrders.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Por Ejecutar — Aprobados ({approvedOrders.length})</p>
+              {approvedOrders.map(o => (
+                <ActionCard key={o.id} icon="✅" color="border-l-blue-500"
+                  title={`${fmt(Number(o.amount))} → ${o.payee_name}`}
+                  subtitle={o.property_address || 'Propiedad'}
+                  detail={o.notes?.substring(0, 60) || ''}
+                  date={o.approved_at || o.created_at}
+                  action={<button onClick={() => {
+                    setCompleting(o)
+                    setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '' })
+                    if (bankAccounts.length === 0) fetch('/api/accounting/bank-accounts').then(r => r.json()).then(d => setBankAccounts(d.bank_accounts || []))
+                  }} className="text-xs px-3 py-1 rounded-lg font-medium text-white bg-blue-600">
+                    Ejecutar Pago
+                  </button>}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Unapproved transfers */}
+          {unapprovedTransfers.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Transferencias por Aprobar ({unapprovedTransfers.length})</p>
+              {unapprovedTransfers.map(t => (
+                <ActionCard key={t.sale_id} icon="💰" color="border-l-orange-500"
+                  title={`${fmt(Number(t.sale_price))} — ${t.client_name || 'Cliente'}`}
+                  subtitle={t.property_address || 'Propiedad'}
+                  detail={`${t.client_email || ''} · ${t.client_phone || ''}`}
+                  date={t.reported_at}
+                  action={<button onClick={() => handleApproveTransfer(t.sale_id)} disabled={approvingId === t.sale_id}
+                    className="text-xs px-3 py-1 rounded-lg font-medium text-white" style={{ backgroundColor: 'var(--navy-800)' }}>
+                    {approvingId === t.sale_id ? '...' : 'Aprobar'}
+                  </button>}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Approved transfers — treasury confirms receipt */}
+          {approvedTransfers.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Confirmar Recepción ({approvedTransfers.length})</p>
+              {approvedTransfers.map(t => (
+                <ActionCard key={t.sale_id} icon="🏦" color="border-l-emerald-500"
+                  title={`${fmt(Number(t.sale_price))} — ${t.client_name || 'Cliente'}`}
+                  subtitle={t.property_address || 'Propiedad'}
+                  detail="Transferencia aprobada — confirmar que el pago fue recibido"
+                  date={t.reported_at}
+                  action={
+                    confirmingTransferId === t.sale_id ? (
+                      <div className="flex gap-1">
+                        <button onClick={() => handleConfirmTransfer(t.sale_id)} disabled={confirmingSubmitting}
+                          className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-medium">
+                          {confirmingSubmitting ? '...' : 'Sí, recibido'}
+                        </button>
+                        <button onClick={() => setConfirmingTransferId(null)} className="text-xs px-2 py-1 rounded border text-navy-500">No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmingTransferId(t.sale_id)}
+                        className="text-xs px-3 py-1 rounded-lg font-medium text-white bg-emerald-600">
+                        Confirmar
+                      </button>
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Pending renovations */}
+          {isAdmin && pendingRenos.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Cotizaciones Renovación ({pendingRenos.length})</p>
+              {pendingRenos.map(r => (
+                <ActionCard key={r.renovation_id} icon="🔧" color="border-l-purple-500"
+                  title={`${fmt(Number(r.total_cost || 0))} — Renovación`}
+                  subtitle={r.address || 'Propiedad'}
+                  detail={`Responsable: ${r.responsable || 'N/A'}`}
+                  date={r.created_at}
+                  action={<button onClick={() => handleApproveReno(r.property_id)} disabled={approvingId === r.property_id}
+                    className="text-xs px-3 py-1 rounded-lg font-medium text-white" style={{ backgroundColor: 'var(--navy-800)' }}>
+                    {approvingId === r.property_id ? '...' : 'Aprobar'}
+                  </button>}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Sale payment notifications (action_required) */}
+          {actionNotifs.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-navy-500 uppercase tracking-wider">Pagos por Confirmar ({actionNotifs.length})</p>
+              {actionNotifs.slice(0, 8).map(n => (
+                <ActionCard key={n.id} icon={n.type === 'sale_payment' ? '💳' : n.type === 'commission' ? '💵' : '🔔'}
+                  color={`border-l-${n.priority === 'high' ? 'red' : 'blue'}-400`}
+                  title={n.title} subtitle={n.property_address || ''} detail={n.message?.substring(0, 80) || ''}
+                  date={n.created_at} badge={n.property_code}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Orders List (pending/approved/completed tabs) */}
-      {activeTab !== 'received' && (loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
-          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-            {activeTab === 'pending' ? <Clock className="w-6 h-6 text-gray-400" /> :
-             activeTab === 'approved' ? <ShieldCheck className="w-6 h-6 text-gray-400" /> :
-             <CheckCircle className="w-6 h-6 text-gray-400" />}
+      {/* ═══════════════ HISTORIAL ═══════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>Historial</h2>
+          <div className="flex gap-1 ml-auto">
+            <button onClick={() => setHistoryTab('activity')}
+              className={`text-xs px-3 py-1 rounded-full ${historyTab === 'activity' ? 'bg-navy-100 text-navy-700 font-medium' : 'text-navy-400'}`}>
+              Actividad
+            </button>
+            <button onClick={() => setHistoryTab('completed')}
+              className={`text-xs px-3 py-1 rounded-full ${historyTab === 'completed' ? 'bg-navy-100 text-navy-700 font-medium' : 'text-navy-400'}`}>
+              Completados
+            </button>
           </div>
-          <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-            {activeTab === 'pending' ? 'No hay ordenes por aprobar' :
-             activeTab === 'approved' ? 'No hay ordenes aprobadas pendientes' :
-             'No hay ordenes completadas'}
-          </p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {orders.map(order => (
-            <div key={order.id} className="bg-white rounded-xl border p-5 hover:shadow-sm transition-shadow" style={{ borderColor: 'var(--sand)' }}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Building2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--navy-600)' }} />
-                    <span className="font-medium text-sm truncate" style={{ color: 'var(--ink)' }}>
-                      {order.property_address || 'Propiedad'}
-                    </span>
+
+        {historyTab === 'activity' && (
+          <div className="space-y-1.5">
+            {infoNotifs.length === 0 ? (
+              <p className="text-sm text-navy-400 py-4 text-center">Sin actividad reciente</p>
+            ) : infoNotifs.slice(0, 15).map(n => {
+              const icons: Record<string, string> = {
+                purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
+                renovation: '🔧', move: '🚛', sale_payment: '💳', cash_payment: '💵',
+              }
+              return (
+                <div key={n.id} className={`flex items-start gap-2.5 p-2.5 rounded-lg text-xs ${n.is_read ? 'bg-gray-50 opacity-60' : 'bg-white border border-navy-100'}`}>
+                  <span className="text-base mt-0.5">{icons[n.type] || '🔔'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`${n.is_read ? 'text-gray-500' : 'text-navy-800 font-medium'}`}>{n.title}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{n.message}</p>
                   </div>
-                  <div className="flex items-center gap-4 mb-3">
-                    <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                      {formatCurrency(order.amount)}
-                    </span>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      order.status === 'pending' ? 'bg-amber-100 text-amber-800' :
-                      order.status === 'approved' ? 'bg-blue-100 text-blue-800' :
-                      order.status === 'completed' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {order.status === 'pending' && <Clock className="w-3 h-3" />}
-                      {order.status === 'approved' && <ShieldCheck className="w-3 h-3" />}
-                      {order.status === 'completed' && <CheckCircle className="w-3 h-3" />}
-                      {order.status === 'pending' ? 'Pendiente' :
-                       order.status === 'approved' ? 'Aprobada' :
-                       order.status === 'completed' ? 'Completado' : 'Cancelado'}
-                    </span>
-                  </div>
-                  {/* Bank Details */}
-                  <div className="bg-gray-50 rounded-lg p-3 mb-2 space-y-1.5">
-                    <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                      <CreditCard className="w-4 h-4" />
-                      {order.payee_name}
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                      {order.bank_name && <div><span className="font-medium">Banco:</span> {order.bank_name}</div>}
-                      {order.account_type && <div><span className="font-medium">Tipo:</span> {order.account_type === 'checking' ? 'Checking' : 'Savings'}</div>}
-                      {order.routing_number && <div><span className="font-medium">Routing #:</span> <span className="font-mono">{order.routing_number}</span></div>}
-                      {order.account_number && <div><span className="font-medium">Account #:</span> <span className="font-mono">{order.account_number}</span></div>}
-                      {!order.routing_number && order.routing_number_last4 && <div><span className="font-medium">Routing #:</span> ****{order.routing_number_last4}</div>}
-                      {!order.account_number && order.account_number_last4 && <div><span className="font-medium">Account #:</span> ****{order.account_number_last4}</div>}
-                      {order.payee_address && <div className="col-span-2"><span className="font-medium">Dir. beneficiario:</span> {order.payee_address}</div>}
-                      {order.bank_address && <div className="col-span-2"><span className="font-medium">Dir. banco:</span> {order.bank_address}</div>}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      Creado: {formatDate(order.created_at)}
-                    </span>
-                    {order.reference && <span>Ref: {order.reference}</span>}
-                    {order.payment_date && <span>Pagado: {formatDate(order.payment_date)}</span>}
+                  <div className="text-[10px] text-gray-400 whitespace-nowrap flex items-center gap-1.5">
+                    {n.property_code && <span className="bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-medium">{n.property_code}</span>}
+                    {n.amount && <span className="font-medium text-navy-500">{fmt(Number(n.amount))}</span>}
+                    <span>{fmtDate(n.created_at)}</span>
                   </div>
                 </div>
-
-                {/* Actions based on role */}
-                <div className="flex flex-col gap-2 flex-shrink-0">
-                  {/* Admin: approve pending orders */}
-                  {isAdmin && order.status === 'pending' && (
-                    <button
-                      onClick={() => handleApproveOrder(order.id)}
-                      disabled={approvingId === order.id}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-                      style={{ backgroundColor: 'var(--navy-800)' }}
-                    >
-                      {approvingId === order.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="w-4 h-4" />
-                      )}
-                      Aprobar
-                    </button>
-                  )}
-                  {/* Treasury: complete approved orders */}
-                  {isTreasury && order.status === 'approved' && (
-                    <button
-                      onClick={() => openCompleteModal(order)}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                      style={{ backgroundColor: 'var(--navy-800)' }}
-                    >
-                      Completar Pago
-                    </button>
-                  )}
-                  {/* Admin can also complete approved orders */}
-                  {isAdmin && order.status === 'approved' && (
-                    <button
-                      onClick={() => openCompleteModal(order)}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                      style={{ backgroundColor: '#16a34a' }}
-                    >
-                      Completar Pago
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-
-      {/* Complete Payment Modal */}
-      {completing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setCompleting(null)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-                Completar Pago
-              </h3>
-              <button onClick={() => setCompleting(null)} className="p-1 rounded hover:bg-gray-100">
-                <X className="w-5 h-5 text-gray-400" />
+              )
+            })}
+            {infoNotifs.length > 0 && (
+              <button onClick={async () => {
+                await fetch('/api/notifications/mark-all-read', { method: 'POST' })
+                fetchAll()
+                toast.success('Marcadas como leídas')
+              }} className="w-full text-center text-[10px] text-blue-500 hover:text-blue-700 py-1">
+                Marcar todas como leídas
               </button>
+            )}
+          </div>
+        )}
+
+        {historyTab === 'completed' && (
+          <p className="text-sm text-navy-400 py-4 text-center">
+            Ver órdenes completadas en Contabilidad
+          </p>
+        )}
+      </div>
+
+      {/* ═══════════════ COMPLETE ORDER MODAL ═══════════════ */}
+      {completing && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCompleting(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-lg font-semibold">Completar Pago</h3>
+              <button onClick={() => setCompleting(null)}><X className="w-5 h-5 text-navy-400" /></button>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span style={{ color: 'var(--slate)' }}>Propiedad</span>
-                <span className="font-medium" style={{ color: 'var(--ink)' }}>{completing.property_address || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span style={{ color: 'var(--slate)' }}>Beneficiario</span>
-                <span className="font-medium" style={{ color: 'var(--ink)' }}>{completing.payee_name}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span style={{ color: 'var(--slate)' }}>Monto</span>
-                <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(completing.amount)}</span>
-              </div>
+            <div className="p-3 bg-navy-50 rounded-lg text-sm">
+              <p className="font-medium">{fmt(Number(completing.amount))} → {completing.payee_name}</p>
+              <p className="text-xs text-navy-500 mt-1">{completing.property_address}</p>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                  Numero de confirmacion *
-                </label>
-                <input
-                  type="text"
-                  value={completeForm.reference}
-                  onChange={e => setCompleteForm(prev => ({ ...prev, reference: e.target.value }))}
-                  placeholder="Ingresa el # de confirmacion"
-                  className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500"
-                  style={{ borderColor: 'var(--stone)' }}
-                />
+                <label className="text-xs font-medium text-navy-600">Referencia / Confirmación *</label>
+                <input type="text" value={completeForm.reference} onChange={e => setCompleteForm({ ...completeForm, reference: e.target.value })}
+                  className="w-full mt-1 border border-navy-200 rounded-lg px-3 py-2 text-sm" placeholder="Número de confirmación" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                  Fecha del pago *
-                </label>
-                <input
-                  type="date"
-                  value={completeForm.payment_date}
-                  onChange={e => setCompleteForm(prev => ({ ...prev, payment_date: e.target.value }))}
-                  className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500"
-                  style={{ borderColor: 'var(--stone)' }}
-                />
+                <label className="text-xs font-medium text-navy-600">Fecha de pago</label>
+                <input type="date" value={completeForm.payment_date} onChange={e => setCompleteForm({ ...completeForm, payment_date: e.target.value })}
+                  className="w-full mt-1 border border-navy-200 rounded-lg px-3 py-2 text-sm" />
               </div>
               {bankAccounts.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                    Cuenta bancaria de origen
-                  </label>
-                  <select
-                    value={completeForm.bank_account_id}
-                    onChange={e => setCompleteForm(prev => ({ ...prev, bank_account_id: e.target.value }))}
-                    className="w-full p-3 border rounded-lg text-sm bg-white"
-                    style={{ borderColor: 'var(--stone)' }}
-                  >
-                    <option value="">Seleccionar cuenta...</option>
-                    {bankAccounts.map(ba => (
-                      <option key={ba.id} value={ba.id}>
-                        {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
-                      </option>
-                    ))}
+                  <label className="text-xs font-medium text-navy-600">Cuenta bancaria</label>
+                  <select value={completeForm.bank_account_id} onChange={e => setCompleteForm({ ...completeForm, bank_account_id: e.target.value })}
+                    className="w-full mt-1 border border-navy-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Seleccionar —</option>
+                    {bankAccounts.map((b: any) => <option key={b.id} value={b.id}>{b.name} ({b.bank_name})</option>)}
                   </select>
                 </div>
               )}
             </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setCompleting(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium hover:bg-gray-50"
-                style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleComplete}
-                disabled={!completeForm.reference || submitting}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-                style={{ backgroundColor: 'var(--navy-800)' }}
-              >
-                {submitting ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Procesando...
-                  </span>
-                ) : 'Confirmar Pago Realizado'}
-              </button>
-            </div>
+            <button onClick={handleCompleteOrder} disabled={submitting || !completeForm.reference}
+              className="w-full py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: 'var(--navy-800)' }}>
+              {submitting ? 'Procesando...' : 'Completar Pago'}
+            </button>
           </div>
         </div>
       )}
@@ -1045,55 +376,27 @@ export default function NotificacionesPage() {
   )
 }
 
-// ── Reusable Transfer Card ──────────────────────────────────────────────
-function TransferCard({
-  transfer,
-  action,
-  formatCurrency,
-  formatDate,
-}: {
-  transfer: any
-  action: React.ReactNode
-  formatCurrency: (n: number) => string
-  formatDate: (d: string) => string
+// ═══════════════════════════════════════════════════════════════
+// Compact action card
+// ═══════════════════════════════════════════════════════════════
+
+function ActionCard({ icon, color, title, subtitle, detail, date, action, badge }: {
+  icon: string; color: string; title: string; subtitle: string; detail?: string; date?: string; action?: React.ReactNode; badge?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border-2 border-orange-200 p-5 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <DollarSign className="w-4 h-4 text-orange-500" />
-            <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-              Pago Contado - Transferencia Bancaria
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mb-2">
-            <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-            <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-              {transfer.property_address}
-            </span>
-          </div>
-          <div className="flex items-center gap-4 mb-3">
-            <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-              {formatCurrency(transfer.sale_price)}
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-              <AlertCircle className="w-3 h-3" />
-              Pendiente
-            </span>
-          </div>
-          <div className="bg-orange-50 rounded-lg p-3 mb-2">
-            <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--slate)' }}>
-              <div><span className="font-medium">Cliente:</span> {transfer.client_name}</div>
-              <div><span className="font-medium">Email:</span> {transfer.client_email}</div>
-              <div><span className="font-medium">Telefono:</span> {transfer.client_phone}</div>
-              <div><span className="font-medium">Reportado:</span> {formatDate(transfer.reported_at)}</div>
-            </div>
-          </div>
+    <div className={`flex items-center gap-3 p-2.5 rounded-lg border border-l-4 ${color} bg-white`}>
+      <span className="text-base flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-navy-900 font-medium truncate">{title}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-[11px] text-navy-500 truncate">{subtitle}</p>
+          {badge && <span className="text-[9px] bg-navy-100 text-navy-600 px-1 rounded font-bold">{badge}</span>}
         </div>
-        <div className="flex flex-col gap-2">
-          {action}
-        </div>
+        {detail && <p className="text-[10px] text-gray-400 truncate mt-0.5">{detail}</p>}
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {date && <span className="text-[10px] text-gray-400">{new Date(date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>}
+        {action}
       </div>
     </div>
   )
