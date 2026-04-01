@@ -349,7 +349,7 @@ function NewSaleContent() {
           Nueva Venta Contado
         </h1>
         <p className="text-navy-500 mt-1">
-          ¿Cómo paga el cliente?
+          Registra la venta y los datos del cliente
         </p>
       </div>
 
