@@ -61,8 +61,8 @@ interface TeamUser {
   role?: string
 }
 
-type PaymentType = 'contado' | 'rto'
-type Step = 'property' | 'payment-type' | 'client' | 'employees' | 'payment-info' | 'confirm'
+type PaymentType = 'contado'
+type Step = 'property' | 'client' | 'employees' | 'payment-info' | 'confirm'
 
 // Commission amounts (must match backend: api/utils/commissions.py)
 const COMMISSION_CASH = 1500
@@ -102,8 +102,8 @@ function NewSaleContent() {
   const preselectedProperty = searchParams.get('property')
   const preselectedClient = searchParams.get('client')
 
-  const [step, setStep] = useState<Step>(preselectedProperty ? 'payment-type' : 'property')
-  const [paymentType, setPaymentType] = useState<PaymentType | null>(null)
+  const [step, setStep] = useState<Step>(preselectedProperty ? 'client' : 'property')
+  const [paymentType] = useState<PaymentType>('contado')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -346,16 +346,14 @@ function NewSaleContent() {
           Volver a Ventas
         </Link>
         <h1 className="font-serif text-2xl text-navy-900">
-          {paymentType === 'contado' ? 'Venta Contado (Cash)' : 
-           paymentType === 'rto' ? 'Venta RTO (Maninos Homes)' : 
-           'Nueva Venta'}
+          Nueva Venta Contado
         </h1>
         <p className="text-navy-500 mt-1">
           ¿Cómo paga el cliente?
         </p>
       </div>
 
-      {/* Progress — 6 steps */}
+      {/* Progress — 5 steps (Contado only, RTO managed in Capital) */}
       <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8">
         <StepIndicator
           number={1}
@@ -363,38 +361,31 @@ function NewSaleContent() {
           active={step === 'property'}
           completed={!!selectedProperty && step !== 'property'}
         />
-        <div className="w-4 sm:w-6 h-0.5 bg-navy-200" />
+        <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
         <StepIndicator
           number={2}
-          label="Tipo"
-          active={step === 'payment-type'}
-          completed={!!paymentType && step !== 'payment-type' && step !== 'property'}
-        />
-        <div className="w-4 sm:w-6 h-0.5 bg-navy-200" />
-        <StepIndicator
-          number={3}
           label="Cliente"
           active={step === 'client'}
-          completed={(!!selectedClient || isNewClient) && !['property', 'payment-type', 'client'].includes(step)}
+          completed={(!!selectedClient || isNewClient) && !['property', 'client'].includes(step)}
         />
-        <div className="w-4 sm:w-6 h-0.5 bg-navy-200" />
+        <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
         <StepIndicator
-          number={4}
+          number={3}
           label="Equipo"
           active={step === 'employees'}
           completed={(!!foundByEmployeeId || !!soldByEmployeeId) && ['payment-info', 'confirm'].includes(step)}
         />
-        <div className="w-4 sm:w-6 h-0.5 bg-navy-200" />
+        <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
         <StepIndicator
-          number={5}
+          number={4}
           label="Pagos"
           active={step === 'payment-info'}
           completed={step === 'confirm'}
         />
-        <div className="w-4 sm:w-6 h-0.5 bg-navy-200" />
+        <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
         <StepIndicator
-          number={6} 
-          label="Confirmar" 
+          number={5}
+          label="Confirmar"
           active={step === 'confirm'}
         />
       </div>
@@ -464,7 +455,7 @@ function NewSaleContent() {
 
           <div className="flex justify-end">
             <button
-              onClick={() => setStep('payment-type')}
+              onClick={() => setStep('client')}
               disabled={!selectedProperty}
               className="btn-gold disabled:opacity-50"
             >
@@ -475,112 +466,7 @@ function NewSaleContent() {
         </div>
       )}
 
-      {/* Step 2: Payment Type Selection */}
-      {step === 'payment-type' && (
-        <div className="space-y-4">
-          <div className="card-luxury p-6">
-            <h2 className="font-medium text-navy-900 mb-6 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gold-500" />
-              ¿Cómo paga el cliente?
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Option 1: Contado */}
-              <button
-                onClick={() => setPaymentType('contado')}
-                className={`p-6 rounded-xl border-2 text-left transition-all ${
-                  paymentType === 'contado'
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-navy-200 hover:border-emerald-300 hover:bg-emerald-50/50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`p-3 rounded-full ${
-                    paymentType === 'contado' ? 'bg-emerald-100' : 'bg-navy-100'
-                  }`}>
-                    <Banknote className={`w-6 h-6 ${
-                      paymentType === 'contado' ? 'text-emerald-600' : 'text-navy-500'
-                    }`} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-navy-900">Contado (Cash)</h3>
-                    <p className="text-sm text-emerald-600">Comisión: $1,500</p>
-                  </div>
-                </div>
-                <p className="text-sm text-navy-600">
-                  El cliente tiene el dinero completo. Pago directo vía Stripe, transferencia o efectivo.
-                </p>
-              </button>
-
-              {/* Option 2: RTO */}
-              <button
-                onClick={() => setPaymentType('rto')}
-                className={`p-6 rounded-xl border-2 text-left transition-all ${
-                  paymentType === 'rto'
-                    ? 'border-purple-400 bg-purple-50'
-                    : 'border-navy-200 hover:border-purple-300 hover:bg-purple-50/50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`p-3 rounded-full ${
-                    paymentType === 'rto' ? 'bg-purple-100' : 'bg-navy-100'
-                  }`}>
-                    <Landmark className={`w-6 h-6 ${
-                      paymentType === 'rto' ? 'text-purple-600' : 'text-navy-500'
-                    }`} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-navy-900">Maninos Homes (RTO)</h3>
-                    <p className="text-sm text-purple-600">Comisión: $1,000</p>
-                  </div>
-                </div>
-                <p className="text-sm text-navy-600">
-                  Rent-to-Own. Maninos Homes adquiere la propiedad y financia al cliente.
-                </p>
-              </button>
-            </div>
-
-            {/* RTO Coming Soon Notice */}
-            {paymentType === 'rto' && (
-              <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <Clock className="w-5 h-5 text-purple-500 mt-0.5" />
-                  <div>
-                    <h4 className="font-medium text-purple-900">Portal Maninos Homes - Próximamente</h4>
-                    <p className="text-sm text-purple-700 mt-1">
-                      El flujo RTO completo (Adquirir, Incorporar, Gestionar Cartera, Entregar, Fondear) 
-                      estará disponible en el Portal Maninos Homes.
-                    </p>
-                    <p className="text-sm text-purple-600 mt-2">
-                      Por ahora, puedes registrar la venta como &quot;RTO pendiente&quot; para seguimiento.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between">
-            <button
-              onClick={() => setStep('property')}
-              className="btn-ghost"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Atrás
-            </button>
-            <button
-              onClick={() => setStep('client')}
-              disabled={!paymentType}
-              className="btn-gold disabled:opacity-50"
-            >
-              Siguiente
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Client */}
+      {/* Step 2: Client (RTO removed — managed by Capital portal) */}
       {step === 'client' && (
         <div className="space-y-4">
           <div className="card-luxury p-6">
@@ -698,7 +584,7 @@ function NewSaleContent() {
           </div>
 
           <div className="flex justify-between">
-            <button onClick={() => setStep('payment-type')} className="btn-ghost">
+            <button onClick={() => setStep('client')} className="btn-ghost">
               <ArrowLeft className="w-5 h-5" />
               Anterior
             </button>
@@ -774,7 +660,7 @@ function NewSaleContent() {
               }`}>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-navy-700">
-                    Comisión Total ({paymentType === 'contado' ? 'Cash' : 'RTO'})
+                    Comisión Total (Cash)
                   </span>
                   <span className="text-lg font-bold text-navy-900">
                     ${commissionPreview.total.toLocaleString()}
@@ -986,7 +872,7 @@ function NewSaleContent() {
                   Tipo de Pago
                 </p>
                 <p className={`font-semibold ${paymentType === 'contado' ? 'text-emerald-700' : 'text-purple-700'}`}>
-                  {paymentType === 'contado' ? '💵 Contado (Cash)' : '🏛️ Maninos Homes (RTO)'}
+                  💵 Contado (Cash)
                 </p>
               </div>
 
@@ -1031,16 +917,6 @@ function NewSaleContent() {
                   <p className="text-xs text-blue-600">{commissionPreview.note}</p>
                 </div>
               </div>
-
-              {/* RTO Notice */}
-              {paymentType === 'rto' && (
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                  <p className="text-sm text-purple-700">
-                    <strong>Nota:</strong> Esta venta se registrará como &quot;RTO Pendiente&quot;.
-                    El flujo completo de Maninos Homes estará disponible próximamente.
-                  </p>
-                </div>
-              )}
 
               {/* Payment Info Summary */}
               {paymentStatus !== 'none' && initialPaymentAmount && (
