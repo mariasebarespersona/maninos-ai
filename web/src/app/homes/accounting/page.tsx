@@ -2340,6 +2340,10 @@ function EstadoCuentaTab() {
   const [newAccountName, setNewAccountName] = useState('')
   const [newAccountBank, setNewAccountBank] = useState('')
   const [creatingAccount, setCreatingAccount] = useState(false)
+  // App transactions for reconciliation view
+  const [appTransactions, setAppTransactions] = useState<any[]>([])
+  const [loadingAppTxns, setLoadingAppTxns] = useState(false)
+
   // 3-step wizard state
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
   const [reconciling, setReconciling] = useState(false)
@@ -2486,10 +2490,14 @@ function EstadoCuentaTab() {
     setReconcileMatches([])
     setReconcileDone(false)
     try {
-      const res = await fetch(`/api/accounting/bank-statements/${stmtId}`)
-      if (res.ok) {
-        const data = await res.json()
-        setActiveMovements(data.movements || [])
+      const [mvRes, txnRes] = await Promise.all([
+        fetch(`/api/accounting/bank-statements/${stmtId}`),
+        fetch('/api/accounting/transactions?status=confirmed&limit=100'),
+      ])
+      if (mvRes.ok) setActiveMovements((await mvRes.json()).movements || [])
+      if (txnRes.ok) {
+        const txnData = await txnRes.json()
+        setAppTransactions((txnData.transactions || txnData.data || txnData || []).filter((t: any) => t.status === 'confirmed' || t.status === 'pending'))
       }
     } catch (e) { console.error(e) }
     finally { setMovementsLoading(false) }
@@ -2956,9 +2964,38 @@ function EstadoCuentaTab() {
               {/* STEP 1: Conciliar */}
               {wizardStep === 1 && (
                 <div className="p-5 space-y-4">
+                  {/* App transactions available for reconciliation */}
+                  {appTransactions.length > 0 && (
+                    <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0f9ff' }}>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                          Transacciones de la App ({appTransactions.length} pendientes de conciliar)
+                        </h4>
+                      </div>
+                      <div className="max-h-[200px] overflow-y-auto space-y-1">
+                        {appTransactions.slice(0, 20).map((t: any) => (
+                          <div key={t.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-white border" style={{ borderColor: '#e0e7ff' }}>
+                            <span className={`font-bold ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {t.is_income ? '+' : '-'}${Number(t.amount).toLocaleString()}
+                            </span>
+                            <span className="text-navy-600 truncate flex-1">{t.description?.substring(0, 50) || t.transaction_type}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{t.transaction_type}</span>
+                            <span className="text-[10px] text-gray-400">{t.transaction_date ? new Date(t.transaction_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.status === 'confirmed' ? 'bg-amber-100 text-amber-700' : t.status === 'reconciled' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {t.status === 'confirmed' ? 'Sin conciliar' : t.status === 'reconciled' ? 'Conciliado' : t.status}
+                            </span>
+                          </div>
+                        ))}
+                        {appTransactions.length > 20 && (
+                          <p className="text-[10px] text-gray-400 text-center">+{appTransactions.length - 20} más</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      Busca coincidencias entre los movimientos del estado de cuenta y las transacciones existentes en la app.
+                      Busca coincidencias entre los movimientos del estado de cuenta y las transacciones de la app.
                     </p>
                     <button
                       onClick={() => { setReconcileDone(false); reconcileMovements(activeStatement) }}
