@@ -489,6 +489,7 @@ async def register_sale_payment(sale_id: str, data: dict):
             "method": method,
             "status": "pending",
             "concept": "pago_venta",
+            "direction": "inbound",
             "notes": (
                 f"{label}: ${float(payment_data.amount):,.0f} de {client_name or 'cliente'} ({method}). "
                 f"Propiedad: {prop_address}. "

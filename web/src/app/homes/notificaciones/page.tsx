@@ -40,6 +40,7 @@ interface PaymentOrder {
   payment_date: string | null
   notes: string | null
   concept: string | null
+  direction: string | null
   created_by: string | null
   completed_by: string | null
   completed_at: string | null
@@ -80,6 +81,9 @@ export default function NotificacionesPage() {
 
   const [confirmedTransfers, setConfirmedTransfers] = useState<any[]>([])
   const [loadingConfirmed, setLoadingConfirmed] = useState(true)
+
+  // Inbound completed payment orders (pagos recibidos de clientes)
+  const [inboundReceived, setInboundReceived] = useState<PaymentOrder[]>([])
 
   // Renovation approvals
   const [pendingRenovations, setPendingRenovations] = useState<any[]>([])
@@ -173,7 +177,16 @@ export default function NotificacionesPage() {
     } catch {}
   }, [])
 
+  const fetchInboundReceived = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payment-orders?status=completed')
+      const data = await res.json()
+      if (data.ok) setInboundReceived((data.data || []).filter((o: any) => o.direction === 'inbound'))
+    } catch {}
+  }, [])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
+  useEffect(() => { fetchInboundReceived() }, [fetchInboundReceived])
   useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
   useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
   useEffect(() => { fetchPendingRenovations() }, [fetchPendingRenovations])
@@ -563,9 +576,46 @@ export default function NotificacionesPage() {
         </button>
       </div>
 
-      {/* Received Transfers (Recibidos tab) */}
+      {/* Received: inbound payment orders + confirmed transfers */}
       {activeTab === 'received' && (
         <>
+          {/* Inbound payments received (from sale payments) */}
+          {inboundReceived.length > 0 && (
+            <div className="space-y-3 mb-6">
+              <h3 className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Pagos de Clientes Recibidos</h3>
+              {inboundReceived.map((o: any) => (
+                <div key={o.id} className="bg-white rounded-xl border p-4" style={{ borderColor: 'var(--sand)' }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
+                          {o.payee_name} — ${Number(o.amount).toLocaleString()}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Recibido</span>
+                        {o.concept && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            o.concept === 'pago_venta' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'
+                          }`}>{o.concept === 'pago_venta' ? 'Pago de Venta' : o.concept}</span>
+                        )}
+                      </div>
+                      {o.property_address && (
+                        <div className="flex items-center gap-1 text-xs mb-1" style={{ color: 'var(--slate)' }}>
+                          <Building2 className="w-3 h-3" /> {o.property_address}
+                        </div>
+                      )}
+                      {o.notes && <p className="text-xs" style={{ color: 'var(--slate)' }}>{o.notes.substring(0, 120)}</p>}
+                      <span className="text-[10px]" style={{ color: 'var(--slate)' }}>
+                        {o.completed_at ? new Date(o.completed_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Confirmed bank transfers */}
           {loadingConfirmed ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
@@ -621,11 +671,16 @@ export default function NotificacionesPage() {
       )}
 
       {/* Orders List (pending/approved/completed tabs) */}
-      {activeTab !== 'received' && (loading ? (
+      {activeTab !== 'received' && (() => {
+        // For "Aprobadas" tab: only show outbound (Maninos pays). Inbound go to "Recibidos".
+        const displayOrders = activeTab === 'approved'
+          ? orders.filter((o: any) => o.direction !== 'inbound')
+          : orders
+        return loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
         </div>
-      ) : orders.length === 0 ? (
+      ) : displayOrders.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
           <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
             {activeTab === 'pending' ? <Clock className="w-6 h-6 text-gray-400" /> :
@@ -640,7 +695,7 @@ export default function NotificacionesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map(order => (
+          {displayOrders.map(order => (
             <div key={order.id} className="bg-white rounded-xl border p-5 hover:shadow-sm transition-shadow" style={{ borderColor: 'var(--sand)' }}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -753,7 +808,8 @@ export default function NotificacionesPage() {
             </div>
           ))}
         </div>
-      ))}
+      )
+      })()}
 
       {/* Complete Payment Modal */}
       {completing && (
