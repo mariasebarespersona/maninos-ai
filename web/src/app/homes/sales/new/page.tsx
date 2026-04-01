@@ -62,7 +62,7 @@ interface TeamUser {
 }
 
 type PaymentType = 'contado'
-type Step = 'property' | 'client' | 'employees' | 'payment-info' | 'confirm'
+type Step = 'property' | 'client' | 'employees' | 'confirm'
 
 // Commission amounts (must match backend: api/utils/commissions.py)
 const COMMISSION_CASH = 1500
@@ -120,11 +120,6 @@ function NewSaleContent() {
   // Current logged-in user's team ID (matched by email)
   const [currentTeamUserId, setCurrentTeamUserId] = useState<string | null>(null)
   
-  // Initial payment info
-  const [paymentStatus, setPaymentStatus] = useState<'none' | 'down_payment' | 'full'>('none')
-  const [initialPaymentAmount, setInitialPaymentAmount] = useState('')
-  const [initialPaymentMethod, setInitialPaymentMethod] = useState('bank_transfer')
-
   // Employee assignment
   const [foundByEmployeeId, setFoundByEmployeeId] = useState<string | null>(null)
   const [soldByEmployeeId, setSoldByEmployeeId] = useState<string | null>(null)
@@ -288,11 +283,6 @@ function NewSaleContent() {
           sale_type: paymentType || 'contado',
           found_by_employee_id: foundByEmployeeId || undefined,
           sold_by_employee_id: soldByEmployeeId || undefined,
-          ...(paymentStatus !== 'none' && initialPaymentAmount ? {
-            initial_payment_amount: Number(initialPaymentAmount),
-            initial_payment_method: initialPaymentMethod,
-            initial_payment_type: paymentStatus,
-          } : {}),
         }),
       })
 
@@ -352,7 +342,7 @@ function NewSaleContent() {
         </p>
       </div>
 
-      {/* Progress — 5 steps (Contado only, RTO managed in Capital) */}
+      {/* Progress — 4 steps */}
       <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8">
         <StepIndicator
           number={1}
@@ -372,18 +362,11 @@ function NewSaleContent() {
           number={3}
           label="Equipo"
           active={step === 'employees'}
-          completed={(!!foundByEmployeeId || !!soldByEmployeeId) && ['payment-info', 'confirm'].includes(step)}
+          completed={(!!foundByEmployeeId || !!soldByEmployeeId) && step === 'confirm'}
         />
         <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
         <StepIndicator
           number={4}
-          label="Pagos"
-          active={step === 'payment-info'}
-          completed={step === 'confirm'}
-        />
-        <div className="w-4 sm:w-8 h-0.5 bg-navy-200" />
-        <StepIndicator
-          number={5}
           label="Confirmar"
           active={step === 'confirm'}
         />
@@ -705,7 +688,7 @@ function NewSaleContent() {
               Anterior
             </button>
             <button
-              onClick={() => setStep('payment-info')}
+              onClick={() => setStep('confirm')}
               className="btn-gold"
             >
               Siguiente
@@ -715,122 +698,7 @@ function NewSaleContent() {
         </div>
       )}
 
-      {/* Step 5: Payment Info */}
-      {step === 'payment-info' && (
-        <div className="space-y-4">
-          <div className="card-luxury p-6">
-            <h2 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-gold-500" />
-              ¿Se ha recibido algún pago?
-            </h2>
-
-            <div className="space-y-3">
-              <label
-                className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  paymentStatus === 'none' ? 'border-navy-600 bg-navy-50' : 'border-navy-200 hover:border-navy-300'
-                }`}
-                onClick={() => setPaymentStatus('none')}
-              >
-                <input type="radio" checked={paymentStatus === 'none'} onChange={() => setPaymentStatus('none')} className="accent-navy-600" />
-                <div>
-                  <p className="font-medium text-navy-900">No, pendiente de pago</p>
-                  <p className="text-sm text-navy-500">El cliente aún no ha hecho ningún pago</p>
-                </div>
-              </label>
-
-              <label
-                className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  paymentStatus === 'down_payment' ? 'border-navy-600 bg-navy-50' : 'border-navy-200 hover:border-navy-300'
-                }`}
-                onClick={() => setPaymentStatus('down_payment')}
-              >
-                <input type="radio" checked={paymentStatus === 'down_payment'} onChange={() => setPaymentStatus('down_payment')} className="accent-navy-600" />
-                <div>
-                  <p className="font-medium text-navy-900">Enganche (pago parcial)</p>
-                  <p className="text-sm text-navy-500">El cliente ha hecho un pago inicial, falta el saldo</p>
-                </div>
-              </label>
-
-              {paymentStatus === 'down_payment' && (
-                <div className="ml-10 p-4 bg-navy-50 rounded-lg space-y-3">
-                  <div>
-                    <label className="text-sm font-medium text-navy-700">Monto del enganche</label>
-                    <input
-                      type="number"
-                      value={initialPaymentAmount}
-                      onChange={(e) => setInitialPaymentAmount(e.target.value)}
-                      placeholder="Ej: 5000"
-                      className="mt-1 w-full border border-navy-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                    {selectedProperty && initialPaymentAmount && (
-                      <p className="text-xs text-navy-500 mt-1">
-                        Saldo pendiente: ${(selectedProperty.sale_price - Number(initialPaymentAmount)).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-navy-700">Método de pago</label>
-                    <select
-                      value={initialPaymentMethod}
-                      onChange={(e) => setInitialPaymentMethod(e.target.value)}
-                      className="mt-1 w-full border border-navy-200 rounded-lg px-3 py-2 text-sm"
-                    >
-                      <option value="bank_transfer">Transferencia</option>
-                      <option value="zelle">Zelle</option>
-                      <option value="cash">Efectivo</option>
-                      <option value="check">Cheque</option>
-                      <option value="other">Otro</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <label
-                className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  paymentStatus === 'full' ? 'border-navy-600 bg-navy-50' : 'border-navy-200 hover:border-navy-300'
-                }`}
-                onClick={() => { setPaymentStatus('full'); setInitialPaymentAmount(String(selectedProperty?.sale_price || '')) }}
-              >
-                <input type="radio" checked={paymentStatus === 'full'} onChange={() => { setPaymentStatus('full'); setInitialPaymentAmount(String(selectedProperty?.sale_price || '')) }} className="accent-navy-600" />
-                <div>
-                  <p className="font-medium text-navy-900">Pagado en su totalidad</p>
-                  <p className="text-sm text-navy-500">El cliente ya pagó el monto completo</p>
-                </div>
-              </label>
-
-              {paymentStatus === 'full' && (
-                <div className="ml-10 p-4 bg-emerald-50 rounded-lg">
-                  <div>
-                    <label className="text-sm font-medium text-emerald-700">Método de pago</label>
-                    <select
-                      value={initialPaymentMethod}
-                      onChange={(e) => setInitialPaymentMethod(e.target.value)}
-                      className="mt-1 w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm"
-                    >
-                      <option value="bank_transfer">Transferencia</option>
-                      <option value="zelle">Zelle</option>
-                      <option value="cash">Efectivo</option>
-                      <option value="check">Cheque</option>
-                      <option value="other">Otro</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex justify-between">
-            <button onClick={() => setStep('employees')} className="btn-ghost">
-              <ArrowLeft className="w-5 h-5" />
-              Anterior
-            </button>
-            <button onClick={() => setStep('confirm')} className="btn-gold">
-              Siguiente
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Payment step removed — payments are registered after sale creation in the Ventas section */}
 
       {/* Step 6: Confirm */}
       {step === 'confirm' && (
@@ -917,23 +785,15 @@ function NewSaleContent() {
                 </div>
               </div>
 
-              {/* Payment Info Summary */}
-              {paymentStatus !== 'none' && initialPaymentAmount && (
-                <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                  <p className="text-sm text-emerald-700 mb-1">
-                    <strong>{paymentStatus === 'full' ? 'Pagado en su totalidad' : 'Enganche registrado'}:</strong> ${Number(initialPaymentAmount).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-emerald-600">Método: {initialPaymentMethod}</p>
-                  {paymentStatus === 'down_payment' && selectedProperty && (
-                    <p className="text-xs text-amber-600 mt-1">Pendiente: ${(selectedProperty.sale_price - Number(initialPaymentAmount)).toLocaleString()}</p>
-                  )}
-                </div>
-              )}
+              {/* Note: payments are registered after sale creation */}
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-sm text-amber-700">Los pagos del cliente se registran después en la sección Ventas.</p>
+              </div>
             </div>
           </div>
 
           <div className="flex justify-between">
-            <button onClick={() => setStep('payment-info')} className="btn-ghost">
+            <button onClick={() => setStep('confirm')} className="btn-ghost">
               <ArrowLeft className="w-5 h-5" />
               Anterior
             </button>

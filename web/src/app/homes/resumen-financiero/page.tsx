@@ -86,7 +86,7 @@ export default function ResumenFinancieroPage() {
           <BarChart3 className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="font-serif text-2xl font-semibold" style={{ color: 'var(--ink)' }}>Resumen Financiero</h1>
+          <h1 className="font-serif text-2xl font-semibold" style={{ color: 'var(--ink)' }}>Resumen de Casas</h1>
           <p className="text-sm" style={{ color: 'var(--slate)' }}>Ficha financiera de cada propiedad</p>
         </div>
       </div>

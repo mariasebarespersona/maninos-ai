@@ -41,7 +41,7 @@ const allNavigation: NavItem[] = [
   { name: 'Titulos', href: '/homes/transfers', icon: FileText },
   { name: 'Notificaciones', href: '/homes/notificaciones', icon: Bell },
   { name: 'Contabilidad', href: '/homes/accounting', icon: Calculator },
-  { name: 'Resumen Financiero', href: '/homes/resumen-financiero', icon: BarChart3 },
+  { name: 'Resumen de Casas', href: '/homes/resumen-financiero', icon: BarChart3 },
 ]
 
 // Nav visibility per role
