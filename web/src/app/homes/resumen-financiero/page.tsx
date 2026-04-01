@@ -37,6 +37,7 @@ interface PropertyFinancial {
 }
 
 const statusLabels: Record<string, { label: string; cls: string }> = {
+  pending_payment: { label: 'Pago Pendiente', cls: 'bg-orange-100 text-orange-700' },
   purchased: { label: 'Comprada', cls: 'bg-blue-100 text-blue-700' },
   published: { label: 'Publicada', cls: 'bg-emerald-100 text-emerald-700' },
   renovating: { label: 'Renovando', cls: 'bg-amber-100 text-amber-700' },
