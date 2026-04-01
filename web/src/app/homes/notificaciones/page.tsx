@@ -89,6 +89,9 @@ export default function NotificacionesPage() {
   const [notifCount, setNotifCount] = useState(0)
   const [showAllNotifs, setShowAllNotifs] = useState(false)
 
+  // All pending payment orders (for unified "Pendientes de Acción" section)
+  const [allPendingOrders, setAllPendingOrders] = useState<PaymentOrder[]>([])
+
   // Approval state
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
@@ -172,7 +175,17 @@ export default function NotificacionesPage() {
     } catch {}
   }, [])
 
+  // Fetch all pending orders for the unified action section (independent of tabs)
+  const fetchAllPendingOrders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payment-orders?status=pending')
+      const data = await res.json()
+      if (data.ok) setAllPendingOrders(data.data || [])
+    } catch {}
+  }, [])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
+  useEffect(() => { fetchAllPendingOrders() }, [fetchAllPendingOrders])
   useEffect(() => { fetchPendingTransfers() }, [fetchPendingTransfers])
   useEffect(() => { fetchConfirmedTransfers() }, [fetchConfirmedTransfers])
   useEffect(() => { fetchPendingRenovations() }, [fetchPendingRenovations])
@@ -331,10 +344,20 @@ export default function NotificacionesPage() {
         </div>
       </div>
 
-      {/* ── ACTION REQUIRED: Ventas, Comisiones, Pagos pendientes ──── */}
+      {/* ── ACTION REQUIRED: Unified — notifs + payment orders + transfers + renovations ──── */}
       {(() => {
         const actionNotifs = notifications.filter((n: any) => n.action_required && !n.action_completed)
         const infoNotifs = notifications.filter((n: any) => !n.action_required || n.action_completed)
+
+        // All pending payment orders (fetched independently of tab)
+        const pendingOrders = allPendingOrders
+        // Merge unapproved transfers (admin)
+        const unapprovedXfers = isAdmin ? pendingTransfers.filter((t: any) => !t.transfer_approved_at) : []
+        // Merge pending renovations (admin)
+        const pendingRenos = isAdmin ? pendingRenovations : []
+
+        // Total action count
+        const totalActions = actionNotifs.length + pendingOrders.length + unapprovedXfers.length + pendingRenos.length
         const typeIcons: Record<string, string> = {
           purchase: '🏠', sale: '💰', commission: '💵', payment_order: '📋',
           renovation: '🔧', move: '🚛', signature: '✍️', capital_payment: '🏦',
@@ -371,17 +394,102 @@ export default function NotificacionesPage() {
 
         return (
           <>
-            {/* Pending actions section */}
-            {actionNotifs.length > 0 && (
+            {/* Pending actions section — ALL sources unified */}
+            {totalActions > 0 && (
               <div className="mb-8">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
                     Pendientes de Acción
                   </h2>
-                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">{actionNotifs.length}</span>
+                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">{totalActions}</span>
                 </div>
                 <div className="space-y-2">
+                  {/* Pending payment orders (compra, reno, movida) */}
+                  {pendingOrders.map((o: any) => (
+                    <div key={`po-${o.id}`} className="p-3 rounded-lg border border-l-4 border-l-red-500 bg-white">
+                      <div className="flex items-start gap-3">
+                        <span className="text-lg">📋</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-navy-900 font-semibold">
+                            Orden de pago: ${Number(o.amount).toLocaleString()} — {o.property_address || 'Propiedad'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Pagar a {o.payee_name}. {o.notes ? o.notes.substring(0, 100) : ''}{o.concept ? ` [${o.concept}]` : ''}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
+                            <span className="font-medium text-navy-600">${Number(o.amount).toLocaleString()}</span>
+                            <span>{new Date(o.created_at).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleApproveOrder(o.id)}
+                            disabled={approvingId === o.id}
+                            className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
+                            style={{ backgroundColor: 'var(--navy-800)' }}
+                          >
+                            {approvingId === o.id ? '...' : 'Aprobar'}
+                          </button>
+                        )}
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Unapproved transfers */}
+                  {unapprovedXfers.map((t: any) => (
+                    <div key={`xfer-${t.sale_id}`} className="p-3 rounded-lg border border-l-4 border-l-orange-500 bg-white">
+                      <div className="flex items-start gap-3">
+                        <span className="text-lg">💰</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-navy-900 font-semibold">
+                            Transferencia reportada: ${Number(t.sale_price).toLocaleString()} — {t.property_address || 'Propiedad'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Cliente: {t.client_name}. {t.client_email} · {t.client_phone}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleApproveTransfer(t.sale_id)}
+                          disabled={approvingId === t.sale_id}
+                          className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
+                          style={{ backgroundColor: 'var(--navy-800)' }}
+                        >
+                          {approvingId === t.sale_id ? '...' : 'Aprobar'}
+                        </button>
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Pending renovation approvals */}
+                  {pendingRenos.map((reno: any) => (
+                    <div key={`reno-${reno.renovation_id}`} className="p-3 rounded-lg border border-l-4 border-l-purple-500 bg-white">
+                      <div className="flex items-start gap-3">
+                        <span className="text-lg">🔧</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-navy-900 font-semibold">
+                            Cotización renovación: ${Number(reno.total_cost || 0).toLocaleString()} — {reno.address || 'Propiedad'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Responsable: {reno.responsable || 'N/A'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleApproveRenovation(reno.property_id)}
+                          disabled={approvingId === reno.property_id}
+                          className="text-xs px-3 py-1.5 rounded-lg font-medium text-white flex-shrink-0"
+                          style={{ backgroundColor: 'var(--navy-800)' }}
+                        >
+                          {approvingId === reno.property_id ? '...' : 'Aprobar'}
+                        </button>
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Por aprobar</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Notification-based action items (sale payments, etc.) */}
                   {actionNotifs.slice(0, 10).map((n: any) => <NotifCard key={n.id} n={n} showAction />)}
                 </div>
               </div>
@@ -428,8 +536,9 @@ export default function NotificacionesPage() {
         )
       })()}
 
-      {/* ── ADMIN: Renovation quotes pending approval ─────────────────── */}
-      {isAdmin && pendingRenovations.length > 0 && (
+      {/* ── OLD SECTIONS REMOVED: renovations + transfers now in unified "Pendientes de Acción" above ── */}
+      {/* Kept: Treasury confirmed-transfers section below */}
+      {false && isAdmin && pendingRenovations.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
@@ -501,8 +610,8 @@ export default function NotificacionesPage() {
         </div>
       )}
 
-      {/* ── ADMIN: Unapproved transfers to approve ─────────────────────── */}
-      {isAdmin && unapprovedTransfers.length > 0 && (
+      {/* ── OLD: Moved to unified section above ─────────────────────── */}
+      {false && isAdmin && unapprovedTransfers.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
