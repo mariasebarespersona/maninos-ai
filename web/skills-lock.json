@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "e2e-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "37ea37e42a81c926ebd81924691a15fb657df7c8a52b863c34967e5ab99cdc22"
+    }
+  }
+}

@@ -3622,6 +3622,7 @@ export default function MarketDashboard() {
               })()}
               {previewDoc === 'title_app' && titleAppData && (() => {
                 const merged: any = { ...titleAppData };
+                console.log('[Preview] titleAppData keys with values:', Object.entries(titleAppData).filter(([,v]) => v !== '' && v !== false && v != null).map(([k,v]) => `${k}=${typeof v === 'boolean' ? v : String(v).substring(0,30)}`));
                 if (sellerSignatures.title_app?.signed) {
                   merged.seller_signature_type = sellerSignatures.title_app.signature_type;
                   if (sellerSignatures.title_app.signature_type === 'drawn') {
