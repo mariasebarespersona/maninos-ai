@@ -966,6 +966,143 @@ function getPrintStyles(): string {
 }
 
 /**
+ * Open a new window showing the full Bill of Sale template with all data + signature.
+ * Uses the exact same HTML/CSS as the component's print view.
+ */
+export function openBillOfSalePreview(
+  inputData: Partial<BillOfSaleData> & Record<string, any>,
+): void {
+  const d = { ...EMPTY_DATA, ...inputData }
+  const v = (val: any) => val || ''
+  const chk = (val: boolean) => val ? '☒' : '☐'
+
+  // Seller signature HTML
+  let sellerSigHtml = ''
+  if ((d as any).seller_signature_type === 'drawn' && (d as any).seller_signature_image) {
+    sellerSigHtml = `<div><img src="${(d as any).seller_signature_image}" style="height:40px;max-width:200px;object-fit:contain" /><div style="font-size:10px;color:#666;margin-top:2px">${v(d.seller_name)}</div></div>`
+  } else if (d.seller_name) {
+    sellerSigHtml = `<span style="font-family:'Dancing Script',cursive;font-size:18px;color:#1a2744;font-weight:700">${d.seller_name}</span>`
+  } else {
+    sellerSigHtml = `X <span class="bos-sig-line"></span>`
+  }
+
+  // Buyer signature HTML
+  let buyerSigHtml = ''
+  if ((d as any).buyer_signature_type === 'drawn' && (d as any).buyer_signature_image) {
+    buyerSigHtml = `<div><img src="${(d as any).buyer_signature_image}" style="height:40px;max-width:200px;object-fit:contain" /><div style="font-size:10px;color:#666;margin-top:2px">${v(d.buyer_name)}</div></div>`
+  } else {
+    buyerSigHtml = `<span style="font-family:'Dancing Script',cursive;font-size:18px;color:#1a2744;font-weight:700">${d.buyer_name || 'MANINOS HOMES'}</span>`
+  }
+
+  const html = `<!DOCTYPE html><html><head><title>Bill of Sale - Maninos Homes</title>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+@page { size: letter; margin: 0.5in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; padding: 20px; }
+.bos-container { max-width: 7.5in; margin: 0 auto; }
+${getPrintStyles()}
+</style></head><body>
+<div class="bos-container">
+  <div class="bos-header">
+    <div class="bos-logo-area">
+      <div class="bos-logo-icon">
+        <svg viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="64" height="40">
+          <path d="M30 2 L5 30 L20 30 L30 15 L40 30 L55 30 Z" fill="#1a1a2e" stroke="#1a1a2e" stroke-width="2"/>
+          <path d="M30 8 L15 28 L25 28 L30 18 L35 28 L45 28 Z" fill="#c9a84c" stroke="#c9a84c" stroke-width="1"/>
+        </svg>
+        <span class="bos-logo-text">maninos homes</span>
+      </div>
+      <div class="bos-title-block"><h1 class="bos-company-name">MANINOS<br/>HOMES</h1></div>
+    </div>
+    <div class="bos-doc-mark">M</div>
+  </div>
+  <h2 class="bos-doc-title">BILL OF SALE</h2>
+  <div class="bos-section">
+    <div class="bos-row"><span class="bos-label">SELLER:</span> <span class="bos-value bos-flex-1">${v(d.seller_name)}</span></div>
+    ${(d as any).seller2_name ? `<div class="bos-row"><span class="bos-label">SELLER 2:</span> <span class="bos-value bos-flex-1">${(d as any).seller2_name}</span></div>` : ''}
+    <div class="bos-row"><span class="bos-label">ADDRESS:</span> <span class="bos-value bos-flex-1 bos-underline">${v(d.seller_address)}</span></div>
+    <div class="bos-row bos-row-split">
+      <div class="bos-half"><span class="bos-label">PHONE:</span> <span class="bos-value">${v(d.seller_phone)}</span></div>
+      <div class="bos-half"><span class="bos-label">EMAIL:</span> <span class="bos-value">${v(d.seller_email)}</span></div>
+    </div>
+    <div class="bos-row"><span class="bos-label">BUYER:</span> <span class="bos-value bos-flex-1 bos-underline">${v(d.buyer_name)}</span></div>
+    ${(d as any).buyer2_name ? `<div class="bos-row"><span class="bos-label">BUYER 2:</span> <span class="bos-value bos-flex-1 bos-underline">${(d as any).buyer2_name}</span></div>` : ''}
+    <div class="bos-row bos-row-split">
+      <div class="bos-half"><span class="bos-label">ADDRESS:</span> <span class="bos-value bos-flex-1 bos-underline">${v(d.buyer_address)}</span></div>
+      <div class="bos-third"><span class="bos-label">DATE:</span> <span class="bos-value">${v(d.buyer_date)}</span></div>
+    </div>
+    <div class="bos-row bos-row-split">
+      <div class="bos-half"><span class="bos-label">TELE:</span> <span class="bos-value">${v(d.buyer_phone)}</span></div>
+      <div class="bos-half"><span class="bos-label">EMAIL:</span> <span class="bos-value">${v(d.buyer_email)}</span></div>
+    </div>
+  </div>
+  <table class="bos-table"><tbody>
+    <tr><td class="bos-cell bos-cell-header">MANUFACTURER</td><td class="bos-cell bos-cell-header">MAKE</td><td class="bos-cell bos-cell-header">DATE MANUFACTURED</td></tr>
+    <tr><td class="bos-cell">${v(d.manufacturer)}</td><td class="bos-cell">${v(d.make)}</td><td class="bos-cell">${v(d.date_manufactured)}</td></tr>
+    <tr><td class="bos-cell bos-cell-header" style="width:12%">B.ROOMS</td><td class="bos-cell bos-cell-header" style="width:12%">BATHS</td><td class="bos-cell bos-cell-header" style="width:20%">DIMENSIONS</td><td class="bos-cell bos-cell-header" style="width:30%">SERIAL NUMBER</td><td class="bos-cell bos-cell-header" style="width:10%">NEW</td><td class="bos-cell bos-cell-header" style="width:10%">USED</td></tr>
+    <tr><td class="bos-cell">${v(d.bedrooms)}</td><td class="bos-cell">${v(d.baths)}</td><td class="bos-cell">${v(d.dimensions)}</td><td class="bos-cell">${v(d.serial_number)}</td><td class="bos-cell bos-center">${chk(d.is_new)}</td><td class="bos-cell bos-center">${chk(d.is_used)}</td></tr>
+    <tr><td class="bos-cell bos-cell-header" colspan="3">LOCATION OF HOME</td><td class="bos-cell bos-cell-header" colspan="3">HUD/LABEL NUMBER</td></tr>
+    <tr><td class="bos-cell" colspan="3">${v(d.location_of_home)}</td><td class="bos-cell" colspan="3">${v(d.hud_label_number)}</td></tr>
+  </tbody></table>
+  <div class="bos-split-section">
+    <div class="bos-left-col">
+      <div class="bos-term-block"><span class="bos-label-sm bos-underline-label">OPTIONAL EQUIPMENT, LABOR AND ACCESSORIES</span><div style="font-size:10px;min-height:20px">${v(d.optional_equipment)}</div></div>
+      <div class="bos-term-block"><span class="bos-label-sm">PURCHASER'S RESPONSIBILITIES:</span><div style="font-size:10px;min-height:20px">${v(d.purchaser_responsibilities)}</div></div>
+      <div class="bos-term-block"><span class="bos-label-sm">SELLER'S RESPONSIBILITIES:</span><div style="font-size:10px;min-height:20px">${v(d.seller_responsibilities)}</div></div>
+      <p class="bos-small-text">WARRANTY JUTS IN NEW EQUIPEMENT</p>
+      <p class="bos-disclaimer">**Deposit and down payment are not refundable after closing date, <u>may</u> applicate to another house**</p>
+      <div class="bos-term-row"><span class="bos-label-sm">MOVING TO:</span> <span class="bos-flex-1 bos-underline">${v(d.moving_to)}</span></div>
+      <div class="bos-term-row"><span class="bos-label-sm">SALESPERSON:</span> <span class="bos-flex-1 bos-underline">${v(d.salesperson)}</span></div>
+      <div class="bos-term-row"><span class="bos-label-sm">TOTAL PAYMENT:</span> <span class="bos-flex-1 bos-underline">${v(d.total_payment)}</span></div>
+      <div class="bos-term-row"><span class="bos-label-sm">DURATION:</span> <span class="bos-flex-1 bos-underline">${v(d.duration)}</span></div>
+      <div class="bos-term-row"><span class="bos-label-sm">COST OF MOVING:</span> <span class="bos-flex-1 bos-underline">${v(d.cost_of_moving)}</span></div>
+    </div>
+    <div class="bos-right-col">
+      <div class="bos-deposit-row"><span class="bos-label-sm bos-bold">DEPOSIT:</span> ${v(d.deposit)}</div>
+      <table class="bos-fee-table"><tbody>
+        <tr><td colspan="2" class="bos-fee-header">SUB-TOTAL</td></tr>
+        <tr><td class="bos-fee-label">State Tax</td><td class="bos-fee-value">${v(d.state_tax)}</td></tr>
+        <tr><td class="bos-fee-label">City Tax</td><td class="bos-fee-value">${v(d.city_tax)}</td></tr>
+        <tr><td class="bos-fee-label">County Tax</td><td class="bos-fee-value">${v(d.county_tax)}</td></tr>
+        <tr><td class="bos-fee-label">MHI Tax</td><td class="bos-fee-value">${v(d.mhi_tax)}</td></tr>
+        <tr><td class="bos-fee-label">Mobil Owners Insurance Premium</td><td class="bos-fee-value">${v(d.mobil_owners_insurance)}</td></tr>
+        <tr><td class="bos-fee-label">Credit Life Insurance Premium</td><td class="bos-fee-value">${v(d.credit_life_insurance)}</td></tr>
+        <tr><td class="bos-fee-label">Home Buyer's Protection Ins.</td><td class="bos-fee-value">${v(d.home_buyers_protection)}</td></tr>
+        <tr><td class="bos-fee-label">Filing Fee</td><td class="bos-fee-value">${v(d.filing_fee)}</td></tr>
+        <tr><td class="bos-fee-label">SOL TRANSFER &amp; FORM T</td><td class="bos-fee-value">${v(d.sol_transfer_form_t)}</td></tr>
+        <tr><td class="bos-fee-label">DELIVERY</td><td class="bos-fee-value">${v(d.delivery)}</td></tr>
+        <tr><td class="bos-fee-label">A/C HOOK UP</td><td class="bos-fee-value">${v(d.ac_hook_up)}</td></tr>
+        <tr><td class="bos-fee-label">TRIMOUT</td><td class="bos-fee-value">${v(d.trimout)}</td></tr>
+        <tr><td class="bos-fee-label">SKIRTING</td><td class="bos-fee-value">${v(d.skirting)}</td></tr>
+        <tr><td class="bos-fee-total-label">1. TOTAL:</td><td class="bos-fee-total-value">${v(d.total)}</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="bos-signatures">
+    <div class="bos-sig-row">
+      <div class="bos-sig-left">
+        <span class="bos-label-sm bos-bold">SELLER:</span>
+        ${sellerSigHtml}
+        <div class="bos-sig-date"><span class="bos-label-sm">DATE:</span> <span>${(d as any).seller_date || ''}</span></div>
+      </div>
+      <div class="bos-sig-right">
+        <span class="bos-label-sm bos-bold">BUYER:</span>
+        ${buyerSigHtml}
+        <div class="bos-sig-date"><span class="bos-label-sm">DATE:</span> <span>${v(d.buyer_date)}</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  const w = window.open('', '_blank', 'width=850,height=1100')
+  if (!w) return
+  w.document.write(html)
+  w.document.close()
+}
+
+/**
  * Standalone function to generate a Bill of Sale PDF — identical to the component's internal generatePDF.
  * Used by both the template component and external callers (confirmPurchase, "Ver Documento").
  */

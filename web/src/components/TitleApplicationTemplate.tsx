@@ -938,6 +938,165 @@ function getPrintCSS(): string {
 }
 
 /**
+ * Open a new window showing the full Title Application template with all data + signature.
+ * Uses the same CSS classes as the component's print view.
+ */
+export function openTitleAppPreview(
+  inputData: Partial<TitleApplicationData> & Record<string, any>,
+): void {
+  const d = inputData
+  const v = (val: any) => val || ''
+  const chk = (val: boolean) => val ? '&#9746;' : '&#9744;'
+
+  // Seller signature HTML
+  let sellerSigHtml = ''
+  if ((d as any).seller_signature_type === 'drawn' && (d as any).seller_signature_image) {
+    sellerSigHtml = `<div><img src="${(d as any).seller_signature_image}" style="height:40px;max-width:200px;object-fit:contain" /><div style="font-size:9px;color:#333;margin-top:2px">${v(d.seller_name)}</div></div>`
+  } else if ((d as any).seller_signature_type === 'typed' && (d as any).seller_signature_value) {
+    sellerSigHtml = `<span style="font-style:italic;font-size:14px">${(d as any).seller_signature_value}</span>`
+  } else {
+    sellerSigHtml = `<div class="sig-line"></div>`
+  }
+
+  const html = `<!DOCTYPE html><html><head><title>TDHCA Form 1023 - Statement of Ownership</title>
+<style>
+@page { size: letter; margin: 0.35in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Times New Roman', Times, serif; font-size: 9.5px; color: #000; padding: 15px; }
+${getPrintCSS()}
+</style></head><body>
+<div class="doc">
+  <div class="hdr">
+    <p class="hdr-dept">TEXAS DEPARTMENT OF HOUSING AND COMMUNITY AFFAIRS</p>
+    <p class="hdr-div">MANUFACTURED HOUSING DIVISION</p>
+    <p class="hdr-addr">P.O. Box 12489, Austin, Texas 78711-2489 &bull; (512) 475-2200 &bull; (800) 500-7074</p>
+    <p class="hdr-title">APPLICATION FOR STATEMENT OF OWNERSHIP AND LOCATION</p>
+  </div>
+  <div class="notice-box"><strong>NOTICE:</strong> This form must be filed with the Department within 60 calendar days of the date of sale. A late filing fee of $50 applies after 60 days.</div>
+
+  <!-- BLOCK 2(a) -->
+  <table class="bt"><tbody>
+    <tr><td colspan="2" class="bth">BLOCK 2(a): Home Information (required)</td></tr>
+    <tr><td colspan="2" class="btd">
+      <table class="inner-tbl"><tbody>
+        <tr>
+          <td style="width:60%">
+            <div class="fr"><span class="fl">Manufacturer Name:</span><span class="fv">${v(d.manufacturer)}</span></div>
+            <div class="fr"><span class="fl">Address:</span><span class="fv">${v(d.manufacturer_address)}</span></div>
+            <div class="fr"><span class="fl">City, State, Zip:</span><span class="fv">${v(d.manufacturer_city_state_zip)}</span></div>
+          </td>
+          <td style="width:40%">
+            <div class="fr"><span class="fl">Model:</span><span class="fv">${v(d.make)}</span></div>
+            <div class="fr"><span class="fl">Date of Manufacture:</span><span class="fv">${v(d.date_of_manufacture) || v(d.year)}</span></div>
+            <div class="fr"><span class="fl">Total Square Feet:</span><span class="fv">${v(d.total_sqft)}</span></div>
+            <div class="fr"><span class="fl">Wind Zone:</span><span class="fv">${v(d.wind_zone)}</span></div>
+          </td>
+        </tr>
+      </tbody></table>
+      <table class="sec-tbl">
+        <thead><tr>
+          <th style="width:12%"><em>Sections</em></th>
+          <th style="width:22%"><em>Label/Seal Number</em></th>
+          <th style="width:32%"><em>Complete Serial Number</em></th>
+          <th style="width:20%"><em>Size</em></th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="lb">Section 1:</td><td>${v(d.section1_label)}</td><td>${v(d.section1_serial)}</td><td>${v(d.section1_width)} X ${v(d.section1_length)}</td></tr>
+          <tr><td class="lb">Section 2:</td><td>${v(d.section2_label)}</td><td>${v(d.section2_serial)}</td><td>${v(d.section2_width)} X ${v(d.section2_length)}</td></tr>
+        </tbody>
+      </table>
+    </td></tr>
+  </tbody></table>
+
+  <!-- BLOCK 2(b) -->
+  <div class="b2b">
+    <p><strong>2(b)</strong> DOES HOME HAVE A HUD LABEL OR TEXAS SEAL? Yes ${chk(!!d.has_hud_label)} No ${chk(!!d.no_hud_label)}</p>
+  </div>
+
+  <!-- BLOCK 3 -->
+  <table class="bt"><tbody>
+    <tr><td class="bth">BLOCK 3: Home Location (required)</td></tr>
+    <tr><td class="btd">
+      <div class="fr"><span class="fl">Physical Address:</span><span class="fv">${v(d.location_address)}</span></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1.5fr;gap:4px;margin-top:3px">
+        <div class="fr"><span class="fl">City:</span><span class="fv">${v(d.location_city)}</span></div>
+        <div class="fr"><span class="fl">State:</span><span class="fv">${v(d.location_state) || 'TX'}</span></div>
+        <div class="fr"><span class="fl">ZIP:</span><span class="fv">${v(d.location_zip)}</span></div>
+        <div class="fr"><span class="fl">County:</span><span class="fv">${v(d.location_county)}</span></div>
+      </div>
+      <div style="margin-top:3px">Was Home Moved? Yes ${chk(!!d.home_moved)} No ${chk(!!d.home_moved_no)} &nbsp; Was Home Installed? Yes ${chk(!!d.home_installed)} No ${chk(!!d.home_installed_no)}</div>
+    </td></tr>
+  </tbody></table>
+
+  <!-- BLOCK 4 -->
+  <table class="bt"><tbody>
+    <tr><td colspan="2" class="bth">BLOCK 4: Ownership Information (required)</td></tr>
+    <tr>
+      <td class="bth-sub" style="width:50%">4(a) Seller(s) or Transferor(s)</td>
+      <td class="bth-sub" style="width:50%">4(b) Purchaser(s), Transferee(s), or Owner(s)</td>
+    </tr>
+    <tr>
+      <td class="btd">
+        <div class="own-row"><span class="own-l">Name</span><span class="own-v">${v(d.seller_name)}</span></div>
+        <div class="own-row"><span class="own-l">Name</span><span class="own-v">${v(d.seller2_name)}</span></div>
+        <div class="own-row"><span class="own-l">Mailing Address</span><span class="own-v">${v(d.seller_address)}</span></div>
+        <div class="own-row"><span class="own-l">City/State/Zip</span><span class="own-v">${v(d.seller_city_state_zip)}</span></div>
+        <div class="own-row"><span class="own-l">Phone</span><span class="own-v">${v(d.seller_phone)}</span></div>
+      </td>
+      <td class="btd">
+        <div class="own-row"><span class="own-l">Name</span><span class="own-v">${v(d.buyer_name)}</span></div>
+        <div class="own-row"><span class="own-l">Name</span><span class="own-v">${v(d.buyer2_name)}</span></div>
+        <div class="own-row"><span class="own-l">Mailing Address</span><span class="own-v">${v(d.buyer_address)}</span></div>
+        <div class="own-row"><span class="own-l">City/State/Zip</span><span class="own-v">${v(d.buyer_city_state_zip)}</span></div>
+        <div class="own-row"><span class="own-l">Phone</span><span class="own-v">${v(d.buyer_phone)}</span></div>
+      </td>
+    </tr>
+    <tr>
+      <td class="btd"><strong>4(c)</strong> Is this a sale? Yes ${chk(!!d.is_sale)} No ${chk(!!d.is_sale_no)}</td>
+      <td class="btd"><strong>4(d)</strong> Date of sale/transfer: ${v(d.sale_transfer_date)}</td>
+    </tr>
+  </tbody></table>
+
+  <!-- BLOCK 6 -->
+  <table class="bt"><tbody>
+    <tr><td class="bth">BLOCK 6: Election</td></tr>
+    <tr><td class="btd">
+      <p><strong>All manufactured housing is titled as Personal Property, unless elected as:</strong></p>
+      <div class="cg">${chk(!!d.election_real_property)} <strong>Real Property</strong></div>
+      <div class="cg">${chk(!!d.election_inventory)} <strong>Inventory</strong> (FOR RETAILER USE ONLY)</div>
+    </td></tr>
+  </tbody></table>
+
+  <!-- BLOCK 10: SIGNATURES -->
+  <table class="bt"><tbody>
+    <tr><td colspan="2" class="bth" style="text-align:center">BLOCK 10: Signatures Required (Notarization is Optional)</td></tr>
+    <tr>
+      <td class="btd sig-col" style="width:50%">
+        <p class="sig-h"><u>10(a) Signatures of each seller/transferor</u></p>
+        ${sellerSigHtml}
+        <p class="sig-cap"><em>Signature of owner or authorized seller</em></p>
+        <div style="margin-top:4px;font-size:9px">Date: ${(d as any).seller_signature_date || '________________'}</div>
+      </td>
+      <td class="btd sig-col" style="width:50%">
+        <p class="sig-h"><u>10(b) Signatures of each purchaser/transferee or owner</u></p>
+        <div class="sig-line"></div>
+        <p class="sig-cap"><em>Signature of purchaser/transferee or owner</em></p>
+        <div style="margin-top:4px;font-size:9px">Date: ________________</div>
+      </td>
+    </tr>
+  </tbody></table>
+
+  <div class="page-footer">MHD FORM 1023 / Statement of Ownership &bull; Page 1 of 2 &bull; Rev. 09/19/25</div>
+</div>
+</body></html>`
+
+  const w = window.open('', '_blank', 'width=900,height=1200')
+  if (!w) return
+  w.document.write(html)
+  w.document.close()
+}
+
+/**
  * Standalone function to generate a Title Application PDF — identical to the component's internal generatePDF.
  * Used by both the template component and external callers (confirmPurchase, "Ver Documento").
  */

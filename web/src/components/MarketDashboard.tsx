@@ -38,8 +38,8 @@ import {
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
-import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF } from './BillOfSaleTemplate';
-import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF } from './TitleApplicationTemplate';
+import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF, openBillOfSalePreview } from './BillOfSaleTemplate';
+import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF, openTitleAppPreview } from './TitleApplicationTemplate';
 import { BankTransferStep, usePayeeState, type PaymentInfo, type Payee, type PayeeMode } from './BankTransferPayment';
 import DesktopEvaluatorPanel from './DesktopEvaluatorPanel';
 
@@ -3312,7 +3312,7 @@ export default function MarketDashboard() {
                           )}
                           {sellerSignatures.bos.signed && billOfSaleData && (
                             <button
-                              onClick={async () => {
+                              onClick={() => {
                                 const merged: any = { ...billOfSaleData };
                                 merged.seller_signature_type = sellerSignatures.bos!.signature_type;
                                 if (sellerSignatures.bos!.signature_type === 'drawn') {
@@ -3321,9 +3321,7 @@ export default function MarketDashboard() {
                                   merged.seller_name = sellerSignatures.bos!.signature_value || merged.seller_name;
                                 }
                                 merged.seller_date = new Date().toISOString().split('T')[0];
-                                const file = await generateSignedBillOfSalePDF(merged, 'purchase');
-                                const url = URL.createObjectURL(file);
-                                window.open(url, '_blank');
+                                openBillOfSalePreview(merged);
                               }}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-bos"
@@ -3356,7 +3354,7 @@ export default function MarketDashboard() {
                           )}
                           {sellerSignatures.title_app.signed && titleAppData && (
                             <button
-                              onClick={async () => {
+                              onClick={() => {
                                 const merged: any = { ...titleAppData };
                                 merged.seller_signature_type = sellerSignatures.title_app!.signature_type;
                                 if (sellerSignatures.title_app!.signature_type === 'drawn') {
@@ -3365,9 +3363,7 @@ export default function MarketDashboard() {
                                   merged.seller_signature_value = sellerSignatures.title_app!.signature_value || merged.seller_name;
                                 }
                                 merged.seller_signature_date = new Date().toISOString().split('T')[0];
-                                const file = await generateSignedTitleAppPDF(merged, 'purchase');
-                                const url = URL.createObjectURL(file);
-                                window.open(url, '_blank');
+                                openTitleAppPreview(merged);
                               }}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-ta"
