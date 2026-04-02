@@ -38,8 +38,8 @@ import {
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
-import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF, openBillOfSalePreview } from './BillOfSaleTemplate';
-import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF, openTitleAppPreview } from './TitleApplicationTemplate';
+import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF } from './BillOfSaleTemplate';
+import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF } from './TitleApplicationTemplate';
 import { BankTransferStep, usePayeeState, type PaymentInfo, type Payee, type PayeeMode } from './BankTransferPayment';
 import DesktopEvaluatorPanel from './DesktopEvaluatorPanel';
 
@@ -298,6 +298,9 @@ export default function MarketDashboard() {
   const [esignEmailFor, setEsignEmailFor] = useState<'bos' | 'title_app' | null>(null);
   const [esignEmail, setEsignEmail] = useState('');
   const [esignSending, setEsignSending] = useState(false);
+
+  // Preview signed document using the real template component
+  const [previewDoc, setPreviewDoc] = useState<'bos' | 'title_app' | null>(null);
 
   // Price predictions (from historical data)
   const [predictions, setPredictions] = useState<Record<string, any>>({});
@@ -3312,17 +3315,7 @@ export default function MarketDashboard() {
                           )}
                           {sellerSignatures.bos.signed && billOfSaleData && (
                             <button
-                              onClick={() => {
-                                const merged: any = { ...billOfSaleData };
-                                merged.seller_signature_type = sellerSignatures.bos!.signature_type;
-                                if (sellerSignatures.bos!.signature_type === 'drawn') {
-                                  merged.seller_signature_image = sellerSignatures.bos!.signature_value;
-                                } else {
-                                  merged.seller_name = sellerSignatures.bos!.signature_value || merged.seller_name;
-                                }
-                                merged.seller_date = new Date().toISOString().split('T')[0];
-                                openBillOfSalePreview(merged);
-                              }}
+                              onClick={() => setPreviewDoc('bos')}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-bos"
                             >
@@ -3354,17 +3347,7 @@ export default function MarketDashboard() {
                           )}
                           {sellerSignatures.title_app.signed && titleAppData && (
                             <button
-                              onClick={() => {
-                                const merged: any = { ...titleAppData };
-                                merged.seller_signature_type = sellerSignatures.title_app!.signature_type;
-                                if (sellerSignatures.title_app!.signature_type === 'drawn') {
-                                  merged.seller_signature_image = sellerSignatures.title_app!.signature_value;
-                                } else {
-                                  merged.seller_signature_value = sellerSignatures.title_app!.signature_value || merged.seller_name;
-                                }
-                                merged.seller_signature_date = new Date().toISOString().split('T')[0];
-                                openTitleAppPreview(merged);
-                              }}
+                              onClick={() => setPreviewDoc('title_app')}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-ta"
                             >
@@ -3594,6 +3577,67 @@ export default function MarketDashboard() {
                       </>
                     )}
                   </button>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Document Preview Overlay — renders the REAL template in readOnly mode ═══ */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl my-8 relative">
+            <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex items-center justify-between rounded-t-xl">
+              <h3 className="text-sm font-bold text-navy-900">
+                {previewDoc === 'bos' ? 'Bill of Sale — Documento Firmado' : 'Cambio de Título — Documento Firmado'}
+              </h3>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-2">
+              {previewDoc === 'bos' && billOfSaleData && (() => {
+                const merged: any = { ...billOfSaleData };
+                if (sellerSignatures.bos?.signed) {
+                  merged.seller_signature_type = sellerSignatures.bos.signature_type;
+                  if (sellerSignatures.bos.signature_type === 'drawn') {
+                    merged.seller_signature_image = sellerSignatures.bos.signature_value;
+                  } else {
+                    merged.seller_name = sellerSignatures.bos.signature_value || merged.seller_name;
+                  }
+                  merged.seller_date = new Date().toISOString().split('T')[0];
+                }
+                return (
+                  <BillOfSaleTemplate
+                    transactionType="purchase"
+                    initialData={merged}
+                    readOnly
+                    onClose={() => setPreviewDoc(null)}
+                  />
+                );
+              })()}
+              {previewDoc === 'title_app' && titleAppData && (() => {
+                const merged: any = { ...titleAppData };
+                if (sellerSignatures.title_app?.signed) {
+                  merged.seller_signature_type = sellerSignatures.title_app.signature_type;
+                  if (sellerSignatures.title_app.signature_type === 'drawn') {
+                    merged.seller_signature_image = sellerSignatures.title_app.signature_value;
+                  } else {
+                    merged.seller_signature_value = sellerSignatures.title_app.signature_value || merged.seller_name;
+                  }
+                  merged.seller_signature_date = new Date().toISOString().split('T')[0];
+                }
+                return (
+                  <TitleApplicationTemplate
+                    transactionType="purchase"
+                    initialData={merged}
+                    readOnly
+                    onClose={() => setPreviewDoc(null)}
+                  />
                 );
               })()}
             </div>

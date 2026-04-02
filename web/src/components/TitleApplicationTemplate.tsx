@@ -937,11 +937,9 @@ function getPrintCSS(): string {
   `
 }
 
-/**
- * Open a new window showing the full Title Application template with all data + signature.
- * Uses the same CSS classes as the component's print view.
- */
-export function openTitleAppPreview(
+/* eslint-disable @typescript-eslint/no-unused-vars */
+// Kept for reference but unused — "Ver Documento" renders the real component in readOnly mode
+function _openTitleAppPreview_UNUSED(
   inputData: Partial<TitleApplicationData> & Record<string, any>,
 ): void {
   const d = inputData
