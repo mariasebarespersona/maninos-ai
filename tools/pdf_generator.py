@@ -601,7 +601,9 @@ def generate_tdhca_title_pdf(
     seller_data: Dict[str, Any],
     buyer_data: Dict[str, Any],
     property_data: Dict[str, Any],
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    seller_signature: Optional[Dict[str, Any]] = None,
+    buyer_signature: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generates a TDHCA Statement of Ownership and Location (SOL) PDF.
@@ -818,13 +820,55 @@ def generate_tdhca_title_pdf(
         story.append(Paragraph(cert_text, styles['Normal']))
         story.append(Spacer(1, 0.4*inch))
         
+        # Build seller signature cell
+        seller_sig_line = "_" * 30
+        seller_date_line = "Date: _______________"
+        if seller_signature:
+            s_type = seller_signature.get("type", "typed")
+            s_value = seller_signature.get("value", "")
+            if s_type == "drawn" and s_value:
+                try:
+                    import base64
+                    from reportlab.platypus import Image as RLImage
+                    raw = s_value.split(",")[-1] if "," in s_value else s_value
+                    sig_bytes = base64.b64decode(raw)
+                    sig_img = RLImage(io.BytesIO(sig_bytes), width=2*inch, height=0.6*inch)
+                    seller_sig_line = sig_img
+                except Exception:
+                    seller_sig_line = s_value[:50] if s_value else "_" * 30
+            elif s_value:
+                seller_sig_line = s_value
+            if seller_signature.get("date"):
+                seller_date_line = f"Date: {seller_signature['date']}"
+
+        # Build buyer signature cell
+        buyer_sig_line = "_" * 30
+        buyer_date_line = "Date: _______________"
+        if buyer_signature:
+            b_type = buyer_signature.get("type", "typed")
+            b_value = buyer_signature.get("value", "")
+            if b_type == "drawn" and b_value:
+                try:
+                    import base64
+                    from reportlab.platypus import Image as RLImage
+                    raw = b_value.split(",")[-1] if "," in b_value else b_value
+                    sig_bytes = base64.b64decode(raw)
+                    sig_img = RLImage(io.BytesIO(sig_bytes), width=2*inch, height=0.6*inch)
+                    buyer_sig_line = sig_img
+                except Exception:
+                    buyer_sig_line = b_value[:50] if b_value else "_" * 30
+            elif b_value:
+                buyer_sig_line = b_value
+            if buyer_signature.get("date"):
+                buyer_date_line = f"Date: {buyer_signature['date']}"
+
         # Signature lines
         sig_data = [
             ["SELLER SIGNATURE:", "", "BUYER SIGNATURE:", ""],
             ["", "", "", ""],
-            ["_" * 30, "", "_" * 30, ""],
+            [seller_sig_line, "", buyer_sig_line, ""],
             [seller_data.get('name', 'Maninos Capital LLC'), "", buyer_data.get('full_name', ''), ""],
-            ["Date: _______________", "", "Date: _______________", ""],
+            [seller_date_line, "", buyer_date_line, ""],
         ]
         sig_table = Table(sig_data, colWidths=[2.5*inch, 0.5*inch, 2.5*inch, 0.5*inch])
         sig_table.setStyle(TableStyle([

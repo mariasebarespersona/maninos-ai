@@ -369,6 +369,8 @@ def generate_bill_of_sale(
     property_year: int | None,
     sale_price: float,
     sale_date: datetime | None = None,
+    seller_signature: dict | None = None,
+    buyer_signature: dict | None = None,
 ) -> bytes:
     """
     Generate a Bill of Sale PDF for a mobile home transaction.
@@ -471,16 +473,56 @@ def generate_bill_of_sale(
     # Signatures
     story.append(Paragraph("SIGNATURES", styles['SectionHeader']))
     story.append(Spacer(1, 20))
-    
+
+    # Build seller signature cell
+    seller_sig_cell = "_" * 40
+    seller_date_cell = "Date: _______________"
+    if seller_signature:
+        sig_type = seller_signature.get("type", "typed")
+        sig_value = seller_signature.get("value", "")
+        if sig_type == "drawn" and sig_value:
+            try:
+                import base64
+                sig_bytes = base64.b64decode(sig_value.split(",")[-1]) if "," in sig_value else base64.b64decode(sig_value)
+                sig_img = Image(BytesIO(sig_bytes), width=2*inch, height=0.6*inch)
+                sig_img.hAlign = 'CENTER'
+                seller_sig_cell = sig_img
+            except Exception:
+                seller_sig_cell = sig_value[:60] if sig_value else "_" * 40
+        elif sig_value:
+            seller_sig_cell = Paragraph(f"<i>{sig_value}</i>", styles['BodyText'])
+        if seller_signature.get("date"):
+            seller_date_cell = f"Date: {seller_signature['date']}"
+
+    # Build buyer signature cell
+    buyer_sig_cell = "_" * 40
+    buyer_date_cell = "Date: _______________"
+    if buyer_signature:
+        sig_type = buyer_signature.get("type", "typed")
+        sig_value = buyer_signature.get("value", "")
+        if sig_type == "drawn" and sig_value:
+            try:
+                import base64
+                sig_bytes = base64.b64decode(sig_value.split(",")[-1]) if "," in sig_value else base64.b64decode(sig_value)
+                sig_img = Image(BytesIO(sig_bytes), width=2*inch, height=0.6*inch)
+                sig_img.hAlign = 'CENTER'
+                buyer_sig_cell = sig_img
+            except Exception:
+                buyer_sig_cell = sig_value[:60] if sig_value else "_" * 40
+        elif sig_value:
+            buyer_sig_cell = Paragraph(f"<i>{sig_value}</i>", styles['BodyText'])
+        if buyer_signature.get("date"):
+            buyer_date_cell = f"Date: {buyer_signature['date']}"
+
     sig_data = [
-        ["_" * 40, "", "_" * 40],
+        [seller_sig_cell, "", buyer_sig_cell],
         ["Seller Signature", "", "Buyer Signature"],
         ["", "", ""],
         [seller_name, "", buyer_name],
         ["", "", ""],
-        ["Date: _______________", "", "Date: _______________"],
+        [seller_date_cell, "", buyer_date_cell],
     ]
-    
+
     sig_table = Table(sig_data, colWidths=[2.5*inch, 1*inch, 2.5*inch])
     sig_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),

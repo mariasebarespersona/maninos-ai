@@ -38,8 +38,8 @@ import {
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
-import BillOfSaleTemplate, { type BillOfSaleData } from './BillOfSaleTemplate';
-import TitleApplicationTemplate, { type TitleApplicationData } from './TitleApplicationTemplate';
+import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF } from './BillOfSaleTemplate';
+import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF } from './TitleApplicationTemplate';
 import { BankTransferStep, usePayeeState, type PaymentInfo, type Payee, type PayeeMode } from './BankTransferPayment';
 import DesktopEvaluatorPanel from './DesktopEvaluatorPanel';
 
@@ -287,6 +287,12 @@ export default function MarketDashboard() {
   const [showTitleApp, setShowTitleApp] = useState(false);
   const [signRefreshKey, setSignRefreshKey] = useState(0);
   const [titleAppData, setTitleAppData] = useState<TitleApplicationData | null>(null);
+
+  // Seller signature status for confirm step
+  const [sellerSignatures, setSellerSignatures] = useState<{
+    bos: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+    title_app: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+  }>({ bos: null, title_app: null });
 
   // Price predictions (from historical data)
   const [predictions, setPredictions] = useState<Record<string, any>>({});
@@ -788,6 +794,8 @@ export default function MarketDashboard() {
         toast.success(`Beneficiario "${saved.name}" guardado`);
       }
       setPurchaseStep('confirm');
+      // Fetch seller signatures when entering confirm step
+      fetchSellerSignatures();
     }
   };
 
@@ -796,6 +804,40 @@ export default function MarketDashboard() {
     else if (purchaseStep === 'payment') setPurchaseStep('checklist');
     else if (purchaseStep === 'confirm') setPurchaseStep('payment');
   };
+
+  // Fetch seller signature status from e-sign envelopes
+  const fetchSellerSignatures = useCallback(async () => {
+    if (!selectedListing?.id) return;
+    try {
+      const res = await fetch(`/api/esign/listing/${selectedListing.id}/envelopes`);
+      if (!res.ok) return;
+      const { envelopes } = await res.json();
+      const sigs: typeof sellerSignatures = { bos: null, title_app: null };
+      for (const env of (envelopes || [])) {
+        const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller');
+        if (!sellerSig) continue;
+        const signed = !!sellerSig.signed_at;
+        const sigData = sellerSig.signature_data || {};
+        const entry = {
+          signed,
+          signature_type: sigData.type,
+          signature_value: sigData.value,
+          signer_name: sellerSig.signer_name,
+        };
+        if (env.document_type === 'bill_of_sale') sigs.bos = entry;
+        if (env.document_type === 'title_application') sigs.title_app = entry;
+      }
+      setSellerSignatures(sigs);
+    } catch {}
+  }, [selectedListing?.id]);
+
+  // Poll for seller signatures every 10s when on confirm step
+  useEffect(() => {
+    if (purchaseStep !== 'confirm' || !selectedListing?.id) return;
+    fetchSellerSignatures();
+    const interval = setInterval(fetchSellerSignatures, 10000);
+    return () => clearInterval(interval);
+  }, [purchaseStep, selectedListing?.id, fetchSellerSignatures]);
 
   // Handle file upload
   const handleFileUpload = (type: 'billOfSale' | 'title' | 'titleApplication', file: File | null) => {
@@ -1171,21 +1213,72 @@ export default function MarketDashboard() {
       
       const property = await response.json();
       
-      // 2. Upload documents and get URLs
+      // 2. Regenerate signed PDFs if seller has signed, then upload
+      let billOfSaleFile = documents.billOfSale;
+      let titleAppFile = documents.titleApplication;
+
+      // If seller signed the BOS, regenerate PDF with signature embedded
+      if (sellerSignatures.bos?.signed && billOfSaleData) {
+        try {
+          const mergedBosData: any = { ...billOfSaleData };
+          mergedBosData.seller_signature_type = sellerSignatures.bos.signature_type;
+          if (sellerSignatures.bos.signature_type === 'drawn') {
+            mergedBosData.seller_signature_image = sellerSignatures.bos.signature_value;
+          } else {
+            mergedBosData.seller_name = sellerSignatures.bos.signature_value || mergedBosData.seller_name;
+          }
+          mergedBosData.seller_date = new Date().toISOString().split('T')[0];
+          billOfSaleFile = await generateSignedBillOfSalePDF(mergedBosData, 'purchase');
+          // Also update docData with signature info
+          docData.bos_purchase = mergedBosData;
+        } catch (e) {
+          console.error('Error generating signed BOS PDF:', e);
+        }
+      }
+
+      // If seller signed the Title App, regenerate PDF with signature embedded
+      if (sellerSignatures.title_app?.signed && titleAppData) {
+        try {
+          const mergedTaData: any = { ...titleAppData };
+          mergedTaData.seller_signature_type = sellerSignatures.title_app.signature_type;
+          if (sellerSignatures.title_app.signature_type === 'drawn') {
+            mergedTaData.seller_signature_image = sellerSignatures.title_app.signature_value;
+          } else {
+            mergedTaData.seller_signature_value = sellerSignatures.title_app.signature_value || mergedTaData.seller_name;
+          }
+          mergedTaData.seller_signature_date = new Date().toISOString().split('T')[0];
+          titleAppFile = await generateSignedTitleAppPDF(mergedTaData, 'purchase');
+          docData.title_app_purchase = mergedTaData;
+        } catch (e) {
+          console.error('Error generating signed Title App PDF:', e);
+        }
+      }
+
       let billOfSaleUrl = null;
       let titleUrl = null;
       let titleApplicationUrl = null;
-      
-      if (documents.billOfSale) {
-        billOfSaleUrl = await uploadDocument(property.id, documents.billOfSale, 'bill_of_sale_purchase');
+
+      if (billOfSaleFile) {
+        billOfSaleUrl = await uploadDocument(property.id, billOfSaleFile, 'bill_of_sale_purchase');
       }
       if (documents.title) {
         titleUrl = await uploadDocument(property.id, documents.title, 'title_purchase');
       }
-      if (documents.titleApplication) {
-        titleApplicationUrl = await uploadDocument(property.id, documents.titleApplication, 'title_application_purchase');
+      if (titleAppFile) {
+        titleApplicationUrl = await uploadDocument(property.id, titleAppFile, 'title_application_purchase');
       }
-      
+
+      // Update property document_data with signature info (if signatures were merged)
+      if (sellerSignatures.bos?.signed || sellerSignatures.title_app?.signed) {
+        try {
+          await fetch(`/api/properties/${property.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ document_data: docData }),
+          });
+        } catch {}
+      }
+
       // If TDHCA lookup found a title, prefer detail URL (print/report URL often fails outside session)
       if (!titleUrl && (tdhcaResult?.detail_url || tdhcaResult?.print_url)) {
         titleUrl = tdhcaResult.detail_url || tdhcaResult.print_url;
@@ -3104,7 +3197,76 @@ export default function MarketDashboard() {
                     </div>
                   </div>
                 </div>
-                
+
+                {/* ═══ Seller Signature Status — blocks confirmation if pending ═══ */}
+                {(sellerSignatures.bos || sellerSignatures.title_app) && (
+                  <div className={`rounded-lg p-5 mb-6 border-2 ${
+                    (sellerSignatures.bos?.signed !== false && sellerSignatures.title_app?.signed !== false)
+                      ? 'border-emerald-300 bg-emerald-50'
+                      : 'border-amber-300 bg-amber-50'
+                  }`}>
+                    <h4 className={`font-semibold mb-3 flex items-center gap-2 ${
+                      (sellerSignatures.bos?.signed !== false && sellerSignatures.title_app?.signed !== false)
+                        ? 'text-emerald-800' : 'text-amber-800'
+                    }`}>
+                      <Pencil className="w-5 h-5" />
+                      Firmas del Vendedor
+                    </h4>
+                    <div className="space-y-3">
+                      {sellerSignatures.bos && (
+                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                          <div className="flex-shrink-0">
+                            {sellerSignatures.bos.signed ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-500" />
+                            ) : (
+                              <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-navy-900">Bill of Sale</p>
+                            <p className="text-xs text-gray-500">
+                              {sellerSignatures.bos.signed
+                                ? `Firmado por ${sellerSignatures.bos.signer_name} (${sellerSignatures.bos.signature_type === 'drawn' ? 'firma dibujada' : 'firma digital'})`
+                                : `Esperando firma de ${sellerSignatures.bos.signer_name}...`}
+                            </p>
+                          </div>
+                          {sellerSignatures.bos.signed && sellerSignatures.bos.signature_type === 'drawn' && sellerSignatures.bos.signature_value && (
+                            <img src={sellerSignatures.bos.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
+                          )}
+                        </div>
+                      )}
+                      {sellerSignatures.title_app && (
+                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                          <div className="flex-shrink-0">
+                            {sellerSignatures.title_app.signed ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-500" />
+                            ) : (
+                              <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-navy-900">Cambio de Título</p>
+                            <p className="text-xs text-gray-500">
+                              {sellerSignatures.title_app.signed
+                                ? `Firmado por ${sellerSignatures.title_app.signer_name} (${sellerSignatures.title_app.signature_type === 'drawn' ? 'firma dibujada' : 'firma digital'})`
+                                : `Esperando firma de ${sellerSignatures.title_app.signer_name}...`}
+                            </p>
+                          </div>
+                          {sellerSignatures.title_app.signed && sellerSignatures.title_app.signature_type === 'drawn' && sellerSignatures.title_app.signature_value && (
+                            <img src={sellerSignatures.title_app.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {(sellerSignatures.bos?.signed === false || sellerSignatures.title_app?.signed === false) && (
+                      <p className="text-xs text-amber-700 mt-3 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Verificando firmas cada 10 segundos... La compra se habilitará cuando el vendedor firme.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Prediction detail with similar houses */}
                 {predictions[selectedListing.id] && (() => {
                   const confirmPred = predictions[selectedListing.id];
@@ -3288,25 +3450,35 @@ export default function MarketDashboard() {
                 </button>
               )}
               
-              {purchaseStep === 'confirm' && (
-                <button
-                  onClick={confirmPurchase}
-                  disabled={processing}
-                  className="btn-gold flex items-center gap-2 px-6 py-2"
-                >
-                  {processing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4" />
-                      Confirmar Compra
-                    </>
-                  )}
-                </button>
-              )}
+              {purchaseStep === 'confirm' && (() => {
+                const hasPendingSig = (sellerSignatures.bos?.signed === false) || (sellerSignatures.title_app?.signed === false);
+                return (
+                  <button
+                    onClick={confirmPurchase}
+                    disabled={processing || hasPendingSig}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
+                      hasPendingSig ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'btn-gold'
+                    }`}
+                  >
+                    {processing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : hasPendingSig ? (
+                      <>
+                        <Clock className="w-4 h-4" />
+                        Esperando Firmas...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Confirmar Compra
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
