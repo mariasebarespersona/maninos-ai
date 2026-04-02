@@ -2,8 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Printer, Save, X, Edit3, Eye, Loader2 } from 'lucide-react'
-// html2canvas removed — PDF generated directly with jsPDF (instant)
-import { jsPDF } from 'jspdf'
 import { getMissingBlock2AFields } from '@/lib/titleApplicationValidation'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -322,91 +320,10 @@ export default function TitleApplicationTemplate({
     })
   }
 
-  // ─── PDF ──────────────────────────────────────────────────────────────────
+  // ─── PDF (delegates to shared standalone function) ────────────────────────
 
   const generatePDF = async (): Promise<File> => {
-    // Generate PDF with jsPDF text — NO html2canvas (instant generation)
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
-    const W = pdf.internal.pageSize.getWidth()
-    const M = 12
-    let y = M
-
-    const ln = (t: string, x: number, yy: number, o?: any) => pdf.text(t, x, yy, o)
-    const hl = (yy: number) => { pdf.setDrawColor(0); pdf.setLineWidth(0.2); pdf.line(M, yy, W - M, yy) }
-
-    // Header
-    pdf.setFontSize(10); pdf.setFont('times', 'bold')
-    ln('TEXAS DEPARTMENT OF HOUSING AND COMMUNITY AFFAIRS', W/2, y, { align: 'center' }); y += 4
-    ln('MANUFACTURED HOUSING DIVISION', W/2, y, { align: 'center' }); y += 4
-    pdf.setFontSize(9); pdf.setFont('times', 'normal')
-    ln('STATEMENT OF OWNERSHIP AND LOCATION', W/2, y, { align: 'center' }); y += 3
-    ln('(Form 1023)', W/2, y, { align: 'center' }); y += 4
-    hl(y); y += 5
-
-    // Block 2A: Description
-    pdf.setFontSize(9); pdf.setFont('times', 'bold')
-    ln('BLOCK 2(a): DESCRIPTION OF HOME', M, y); y += 5
-    pdf.setFont('times', 'normal')
-
-    const fields2a = [
-      ['Manufacturer', data.manufacturer],
-      ['Address', data.manufacturer_address],
-      ['City, State, Zip', data.manufacturer_city_state_zip],
-      ['Make', data.make],
-      ['Date Manufactured', data.date_of_manufacture || data.year],
-      ['Total Sq Ft', data.total_sqft],
-      ['Wind Zone', data.wind_zone],
-    ]
-    for (const [label, val] of fields2a) {
-      pdf.setFont('times', 'bold'); ln(`${label}:`, M, y)
-      pdf.setFont('times', 'normal'); ln(String(val || ''), M + 35, y); y += 4.5
-    }
-    y += 2; hl(y); y += 5
-
-    // Section info
-    pdf.setFont('times', 'bold'); ln('SECTION 1:', M, y); y += 4.5
-    pdf.setFont('times', 'normal')
-    ln(`Label/Seal #: ${data.section1_label || '—'}`, M, y); y += 4.5
-    ln(`Serial #: ${data.section1_serial || '—'}`, M, y); y += 4.5
-    ln(`Width: ${data.section1_width || '—'}  Length: ${data.section1_length || '—'}`, M, y); y += 4.5
-    if (data.section2_label || data.section2_serial) {
-      y += 2; pdf.setFont('times', 'bold'); ln('SECTION 2:', M, y); y += 4.5
-      pdf.setFont('times', 'normal')
-      ln(`Label/Seal #: ${data.section2_label || '—'}`, M, y); y += 4.5
-      ln(`Serial #: ${data.section2_serial || '—'}`, M, y); y += 4.5
-    }
-    y += 2; hl(y); y += 5
-
-    // Block 10: Signatures
-    pdf.setFont('times', 'bold'); ln('BLOCK 10: SIGNATURES', M, y); y += 6
-    pdf.setFont('times', 'normal')
-
-    // Seller signature (10a)
-    if ((data as any).seller_signature_type === 'drawn' && (data as any).seller_signature_image) {
-      try { pdf.addImage((data as any).seller_signature_image, 'PNG', M, y - 2, 50, 15) } catch {}
-      y += 12
-      ln((data as any).seller_name || '', M, y)
-    } else if ((data as any).seller_signature_type === 'typed' && (data as any).seller_signature_value) {
-      pdf.setFont('times', 'italic'); ln((data as any).seller_signature_value, M, y); pdf.setFont('times', 'normal')
-    } else {
-      ln('________________________________', M, y)
-    }
-    // Buyer signature (10b)
-    if ((data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image) {
-      const buyerY = y - ((data as any).seller_signature_type === 'drawn' ? 12 : 0)
-      try { pdf.addImage((data as any).buyer_signature_image, 'PNG', W/2 + 5, buyerY - 2, 50, 15) } catch {}
-    } else {
-      ln('________________________________', W/2 + 5, y)
-    }
-    y += 4
-    ln('10(a) Seller/Transferor', M, y); ln('10(b) Buyer/Transferee', W/2 + 5, y); y += 4
-    const sellerDate = (data as any).seller_signature_date || '________________'
-    const buyerDate = (data as any).buyer_signature_date || '________________'
-    ln(`Date: ${sellerDate}`, M, y); ln(`Date: ${buyerDate}`, W/2 + 5, y); y += 6
-    ln('________________________________', M, y); ln('________________________________', W/2 + 5, y); y += 4
-    ln('Seller/Transferor 2', M, y); ln('Buyer/Transferee 2', W/2 + 5, y)
-
-    return new File([pdf.output('blob')], `title_application_${transactionType}_${Date.now()}.pdf`, { type: 'application/pdf' })
+    return generateSignedTitleAppPDF(data, transactionType)
   }
 
   const handlePrint = () => {
@@ -1021,8 +938,8 @@ function getPrintCSS(): string {
 }
 
 /**
- * Standalone function to generate a signed Title Application PDF.
- * Can be called from outside the component (e.g., confirmPurchase).
+ * Standalone function to generate a Title Application PDF — identical to the component's internal generatePDF.
+ * Used by both the template component and external callers (confirmPurchase, "Ver Documento").
  */
 export async function generateSignedTitleAppPDF(
   data: Partial<TitleApplicationData> & Record<string, any>,
@@ -1046,16 +963,21 @@ export async function generateSignedTitleAppPDF(
   ln('(Form 1023)', W/2, y, { align: 'center' }); y += 4
   hl(y); y += 5
 
-  // Block 2A
+  // Block 2A: Description
   pdf.setFontSize(9); pdf.setFont('times', 'bold')
   ln('BLOCK 2(a): DESCRIPTION OF HOME', M, y); y += 5
   pdf.setFont('times', 'normal')
-  for (const [label, val] of [
-    ['Manufacturer', data.manufacturer], ['Address', data.manufacturer_address],
-    ['City, State, Zip', data.manufacturer_city_state_zip], ['Make', data.make],
+
+  const fields2a = [
+    ['Manufacturer', data.manufacturer],
+    ['Address', data.manufacturer_address],
+    ['City, State, Zip', data.manufacturer_city_state_zip],
+    ['Make', data.make],
     ['Date Manufactured', data.date_of_manufacture || data.year],
-    ['Total Sq Ft', data.total_sqft], ['Wind Zone', data.wind_zone],
-  ]) {
+    ['Total Sq Ft', data.total_sqft],
+    ['Wind Zone', data.wind_zone],
+  ]
+  for (const [label, val] of fields2a) {
     pdf.setFont('times', 'bold'); ln(`${label}:`, M, y)
     pdf.setFont('times', 'normal'); ln(String(val || ''), M + 35, y); y += 4.5
   }
@@ -1067,35 +989,51 @@ export async function generateSignedTitleAppPDF(
   ln(`Label/Seal #: ${data.section1_label || '—'}`, M, y); y += 4.5
   ln(`Serial #: ${data.section1_serial || '—'}`, M, y); y += 4.5
   ln(`Width: ${data.section1_width || '—'}  Length: ${data.section1_length || '—'}`, M, y); y += 4.5
+  if (data.section2_label || data.section2_serial) {
+    y += 2; pdf.setFont('times', 'bold'); ln('SECTION 2:', M, y); y += 4.5
+    pdf.setFont('times', 'normal')
+    ln(`Label/Seal #: ${data.section2_label || '—'}`, M, y); y += 4.5
+    ln(`Serial #: ${data.section2_serial || '—'}`, M, y); y += 4.5
+  }
   y += 2; hl(y); y += 5
 
   // Block 4: Ownership
   pdf.setFont('times', 'bold'); ln('BLOCK 4: OWNERSHIP', M, y); y += 5
   pdf.setFont('times', 'normal')
-  ln(`Seller: ${data.seller_name || '—'}`, M, y); y += 4.5
-  ln(`Buyer: ${data.buyer_name || '—'}`, M, y); y += 4.5
+  ln(`Seller/Transferor: ${data.seller_name || '—'}`, M, y); y += 4.5
+  ln(`Buyer/Transferee: ${data.buyer_name || '—'}`, M, y); y += 4.5
   ln(`Sale Price: ${data.sale_price || '—'}`, M, y); y += 4.5
-  ln(`Sale Date: ${data.sale_date || '—'}`, M, y); y += 4.5
+  ln(`Transfer Date: ${data.sale_transfer_date || data.sale_date || '—'}`, M, y); y += 4.5
   y += 2; hl(y); y += 5
 
   // Block 10: Signatures
   pdf.setFont('times', 'bold'); ln('BLOCK 10: SIGNATURES', M, y); y += 6
   pdf.setFont('times', 'normal')
 
-  // Seller signature
-  if (data.seller_signature_type === 'drawn' && data.seller_signature_image) {
-    try { pdf.addImage(data.seller_signature_image, 'PNG', M, y - 2, 50, 15) } catch {}
-    y += 12; ln(data.seller_name || '', M, y)
-  } else if (data.seller_signature_type === 'typed' && data.seller_signature_value) {
-    pdf.setFont('times', 'italic'); ln(data.seller_signature_value, M, y); pdf.setFont('times', 'normal')
+  // Seller signature (10a)
+  if ((data as any).seller_signature_type === 'drawn' && (data as any).seller_signature_image) {
+    try { pdf.addImage((data as any).seller_signature_image, 'PNG', M, y - 2, 50, 15) } catch {}
+    y += 12
+    ln((data as any).seller_name || '', M, y)
+  } else if ((data as any).seller_signature_type === 'typed' && (data as any).seller_signature_value) {
+    pdf.setFont('times', 'italic'); ln((data as any).seller_signature_value, M, y); pdf.setFont('times', 'normal')
   } else {
     ln('________________________________', M, y)
   }
-  ln('________________________________', W/2 + 5, y); y += 4
+  // Buyer signature (10b)
+  if ((data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image) {
+    const buyerY = y - ((data as any).seller_signature_type === 'drawn' ? 12 : 0)
+    try { pdf.addImage((data as any).buyer_signature_image, 'PNG', W/2 + 5, buyerY - 2, 50, 15) } catch {}
+  } else {
+    ln('________________________________', W/2 + 5, y)
+  }
+  y += 4
   ln('10(a) Seller/Transferor', M, y); ln('10(b) Buyer/Transferee', W/2 + 5, y); y += 4
-  const sellerDate = data.seller_signature_date || '________________'
-  ln(`Date: ${sellerDate}`, M, y); ln('Date: ________________', W/2 + 5, y)
+  const sellerDate = (data as any).seller_signature_date || '________________'
+  const buyerDate = (data as any).buyer_signature_date || '________________'
+  ln(`Date: ${sellerDate}`, M, y); ln(`Date: ${buyerDate}`, W/2 + 5, y); y += 6
+  ln('________________________________', M, y); ln('________________________________', W/2 + 5, y); y += 4
+  ln('Seller/Transferor 2', M, y); ln('Buyer/Transferee 2', W/2 + 5, y)
 
-  const blob = pdf.output('blob')
-  return new File([blob], `title_application_${transactionType}_signed_${Date.now()}.pdf`, { type: 'application/pdf' })
+  return new File([pdf.output('blob')], `title_application_${transactionType}_${Date.now()}.pdf`, { type: 'application/pdf' })
 }
