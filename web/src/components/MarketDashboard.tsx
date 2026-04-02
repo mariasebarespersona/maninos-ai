@@ -290,9 +290,14 @@ export default function MarketDashboard() {
 
   // Seller signature status for confirm step
   const [sellerSignatures, setSellerSignatures] = useState<{
-    bos: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
-    title_app: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+    bos: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string; token?: string } | null;
+    title_app: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string; token?: string } | null;
   }>({ bos: null, title_app: null });
+
+  // Inline email input for e-sign (replaces browser prompt)
+  const [esignEmailFor, setEsignEmailFor] = useState<'bos' | 'title_app' | null>(null);
+  const [esignEmail, setEsignEmail] = useState('');
+  const [esignSending, setEsignSending] = useState(false);
 
   // Price predictions (from historical data)
   const [predictions, setPredictions] = useState<Record<string, any>>({});
@@ -699,6 +704,7 @@ export default function MarketDashboard() {
       setTdhcaError(null);
       setShowBillOfSale(false);
       setShowTitleApp(false);
+      setEvalReport(saved.evalReport || null);
       toast.info('Progreso restaurado — puedes continuar donde lo dejaste');
     } else {
       // Fresh start
@@ -722,7 +728,8 @@ export default function MarketDashboard() {
   // Close modal — save progress so user can resume later
   const closeModal = async () => {
     // Save progress to DB if there's any meaningful state
-    if (selectedListing && (billOfSaleData || tdhcaResult || Object.keys(checklist).length > 0)) {
+    const hasProgress = billOfSaleData || tdhcaResult || evalReport || Object.keys(checklist).length > 0 || purchaseStep !== 'documents' || payment.amount > 0;
+    if (selectedListing && hasProgress) {
       try {
         const progress = {
           purchaseStep,
@@ -733,6 +740,11 @@ export default function MarketDashboard() {
           checklist,
           documents: { billOfSale: null, title: null, titleApplication: null }, // Files can't be serialized
           payment,
+          evalReport, // Persist evaluation report so it's not lost
+          payeeInfo: {
+            payee_id: payment.payee_id,
+            payee_name: payment.payee_name,
+          },
         };
         await fetch(`/api/market-listings/${selectedListing.id}/review-progress`, {
           method: 'PATCH',
@@ -823,6 +835,7 @@ export default function MarketDashboard() {
           signature_type: sigData.type,
           signature_value: sigData.value,
           signer_name: sellerSig.signer_name,
+          token: sellerSig.token,
         };
         if (env.document_type === 'bill_of_sale') sigs.bos = entry;
         if (env.document_type === 'title_application') sigs.title_app = entry;
@@ -844,6 +857,48 @@ export default function MarketDashboard() {
     setDocuments(prev => ({ ...prev, [type]: file }));
   };
   
+  // Send document for e-signature
+  const sendForEsign = async (docType: 'bos' | 'title_app') => {
+    if (!esignEmail.trim() || !selectedListing) return;
+    setEsignSending(true);
+    try {
+      const isBos = docType === 'bos';
+      const signerName = isBos
+        ? (billOfSaleData?.seller_name || 'Vendedor')
+        : ((titleAppData as any)?.seller_transferor_name || billOfSaleData?.seller_name || 'Vendedor');
+      const res = await fetch('/api/esign/envelopes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: isBos
+            ? `Bill of Sale — ${selectedListing.address || 'Casa'}`
+            : `Cambio Título — ${selectedListing.address || 'Casa'}`,
+          document_type: isBos ? 'bill_of_sale' : 'title_application',
+          transaction_type: 'purchase',
+          property_id: null,
+          data: { listing_id: selectedListing.id },
+          signers: [
+            { role: 'seller', name: signerName, email: esignEmail.trim() },
+            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+          ],
+          send_immediately: true,
+        }),
+      });
+      if (res.ok) {
+        toast.success(`Firma enviada a ${esignEmail.trim()} — recibirá un email para firmar`);
+        setSignRefreshKey(k => k + 1);
+        setEsignEmailFor(null);
+        setEsignEmail('');
+      } else {
+        toast.error('Error enviando firma — verifica que la migración 074 está corrida');
+      }
+    } catch {
+      toast.error('Error de conexión');
+    } finally {
+      setEsignSending(false);
+    }
+  };
+
   // TDHCA Title lookup
   const lookupTDHCA = async () => {
     if (!tdhcaSearchValue.trim()) return;
@@ -2584,42 +2639,50 @@ export default function MarketDashboard() {
 
                         {/* Send for e-signature */}
                         {billOfSaleData && (
-                          <button
-                            onClick={async () => {
-                              const sellerEmail = prompt('Email del vendedor para enviar firma:');
-                              if (!sellerEmail) return;
-                              try {
-                                const res = await fetch('/api/esign/envelopes', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    name: `Bill of Sale — ${selectedListing?.address || 'Casa'}`,
-                                    document_type: 'bill_of_sale',
-                                    transaction_type: 'purchase',
-                                    property_id: null,
-                                    data: { listing_id: selectedListing?.id },
-                                    signers: [
-                                      { role: 'seller', name: billOfSaleData.seller_name || 'Vendedor', email: sellerEmail },
-                                      { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
-                                    ],
-                                    send_immediately: true,
-                                  }),
-                                });
-                                if (res.ok) {
-                                  toast.success(`Firma enviada a ${sellerEmail} — recibirá un email para firmar`);
-                                  setSignRefreshKey(k => k + 1); // Refresh signed docs viewer
-                                } else {
-                                  toast.error('Error enviando firma — verifica que la migración 074 está corrida');
-                                }
-                              } catch {
-                                toast.error('Error de conexión');
-                              }
-                            }}
-                            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
-                          >
-                            <Pencil className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
-                          </button>
+                          esignEmailFor === 'bos' ? (
+                            <div className="w-full rounded-xl border-2 border-blue-300 bg-blue-50 p-3" data-testid="esign-email-form-bos">
+                              <p className="text-xs font-semibold text-blue-800 mb-2">Email del vendedor para enviar firma:</p>
+                              <div className="flex gap-2">
+                                <input
+                                  type="email"
+                                  value={esignEmail}
+                                  onChange={(e) => setEsignEmail(e.target.value)}
+                                  placeholder="vendedor@email.com"
+                                  className="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  data-testid="esign-email-input"
+                                  onKeyDown={(e) => e.key === 'Enter' && sendForEsign('bos')}
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => sendForEsign('bos')}
+                                  disabled={esignSending || !esignEmail.trim()}
+                                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                    esignSending || !esignEmail.trim()
+                                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                                  }`}
+                                  data-testid="esign-send-btn"
+                                >
+                                  {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                                </button>
+                                <button
+                                  onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }}
+                                  className="px-2 py-2 text-gray-500 hover:text-gray-700"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEsignEmailFor('bos'); setEsignEmail(''); }}
+                              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
+                              data-testid="esign-bos-btn"
+                            >
+                              <Pencil className="w-4 h-4 text-blue-600" />
+                              <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
+                            </button>
+                          )
                         )}
 
                         {/* OR upload a signed one */}
@@ -3036,36 +3099,50 @@ export default function MarketDashboard() {
 
                         {/* Send title application for e-signature */}
                         {titleAppData && (
-                          <button
-                            onClick={async () => {
-                              const sellerEmail = prompt('Email del vendedor para firmar Cambio de Título:');
-                              if (!sellerEmail) return;
-                              try {
-                                const res = await fetch('/api/esign/envelopes', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    name: `Cambio Título — ${selectedListing?.address || 'Casa'}`,
-                                    document_type: 'title_application',
-                                    transaction_type: 'purchase',
-                                    property_id: null,
-                                    data: { listing_id: selectedListing?.id },
-                                    signers: [
-                                      { role: 'seller', name: (titleAppData as any)?.seller_transferor_name || billOfSaleData?.seller_name || 'Vendedor', email: sellerEmail },
-                                      { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
-                                    ],
-                                    send_immediately: true,
-                                  }),
-                                });
-                                if (res.ok) { toast.success(`Firma de Cambio de Título enviada a ${sellerEmail}`); setSignRefreshKey(k => k + 1); }
-                                else toast.error('Error enviando firma');
-                              } catch { toast.error('Error de conexión'); }
-                            }}
-                            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors"
-                          >
-                            <Pencil className="w-4 h-4 text-indigo-600" />
-                            <span className="text-sm font-semibold text-indigo-700">Enviar Cambio Título para Firma</span>
-                          </button>
+                          esignEmailFor === 'title_app' ? (
+                            <div className="w-full rounded-xl border-2 border-indigo-300 bg-indigo-50 p-3" data-testid="esign-email-form-ta">
+                              <p className="text-xs font-semibold text-indigo-800 mb-2">Email del vendedor para firmar Cambio de Título:</p>
+                              <div className="flex gap-2">
+                                <input
+                                  type="email"
+                                  value={esignEmail}
+                                  onChange={(e) => setEsignEmail(e.target.value)}
+                                  placeholder="vendedor@email.com"
+                                  className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                  data-testid="esign-email-input-ta"
+                                  onKeyDown={(e) => e.key === 'Enter' && sendForEsign('title_app')}
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => sendForEsign('title_app')}
+                                  disabled={esignSending || !esignEmail.trim()}
+                                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                    esignSending || !esignEmail.trim()
+                                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                  }`}
+                                  data-testid="esign-send-btn-ta"
+                                >
+                                  {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                                </button>
+                                <button
+                                  onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }}
+                                  className="px-2 py-2 text-gray-500 hover:text-gray-700"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEsignEmailFor('title_app'); setEsignEmail(''); }}
+                              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                              data-testid="esign-ta-btn"
+                            >
+                              <Pencil className="w-4 h-4 text-indigo-600" />
+                              <span className="text-sm font-semibold text-indigo-700">Enviar Cambio Título para Firma</span>
+                            </button>
+                          )
                         )}
 
                         {/* OR upload */}
@@ -3233,6 +3310,18 @@ export default function MarketDashboard() {
                           {sellerSignatures.bos.signed && sellerSignatures.bos.signature_type === 'drawn' && sellerSignatures.bos.signature_value && (
                             <img src={sellerSignatures.bos.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
                           )}
+                          {sellerSignatures.bos.token && (
+                            <a
+                              href={`/firmar/${sellerSignatures.bos.token}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
+                              data-testid="view-signed-doc-bos"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Ver Documento
+                            </a>
+                          )}
                         </div>
                       )}
                       {sellerSignatures.title_app && (
@@ -3254,6 +3343,18 @@ export default function MarketDashboard() {
                           </div>
                           {sellerSignatures.title_app.signed && sellerSignatures.title_app.signature_type === 'drawn' && sellerSignatures.title_app.signature_value && (
                             <img src={sellerSignatures.title_app.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
+                          )}
+                          {sellerSignatures.title_app.token && (
+                            <a
+                              href={`/firmar/${sellerSignatures.title_app.token}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
+                              data-testid="view-signed-doc-ta"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Ver Documento
+                            </a>
                           )}
                         </div>
                       )}
