@@ -3611,8 +3611,10 @@ export default function MarketDashboard() {
                   }
                   merged.seller_date = new Date().toISOString().split('T')[0];
                 }
+                const dataHash = JSON.stringify(merged).length;
                 return (
                   <BillOfSaleTemplate
+                    key={`bos-preview-${dataHash}`}
                     transactionType="purchase"
                     initialData={merged}
                     readOnly
@@ -3622,7 +3624,6 @@ export default function MarketDashboard() {
               })()}
               {previewDoc === 'title_app' && titleAppData && (() => {
                 const merged: any = { ...titleAppData };
-                console.log('[Preview] titleAppData keys with values:', Object.entries(titleAppData).filter(([,v]) => v !== '' && v !== false && v != null).map(([k,v]) => `${k}=${typeof v === 'boolean' ? v : String(v).substring(0,30)}`));
                 if (sellerSignatures.title_app?.signed) {
                   merged.seller_signature_type = sellerSignatures.title_app.signature_type;
                   if (sellerSignatures.title_app.signature_type === 'drawn') {
@@ -3632,8 +3633,11 @@ export default function MarketDashboard() {
                   }
                   merged.seller_signature_date = new Date().toISOString().split('T')[0];
                 }
+                // Force remount with unique key so initialData is applied fresh
+                const dataHash = JSON.stringify(merged).length;
                 return (
                   <TitleApplicationTemplate
+                    key={`ta-preview-${dataHash}`}
                     transactionType="purchase"
                     initialData={merged}
                     readOnly
