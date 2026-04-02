@@ -285,6 +285,7 @@ export default function MarketDashboard() {
   
   // Title Application template state
   const [showTitleApp, setShowTitleApp] = useState(false);
+  const [signRefreshKey, setSignRefreshKey] = useState(0);
   const [titleAppData, setTitleAppData] = useState<TitleApplicationData | null>(null);
 
   // Price predictions (from historical data)
@@ -2513,6 +2514,7 @@ export default function MarketDashboard() {
                                 });
                                 if (res.ok) {
                                   toast.success(`Firma enviada a ${sellerEmail} — recibirá un email para firmar`);
+                                  setSignRefreshKey(k => k + 1); // Refresh signed docs viewer
                                 } else {
                                   toast.error('Error enviando firma — verifica que la migración 074 está corrida');
                                 }
@@ -2787,7 +2789,7 @@ export default function MarketDashboard() {
                   </div>
 
                   {/* ═══ Signed Documents Status ═══ */}
-                  <SignedDocsViewer listingId={selectedListing?.id} />
+                  <SignedDocsViewer listingId={selectedListing?.id} refreshKey={signRefreshKey} />
 
                   {/* Title Application (Aplicación Cambio de Título) — OPTIONAL */}
                   <div>
@@ -2962,7 +2964,7 @@ export default function MarketDashboard() {
                                     send_immediately: true,
                                   }),
                                 });
-                                if (res.ok) toast.success(`Firma de Cambio de Título enviada a ${sellerEmail}`);
+                                if (res.ok) { toast.success(`Firma de Cambio de Título enviada a ${sellerEmail}`); setSignRefreshKey(k => k + 1); }
                                 else toast.error('Error enviando firma');
                               } catch { toast.error('Error de conexión'); }
                             }}
@@ -3319,11 +3321,11 @@ export default function MarketDashboard() {
 // Signed Documents Viewer — shows e-sign envelope status in review
 // ═══════════════════════════════════════════════════════════════
 
-function SignedDocsViewer({ listingId }: { listingId?: string }) {
+function SignedDocsViewer({ listingId, refreshKey }: { listingId?: string; refreshKey?: number }) {
   const [envelopes, setEnvelopes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
+  const fetchEnvelopes = useCallback(() => {
     if (!listingId) return
     setLoading(true)
     fetch(`/api/esign/listing/${listingId}/envelopes`)
@@ -3332,6 +3334,15 @@ function SignedDocsViewer({ listingId }: { listingId?: string }) {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [listingId])
+
+  useEffect(() => { fetchEnvelopes() }, [fetchEnvelopes, refreshKey])
+
+  // Auto-refresh every 15 seconds to pick up new signatures
+  useEffect(() => {
+    if (!listingId) return
+    const interval = setInterval(fetchEnvelopes, 15000)
+    return () => clearInterval(interval)
+  }, [listingId, fetchEnvelopes])
 
   if (!listingId || (envelopes.length === 0 && !loading)) return null
 

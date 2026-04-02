@@ -52,3 +52,4 @@ $$ LANGUAGE plpgsql;
 -- The trigger already exists, this just updates the function
 
 
+

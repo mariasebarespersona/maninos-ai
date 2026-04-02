@@ -16,3 +16,4 @@ COMMENT ON COLUMN title_transfers.title_application_received IS 'Has seller subm
 COMMENT ON COLUMN title_transfers.bill_of_sale_received IS 'Has Bill of Sale been signed?';
 COMMENT ON COLUMN title_transfers.payment_locked IS 'TRUE = cannot pay seller yet. Unlocks when both docs received.';
 
+

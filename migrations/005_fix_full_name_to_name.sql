@@ -37,3 +37,4 @@ $$ LANGUAGE plpgsql;
 -- Note: Run this migration in Supabase SQL Editor
 
 
+

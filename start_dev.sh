@@ -40,3 +40,4 @@ trap "kill $API_PID $WEB_PID 2>/dev/null; exit" INT TERM
 wait
 
 
+

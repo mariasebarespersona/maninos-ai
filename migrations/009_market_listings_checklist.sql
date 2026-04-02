@@ -16,3 +16,4 @@ COMMENT ON COLUMN market_listings.checklist_completed IS 'TRUE if >= 80% of chec
 COMMENT ON COLUMN market_listings.checklist_percentage IS 'Percentage of checklist items completed (0-100)';
 
 
+

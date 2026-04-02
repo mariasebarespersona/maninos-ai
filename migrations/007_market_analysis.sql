@@ -58,3 +58,4 @@ COMMENT ON COLUMN market_analysis.max_offer_70_percent IS 'Maximum price Maninos
 COMMENT ON COLUMN market_analysis.qualified_count IS 'Number of listings that passed all 3 qualification rules';
 
 
+

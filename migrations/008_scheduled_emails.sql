@@ -55,3 +55,4 @@ CREATE TRIGGER trigger_update_scheduled_emails_timestamp
     EXECUTE FUNCTION update_scheduled_emails_timestamp();
 
 
+

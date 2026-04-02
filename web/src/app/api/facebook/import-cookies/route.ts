@@ -13,3 +13,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data, { status: res.status })
   } catch { return NextResponse.json({ success: false, message: 'API unavailable' }, { status: 500 }) }
 }
+

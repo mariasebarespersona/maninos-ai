@@ -8,3 +8,4 @@ ADD COLUMN IF NOT EXISTS notes TEXT;
 COMMENT ON COLUMN properties.notes IS 'Additional notes about the property (e.g., source, payment info)';
 
 
+

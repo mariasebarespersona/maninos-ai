@@ -241,3 +241,4 @@ class CraigslistScraper:
             photos=[thumbnail] if thumbnail else [],
         )
 
+

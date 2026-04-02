@@ -13,3 +13,4 @@ ALTER TABLE market_listings ADD CONSTRAINT market_listings_status_check
     'dismissed', 'reviewing'
   ));
 
+

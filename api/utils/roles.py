@@ -73,3 +73,4 @@ def check_role(user_role: str, required_permission: str) -> tuple[bool, str]:
         f"Roles permitidos: {', '.join(allowed_roles)}"
     )
 
+
