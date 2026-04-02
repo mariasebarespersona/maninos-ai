@@ -36,6 +36,7 @@ class CreateEnvelopeRequest(BaseModel):
     signers: List[SignerInput]
     unsigned_pdf_url: Optional[str] = None
     send_immediately: bool = True
+    data: Optional[dict] = None  # Extra data (listing_id, etc.)
 
 
 class SignatureSubmission(BaseModel):
@@ -62,6 +63,7 @@ async def create_envelope(req: CreateEnvelopeRequest):
         sale_id=req.sale_id,
         signers=[s.model_dump() for s in req.signers],
         unsigned_pdf_url=req.unsigned_pdf_url,
+        data=req.data,
     )
 
     if req.send_immediately:

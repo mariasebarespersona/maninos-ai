@@ -39,6 +39,7 @@ def create_envelope(
     signers: List[Dict[str, str]] = None,
     unsigned_pdf_url: Optional[str] = None,
     initiated_by: str = "system",
+    data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Create a signature envelope with one or more signers.
@@ -59,6 +60,7 @@ def create_envelope(
         "unsigned_pdf_url": unsigned_pdf_url,
         "status": "draft",
         "initiated_by": initiated_by,
+        "data": data or {},
     }
     sb.table("signature_envelopes").insert(envelope_data).execute()
 
