@@ -3310,17 +3310,27 @@ export default function MarketDashboard() {
                           {sellerSignatures.bos.signed && sellerSignatures.bos.signature_type === 'drawn' && sellerSignatures.bos.signature_value && (
                             <img src={sellerSignatures.bos.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
                           )}
-                          {sellerSignatures.bos.token && (
-                            <a
-                              href={`/firmar/${sellerSignatures.bos.token}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {sellerSignatures.bos.signed && billOfSaleData && (
+                            <button
+                              onClick={async () => {
+                                const merged: any = { ...billOfSaleData };
+                                merged.seller_signature_type = sellerSignatures.bos!.signature_type;
+                                if (sellerSignatures.bos!.signature_type === 'drawn') {
+                                  merged.seller_signature_image = sellerSignatures.bos!.signature_value;
+                                } else {
+                                  merged.seller_name = sellerSignatures.bos!.signature_value || merged.seller_name;
+                                }
+                                merged.seller_date = new Date().toISOString().split('T')[0];
+                                const file = await generateSignedBillOfSalePDF(merged, 'purchase');
+                                const url = URL.createObjectURL(file);
+                                window.open(url, '_blank');
+                              }}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-bos"
                             >
-                              <ExternalLink className="w-3 h-3" />
+                              <FileText className="w-3 h-3" />
                               Ver Documento
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
@@ -3344,17 +3354,27 @@ export default function MarketDashboard() {
                           {sellerSignatures.title_app.signed && sellerSignatures.title_app.signature_type === 'drawn' && sellerSignatures.title_app.signature_value && (
                             <img src={sellerSignatures.title_app.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
                           )}
-                          {sellerSignatures.title_app.token && (
-                            <a
-                              href={`/firmar/${sellerSignatures.title_app.token}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {sellerSignatures.title_app.signed && titleAppData && (
+                            <button
+                              onClick={async () => {
+                                const merged: any = { ...titleAppData };
+                                merged.seller_signature_type = sellerSignatures.title_app!.signature_type;
+                                if (sellerSignatures.title_app!.signature_type === 'drawn') {
+                                  merged.seller_signature_image = sellerSignatures.title_app!.signature_value;
+                                } else {
+                                  merged.seller_signature_value = sellerSignatures.title_app!.signature_value || merged.seller_name;
+                                }
+                                merged.seller_signature_date = new Date().toISOString().split('T')[0];
+                                const file = await generateSignedTitleAppPDF(merged, 'purchase');
+                                const url = URL.createObjectURL(file);
+                                window.open(url, '_blank');
+                              }}
                               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
                               data-testid="view-signed-doc-ta"
                             >
-                              <ExternalLink className="w-3 h-3" />
+                              <FileText className="w-3 h-3" />
                               Ver Documento
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
