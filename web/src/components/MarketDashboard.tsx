@@ -34,6 +34,7 @@ import {
   Pencil,
   Filter,
   HeartHandshake,
+  Clock,
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
@@ -2502,6 +2503,7 @@ export default function MarketDashboard() {
                                     document_type: 'bill_of_sale',
                                     transaction_type: 'purchase',
                                     property_id: null,
+                                    data: { listing_id: selectedListing?.id },
                                     signers: [
                                       { role: 'seller', name: billOfSaleData.seller_name || 'Vendedor', email: sellerEmail },
                                       { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
@@ -2784,6 +2786,9 @@ export default function MarketDashboard() {
                     )}
                   </div>
 
+                  {/* ═══ Signed Documents Status ═══ */}
+                  <SignedDocsViewer listingId={selectedListing?.id} />
+
                   {/* Title Application (Aplicación Cambio de Título) — OPTIONAL */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2933,6 +2938,40 @@ export default function MarketDashboard() {
                           </div>
                           <ChevronRight className="w-5 h-5 text-gray-400" />
                         </button>
+
+                        {/* Send title application for e-signature */}
+                        {titleAppData && (
+                          <button
+                            onClick={async () => {
+                              const sellerEmail = prompt('Email del vendedor para firmar Cambio de Título:');
+                              if (!sellerEmail) return;
+                              try {
+                                const res = await fetch('/api/esign/envelopes', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    name: `Cambio Título — ${selectedListing?.address || 'Casa'}`,
+                                    document_type: 'title_application',
+                                    transaction_type: 'purchase',
+                                    property_id: null,
+                                    data: { listing_id: selectedListing?.id },
+                                    signers: [
+                                      { role: 'seller', name: (titleAppData as any)?.seller_transferor_name || billOfSaleData?.seller_name || 'Vendedor', email: sellerEmail },
+                                      { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+                                    ],
+                                    send_immediately: true,
+                                  }),
+                                });
+                                if (res.ok) toast.success(`Firma de Cambio de Título enviada a ${sellerEmail}`);
+                                else toast.error('Error enviando firma');
+                              } catch { toast.error('Error de conexión'); }
+                            }}
+                            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4 text-indigo-600" />
+                            <span className="text-sm font-semibold text-indigo-700">Enviar Cambio Título para Firma</span>
+                          </button>
+                        )}
 
                         {/* OR upload */}
                         <div className="text-center text-xs text-gray-400 font-medium">— o sube una aplicación firmada —</div>
@@ -3274,3 +3313,83 @@ export default function MarketDashboard() {
   );
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════
+// Signed Documents Viewer — shows e-sign envelope status in review
+// ═══════════════════════════════════════════════════════════════
+
+function SignedDocsViewer({ listingId }: { listingId?: string }) {
+  const [envelopes, setEnvelopes] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!listingId) return
+    setLoading(true)
+    fetch(`/api/esign/listing/${listingId}/envelopes`)
+      .then(r => r.json())
+      .then(d => setEnvelopes(d.envelopes || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [listingId])
+
+  if (!listingId || (envelopes.length === 0 && !loading)) return null
+
+  const docTypeLabels: Record<string, string> = {
+    bill_of_sale: "Bill of Sale",
+    title_application: "Cambio de Título",
+    rto_lease: "Contrato RTO",
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
+      <h4 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4" />
+        Documentos Firmados
+      </h4>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-600">
+          <Loader2 className="w-3 h-3 animate-spin" /> Cargando...
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {envelopes.map((env: any) => (
+            <div key={env.id} className="bg-white rounded-lg border border-emerald-100 p-3">
+              <p className="text-sm font-semibold text-navy-900 mb-1.5">
+                {docTypeLabels[env.document_type] || env.document_type}
+              </p>
+              <div className="space-y-1">
+                {(env.document_signatures || []).map((sig: any) => {
+                  const signed = !!sig.signed_at
+                  const sigData = sig.signature_data || {}
+                  const isDrawn = sigData.type === "drawn"
+                  return (
+                    <div key={sig.id} className="flex items-center gap-2 text-xs">
+                      {signed ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      )}
+                      <span className="font-medium text-navy-700 capitalize">{sig.signer_role}:</span>
+                      <span className="text-navy-600">{sig.signer_name}</span>
+                      {signed ? (
+                        <>
+                          <span className="text-emerald-600">— firmado {new Date(sig.signed_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</span>
+                          {isDrawn && sigData.value && (
+                            <img src={sigData.value} alt="Firma" className="h-6 ml-1 border border-emerald-200 rounded" />
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-amber-600">— pendiente de firma</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

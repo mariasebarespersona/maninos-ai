@@ -279,6 +279,62 @@ def apply_signature(
             except Exception as prop_err:
                 logger.warning(f"[ESign] Could not update property document_data: {prop_err}")
 
+        # If title_application signature, store in document_data under "title_app" key
+        if prop_id and doc_type == "title_application":
+            try:
+                prop = sb.table("properties").select("document_data").eq("id", prop_id).single().execute()
+                if prop.data:
+                    doc_data = prop.data.get("document_data") or {}
+                    ta_data = doc_data.get("title_app") or {}
+
+                    if sig["signer_role"] == "seller":
+                        ta_data["seller_date"] = now[:10]
+                        ta_data["seller_signed_at"] = now
+                        ta_data["seller_signature_type"] = sig_type
+                        if sig_type == "drawn":
+                            ta_data["seller_name"] = sig["signer_name"]
+                            ta_data["seller_signature_image"] = sig_value
+                        else:
+                            ta_data["seller_name"] = sig_value
+                    elif sig["signer_role"] in ("buyer", "buyer2"):
+                        ta_data["buyer_date"] = now[:10]
+                        ta_data["buyer_signed_at"] = now
+                        ta_data["buyer_signature_type"] = sig_type
+                        if sig_type == "drawn":
+                            ta_data["buyer_name"] = sig["signer_name"]
+                            ta_data["buyer_signature_image"] = sig_value
+                        else:
+                            ta_data["buyer_name"] = sig_value
+
+                    doc_data["title_app"] = ta_data
+                    sb.table("properties").update({"document_data": doc_data}).eq("id", prop_id).execute()
+                    logger.info(f"[ESign] Updated property {prop_id} document_data.title_app with {sig['signer_role']} signature")
+            except Exception as ta_err:
+                logger.warning(f"[ESign] Could not update title_app document_data: {ta_err}")
+
+        # Also store signature info on the envelope's listing review_progress (for pre-purchase)
+        if not prop_id and envelope_data.data:
+            try:
+                env_json = envelope_data.data.get("data") or {}
+                listing_id = env_json.get("listing_id")
+                if listing_id:
+                    listing = sb.table("market_listings").select("review_progress").eq("id", listing_id).single().execute()
+                    if listing.data:
+                        rp = listing.data.get("review_progress") or {}
+                        sig_key = f"{doc_type}_{sig['signer_role']}"
+                        rp[sig_key] = {
+                            "signed": True,
+                            "signer_name": sig["signer_name"],
+                            "signature_type": sig_type,
+                            "signed_at": now,
+                        }
+                        if sig_type == "drawn":
+                            rp[sig_key]["signature_image"] = sig_value[:100] + "..."  # Store truncated ref, full is in document_signatures
+                        sb.table("market_listings").update({"review_progress": rp}).eq("id", listing_id).execute()
+                        logger.info(f"[ESign] Updated listing {listing_id} review_progress with {sig_key}")
+            except Exception as lp_err:
+                logger.warning(f"[ESign] Could not update listing review_progress: {lp_err}")
+
         # Also check: if no property yet (purchase from market), update the market listing's review_progress
         if not prop_id and sig.get("related_sale_id") is None:
             # Try to find the listing via the envelope name or other link

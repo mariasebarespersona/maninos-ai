@@ -168,3 +168,21 @@ async def list_property_envelopes(property_id: str):
         .order("created_at", desc=True).execute()
 
     return {"ok": True, "envelopes": result.data or []}
+
+
+@router.get("/listing/{listing_id}/envelopes")
+async def list_listing_envelopes(listing_id: str):
+    """List all signature envelopes for a market listing (pre-purchase, no property yet)."""
+    from tools.supabase_client import sb
+
+    # Envelopes store listing_id in the 'data' JSONB column
+    result = sb.table("signature_envelopes").select("*, document_signatures(*)") \
+        .order("created_at", desc=True).execute()
+
+    # Filter by listing_id in data JSON (Supabase doesn't support JSONB path filter easily)
+    envelopes = [
+        e for e in (result.data or [])
+        if (e.get("data") or {}).get("listing_id") == listing_id
+    ]
+
+    return {"ok": True, "envelopes": envelopes}

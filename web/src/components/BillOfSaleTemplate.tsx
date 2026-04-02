@@ -237,11 +237,28 @@ export default function BillOfSaleTemplate({
     line('Seller warrants that said property is free and clear of all liens and encumbrances.', M, y); y += 10
 
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
-    line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
+
+    // Seller signature (drawn image or text)
+    if ((data as any).seller_signature_type === 'drawn' && (data as any).seller_signature_image) {
+      try { pdf.addImage((data as any).seller_signature_image, 'PNG', M, y - 4, 50, 15) } catch {}
+      line(data.seller_name || '', M, y + 13)
+    } else if (data.seller_name) {
+      pdf.setFont('helvetica', 'italic'); line(data.seller_name, M, y); pdf.setFont('helvetica', 'normal')
+    } else {
+      line('________________________________', M, y)
+    }
+    // Buyer signature (drawn image or text)
+    if ((data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image) {
+      try { pdf.addImage((data as any).buyer_signature_image, 'PNG', W/2 + 5, y - 4, 50, 15) } catch {}
+      line(data.buyer_name || '', W/2 + 5, y + 13)
+    } else if (data.buyer_name) {
+      pdf.setFont('helvetica', 'italic'); line(data.buyer_name || 'MANINOS HOMES', W/2 + 5, y); pdf.setFont('helvetica', 'normal')
+    } else {
+      line('________________________________', W/2 + 5, y)
+    }
+    y += 5
     line('Seller Signature', M, y); line('Buyer Signature', W/2 + 5, y); y += 3
-    line((data as any).seller_date || '', M, y); line(data.buyer_date || '', W/2 + 5, y); y += 8
-    line('________________________________', M, y); line('________________________________', W/2 + 5, y); y += 5
-    line('Seller 2 Signature', M, y); line('Buyer 2 Signature', W/2 + 5, y)
+    line((data as any).seller_date || '', M, y); line(data.buyer_date || '', W/2 + 5, y)
 
     const blob = pdf.output('blob')
     const filename = `bill_of_sale_${transactionType}_${Date.now()}.pdf`
