@@ -410,8 +410,8 @@ Responde SOLO en JSON válido:
         logger.error(f"[evaluation] JSON parse error: {e}")
         raise HTTPException(status_code=500, detail="AI returned invalid JSON")
     except Exception as e:
-        logger.error(f"[evaluation] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[evaluation] Error ({type(e).__name__}): {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.post("/{evaluation_id}/generate-report")
