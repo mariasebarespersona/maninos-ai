@@ -130,7 +130,23 @@ export default function NewPropertyPage() {
   const [previewDoc, setPreviewDoc] = useState<'bos' | 'title_app' | null>(null)
 
   // Envelope IDs created during this flow (for polling signatures)
-  const [envelopeIds, setEnvelopeIds] = useState<{ bos?: string; title_app?: string }>({})
+  // Persisted in sessionStorage so they survive page refresh within the same tab
+  const [envelopeIds, setEnvelopeIds] = useState<{ bos?: string; title_app?: string }>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('newprop_envelopeIds')
+        if (saved) return JSON.parse(saved)
+      } catch {}
+    }
+    return {}
+  })
+
+  // Persist envelopeIds to sessionStorage when they change
+  useEffect(() => {
+    if (Object.values(envelopeIds).some(Boolean)) {
+      sessionStorage.setItem('newprop_envelopeIds', JSON.stringify(envelopeIds))
+    }
+  }, [envelopeIds])
 
   // Payment state
   const [payment, setPayment] = useState<PaymentInfo>({
