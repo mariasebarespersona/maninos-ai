@@ -611,8 +611,9 @@ export default function NewPropertyPage() {
         titleApplicationUrl = await uploadDocument(newProperty.id, titleAppFile, 'title_application_purchase')
       }
 
-      // Update property document_data with signature info (if signatures were merged)
-      if (sellerSignatures.bos?.signed || sellerSignatures.title_app?.signed) {
+      // Update property document_data if anything changed after creation
+      // (uploaded files without template, signature merges, etc.)
+      if (Object.keys(docData).length > 0) {
         try {
           await fetch(`/api/properties/${newProperty.id}`, {
             method: 'PATCH',
