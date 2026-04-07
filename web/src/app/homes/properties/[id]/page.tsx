@@ -1567,17 +1567,29 @@ ${price}
           {/* Document generation buttons */}
           {!showBosTemplate && !showTitleAppTemplate && (
             <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                onClick={() => setShowBosTemplate('purchase')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.bos_purchase
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                }`}
-              >
-                {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Bill of Sale (Compra)
-              </button>
+              {property.document_data?.bos_purchase?._uploaded_file ? (
+                <a
+                  href={property.document_data.bos_purchase.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Bill of Sale (Compra) — Ver PDF ↗
+                </a>
+              ) : (
+                <button
+                  onClick={() => setShowBosTemplate('purchase')}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                    property.document_data?.bos_purchase
+                      ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                      : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                  Bill of Sale (Compra)
+                </button>
+              )}
               <button
                 onClick={() => setShowTitleAppTemplate('purchase')}
                 className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${

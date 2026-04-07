@@ -1292,6 +1292,10 @@ export default function MarketDashboard() {
 
       if (billOfSaleFile) {
         billOfSaleUrl = await uploadDocument(property.id, billOfSaleFile, 'bill_of_sale_purchase');
+        // If user uploaded a file directly (no template), store the URL in document_data
+        if (billOfSaleUrl && !billOfSaleData) {
+          docData.bos_purchase = { _uploaded_file: true, file_url: billOfSaleUrl, file_name: billOfSaleFile.name };
+        }
       }
       if (documents.title) {
         titleUrl = await uploadDocument(property.id, documents.title, 'title_purchase');
