@@ -82,7 +82,7 @@ class RenovacionAgent(BaseAgent):
         super().__init__(
             name="renovacion",
             description="Intelligent renovation assistant that guides employees through the renovation process",
-            model="gpt-4o",
+            model="gpt-5",
             temperature=0.1,  # Low temperature for consistent, non-hallucinating responses
         )
         self.api_url = os.getenv("API_URL", "http://localhost:8000")

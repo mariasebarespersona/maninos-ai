@@ -3155,7 +3155,7 @@ Return a JSON array with one object per movement (in order):
 }}"""
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5",
         messages=[
             {"role": "system", "content": "You are an expert accountant for a mobile home RTO financing company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},

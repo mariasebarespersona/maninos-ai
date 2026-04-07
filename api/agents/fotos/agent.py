@@ -69,7 +69,7 @@ class FotosAgent(BaseAgent):
         super().__init__(
             name="fotos",
             description="Intelligent photo classification using Vision AI",
-            model="gpt-4o",  # GPT-4o has vision capabilities
+            model="gpt-5",  # GPT-5 has vision capabilities
             temperature=0.1,
         )
     

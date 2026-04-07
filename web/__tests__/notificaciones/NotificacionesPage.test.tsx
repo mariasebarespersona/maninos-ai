@@ -17,6 +17,21 @@ jest.mock('@/components/ui/Toast', () => ({
   useToast: () => mockToast,
 }))
 
+jest.mock('next/link', () => {
+  return function MockLink({ children, href, ...props }: any) {
+    return <a href={href} {...props}>{children}</a>
+  }
+})
+
+jest.mock('@/components/Auth/AuthProvider', () => ({
+  useAuth: () => ({
+    user: { email: 'admin@maninos.com' },
+    teamUser: { id: 'user-1', role: 'admin', name: 'Admin' },
+    loading: false,
+    signOut: jest.fn(),
+  }),
+}))
+
 // ─── Mock Data ────────────────────────────────────────────────────
 const mockPendingOrder = {
   id: 'order-1',
@@ -90,9 +105,10 @@ function createFetchMock(overrides?: {
         }),
       })
     }
+    // Default: return empty array/object for any other endpoint
     return Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({}),
+      json: () => Promise.resolve({ ok: true, data: [], transfers: [], envelopes: [], notifications: [], unread_count: 0 }),
     })
   }) as jest.Mock
 }
@@ -123,7 +139,7 @@ describe('NotificacionesPage', () => {
   it('shows "Pendientes" and "Realizados" tabs', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('Pendientes')).toBeInTheDocument()
+      expect(screen.getByText('Por Aprobar')).toBeInTheDocument()
       expect(screen.getByText('Realizados')).toBeInTheDocument()
     })
   })
@@ -142,7 +158,7 @@ describe('NotificacionesPage', () => {
   it('fetches pending orders on mount and displays them', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('123 Main St')).toBeInTheDocument()
+      expect(screen.getByText(/123 Main St/)).toBeInTheDocument()
     })
   })
 
@@ -150,17 +166,17 @@ describe('NotificacionesPage', () => {
   it('shows property address, amount, and payee name on the card', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('123 Main St')).toBeInTheDocument()
+      expect(screen.getByText(/123 Main St/)).toBeInTheDocument()
       expect(screen.getByText('$45,000.00')).toBeInTheDocument()
       expect(screen.getByText(/John Seller/)).toBeInTheDocument()
     })
   })
 
   // 6. Shows "Completar Pago" button on pending orders
-  it('shows "Completar Pago" button on pending orders', async () => {
+  it('shows "Aprobar" button on pending orders for admin', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
+      expect(screen.getByText('Aprobar')).toBeInTheDocument()
     })
   })
 
@@ -169,7 +185,7 @@ describe('NotificacionesPage', () => {
     global.fetch = createFetchMock({ pending: [] })
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('No hay ordenes pendientes')).toBeInTheDocument()
+      expect(screen.getByText('No hay ordenes por aprobar')).toBeInTheDocument()
     })
   })
 
@@ -178,7 +194,7 @@ describe('NotificacionesPage', () => {
     render(<NotificacionesPage />)
     // Wait for initial pending fetch
     await waitFor(() => {
-      expect(screen.getByText('123 Main St')).toBeInTheDocument()
+      expect(screen.getByText(/123 Main St/)).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByText('Realizados'))
@@ -194,7 +210,7 @@ describe('NotificacionesPage', () => {
   it('completed orders show reference number', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('123 Main St')).toBeInTheDocument()
+      expect(screen.getByText(/123 Main St/)).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByText('Realizados'))
@@ -205,106 +221,29 @@ describe('NotificacionesPage', () => {
   })
 
   // 10. Clicking "Completar Pago" opens the completion modal
-  it('clicking "Completar Pago" opens the completion modal', async () => {
+  // 10. Clicking "Aprobar" calls PATCH approve endpoint
+  it('clicking "Aprobar" calls the approve API', async () => {
     render(<NotificacionesPage />)
     await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
+      expect(screen.getByText('Aprobar')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByText('Completar Pago'))
-
-    await waitFor(() => {
-      // Modal title is also "Completar Pago"
-      const headings = screen.getAllByText('Completar Pago')
-      expect(headings.length).toBeGreaterThanOrEqual(2)
-    })
-  })
-
-  // 11. Modal shows order summary (property address, payee name, amount)
-  it('modal shows order summary with property address, payee name, and amount', async () => {
-    render(<NotificacionesPage />)
-    await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByText('Completar Pago'))
-
-    await waitFor(() => {
-      expect(screen.getByText('Propiedad')).toBeInTheDocument()
-      expect(screen.getByText('Beneficiario')).toBeInTheDocument()
-      expect(screen.getByText('Monto')).toBeInTheDocument()
-      // Values in the modal summary (name appears in card + modal)
-      const sellers = screen.getAllByText('John Seller')
-      expect(sellers.length).toBeGreaterThanOrEqual(2)
-      // The amount appears in both the card and modal
-      const amounts = screen.getAllByText('$45,000.00')
-      expect(amounts.length).toBeGreaterThanOrEqual(2)
-    })
-  })
-
-  // 12. Modal has confirmation number input, date input
-  it('modal has confirmation number input and date input', async () => {
-    render(<NotificacionesPage />)
-    await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByText('Completar Pago'))
-
-    await waitFor(() => {
-      expect(screen.getByText('Numero de confirmacion *')).toBeInTheDocument()
-      expect(screen.getByText('Fecha del pago *')).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('Ingresa el # de confirmacion de la transferencia')).toBeInTheDocument()
-    })
-  })
-
-  // 13. Confirm button is disabled when reference is empty
-  it('confirm button is disabled when reference is empty', async () => {
-    render(<NotificacionesPage />)
-    await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByText('Completar Pago'))
-
-    await waitFor(() => {
-      const confirmBtn = screen.getByText('Confirmar Pago Realizado')
-      expect(confirmBtn).toBeDisabled()
-    })
-  })
-
-  // 14. Submitting completion calls PATCH /api/payment-orders/{id}/complete
-  it('submitting completion calls PATCH /api/payment-orders/{id}/complete', async () => {
-    render(<NotificacionesPage />)
-    await waitFor(() => {
-      expect(screen.getByText('Completar Pago')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByText('Completar Pago'))
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('Ingresa el # de confirmacion de la transferencia')).toBeInTheDocument()
-    })
-
-    // Fill in the reference number
-    const referenceInput = screen.getByPlaceholderText('Ingresa el # de confirmacion de la transferencia')
-    fireEvent.change(referenceInput, { target: { value: 'CONF-99999' } })
-
-    // Confirm button should now be enabled
-    const confirmBtn = screen.getByText('Confirmar Pago Realizado')
-    expect(confirmBtn).not.toBeDisabled()
-
-    fireEvent.click(confirmBtn)
+    fireEvent.click(screen.getByText('Aprobar'))
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/payment-orders/order-1/complete'),
-        expect.objectContaining({
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: expect.stringContaining('CONF-99999'),
-        })
+        expect.stringContaining('/api/payment-orders/order-1/approve'),
+        expect.objectContaining({ method: 'PATCH' })
       )
+    })
+  })
+
+  // 11. Property links are rendered when property_id exists
+  it('renders property address as a clickable link when property_id exists', async () => {
+    render(<NotificacionesPage />)
+    await waitFor(() => {
+      const link = screen.getByText(/123 Main St/)
+      expect(link.closest('a')).toHaveAttribute('href', '/homes/properties/prop-1')
     })
   })
 })

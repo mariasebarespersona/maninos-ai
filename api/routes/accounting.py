@@ -3358,7 +3358,7 @@ async def _extract_text_from_image(file_content: bytes, ext: str) -> str:
     mime = f"image/{ext}" if ext in ("png", "jpg", "jpeg") else "image/png"
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5",
         messages=[
             {
                 "role": "system",
@@ -3504,7 +3504,7 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
 
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-5",
                 messages=[
                     {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, etc.) in English or Spanish. Return valid JSON arrays only."},
                     {"role": "user", "content": prompt},
@@ -3616,7 +3616,7 @@ Return a JSON array with one object per movement (in order):
 }}"""
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5",
         messages=[
             {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},

@@ -51,11 +51,32 @@ const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
   yard_manager: ['/homes', '/homes/market', '/homes/properties'],
 }
 
-function getNavForRole(role?: string): NavItem[] {
+// Extra nav access by email (additive — merged with role-based access)
+const EMAIL_EXTRA_HREFS: Record<string, string[]> = {
+  'aldair': ['/homes/commissions'],
+}
+
+function getNavForRole(role?: string, email?: string): NavItem[] {
+  let allowed: string[] | null = null
   if (role && ROLE_ALLOWED_HREFS[role]) {
-    return allNavigation.filter(item => ROLE_ALLOWED_HREFS[role].includes(item.href))
+    allowed = [...ROLE_ALLOWED_HREFS[role]]
   }
-  // admin, yard_manager, etc → everything
+  // Merge email-based extras
+  if (email) {
+    const prefix = email.split('@')[0].toLowerCase()
+    for (const [key, hrefs] of Object.entries(EMAIL_EXTRA_HREFS)) {
+      if (prefix.startsWith(key)) {
+        if (allowed) {
+          for (const h of hrefs) { if (!allowed.includes(h)) allowed.push(h) }
+        }
+        // If no role restriction (admin), they already see everything
+      }
+    }
+  }
+  if (allowed) {
+    return allNavigation.filter(item => allowed!.includes(item.href))
+  }
+  // admin etc → everything
   return allNavigation
 }
 
@@ -166,7 +187,7 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="p-4 space-y-1">
-          {getNavForRole(teamUser?.role).map((item) => {
+          {getNavForRole(teamUser?.role, user?.email).map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
             

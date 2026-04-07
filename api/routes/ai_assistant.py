@@ -1192,7 +1192,7 @@ async def chat(request: ChatRequest):
 
         # Step 1: Initial call — LLM decides which tools to call
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=messages,
             tools=TOOLS_SCHEMA,
             tool_choice="auto",
@@ -1233,7 +1233,7 @@ async def chat(request: ChatRequest):
 
         # Step 3: Final call — LLM answers with the real data
         final_response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=messages,
             temperature=0,
         )
@@ -1530,7 +1530,7 @@ IMPORTANTE:
         logger.info(f"[AI Evaluator] Sending {len(image_contents)} images to GPT-4o...")
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5",
             messages=[
                 {
                     "role": "system",

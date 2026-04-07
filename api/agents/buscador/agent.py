@@ -451,7 +451,7 @@ class BuscadorAgent(BaseAgent):
         super().__init__(
             name="buscador",
             description="Intelligent mobile home finder with REAL web scraping using Playwright",
-            model="gpt-4o",
+            model="gpt-5",
             temperature=0.2,
         )
         self.tools = [

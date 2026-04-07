@@ -135,11 +135,11 @@ class LogfireClient:
           sum(CAST(COALESCE(attributes['llm.usage.prompt_tokens'], '0') AS INTEGER)) as prompt_tokens,
           sum(CAST(COALESCE(attributes['llm.usage.completion_tokens'], '0') AS INTEGER)) as completion_tokens,
           CASE 
-            WHEN attributes['llm.request.model'] = 'gpt-4o' THEN
-              ROUND((sum(CAST(COALESCE(attributes['llm.usage.prompt_tokens'], '0') AS INTEGER)) * 0.0025 / 1000) + 
+            WHEN attributes['llm.request.model'] = 'gpt-5' THEN
+              ROUND((sum(CAST(COALESCE(attributes['llm.usage.prompt_tokens'], '0') AS INTEGER)) * 0.0025 / 1000) +
                     (sum(CAST(COALESCE(attributes['llm.usage.completion_tokens'], '0') AS INTEGER)) * 0.01 / 1000), 4)
-            WHEN attributes['llm.request.model'] = 'gpt-4o-mini' THEN
-              ROUND((sum(CAST(COALESCE(attributes['llm.usage.prompt_tokens'], '0') AS INTEGER)) * 0.00015 / 1000) + 
+            WHEN attributes['llm.request.model'] = 'gpt-5-mini' THEN
+              ROUND((sum(CAST(COALESCE(attributes['llm.usage.prompt_tokens'], '0') AS INTEGER)) * 0.00015 / 1000) +
                     (sum(CAST(COALESCE(attributes['llm.usage.completion_tokens'], '0') AS INTEGER)) * 0.0006 / 1000), 4)
             ELSE 0
           END as cost_usd

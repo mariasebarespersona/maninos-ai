@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -20,12 +20,13 @@ import {
   ExternalLink,
   Search,
   Pencil,
+  Clock,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { useFormValidation, commonSchemas } from '@/hooks/useFormValidation'
 import FormInput from '@/components/ui/FormInput'
-import BillOfSaleTemplate, { type BillOfSaleData } from '@/components/BillOfSaleTemplate'
-import TitleApplicationTemplate, { type TitleApplicationData } from '@/components/TitleApplicationTemplate'
+import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF } from '@/components/BillOfSaleTemplate'
+import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF } from '@/components/TitleApplicationTemplate'
 import { BankTransferStep, usePayeeState, type PaymentInfo } from '@/components/BankTransferPayment'
 import DesktopEvaluatorPanel from '@/components/DesktopEvaluatorPanel'
 
@@ -101,11 +102,35 @@ export default function NewPropertyPage() {
 
   // TDHCA Title lookup state
   const [tdhcaSearchValue, setTdhcaSearchValue] = useState('')
-  const [tdhcaSearchType, setTdhcaSearchType] = useState<'label' | 'serial'>('serial')
+  const [tdhcaSearchType, setTdhcaSearchType] = useState<'label' | 'serial'>('label')
   const [tdhcaLoading, setTdhcaLoading] = useState(false)
   const [tdhcaResult, setTdhcaResult] = useState<any>(null)
   const [tdhcaError, setTdhcaError] = useState<string | null>(null)
   const [tdhcaPageText, setTdhcaPageText] = useState<string>('')
+  const [tdhcaCleanPageText, setTdhcaCleanPageText] = useState<string>('')
+  const [tdhcaRawHtml, setTdhcaRawHtml] = useState<string>('')
+  const [tdhcaDebugLog, setTdhcaDebugLog] = useState<string[]>([])
+  const [showTdhcaDebug, setShowTdhcaDebug] = useState(false)
+
+  // Signed docs refresh key
+  const [signRefreshKey, setSignRefreshKey] = useState(0)
+
+  // Seller signature status for confirm step
+  const [sellerSignatures, setSellerSignatures] = useState<{
+    bos: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string; token?: string } | null;
+    title_app: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string; token?: string } | null;
+  }>({ bos: null, title_app: null })
+
+  // Inline email input for e-sign (replaces browser prompt)
+  const [esignEmailFor, setEsignEmailFor] = useState<'bos' | 'title_app' | null>(null)
+  const [esignEmail, setEsignEmail] = useState('')
+  const [esignSending, setEsignSending] = useState(false)
+
+  // Preview signed document using the real template component
+  const [previewDoc, setPreviewDoc] = useState<'bos' | 'title_app' | null>(null)
+
+  // Property ID after creation (for e-sign linking)
+  const [createdPropertyId, setCreatedPropertyId] = useState<string | null>(null)
 
   // Payment state
   const [payment, setPayment] = useState<PaymentInfo>({
@@ -148,6 +173,83 @@ export default function NewPropertyPage() {
     validateSingle(e.target.name, e.target.value)
   }
 
+  // Fetch seller signature status from e-sign envelopes
+  const fetchSellerSignatures = useCallback(async () => {
+    // For new properties we use the created property ID if available
+    if (!createdPropertyId) return
+    try {
+      const res = await fetch(`/api/esign/property/${createdPropertyId}/envelopes`)
+      if (!res.ok) return
+      const { envelopes } = await res.json()
+      const sigs: typeof sellerSignatures = { bos: null, title_app: null }
+      for (const env of (envelopes || [])) {
+        const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
+        if (!sellerSig) continue
+        const signed = !!sellerSig.signed_at
+        const sigData = sellerSig.signature_data || {}
+        const entry = {
+          signed,
+          signature_type: sigData.type,
+          signature_value: sigData.value,
+          signer_name: sellerSig.signer_name,
+          token: sellerSig.token,
+        }
+        if (env.document_type === 'bill_of_sale') sigs.bos = entry
+        if (env.document_type === 'title_application') sigs.title_app = entry
+      }
+      setSellerSignatures(sigs)
+    } catch {}
+  }, [createdPropertyId])
+
+  // Poll for seller signatures every 10s when on confirm step
+  useEffect(() => {
+    if (purchaseStep !== 'confirm') return
+    fetchSellerSignatures()
+    const interval = setInterval(fetchSellerSignatures, 10000)
+    return () => clearInterval(interval)
+  }, [purchaseStep, fetchSellerSignatures])
+
+  // Send document for e-signature
+  const sendForEsign = async (docType: 'bos' | 'title_app') => {
+    if (!esignEmail.trim()) return
+    setEsignSending(true)
+    try {
+      const isBos = docType === 'bos'
+      const signerName = isBos
+        ? (billOfSaleData?.seller_name || 'Vendedor')
+        : ((titleAppData as any)?.seller_transferor_name || billOfSaleData?.seller_name || 'Vendedor')
+      const res = await fetch('/api/esign/envelopes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: isBos
+            ? `Bill of Sale — ${form.address || 'Nueva Propiedad'}`
+            : `Cambio Título — ${form.address || 'Nueva Propiedad'}`,
+          document_type: isBos ? 'bill_of_sale' : 'title_application',
+          transaction_type: 'purchase',
+          property_id: null,
+          signers: [
+            { role: 'seller', name: signerName, email: esignEmail.trim() },
+            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+          ],
+          send_immediately: true,
+        }),
+      })
+      if (res.ok) {
+        toast.success(`Firma enviada a ${esignEmail.trim()} — recibirá un email para firmar`)
+        setSignRefreshKey(k => k + 1)
+        setEsignEmailFor(null)
+        setEsignEmail('')
+      } else {
+        toast.error('Error enviando firma — verifica que la migración 074 está corrida')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setEsignSending(false)
+    }
+  }
+
   // Document handling
   const handleFileUpload = (type: 'billOfSale' | 'title' | 'titleApplication', file: File | null) => {
     setDocuments(prev => ({ ...prev, [type]: file }))
@@ -170,8 +272,40 @@ export default function NewPropertyPage() {
       })
       const data = await res.json()
       if (data.success) {
+        console.log('[NewProperty] ✅ TDHCA result:', {
+          manufacturer: data.data?.manufacturer,
+          manufacturer_address: data.data?.manufacturer_address,
+          manufacturer_city_state_zip: data.data?.manufacturer_city_state_zip,
+          model: data.data?.model,
+          serial_number: data.data?.serial_number,
+          label_seal: data.data?.label_seal,
+          buyer: data.data?.buyer,
+          seller: data.data?.seller,
+          square_feet: data.data?.square_feet,
+          year: data.data?.year,
+          date_of_manufacture: data.data?.date_of_manufacture,
+          wind_zone: data.data?.wind_zone,
+          county: data.data?.county,
+          width: data.data?.width,
+          length: data.data?.length,
+          raw_fields_keys: data.data?.raw_fields ? Object.keys(data.data.raw_fields) : [],
+          raw_fields: data.data?.raw_fields,
+        })
+        if (data.page_text) {
+          console.log('[NewProperty] TDHCA page_text (first 2000):', data.page_text?.substring(0, 2000))
+        }
+        if (data.debug_log) {
+          console.log('[NewProperty] 🔍 TDHCA debug log:');
+          (data.debug_log as string[]).forEach((line: string) => console.log('  ', line))
+        }
+        if (data.raw_html) {
+          console.log('[NewProperty] 📄 TDHCA raw HTML (first 3000):', data.raw_html?.substring(0, 3000))
+        }
         setTdhcaResult(data.data)
         setTdhcaPageText(data.page_text || '')
+        setTdhcaCleanPageText(data.clean_page_text || '')
+        setTdhcaRawHtml(data.raw_html || '')
+        setTdhcaDebugLog(data.debug_log || [])
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados')
       }
@@ -395,18 +529,100 @@ export default function NewPropertyPage() {
 
       const newProperty = await res.json()
 
-      // 2. Upload documents if present
-      if (documents.billOfSale) {
-        await uploadDocument(newProperty.id, documents.billOfSale, 'bill_of_sale')
-      }
-      if (documents.title) {
-        await uploadDocument(newProperty.id, documents.title, 'title')
-      }
-      if (documents.titleApplication) {
-        await uploadDocument(newProperty.id, documents.titleApplication, 'title_application')
+      // 2. Regenerate signed PDFs if seller has signed, then upload
+      let billOfSaleFile = documents.billOfSale
+      let titleAppFile = documents.titleApplication
+
+      // If seller signed the BOS, regenerate PDF with signature embedded
+      if (sellerSignatures.bos?.signed && billOfSaleData) {
+        try {
+          const mergedBosData: any = { ...billOfSaleData }
+          mergedBosData.seller_signature_type = sellerSignatures.bos.signature_type
+          if (sellerSignatures.bos.signature_type === 'drawn') {
+            mergedBosData.seller_signature_image = sellerSignatures.bos.signature_value
+          } else {
+            mergedBosData.seller_name = sellerSignatures.bos.signature_value || mergedBosData.seller_name
+          }
+          mergedBosData.seller_date = new Date().toISOString().split('T')[0]
+          billOfSaleFile = await generateSignedBillOfSalePDF(mergedBosData, 'purchase')
+          // Also update docData with signature info
+          docData.bos_purchase = mergedBosData
+        } catch (e) {
+          console.error('Error generating signed BOS PDF:', e)
+        }
       }
 
-      // 3. Link evaluation report if exists
+      // If seller signed the Title App, regenerate PDF with signature embedded
+      if (sellerSignatures.title_app?.signed && titleAppData) {
+        try {
+          const mergedTaData: any = { ...titleAppData }
+          mergedTaData.seller_signature_type = sellerSignatures.title_app.signature_type
+          if (sellerSignatures.title_app.signature_type === 'drawn') {
+            mergedTaData.seller_signature_image = sellerSignatures.title_app.signature_value
+          } else {
+            mergedTaData.seller_signature_value = sellerSignatures.title_app.signature_value || mergedTaData.seller_name
+          }
+          mergedTaData.seller_signature_date = new Date().toISOString().split('T')[0]
+          titleAppFile = await generateSignedTitleAppPDF(mergedTaData, 'purchase')
+          docData.title_app_purchase = mergedTaData
+        } catch (e) {
+          console.error('Error generating signed Title App PDF:', e)
+        }
+      }
+
+      let billOfSaleUrl = null
+      let titleUrl = null
+      let titleApplicationUrl = null
+
+      if (billOfSaleFile) {
+        billOfSaleUrl = await uploadDocument(newProperty.id, billOfSaleFile, 'bill_of_sale_purchase')
+      }
+      if (documents.title) {
+        titleUrl = await uploadDocument(newProperty.id, documents.title, 'title_purchase')
+      }
+      if (titleAppFile) {
+        titleApplicationUrl = await uploadDocument(newProperty.id, titleAppFile, 'title_application_purchase')
+      }
+
+      // Update property document_data with signature info (if signatures were merged)
+      if (sellerSignatures.bos?.signed || sellerSignatures.title_app?.signed) {
+        try {
+          await fetch(`/api/properties/${newProperty.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ document_data: docData }),
+          })
+        } catch {}
+      }
+
+      // If TDHCA lookup found a title, prefer detail URL
+      if (!titleUrl && (tdhcaResult?.detail_url || tdhcaResult?.print_url)) {
+        titleUrl = tdhcaResult.detail_url || tdhcaResult.print_url
+      }
+      // If no title application was uploaded, store the official TDHCA template URL
+      if (!titleApplicationUrl) {
+        titleApplicationUrl = TDHCA_TITLE_APPLICATION_URL
+      }
+
+      // 3. Create title transfer record with document URLs
+      await fetch('/api/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: newProperty.id,
+          transfer_type: 'purchase',
+          from_name: 'Vendedor',
+          to_name: 'Maninos Homes',
+          payment_method: payment.method,
+          payment_date: payment.date,
+          payment_amount: payment.amount,
+          bill_of_sale_url: billOfSaleUrl,
+          title_url: titleUrl,
+          title_application_url: titleApplicationUrl,
+        }),
+      })
+
+      // 3.1. Link evaluation report if exists
       if (evalReport?.id) {
         try {
           await fetch(`/api/evaluations/${evalReport.id}/link`, {
@@ -419,7 +635,7 @@ export default function NewPropertyPage() {
         }
       }
 
-      // 4. Create pending payment order if payee info was provided
+      // 3.2. Create pending payment order if payee info was provided
       const orderAmount = purchasePrice || payment.amount
       if (payee.isPayeeValid) {
         try {
@@ -443,8 +659,9 @@ export default function NewPropertyPage() {
             }),
           })
           if (!orderRes.ok) {
-            console.error('Error creating payment order:', orderRes.status)
-            toast.warning('Propiedad creada, pero la orden de pago no se pudo generar.')
+            const errData = await orderRes.json().catch(() => ({}))
+            console.error('Error creating payment order:', orderRes.status, errData)
+            toast.warning('Propiedad creada, pero la orden de pago no se pudo generar. Revisa Notificaciones.')
           }
         } catch (e) {
           console.error('Error creating payment order:', e)
@@ -792,39 +1009,50 @@ export default function NewPropertyPage() {
 
                   {/* Send for e-signature */}
                   {billOfSaleData && (
-                    <button
-                      onClick={async () => {
-                        const sellerEmail = prompt('Email del vendedor para enviar firma:');
-                        if (!sellerEmail) return;
-                        try {
-                          const res = await fetch('/api/esign/envelopes', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              name: `Bill of Sale — ${form.address || 'Nueva Propiedad'}`,
-                              document_type: 'bill_of_sale',
-                              transaction_type: 'purchase',
-                              signers: [
-                                { role: 'seller', name: billOfSaleData.seller_name || 'Vendedor', email: sellerEmail },
-                                { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
-                              ],
-                              send_immediately: true,
-                            }),
-                          });
-                          if (res.ok) {
-                            toast.success(`Firma enviada a ${sellerEmail}`);
-                          } else {
-                            toast.error('Error enviando firma');
-                          }
-                        } catch {
-                          toast.error('Error de conexión');
-                        }
-                      }}
-                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
-                    >
-                      <Pencil className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
-                    </button>
+                    esignEmailFor === 'bos' ? (
+                      <div className="w-full rounded-xl border-2 border-blue-300 bg-blue-50 p-3" data-testid="esign-email-form-bos">
+                        <p className="text-xs font-semibold text-blue-800 mb-2">Email del vendedor para enviar firma:</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="vendedor@email.com"
+                            className="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            data-testid="esign-email-input"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('bos')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('bos')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                            data-testid="esign-send-btn"
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button
+                            onClick={() => { setEsignEmailFor(null); setEsignEmail('') }}
+                            className="px-2 py-2 text-gray-500 hover:text-gray-700"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('bos'); setEsignEmail('') }}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
+                        data-testid="esign-bos-btn"
+                      >
+                        <Pencil className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-semibold text-blue-700">Enviar para Firma Electrónica</span>
+                      </button>
+                    )
                   )}
 
                   <div className="text-center text-xs text-gray-400 font-medium">— o sube un Bill of Sale firmado —</div>
@@ -865,19 +1093,9 @@ export default function NewPropertyPage() {
               
               <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-3">
                 <p className="text-sm font-semibold text-indigo-900 mb-3">Buscar Título en TDHCA Texas</p>
-                <p className="text-xs text-indigo-700 mb-3">Ingresa el Serial Number o Label/Seal Number de la mobile home para obtener el título automáticamente.</p>
-                
+                <p className="text-xs text-indigo-700 mb-3">Ingresa el Label/Seal Number o Serial Number de la mobile home para obtener el título automáticamente.</p>
+
                 <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => setTdhcaSearchType('serial')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      tdhcaSearchType === 'serial'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-100'
-                    }`}
-                  >
-                    Serial Number
-                  </button>
                   <button
                     onClick={() => setTdhcaSearchType('label')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -888,14 +1106,24 @@ export default function NewPropertyPage() {
                   >
                     Label/Seal Number
                   </button>
+                  <button
+                    onClick={() => setTdhcaSearchType('serial')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      tdhcaSearchType === 'serial'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-100'
+                    }`}
+                  >
+                    Serial Number
+                  </button>
                 </div>
-                
+
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={tdhcaSearchValue}
                     onChange={(e) => setTdhcaSearchValue(e.target.value.toUpperCase())}
-                    placeholder={tdhcaSearchType === 'serial' ? 'Ej: C3208' : 'Ej: TEX0012345'}
+                    placeholder={tdhcaSearchType === 'label' ? 'Ej: TEX0012345' : 'Ej: C3208'}
                     className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     onKeyDown={(e) => e.key === 'Enter' && lookupTDHCA()}
                   />
@@ -932,50 +1160,42 @@ export default function NewPropertyPage() {
                     <span className="text-sm font-semibold text-green-800">Título Encontrado</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    {tdhcaResult.certificate_number && (
-                      <div><span className="font-semibold text-gray-600">Certificado:</span> <span className="text-gray-900">{tdhcaResult.certificate_number}</span></div>
-                    )}
-                    {tdhcaResult.manufacturer && (
-                      <div className="col-span-2"><span className="font-semibold text-gray-600">Fabricante:</span> <span className="text-gray-900">{tdhcaResult.manufacturer}</span></div>
-                    )}
-                    {tdhcaResult.model && (
-                      <div><span className="font-semibold text-gray-600">Modelo:</span> <span className="text-gray-900">{tdhcaResult.model}</span></div>
-                    )}
-                    {tdhcaResult.year && (
-                      <div><span className="font-semibold text-gray-600">Año:</span> <span className="text-gray-900">{tdhcaResult.year}</span></div>
-                    )}
-                    {tdhcaResult.serial_number && (
-                      <div><span className="font-semibold text-gray-600">Serial #:</span> <span className="text-gray-900">{tdhcaResult.serial_number}</span></div>
-                    )}
-                    {tdhcaResult.label_seal && (
-                      <div><span className="font-semibold text-gray-600">Label/Seal #:</span> <span className="text-gray-900">{tdhcaResult.label_seal}</span></div>
-                    )}
-                    {tdhcaResult.square_feet && (
-                      <div><span className="font-semibold text-gray-600">Sq Ft:</span> <span className="text-gray-900">{tdhcaResult.square_feet}</span></div>
-                    )}
-                    {tdhcaResult.wind_zone && (
-                      <div><span className="font-semibold text-gray-600">Wind Zone:</span> <span className="text-gray-900">{tdhcaResult.wind_zone}</span></div>
-                    )}
-                    {(tdhcaResult.width && tdhcaResult.length) && (
-                      <div><span className="font-semibold text-gray-600">Tamaño:</span> <span className="text-gray-900">{tdhcaResult.width} × {tdhcaResult.length}</span></div>
-                    )}
-                    {tdhcaResult.buyer && (
-                      <div className="col-span-2"><span className="font-semibold text-gray-600">Dueño actual (vendedor):</span> <span className="text-gray-900">{tdhcaResult.buyer}</span></div>
-                    )}
-                    {tdhcaResult.seller && (
-                      <div><span className="font-semibold text-gray-600">Dueño anterior:</span> <span className="text-gray-900">{tdhcaResult.seller}</span></div>
-                    )}
-                    {tdhcaResult.county && (
-                      <div><span className="font-semibold text-gray-600">Condado:</span> <span className="text-gray-900">{tdhcaResult.county}</span></div>
-                    )}
+                    {/* Show ALL fields — even empty ones — so user can see what was extracted */}
+                    <div><span className="font-semibold text-gray-600">Certificado:</span> <span className={tdhcaResult.certificate_number ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.certificate_number || '—'}</span></div>
+                    <div className="col-span-2"><span className="font-semibold text-gray-600">Fabricante:</span> <span className={tdhcaResult.manufacturer ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Dirección Fab.:</span> <span className={tdhcaResult.manufacturer_address ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer_address || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Ciudad/Estado/ZIP:</span> <span className={tdhcaResult.manufacturer_city_state_zip ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.manufacturer_city_state_zip || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Modelo:</span> <span className={tdhcaResult.model ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.model || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Año/Fecha:</span> <span className={tdhcaResult.year ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.year || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Serial #:</span> <span className={tdhcaResult.serial_number ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.serial_number || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Label/Seal #:</span> <span className={tdhcaResult.label_seal ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.label_seal || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Sq Ft:</span> <span className={tdhcaResult.square_feet ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.square_feet || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Wind Zone:</span> <span className={tdhcaResult.wind_zone ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.wind_zone || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Tamaño:</span> <span className={(tdhcaResult.width && tdhcaResult.length) ? 'text-gray-900' : 'text-red-400 italic'}>{(tdhcaResult.width && tdhcaResult.length) ? `${tdhcaResult.width} × ${tdhcaResult.length}` : '—'}</span></div>
+                    <div className="col-span-2"><span className="font-semibold text-gray-600">Dueño actual (Buyer):</span> <span className={tdhcaResult.buyer ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.buyer || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Dueño anterior (Seller):</span> <span className={tdhcaResult.seller ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.seller || '—'}</span></div>
+                    <div><span className="font-semibold text-gray-600">Condado:</span> <span className={tdhcaResult.county ? 'text-gray-900' : 'text-red-400 italic'}>{tdhcaResult.county || '—'}</span></div>
                     {tdhcaResult.transfer_date && (
                       <div><span className="font-semibold text-gray-600">Fecha Transferencia:</span> <span className="text-gray-900">{tdhcaResult.transfer_date}</span></div>
                     )}
                     {tdhcaResult.lien_info && (
-                      <div className="col-span-2"><span className="font-semibold text-gray-600">Gravamen:</span> <span className="text-gray-900">{tdhcaResult.lien_info}</span></div>
+                      <div className="col-span-2 bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <span className="font-semibold text-red-600">Gravamen:</span>
+                        <span className="text-red-700 font-semibold">{tdhcaResult.lien_info}</span>
+                      </div>
+                    )}
+                    {tdhcaResult.tax_lien_status && (
+                      <div className="col-span-2 bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <span className="font-semibold text-red-600">Tax Lien:</span>
+                        <span className="text-red-700 font-semibold">{tdhcaResult.tax_lien_status}</span>
+                      </div>
                     )}
                   </div>
-                  
+                  <p className="text-[10px] text-gray-400 mt-2">Los campos en rojo (—) no están disponibles en el registro TDHCA para este título.</p>
+
+                  {/* Link to full TDHCA record */}
                   {(tdhcaResult.detail_url || tdhcaResult.print_url) && (
                     <a
                       href={tdhcaResult.detail_url || tdhcaResult.print_url}
@@ -986,6 +1206,76 @@ export default function NewPropertyPage() {
                       <ExternalLink className="w-3.5 h-3.5" />
                       Ver Registro Completo en TDHCA
                     </a>
+                  )}
+
+                  {/* Debug panel — collapsible */}
+                  <button
+                    onClick={() => setShowTdhcaDebug(!showTdhcaDebug)}
+                    className="mt-2 text-[10px] text-gray-400 hover:text-gray-600 underline"
+                  >
+                    {showTdhcaDebug ? 'Ocultar debug' : 'Mostrar debug (raw_fields)'}
+                  </button>
+                  {showTdhcaDebug && (
+                    <div className="mt-2 p-2 bg-gray-100 rounded text-[9px] font-mono max-h-60 overflow-auto">
+                      <p className="font-bold mb-1">raw_fields ({Object.keys(tdhcaResult.raw_fields || {}).length} campos):</p>
+                      {Object.entries(tdhcaResult.raw_fields || {}).sort().map(([k, v]) => (
+                        <div key={k} className="truncate">
+                          <span className="text-blue-600">{k}</span>: <span className="text-gray-700">{String(v).substring(0, 80)}</span>
+                        </div>
+                      ))}
+                      {tdhcaDebugLog.length > 0 && (
+                        <>
+                          <p className="font-bold mt-2 mb-1">debug_log:</p>
+                          {tdhcaDebugLog.map((line, i) => (
+                            <div key={i} className="truncate text-gray-500">{line}</div>
+                          ))}
+                        </>
+                      )}
+                      {tdhcaCleanPageText && (
+                        <>
+                          <p className="font-bold mt-2 mb-1">clean_page_text (after strip, first 1000):</p>
+                          <pre className="whitespace-pre-wrap text-green-700">{tdhcaCleanPageText.substring(0, 1000)}</pre>
+                        </>
+                      )}
+                      {tdhcaPageText && (
+                        <>
+                          <p className="font-bold mt-2 mb-1">raw page_text (first 500):</p>
+                          <pre className="whitespace-pre-wrap text-gray-500">{tdhcaPageText.substring(0, 500)}</pre>
+                        </>
+                      )}
+
+                      {/* Raw HTML download/copy for debugging */}
+                      {tdhcaRawHtml && (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => {
+                              const blob = new Blob([tdhcaRawHtml], { type: 'text/html' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `tdhca_real_page_${Date.now()}.html`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700"
+                          >
+                            Descargar HTML Real ({(tdhcaRawHtml.length / 1024).toFixed(1)} KB)
+                          </button>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(tdhcaRawHtml)
+                              alert('HTML copiado al portapapeles')
+                            }}
+                            className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded hover:bg-gray-700"
+                          >
+                            Copiar HTML
+                          </button>
+                          <span className="text-xs text-gray-400 self-center">
+                            Pega este HTML en el chat para que lo use como test fixture real
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -1017,6 +1307,9 @@ export default function NewPropertyPage() {
               )}
             </div>
 
+            {/* ═══ Signed Documents Status ═══ */}
+            <SignedDocsViewer refreshKey={signRefreshKey} />
+
             {/* Title Application (optional) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1034,7 +1327,7 @@ export default function NewPropertyPage() {
                       // 3-LAYER FALLBACK: structured → raw_fields → page text regex
                       const serial = cleanSuspiciousValue(
                         getField('serial_number', ['Serial #', 'Serial', 'Serial Number', 'Complete Serial Number'],
-                          [/Serial\s*#?\s*[:=]?\s*([A-Z0-9]{4,})/i]))
+                          [/Serial\s*#?\s*[:=]?\s*([A-Z0-9]{4,})/i, /Section\s*1[\s\S]{0,30}?([A-Z0-9]{5,}TX[A-Z0-9]*)/i]))
                       const label = cleanSuspiciousValue(
                         getField('label_seal', ['Label/Seal#', 'Label/Seal', 'Label/Seal Number', 'Label/Seal #', 'HUD Label'],
                           [/Label\/Seal\s*#?\s*[:=]?\s*([A-Z]{2,4}\d{5,})/i, /(?:TEX|NTA|RAD|TRA)\d{5,}/i]))
@@ -1051,7 +1344,16 @@ export default function NewPropertyPage() {
                       const dims = deriveDimensions()
                       const buyer = getField('buyer', ['Buyer/Transferee', 'Buyer'],
                         [/Buyer\/Transferee\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i, /Buyer\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i])
+                      const seller = getField('seller', ['Seller/Transferor', 'Seller'],
+                        [/Seller\/Transferor\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i, /Seller\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i])
                       const year = dateManf || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i]) || form.year || ''
+
+                      console.log('[NewProperty] 🔍 DEFINITIVE field extraction:', {
+                        mfr_name: mfr.name, mfr_addr: mfr.address, mfr_csz: mfr.cityStateZip,
+                        model, dateManf, year, sqft, windZone, serial, label,
+                        buyer, seller, dims_w: dims.width, dims_l: dims.length,
+                        page_text_length: tdhcaPageText?.length || 0,
+                      })
 
                       return {
                       applicant_name: 'MANINOS HOMES LLC',
@@ -1132,6 +1434,55 @@ export default function NewPropertyPage() {
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </button>
 
+                  {/* Send title application for e-signature */}
+                  {titleAppData && (
+                    esignEmailFor === 'title_app' ? (
+                      <div className="w-full rounded-xl border-2 border-indigo-300 bg-indigo-50 p-3" data-testid="esign-email-form-ta">
+                        <p className="text-xs font-semibold text-indigo-800 mb-2">Email del vendedor para firmar Cambio de Título:</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="vendedor@email.com"
+                            className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            data-testid="esign-email-input-ta"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('title_app')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('title_app')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            }`}
+                            data-testid="esign-send-btn-ta"
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button
+                            onClick={() => { setEsignEmailFor(null); setEsignEmail('') }}
+                            className="px-2 py-2 text-gray-500 hover:text-gray-700"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('title_app'); setEsignEmail('') }}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                        data-testid="esign-ta-btn"
+                      >
+                        <Pencil className="w-4 h-4 text-indigo-600" />
+                        <span className="text-sm font-semibold text-indigo-700">Enviar Cambio Título para Firma</span>
+                      </button>
+                    )
+                  )}
+
+                  {/* OR upload */}
                   <div className="text-center text-xs text-gray-400 font-medium">— o sube una aplicación firmada —</div>
                   <div className={`border-2 border-dashed rounded-lg p-4 text-center ${
                     documents.titleApplication ? 'border-green-300 bg-green-50' : 'border-gray-200'
@@ -1219,7 +1570,7 @@ export default function NewPropertyPage() {
                 <CheckCircle className="w-5 h-5" />
                 Resumen de la Compra
               </h4>
-              
+
               <div className="space-y-4">
                 <div className="flex justify-between items-center py-2 border-b border-green-200">
                   <span className="text-green-700">Propiedad</span>
@@ -1256,7 +1607,7 @@ export default function NewPropertyPage() {
                 <div className="flex justify-between items-center py-2 border-b border-green-200">
                   <span className="text-green-700">Documentos</span>
                   <span className="font-medium text-green-900">
-                    Bill of Sale {isBosComplete ? '✓' : '—'} | Título {isTitleComplete ? '✓' : '—'} | Cambio Título {isTitleAppComplete ? '✓' : '(opcional)'}
+                    Bill of Sale ✓ | Título ✓ | Cambio Título {isTitleAppComplete ? '✓' : '(opcional)'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
@@ -1267,7 +1618,96 @@ export default function NewPropertyPage() {
                 </div>
               </div>
             </div>
-            
+
+            {/* ═══ Seller Signature Status — blocks confirmation if pending ═══ */}
+            {(sellerSignatures.bos || sellerSignatures.title_app) && (
+              <div className={`rounded-lg p-5 mb-6 border-2 ${
+                (sellerSignatures.bos?.signed !== false && sellerSignatures.title_app?.signed !== false)
+                  ? 'border-emerald-300 bg-emerald-50'
+                  : 'border-amber-300 bg-amber-50'
+              }`}>
+                <h4 className={`font-semibold mb-3 flex items-center gap-2 ${
+                  (sellerSignatures.bos?.signed !== false && sellerSignatures.title_app?.signed !== false)
+                    ? 'text-emerald-800' : 'text-amber-800'
+                }`}>
+                  <Pencil className="w-5 h-5" />
+                  Firmas del Vendedor
+                </h4>
+                <div className="space-y-3">
+                  {sellerSignatures.bos && (
+                    <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                      <div className="flex-shrink-0">
+                        {sellerSignatures.bos.signed ? (
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
+                        ) : (
+                          <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-navy-900">Bill of Sale</p>
+                        <p className="text-xs text-gray-500">
+                          {sellerSignatures.bos.signed
+                            ? `Firmado por ${sellerSignatures.bos.signer_name} (${sellerSignatures.bos.signature_type === 'drawn' ? 'firma dibujada' : 'firma digital'})`
+                            : `Esperando firma de ${sellerSignatures.bos.signer_name}...`}
+                        </p>
+                      </div>
+                      {sellerSignatures.bos.signed && sellerSignatures.bos.signature_type === 'drawn' && sellerSignatures.bos.signature_value && (
+                        <img src={sellerSignatures.bos.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
+                      )}
+                      {sellerSignatures.bos.signed && billOfSaleData && (
+                        <button
+                          onClick={() => setPreviewDoc('bos')}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
+                          data-testid="view-signed-doc-bos"
+                        >
+                          <FileText className="w-3 h-3" />
+                          Ver Documento
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {sellerSignatures.title_app && (
+                    <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                      <div className="flex-shrink-0">
+                        {sellerSignatures.title_app.signed ? (
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
+                        ) : (
+                          <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-navy-900">Cambio de Título</p>
+                        <p className="text-xs text-gray-500">
+                          {sellerSignatures.title_app.signed
+                            ? `Firmado por ${sellerSignatures.title_app.signer_name} (${sellerSignatures.title_app.signature_type === 'drawn' ? 'firma dibujada' : 'firma digital'})`
+                            : `Esperando firma de ${sellerSignatures.title_app.signer_name}...`}
+                        </p>
+                      </div>
+                      {sellerSignatures.title_app.signed && sellerSignatures.title_app.signature_type === 'drawn' && sellerSignatures.title_app.signature_value && (
+                        <img src={sellerSignatures.title_app.signature_value} alt="Firma" className="h-8 border border-emerald-200 rounded" />
+                      )}
+                      {sellerSignatures.title_app.signed && titleAppData && (
+                        <button
+                          onClick={() => setPreviewDoc('title_app')}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors flex-shrink-0"
+                          data-testid="view-signed-doc-ta"
+                        >
+                          <FileText className="w-3 h-3" />
+                          Ver Documento
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {(sellerSignatures.bos?.signed === false || sellerSignatures.title_app?.signed === false) && (
+                  <p className="text-xs text-amber-700 mt-3 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Verificando firmas cada 10 segundos... La compra se habilitará cuando el vendedor firme.
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="text-sm text-gray-600 text-center">
               Al confirmar, la casa se añadirá al inventario de Maninos con todos los documentos asociados.
             </p>
@@ -1341,27 +1781,189 @@ export default function NewPropertyPage() {
             </button>
           )}
           
-          {purchaseStep === 'confirm' && (
-          <button 
-              onClick={confirmPurchase}
-              disabled={processing}
-              className="btn-gold flex items-center gap-2 px-6 py-2"
-            >
-              {processing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Procesando...
-              </>
-            ) : (
-              <>
-                  <CheckCircle className="w-4 h-4" />
-                  Confirmar Compra
-              </>
-            )}
-          </button>
-          )}
+          {purchaseStep === 'confirm' && (() => {
+            const hasPendingSig = (sellerSignatures.bos?.signed === false) || (sellerSignatures.title_app?.signed === false)
+            return (
+              <button
+                onClick={confirmPurchase}
+                disabled={processing || hasPendingSig}
+                className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
+                  hasPendingSig ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'btn-gold'
+                }`}
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Procesando...
+                  </>
+                ) : hasPendingSig ? (
+                  <>
+                    <Clock className="w-4 h-4" />
+                    Esperando Firmas...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Confirmar Compra
+                  </>
+                )}
+              </button>
+            )
+          })()}
         </div>
       </div>
+      {/* ═══ Document Preview Overlay — renders the REAL template in readOnly mode ═══ */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl my-8 relative">
+            <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex items-center justify-between rounded-t-xl">
+              <h3 className="text-sm font-bold text-navy-900">
+                {previewDoc === 'bos' ? 'Bill of Sale — Documento Firmado' : 'Cambio de Título — Documento Firmado'}
+              </h3>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-2">
+              {previewDoc === 'bos' && billOfSaleData && (() => {
+                const merged: any = { ...billOfSaleData }
+                if (sellerSignatures.bos?.signed) {
+                  merged.seller_signature_type = sellerSignatures.bos.signature_type
+                  if (sellerSignatures.bos.signature_type === 'drawn') {
+                    merged.seller_signature_image = sellerSignatures.bos.signature_value
+                  } else {
+                    merged.seller_name = sellerSignatures.bos.signature_value || merged.seller_name
+                  }
+                  merged.seller_date = new Date().toISOString().split('T')[0]
+                }
+                const dataHash = JSON.stringify(merged).length
+                return (
+                  <BillOfSaleTemplate
+                    key={`bos-preview-${dataHash}`}
+                    transactionType="purchase"
+                    initialData={merged}
+                    readOnly
+                    onClose={() => setPreviewDoc(null)}
+                  />
+                )
+              })()}
+              {previewDoc === 'title_app' && titleAppData && (() => {
+                const merged: any = { ...titleAppData }
+                if (sellerSignatures.title_app?.signed) {
+                  merged.seller_signature_type = sellerSignatures.title_app.signature_type
+                  if (sellerSignatures.title_app.signature_type === 'drawn') {
+                    merged.seller_signature_image = sellerSignatures.title_app.signature_value
+                  } else {
+                    merged.seller_signature_value = sellerSignatures.title_app.signature_value || merged.seller_name
+                  }
+                  merged.seller_signature_date = new Date().toISOString().split('T')[0]
+                }
+                const dataHash = JSON.stringify(merged).length
+                return (
+                  <TitleApplicationTemplate
+                    key={`ta-preview-${dataHash}`}
+                    transactionType="purchase"
+                    initialData={merged}
+                    readOnly
+                    onClose={() => setPreviewDoc(null)}
+                  />
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// Signed Documents Viewer — shows e-sign envelope status in review
+// ═══════════════════════════════════════════════════════════════
+
+function SignedDocsViewer({ refreshKey }: { refreshKey?: number }) {
+  const [envelopes, setEnvelopes] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchEnvelopes = useCallback(() => {
+    setLoading(true)
+    // For new property flow, fetch all recent envelopes
+    fetch('/api/esign/envelopes')
+      .then(r => r.json())
+      .then(d => setEnvelopes(d.envelopes || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { fetchEnvelopes() }, [fetchEnvelopes, refreshKey])
+
+  // Auto-refresh every 15 seconds to pick up new signatures
+  useEffect(() => {
+    const interval = setInterval(fetchEnvelopes, 15000)
+    return () => clearInterval(interval)
+  }, [fetchEnvelopes])
+
+  if (envelopes.length === 0 && !loading) return null
+
+  const docTypeLabels: Record<string, string> = {
+    bill_of_sale: "Bill of Sale",
+    title_application: "Cambio de Título",
+    rto_lease: "Contrato RTO",
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
+      <h4 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4" />
+        Documentos Firmados
+      </h4>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-600">
+          <Loader2 className="w-3 h-3 animate-spin" /> Cargando...
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {envelopes.map((env: any) => (
+            <div key={env.id} className="bg-white rounded-lg border border-emerald-100 p-3">
+              <p className="text-sm font-semibold text-navy-900 mb-1.5">
+                {docTypeLabels[env.document_type] || env.document_type}
+              </p>
+              <div className="space-y-1">
+                {(env.document_signatures || []).map((sig: any) => {
+                  const signed = !!sig.signed_at
+                  const sigData = sig.signature_data || {}
+                  const isDrawn = sigData.type === "drawn"
+                  return (
+                    <div key={sig.id} className="flex items-center gap-2 text-xs">
+                      {signed ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      )}
+                      <span className="font-medium text-navy-700 capitalize">{sig.signer_role}:</span>
+                      <span className="text-navy-600">{sig.signer_name}</span>
+                      {signed ? (
+                        <>
+                          <span className="text-emerald-600">— firmado {new Date(sig.signed_at).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</span>
+                          {isDrawn && sigData.value && (
+                            <img src={sigData.value} alt="Firma" className="h-6 ml-1 border border-emerald-200 rounded" />
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-amber-600">— pendiente de firma</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

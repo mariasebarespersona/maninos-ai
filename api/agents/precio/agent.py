@@ -83,7 +83,7 @@ class PrecioAgent(BaseAgent):
         super().__init__(
             name="precio",
             description="Intelligent price analysis with market context and strategy",
-            model="gpt-4o",
+            model="gpt-5",
             temperature=0.2,
         )
         self.api_url = os.getenv("API_URL", "http://localhost:8000")

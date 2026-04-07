@@ -619,9 +619,9 @@ export default function AddMarketListingModal({ open, onClose, onListingAdded }:
                           : '🔴 Baja confianza — Completa los datos manualmente'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      Método: {extracted.extraction_method === 'gpt4_vision' ? 'GPT-4 Vision' : 
-                               extracted.extraction_method === 'playwright_direct' ? 'Extracción directa' : 
-                               'GPT-4 Vision (fallback)'}
+                      Método: {extracted.extraction_method === 'gpt4_vision' ? 'GPT-5 Vision' :
+                               extracted.extraction_method === 'playwright_direct' ? 'Extracción directa' :
+                               'GPT-5 Vision (fallback)'}
                     </p>
                   </div>
                 </div>

@@ -266,7 +266,7 @@ export default function MarketDashboard() {
 
   // TDHCA Title lookup state
   const [tdhcaSearchValue, setTdhcaSearchValue] = useState('');
-  const [tdhcaSearchType, setTdhcaSearchType] = useState<'label' | 'serial'>('serial');
+  const [tdhcaSearchType, setTdhcaSearchType] = useState<'label' | 'serial'>('label');
   const [tdhcaLoading, setTdhcaLoading] = useState(false);
   const [tdhcaResult, setTdhcaResult] = useState<any>(null);
   const [tdhcaError, setTdhcaError] = useState<string | null>(null);
@@ -2730,20 +2730,10 @@ export default function MarketDashboard() {
                     
                     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-3">
                       <p className="text-sm font-semibold text-indigo-900 mb-3">Buscar Título en TDHCA Texas</p>
-                      <p className="text-xs text-indigo-700 mb-3">Ingresa el Serial Number o Label/Seal Number de la mobile home para obtener el título automáticamente.</p>
-                      
+                      <p className="text-xs text-indigo-700 mb-3">Ingresa el Label/Seal Number o Serial Number de la mobile home para obtener el título automáticamente.</p>
+
                       {/* Search type toggle */}
                       <div className="flex gap-2 mb-3">
-                        <button
-                          onClick={() => setTdhcaSearchType('serial')}
-                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                            tdhcaSearchType === 'serial'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-100'
-                          }`}
-                        >
-                          Serial Number
-                        </button>
                         <button
                           onClick={() => setTdhcaSearchType('label')}
                           className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -2754,15 +2744,25 @@ export default function MarketDashboard() {
                         >
                           Label/Seal Number
                         </button>
+                        <button
+                          onClick={() => setTdhcaSearchType('serial')}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                            tdhcaSearchType === 'serial'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-100'
+                          }`}
+                        >
+                          Serial Number
+                        </button>
                       </div>
-                      
+
                       {/* Search input */}
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={tdhcaSearchValue}
                           onChange={(e) => setTdhcaSearchValue(e.target.value.toUpperCase())}
-                          placeholder={tdhcaSearchType === 'serial' ? 'Ej: C3208' : 'Ej: TEX0012345'}
+                          placeholder={tdhcaSearchType === 'label' ? 'Ej: TEX0012345' : 'Ej: C3208'}
                           className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                           onKeyDown={(e) => e.key === 'Enter' && lookupTDHCA()}
                         />

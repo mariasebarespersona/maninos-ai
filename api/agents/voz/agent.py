@@ -83,7 +83,7 @@ class VozAgent(BaseAgent):
         super().__init__(
             name="voz",
             description="Voice commands with Whisper transcription and intelligent processing",
-            model="gpt-4o",
+            model="gpt-5",
             temperature=0.1,
         )
         # Separate OpenAI client for Whisper

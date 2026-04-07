@@ -338,7 +338,7 @@ Responde en JSON:
 }}"""
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5",
             messages=[
                 {"role": "system", "content": "Eres un inspector experto de casas móviles. Responde SOLO con JSON válido."},
                 {"role": "user", "content": [{"type": "text", "text": prompt}] + image_contents},
@@ -478,7 +478,7 @@ async def generate_report(evaluation_id: str):
             extra_notes_text = "\n".join(f"- {note}" for note in extra_notes) if extra_notes else "Ninguna"
 
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": "Eres un inspector de casas móviles. Genera un resumen ejecutivo breve (3-5 oraciones) del estado de la casa."},
                     {"role": "user", "content": f"""Reporte de evaluación:

@@ -439,7 +439,7 @@ async def process_voice_command(data: VoiceCommandRequest):
         )
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {
                     "role": "system",
@@ -730,7 +730,7 @@ REGLAS:
             messages_content = [{"type": "text", "text": prompt}] + image_contents
 
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-5",
                 messages=[
                     {
                         "role": "system",
@@ -993,7 +993,7 @@ RESPONDE ÚNICAMENTE en JSON válido (sin markdown):
 Ejemplo: {{ "demolicion": {{ "mano_obra": 300, "materiales": 50, "notas": "Marco de acero con daño visible" }} }}"""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {
                     "role": "system",

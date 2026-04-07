@@ -72,7 +72,11 @@ jest.mock('@/components/BillOfSaleTemplate', () => {
     </div>
   )
   MockBillOfSale.displayName = 'BillOfSaleTemplate'
-  return MockBillOfSale
+  return {
+    __esModule: true,
+    default: MockBillOfSale,
+    generateSignedBillOfSalePDF: jest.fn(() => Promise.resolve(new File(['signed'], 'bos-signed.pdf'))),
+  }
 })
 
 jest.mock('@/components/TitleApplicationTemplate', () => {
@@ -83,7 +87,11 @@ jest.mock('@/components/TitleApplicationTemplate', () => {
     </div>
   )
   MockTitleApp.displayName = 'TitleApplicationTemplate'
-  return MockTitleApp
+  return {
+    __esModule: true,
+    default: MockTitleApp,
+    generateSignedTitleAppPDF: jest.fn(() => Promise.resolve(new File(['signed'], 'ta-signed.pdf'))),
+  }
 })
 
 jest.mock('@/components/DesktopEvaluatorPanel', () => {
@@ -128,7 +136,7 @@ import NewPropertyPage from '@/app/homes/properties/new/page'
 describe('New Property Page — 4-step flow', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    global.fetch = jest.fn()
+    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ envelopes: [], payees: [] }) })) as jest.Mock
   })
 
   it('renders the page with step 1 (Datos y Documentos) active by default', () => {

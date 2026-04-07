@@ -377,9 +377,15 @@ export default function NotificacionesPage() {
                     </div>
                     <div className="flex items-center gap-2 mb-2">
                       <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-                        {reno.address || reno.property_id}
-                      </span>
+                      {reno.property_id ? (
+                        <Link href={`/homes/properties/${reno.property_id}`} className="text-sm truncate hover:underline" style={{ color: 'var(--navy-600)' }}>
+                          {reno.address || reno.property_id} →
+                        </Link>
+                      ) : (
+                        <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
+                          {reno.address || 'Propiedad'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 mb-2">
                       <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
@@ -602,7 +608,12 @@ export default function NotificacionesPage() {
                       </div>
                       {o.property_address && (
                         <div className="flex items-center gap-1 text-xs mb-1" style={{ color: 'var(--slate)' }}>
-                          <Building2 className="w-3 h-3" /> {o.property_address}
+                          <Building2 className="w-3 h-3" />
+                          {o.property_id ? (
+                            <Link href={`/homes/properties/${o.property_id}`} className="hover:underline" style={{ color: 'var(--navy-600)' }}>
+                              {o.property_address} →
+                            </Link>
+                          ) : o.property_address}
                         </div>
                       )}
                       {o.notes && <p className="text-xs" style={{ color: 'var(--slate)' }}>{o.notes.substring(0, 120)}</p>}
@@ -647,9 +658,15 @@ export default function NotificacionesPage() {
                       </div>
                       <div className="flex items-center gap-2 mb-2">
                         <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                        <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                          {ct.property_address}{ct.property_city ? `, ${ct.property_city}` : ''}
-                        </span>
+                        {ct.property_id ? (
+                          <Link href={`/homes/properties/${ct.property_id}`} className="text-sm hover:underline" style={{ color: 'var(--navy-600)' }}>
+                            {ct.property_address}{ct.property_city ? `, ${ct.property_city}` : ''} →
+                          </Link>
+                        ) : (
+                          <span className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                            {ct.property_address}{ct.property_city ? `, ${ct.property_city}` : ''}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
                         <span>Cliente: <strong>{ct.client_name}</strong></span>
@@ -702,9 +719,19 @@ export default function NotificacionesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <Building2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--navy-600)' }} />
-                    <span className="font-medium text-sm truncate" style={{ color: 'var(--ink)' }}>
-                      {order.property_address || 'Propiedad'}
-                    </span>
+                    {order.property_id ? (
+                      <Link
+                        href={`/homes/properties/${order.property_id}`}
+                        className="font-medium text-sm truncate hover:underline"
+                        style={{ color: 'var(--navy-600)' }}
+                      >
+                        {order.property_address || 'Propiedad'} →
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-sm truncate" style={{ color: 'var(--ink)' }}>
+                        {order.property_address || 'Propiedad'}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 mb-3">
                     <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
@@ -828,7 +855,13 @@ export default function NotificacionesPage() {
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span style={{ color: 'var(--slate)' }}>Propiedad</span>
-                <span className="font-medium" style={{ color: 'var(--ink)' }}>{completing.property_address || 'N/A'}</span>
+                {completing.property_id ? (
+                  <Link href={`/homes/properties/${completing.property_id}`} className="font-medium hover:underline" style={{ color: 'var(--navy-600)' }}>
+                    {completing.property_address || 'N/A'} →
+                  </Link>
+                ) : (
+                  <span className="font-medium" style={{ color: 'var(--ink)' }}>{completing.property_address || 'N/A'}</span>
+                )}
               </div>
               <div className="flex justify-between text-sm">
                 <span style={{ color: 'var(--slate)' }}>Beneficiario</span>
@@ -938,9 +971,15 @@ function TransferCard({
           </div>
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-            <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-              {transfer.property_address}
-            </span>
+            {transfer.property_id ? (
+              <Link href={`/homes/properties/${transfer.property_id}`} className="text-sm truncate hover:underline" style={{ color: 'var(--navy-600)' }}>
+                {transfer.property_address} →
+              </Link>
+            ) : (
+              <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
+                {transfer.property_address}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4 mb-3">
             <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>

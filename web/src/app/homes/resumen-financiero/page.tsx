@@ -7,6 +7,7 @@ import {
   BarChart3, Building2, Search, ChevronDown, ChevronRight, Plus, Loader2,
   CreditCard, CheckCircle, Clock, AlertCircle,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
 
@@ -177,7 +178,9 @@ function PropertyRowGroup({ p, st, isExp, onToggle, onRefresh, toast }: {
         <td className="px-2 py-2.5">
           <div className="flex items-center gap-1.5">
             {p.property_code && <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{p.property_code}</span>}
-            <span className="font-medium text-navy-900 truncate max-w-[200px]">{p.address}</span>
+            <Link href={`/homes/properties/${p.id}`} className="font-medium text-navy-900 truncate max-w-[200px] hover:underline hover:text-navy-600" onClick={e => e.stopPropagation()}>
+              {p.address}
+            </Link>
           </div>
           {p.city && <p className="text-[10px] text-navy-400">{p.city}</p>}
         </td>

@@ -80,7 +80,7 @@ class CostosAgent(BaseAgent):
         super().__init__(
             name="costos",
             description="Intelligent renovation cost analysis with contextual reasoning",
-            model="gpt-4o",
+            model="gpt-5",
             temperature=0.2,
         )
         self.api_url = os.getenv("API_URL", "http://localhost:8000")

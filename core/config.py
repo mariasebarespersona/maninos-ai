@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # ==========================================================================
     # LLM CONFIGURATION
     # ==========================================================================
-    DEFAULT_MODEL: str = Field(default="gpt-4o-mini", description="Default LLM model")
+    DEFAULT_MODEL: str = Field(default="gpt-5-mini", description="Default LLM model")
     DEFAULT_TEMPERATURE: float = Field(default=0.7, ge=0, le=2, description="Default LLM temperature")
     
     # ==========================================================================
