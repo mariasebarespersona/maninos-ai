@@ -301,8 +301,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
   ]
 
   const categoryIcons: Record<string, string> = {
-    'Estructura': '🏗️', 'Instalaciones': '⚡', 'Documentación': '📄',
-    'Financiero': '💰', 'Especificaciones': '📋', 'Cierre': '🔑',
+    'Estructura': '🏗️', 'Instalaciones': '⚡',
   }
 
   // ─── Macro-groups: higher-level grouping of categories ───
@@ -311,22 +310,8 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
       id: 'inspeccion',
       label: 'Inspección en Campo',
       icon: '🔍',
-      description: 'Lo que revisa el empleado en la propiedad',
-      categories: ['Estructura', 'Instalaciones', 'Especificaciones'],
-    },
-    {
-      id: 'oficina',
-      label: 'Revisión Oficina',
-      icon: '📋',
-      description: 'Lo que valida Gabriel/Abigail desde la oficina',
-      categories: ['Documentación', 'Financiero'],
-    },
-    {
-      id: 'cierre',
-      label: 'Cierre de Compra',
-      icon: '🤝',
-      description: 'Pasos finales para cerrar el trato',
-      categories: ['Cierre'],
+      description: 'Estructura e instalaciones de la casa',
+      categories: ['Estructura', 'Instalaciones'],
     },
   ]
 
@@ -403,7 +388,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
           {!linkMode ? (
             <div className="text-center py-6 bg-navy-50 rounded-xl border border-navy-100">
               <ClipboardCheck className="w-10 h-10 text-gold-500 mx-auto mb-3" />
-              <h4 className="text-base font-semibold text-navy-900 mb-1">Evaluación de 28 puntos</h4>
+              <h4 className="text-base font-semibold text-navy-900 mb-1">Evaluación de 9 puntos</h4>
               <p className="text-sm text-navy-500 mb-4 max-w-md mx-auto">
                 Evalúa la condición de la casa con fotos y el checklist de Maninos.<br />
                 La IA analiza las fotos y rellena lo que detecte.
