@@ -132,7 +132,20 @@ async def list_payment_orders(
     if property_id:
         q = q.eq("property_id", property_id)
     result = q.execute()
-    return {"ok": True, "data": result.data or []}
+    orders = result.data or []
+
+    # Enrich with property_code from properties table
+    prop_ids = list({o["property_id"] for o in orders if o.get("property_id")})
+    if prop_ids:
+        try:
+            props = sb.table("properties").select("id, property_code").in_("id", prop_ids).execute()
+            code_map = {p["id"]: p.get("property_code") for p in (props.data or [])}
+            for o in orders:
+                o["property_code"] = code_map.get(o.get("property_id"))
+        except Exception:
+            pass
+
+    return {"ok": True, "data": orders}
 
 
 @router.get("/stats")

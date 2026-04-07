@@ -24,6 +24,7 @@ interface PaymentOrder {
   id: string
   property_id: string
   property_address: string
+  property_code: string | null
   status: 'pending' | 'approved' | 'completed' | 'cancelled'
   payee_name: string
   bank_name: string | null
@@ -609,6 +610,7 @@ export default function NotificacionesPage() {
                       {o.property_address && (
                         <div className="flex items-center gap-1 text-xs mb-1" style={{ color: 'var(--slate)' }}>
                           <Building2 className="w-3 h-3" />
+                          {o.property_code && <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{o.property_code}</span>}
                           {o.property_id ? (
                             <Link href={`/homes/properties/${o.property_id}`} className="hover:underline" style={{ color: 'var(--navy-600)' }}>
                               {o.property_address} →
@@ -719,6 +721,9 @@ export default function NotificacionesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <Building2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--navy-600)' }} />
+                    {order.property_code && (
+                      <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold flex-shrink-0">{order.property_code}</span>
+                    )}
                     {order.property_id ? (
                       <Link
                         href={`/homes/properties/${order.property_id}`}
@@ -856,9 +861,12 @@ export default function NotificacionesPage() {
               <div className="flex justify-between text-sm">
                 <span style={{ color: 'var(--slate)' }}>Propiedad</span>
                 {completing.property_id ? (
-                  <Link href={`/homes/properties/${completing.property_id}`} className="font-medium hover:underline" style={{ color: 'var(--navy-600)' }}>
-                    {completing.property_address || 'N/A'} →
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    {completing.property_code && <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{completing.property_code}</span>}
+                    <Link href={`/homes/properties/${completing.property_id}`} className="font-medium hover:underline" style={{ color: 'var(--navy-600)' }}>
+                      {completing.property_address || 'N/A'} →
+                    </Link>
+                  </div>
                 ) : (
                   <span className="font-medium" style={{ color: 'var(--ink)' }}>{completing.property_address || 'N/A'}</span>
                 )}
