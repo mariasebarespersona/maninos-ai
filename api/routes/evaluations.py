@@ -163,30 +163,46 @@ async def get_evaluation_by_number(report_number: str):
 @router.get("/debug/openai-test")
 async def debug_openai_test():
     """Quick test to verify OpenAI connectivity from Railway."""
-    import openai
+    import httpx
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return {"error": "No OPENAI_API_KEY", "key_prefix": None}
+        return {"error": "No OPENAI_API_KEY"}
+
+    results = {"key_prefix": api_key[:15]}
+
+    # Test 1: raw httpx to api.openai.com
     try:
-        client = openai.AsyncOpenAI(api_key=api_key, timeout=30.0)
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            r = await http.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": "gpt-5", "messages": [{"role": "user", "content": "Say OK"}], "max_completion_tokens": 5},
+            )
+            results["httpx_status"] = r.status_code
+            results["httpx_body"] = r.json() if r.status_code == 200 else r.text[:300]
+    except Exception as e:
+        results["httpx_error"] = f"{type(e).__name__}: {e}"
+
+    # Test 2: OpenAI SDK
+    try:
+        import openai
+        results["openai_version"] = openai.__version__
+        client = openai.AsyncOpenAI(api_key=api_key, timeout=15.0)
         resp = await client.chat.completions.create(
             model="gpt-5",
             messages=[{"role": "user", "content": "Say OK"}],
             max_completion_tokens=5,
         )
-        return {
-            "ok": True,
-            "key_prefix": api_key[:15],
-            "model": resp.model,
-            "content": resp.choices[0].message.content,
-        }
+        results["sdk_ok"] = True
+        results["sdk_model"] = resp.model
     except Exception as e:
-        return {
-            "ok": False,
-            "key_prefix": api_key[:15],
-            "error_type": type(e).__name__,
-            "error": str(e)[:500],
-        }
+        results["sdk_ok"] = False
+        results["sdk_error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        # Get underlying cause
+        if hasattr(e, '__cause__') and e.__cause__:
+            results["sdk_cause"] = f"{type(e.__cause__).__name__}: {str(e.__cause__)[:300]}"
+
+    return results
 
 
 @router.get("/{evaluation_id}")
