@@ -141,14 +141,46 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
     })
   }
 
+  // ─── Compress image to max 1MB for AI analysis ───
+  const compressImage = (file: File, maxWidth = 1600, quality = 0.7): Promise<File> => {
+    return new Promise((resolve) => {
+      // Skip non-images or already small files
+      if (!file.type.startsWith('image/') || file.size < 500_000) {
+        resolve(file)
+        return
+      }
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let w = img.width, h = img.height
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, w, h)
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+          } else {
+            resolve(file)
+          }
+        }, 'image/jpeg', quality)
+      }
+      img.onerror = () => resolve(file)
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   // ─── Upload photos for AI analysis ───
   const analyzePhotos = async () => {
     if (!evaluationId || photos.length === 0) return
     setIsAnalyzing(true)
     setError(null)
     try {
+      // Compress all photos before upload (mobile photos can be 5-10MB each)
+      const compressed = await Promise.all(photos.map(p => compressImage(p)))
       const formData = new FormData()
-      photos.forEach(p => formData.append('files', p))
+      compressed.forEach(p => formData.append('files', p))
       const res = await fetch(`/api/evaluations/${evaluationId}/analyze-photos`, {
         method: 'POST',
         body: formData,
