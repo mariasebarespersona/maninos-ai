@@ -464,7 +464,7 @@ REGLAS:
                 },
                 {"role": "user", "content": text},
             ],
-            max_tokens=500,
+            max_completion_tokens=500,
             temperature=0.1,
         )
 
@@ -738,7 +738,7 @@ REGLAS:
                     },
                     {"role": "user", "content": messages_content},
                 ],
-                max_tokens=3000,
+                max_completion_tokens=3000,
                 temperature=0.2,
             )
 
@@ -1001,7 +1001,7 @@ Ejemplo: {{ "demolicion": {{ "mano_obra": 300, "materiales": 50, "notas": "Marco
                 },
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=2000,
+            max_completion_tokens=2000,
             temperature=0.2,
         )
 

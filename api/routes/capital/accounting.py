@@ -3160,7 +3160,7 @@ Return a JSON array with one object per movement (in order):
             {"role": "system", "content": "You are an expert accountant for a mobile home RTO financing company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=4096,
+        max_completion_tokens=4096,
         temperature=0.1,
     )
 

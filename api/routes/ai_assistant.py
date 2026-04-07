@@ -1493,7 +1493,7 @@ IMPORTANTE:
                 },
                 {"role": "user", "content": messages_content},
             ],
-            max_tokens=4096,
+            max_completion_tokens=4096,
             temperature=0.2,
         )
 

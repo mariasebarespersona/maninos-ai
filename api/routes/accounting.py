@@ -3388,7 +3388,7 @@ async def _extract_text_from_image(file_content: bytes, ext: str) -> str:
                 ],
             },
         ],
-        max_tokens=4096,
+        max_completion_tokens=4096,
         temperature=0.0,
     )
 
@@ -3509,7 +3509,7 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
                     {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, etc.) in English or Spanish. Return valid JSON arrays only."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=8192,
+                max_completion_tokens=8192,
                 temperature=0.0,
             )
 
@@ -3621,7 +3621,7 @@ Return a JSON array with one object per movement (in order):
             {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=4096,
+        max_completion_tokens=4096,
         temperature=0.1,
     )
 

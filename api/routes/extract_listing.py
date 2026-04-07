@@ -178,7 +178,7 @@ async def extract_from_image(
                     ],
                 },
             ],
-            max_tokens=1000,
+            max_completion_tokens=1000,
             temperature=0.1,
         )
         
@@ -524,7 +524,7 @@ async def _extract_with_vision(
             {"role": "system", "content": VISION_SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
-        max_tokens=1000,
+        max_completion_tokens=1000,
         temperature=0.1,
     )
     
