@@ -198,17 +198,6 @@ const CHECKLIST_ITEMS = [
   { id: 'ac', category: 'Instalaciones', label: 'A/C' },
   { id: 'gas', category: 'Instalaciones', label: 'Gas' },
 
-  // ESPECIFICACIONES (3 items)
-  { id: 'condiciones', category: 'Especificaciones', label: 'Condiciones generales' },
-  { id: 'lista_reparaciones', category: 'Especificaciones', label: 'Lista reparaciones necesarias' },
-  { id: 'recorrido_completo', category: 'Especificaciones', label: 'Recorrido completo' },
-
-  // CIERRE (5 items)
-  { id: 'deposito_inicial', category: 'Cierre', label: 'Depósito inicial' },
-  { id: 'deposit_agreement', category: 'Cierre', label: 'Deposit Agreement firmado' },
-  { id: 'contrato_financiamiento', category: 'Cierre', label: 'Contrato firmado si financiamiento' },
-  { id: 'pago_total_contado', category: 'Cierre', label: 'Pago total si contado' },
-  { id: 'entrega_sobre', category: 'Cierre', label: 'Entrega sobre con aplicación y factura firmada' },
 ];
 
 // View mode type

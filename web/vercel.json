@@ -1,5 +1,10 @@
 {
   "framework": "nextjs",
+  "functions": {
+    "src/app/api/evaluations/*/analyze-photos/route.ts": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/sw.js",

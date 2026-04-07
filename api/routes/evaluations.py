@@ -71,30 +71,11 @@ CHECKLIST_ITEMS = [
      "photo_hint": "Unidad A/C exterior (¿modelo, antigüedad, estado?) + interior (¿ductos, filtro, enciende?)"},
     {"id": "gas", "category": "Instalaciones", "label": "Gas",
      "photo_hint": "Tanque de gas, líneas de gas, calentador de agua — busca corrosión, conexiones flojas"},
-    # ESPECIFICACIONES (3)
-    {"id": "condiciones", "category": "Especificaciones", "label": "Condiciones generales",
-     "photo_hint": "Fotos generales de interior y exterior para evaluación global del estado de la casa"},
-    {"id": "lista_reparaciones", "category": "Especificaciones", "label": "Lista reparaciones necesarias",
-     "photo_hint": "Se genera de todas las fotos — cuantas más fotos detalladas, mejor la lista de reparaciones"},
-    {"id": "recorrido_completo", "category": "Especificaciones", "label": "Recorrido completo",
-     "photo_hint": "Fotos de TODAS las áreas: exterior (4 lados), sala, cocina, baños, cuartos, faldón, techo"},
-    # CIERRE (5)
-    {"id": "deposito_inicial", "category": "Cierre", "label": "Depósito inicial",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "deposit_agreement", "category": "Cierre", "label": "Deposit Agreement firmado",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "contrato_financiamiento", "category": "Cierre", "label": "Contrato firmado si financiamiento",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "pago_total_contado", "category": "Cierre", "label": "Pago total si contado",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "entrega_sobre", "category": "Cierre", "label": "Entrega sobre con aplicación y factura",
-     "photo_hint": "Trámite administrativo"},
 ]
 
 PHOTO_EVALUABLE_IDS = {
     "marco_acero", "suelos_subfloor", "techo_techumbre", "paredes_ventanas",
     "regaderas_tinas", "electricidad", "plomeria", "ac", "gas",
-    "condiciones", "lista_reparaciones", "recorrido_completo",
 }
 
 

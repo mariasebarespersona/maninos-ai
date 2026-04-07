@@ -8,6 +8,9 @@ const nextConfig = {
   experimental: {
     // Allow useSearchParams() in client components without Suspense boundary
     missingSuspenseWithCSRBailout: false,
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
   },
 };
 

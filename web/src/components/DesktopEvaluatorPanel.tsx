@@ -356,7 +356,6 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
   const PHOTO_EVALUABLE_IDS = new Set([
     'marco_acero', 'suelos_subfloor', 'techo_techumbre', 'paredes_ventanas',
     'regaderas_tinas', 'electricidad', 'plomeria', 'ac', 'gas',
-    'condiciones', 'lista_reparaciones', 'recorrido_completo',
   ])
 
   // Checklist items that still need photos (pending or needs_photo AND photo-evaluable)

@@ -21,24 +21,11 @@ const CHECKLIST_ITEMS = [
   { id: 'ac', label: 'A/C', category: 'Instalaciones' },
   { id: 'gas', label: 'Gas', category: 'Instalaciones' },
 
-  // ESPECIFICACIONES (3 items)
-  { id: 'condiciones', label: 'Condiciones generales', category: 'Especificaciones' },
-  { id: 'lista_reparaciones', label: 'Lista reparaciones necesarias', category: 'Especificaciones' },
-  { id: 'recorrido_completo', label: 'Recorrido completo', category: 'Especificaciones' },
-
-  // CIERRE (5 items)
-  { id: 'deposito_inicial', label: 'Depósito inicial', category: 'Cierre' },
-  { id: 'deposit_agreement', label: 'Deposit Agreement firmado', category: 'Cierre' },
-  { id: 'contrato_financiamiento', label: 'Contrato firmado si financiamiento', category: 'Cierre' },
-  { id: 'pago_total_contado', label: 'Pago total si contado', category: 'Cierre' },
-  { id: 'entrega_sobre', label: 'Entrega sobre con aplicación y factura firmada', category: 'Cierre' },
 ]
 
 const CATEGORIES = [
   { id: 'Estructura', icon: '🏗️', color: 'bg-blue-50 border-blue-200' },
   { id: 'Instalaciones', icon: '⚡', color: 'bg-yellow-50 border-yellow-200' },
-  { id: 'Especificaciones', icon: '📋', color: 'bg-orange-50 border-orange-200' },
-  { id: 'Cierre', icon: '🔑', color: 'bg-emerald-50 border-emerald-200' },
 ]
 
 const MACRO_GROUPS = [
@@ -47,16 +34,8 @@ const MACRO_GROUPS = [
     label: 'Inspección en Campo',
     icon: '🔍',
     description: 'Lo que revisa el empleado en la propiedad',
-    categories: ['Estructura', 'Instalaciones', 'Especificaciones'],
+    categories: ['Estructura', 'Instalaciones'],
     color: 'bg-blue-50 border-blue-200',
-  },
-  {
-    id: 'cierre',
-    label: 'Cierre de Compra',
-    icon: '🤝',
-    description: 'Pasos finales para cerrar el trato',
-    categories: ['Cierre'],
-    color: 'bg-emerald-50 border-emerald-200',
   },
 ]
 
@@ -125,7 +104,7 @@ export default function PropertyChecklist({
             </div>
             <div>
               <h2 className="font-serif text-xl text-navy-900">Checklist Compra de Casa</h2>
-              <p className="text-sm text-navy-500">17 puntos de verificación</p>
+              <p className="text-sm text-navy-500">9 puntos de verificación</p>
             </div>
           </div>
           
