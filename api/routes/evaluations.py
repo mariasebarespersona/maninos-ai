@@ -160,6 +160,35 @@ async def get_evaluation_by_number(report_number: str):
     return result.data[0]
 
 
+@router.get("/debug/openai-test")
+async def debug_openai_test():
+    """Quick test to verify OpenAI connectivity from Railway."""
+    import openai
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {"error": "No OPENAI_API_KEY", "key_prefix": None}
+    try:
+        client = openai.AsyncOpenAI(api_key=api_key, timeout=30.0)
+        resp = await client.chat.completions.create(
+            model="gpt-5",
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_completion_tokens=5,
+        )
+        return {
+            "ok": True,
+            "key_prefix": api_key[:15],
+            "model": resp.model,
+            "content": resp.choices[0].message.content,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "key_prefix": api_key[:15],
+            "error_type": type(e).__name__,
+            "error": str(e)[:500],
+        }
+
+
 @router.get("/{evaluation_id}")
 async def get_evaluation(evaluation_id: str):
     """Get evaluation by ID."""
