@@ -208,7 +208,8 @@ async def analyze_photos(
         if not api_key:
             raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
-        client = openai.OpenAI(api_key=api_key)
+        logger.info(f"[evaluation] Using OpenAI key: {api_key[:12]}...{api_key[-4:]}")
+        client = openai.AsyncOpenAI(api_key=api_key, timeout=90.0)
 
         image_contents = []
         saved_photo_urls = []
@@ -329,7 +330,7 @@ Responde SOLO en JSON válido:
   "photos_coverage": "Áreas cubiertas: exterior frontal, sala, cocina, baño principal. Faltan: exterior trasero, cuartos, faldón, panel eléctrico"
 }}"""
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-5",
             messages=[
                 {"role": "system", "content": "Eres un inspector experto de casas móviles. Responde SOLO con JSON válido."},
@@ -460,7 +461,7 @@ async def generate_report(evaluation_id: str):
         import openai
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            client = openai.OpenAI(api_key=api_key)
+            client = openai.AsyncOpenAI(api_key=api_key, timeout=90.0)
 
             checklist_summary = ""
             for item in checklist:
@@ -469,7 +470,7 @@ async def generate_report(evaluation_id: str):
 
             extra_notes_text = "\n".join(f"- {note}" for note in extra_notes) if extra_notes else "Ninguna"
 
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": "Eres un inspector de casas móviles. Genera un resumen ejecutivo breve (3-5 oraciones) del estado de la casa."},
