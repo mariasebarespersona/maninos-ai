@@ -350,15 +350,12 @@ CÓMO ANALIZAR CADA TIPO DE FOTO:
 - ¿Breakers organizados? ¿cables quemados? ¿capacidad suficiente (100-200 amp)?
 
 REGLAS DE EVALUACIÓN:
-1. Si puedes evaluar con las fotos → "pass" (buena condición), "fail" (problema grave), o "warning" (problema menor/cosmético)
-2. Si necesitas una foto que no tienes → "needs_photo" + en note explica EXACTAMENTE qué foto necesitas
-3. Para ítems administrativos (Cierre) → "not_evaluable"
-4. Si el EMPLEADO ya marcó un ítem (indicado con [EMPLEADO YA MARCÓ]) → RESPETA su evaluación, no la cambies
-5. Sé CONSERVADOR: es mejor detectar un problema que pasarlo por alto
-6. En "note" describe la condición ESPECÍFICA que ves: "Piso de vinyl con mancha de agua de ~30cm en esquina noreste del cuarto principal" — no solo "piso dañado"
-7. Para "lista_reparaciones": genera una lista detallada de TODO lo que necesita reparación basándote en TODAS las fotos
-8. Para "condiciones": da una evaluación global del estado de la casa en 2-3 oraciones
-9. Para "recorrido_completo": indica qué áreas de la casa están cubiertas por las fotos y cuáles faltan
+1. Si puedes evaluar con las fotos → "pass" (buena condición), "fail" (problema grave), o "warning" (problema menor/cosmético). En "note" describe la condición ESPECÍFICA que observas.
+2. Si no hay foto relevante para un punto → "needs_photo" con "note" VACÍO (""). NO describas qué foto se necesita — eso ya lo sabe el empleado.
+3. Si el EMPLEADO ya marcó un ítem (indicado con [EMPLEADO YA MARCÓ]) → RESPETA su evaluación, no la cambies.
+4. Sé CONSERVADOR: es mejor detectar un problema que pasarlo por alto.
+5. En "note" SOLO describe lo que VES en las fotos. Ejemplo bueno: "Piso de vinyl con mancha de agua de ~30cm en esquina noreste". Ejemplo MALO: "Se necesitan fotos del piso para evaluar".
+6. Si la foto no es de una casa móvil o no muestra nada relevante, marca TODO como "needs_photo" con note vacío.
 
 CHECKLIST ({len(CHECKLIST_ITEMS)} puntos):
 {checklist_text}
@@ -404,11 +401,15 @@ Responde SOLO en JSON válido:
                 # Employee already manually set this — keep their evaluation
                 merged.append(item)
             elif ai_item:
+                ai_status = ai_item.get("status", item["status"])
+                # Only use AI note if it actually evaluated something (pass/fail/warning)
+                # For needs_photo, keep existing note empty — photo_hint already guides the employee
+                ai_note = ai_item.get("note", "") if ai_status in ("pass", "fail", "warning") else ""
                 merged.append({
                     **item,
-                    "status": ai_item.get("status", item["status"]),
+                    "status": ai_status,
                     "confidence": ai_item.get("confidence", "medium"),
-                    "note": ai_item.get("note", item.get("note", "")),
+                    "note": ai_note,
                 })
             else:
                 merged.append(item)
