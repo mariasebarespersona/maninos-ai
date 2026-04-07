@@ -815,28 +815,18 @@ export default function NewPropertyPage() {
             />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-            <FormInput
-              label="HUD Number"
-              name="hud_number"
-              value={form.hud_number}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="TEX1234567"
-            />
-            <FormInput
-              type="number"
-              label="Año"
-              name="year"
-              value={form.year}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="2020"
-              min={1900}
-              max={2030}
-              error={getFieldError('year')}
-            />
-              </div>
+              <FormInput
+                type="number"
+                label="Año"
+                name="year"
+                value={form.year}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                placeholder="2020"
+                min={1900}
+                max={2030}
+                error={getFieldError('year')}
+              />
 
               <div className="flex items-center gap-2 text-navy-900 font-medium mt-4">
                 <Home className="w-5 h-5 text-gold-500" />
