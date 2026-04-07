@@ -200,7 +200,8 @@ export default function NewPropertyPage() {
         const res = await fetch(`/api/esign/envelopes/${envId}`)
         if (!res.ok) continue
         const env = await res.json()
-        const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
+        // API returns { ok, envelope, signatures } — not document_signatures
+        const sellerSig = (env.signatures || env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
         if (!sellerSig) continue
         const signed = !!sellerSig.signed_at
         const sigData = sellerSig.signature_data || {}
