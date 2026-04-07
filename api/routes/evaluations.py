@@ -311,51 +311,60 @@ async def analyze_photos(
             )
         checklist_text = "\n".join(checklist_text_lines)
 
-        prompt = f"""Eres un inspector profesional de casas móviles (manufactured homes / mobile homes) trabajando para Maninos Homes LLC en Texas. Tu trabajo es evaluar el estado físico de una casa a partir de fotos para determinar si vale la pena comprarla para renovar y revender.
+        prompt = f"""Eres un inspector profesional de casas móviles (manufactured homes / mobile homes). Evalúa las fotos que recibes y marca cada punto del checklist.
 
-CONTEXTO DEL NEGOCIO:
-- Maninos compra casas móviles usadas, las renueva y las vende
-- Buscamos casas con problemas cosméticos (paredes, pisos, pintura) pero estructura sólida
-- Problemas graves: marco doblado, techo con filtraciones activas, plomería destruida → NO COMPRAR
-- Problemas menores: pintura, carpet manchado, ventana rota, A/C viejo → se pueden renovar
+REGLA FUNDAMENTAL: Cada foto puede ser relevante para VARIOS puntos del checklist a la vez. Una foto de un cuarto muestra pisos, paredes, ventanas, y techo interior — evalúa TODOS esos puntos con esa foto. NO marques "needs_photo" si hay CUALQUIER foto donde se pueda ver algo relevante para ese punto.
 
-CÓMO ANALIZAR CADA TIPO DE FOTO:
+CÓMO DECIDIR EL STATUS:
+- "pass" → Se ve y está en buena condición
+- "warning" → Se ve un problema menor/cosmético (pintura descascarada, carpet manchado, ventana con sello viejo)
+- "fail" → Se ve un problema grave (vidrio roto, piso hundido, mancha grande de agua/moho, cables expuestos)
+- "needs_photo" → NO se ve en NINGUNA de las fotos. SOLO usar si realmente no hay forma de evaluar.
 
-🏠 EXTERIOR:
-- Marco de acero: ¿oxidación severa? ¿dobleces? ¿soldaduras rotas? (mira la parte inferior/faldón)
-- Techo: ¿pandeo? ¿parches? ¿material deteriorado? ¿canaletas rotas?
-- Paredes exteriores: ¿siding dañado? ¿huecos? ¿podredumbre?
-- Ventanas: ¿vidrios rotos? ¿marcos podridos? ¿sellos deteriorados?
-- A/C exterior: ¿modelo/antigüedad? ¿óxido? ¿funcional?
-- Gas: ¿tanque presente? ¿conexiones visibles? ¿corrosión?
+EJEMPLOS DE EVALUACIÓN CORRECTA:
 
-🏡 INTERIOR — SALA/COCINA:
-- Pisos: ¿hundimientos? ¿manchas de agua? ¿partes blandas al pisar? ¿desniveles?
-- Paredes: ¿grietas? ¿huecos? ¿moho? ¿paneles sueltos?
-- Techos interiores: ¿manchas de humedad? ¿goteo? ¿pandeo?
-- Electricidad: ¿enchufes/interruptores? ¿panel eléctrico visible?
-- Plomería cocina: ¿debajo del fregadero hay fugas?
+Ejemplo 1 — Foto de interior de sala con ventana rota visible:
+  marco_acero: needs_photo (no se ve el marco inferior) note: ""
+  suelos_subfloor: warning, note: "Carpet visible con desgaste moderado, sin hundimientos aparentes"
+  techo_techumbre: pass, note: "Techo interior sin manchas de humedad ni pandeo"
+  paredes_ventanas: fail, note: "Ventana de sala con vidrio roto, marco de aluminio intacto"
+  regaderas_tinas: needs_photo, note: ""
+  electricidad: pass, note: "Enchufes e interruptores visibles en buen estado"
+  plomeria: needs_photo, note: ""
+  ac: needs_photo, note: ""
+  gas: needs_photo, note: ""
 
-🚿 BAÑOS:
-- Regaderas/tinas: ¿fugas? ¿moho? ¿azulejos rotos? ¿calafateo deteriorado?
-- Plomería: ¿tuberías debajo del lavabo? ¿manchas de agua?
-- Inodoro: ¿base firme o se mueve? ¿manchas alrededor?
+Ejemplo 2 — Foto exterior mostrando fachada completa:
+  marco_acero: needs_photo (faldón cubierto, no se ve el marco) note: ""
+  suelos_subfloor: needs_photo, note: ""
+  techo_techumbre: warning, note: "Techo de metal con parche visible de ~50cm en sección central"
+  paredes_ventanas: warning, note: "Siding de vinyl con sección desprendida lado izquierdo, 3 ventanas visibles sin daños"
+  regaderas_tinas: needs_photo, note: ""
+  electricidad: needs_photo, note: ""
+  plomeria: needs_photo, note: ""
+  ac: pass, note: "Unidad A/C exterior visible, modelo reciente, sin óxido"
+  gas: pass, note: "Tanque de propano presente junto a la unidad"
 
-🛏️ HABITACIONES:
-- Pisos: ¿mismo análisis que sala?
-- Paredes/ventanas: ¿daños?
-- Closets: ¿moho? ¿humedad?
+Ejemplo 3 — Foto de baño:
+  marco_acero: needs_photo, note: ""
+  suelos_subfloor: fail, note: "Piso de vinyl levantado alrededor del inodoro, posible daño por agua"
+  techo_techumbre: pass, note: "Techo de baño sin manchas"
+  paredes_ventanas: pass, note: "Paredes de baño sin moho ni grietas"
+  regaderas_tinas: warning, note: "Calafateo de tina deteriorado, necesita reemplazo. No se ven fugas activas"
+  electricidad: pass, note: "Interruptor de luz funcional visible"
+  plomeria: warning, note: "Tuberías visibles debajo del lavabo con corrosión leve"
+  ac: needs_photo, note: ""
+  gas: needs_photo, note: ""
 
-⚡ PANEL ELÉCTRICO:
-- ¿Breakers organizados? ¿cables quemados? ¿capacidad suficiente (100-200 amp)?
-
-REGLAS DE EVALUACIÓN:
-1. Si puedes evaluar con las fotos → "pass" (buena condición), "fail" (problema grave), o "warning" (problema menor/cosmético). En "note" describe la condición ESPECÍFICA que observas.
-2. Si no hay foto relevante para un punto → "needs_photo" con "note" VACÍO (""). NO describas qué foto se necesita — eso ya lo sabe el empleado.
-3. Si el EMPLEADO ya marcó un ítem (indicado con [EMPLEADO YA MARCÓ]) → RESPETA su evaluación, no la cambies.
-4. Sé CONSERVADOR: es mejor detectar un problema que pasarlo por alto.
-5. En "note" SOLO describe lo que VES en las fotos. Ejemplo bueno: "Piso de vinyl con mancha de agua de ~30cm en esquina noreste". Ejemplo MALO: "Se necesitan fotos del piso para evaluar".
-6. Si la foto no es de una casa móvil o no muestra nada relevante, marca TODO como "needs_photo" con note vacío.
+IMPORTANTE:
+- Si ves una ventana rota → paredes_ventanas = "fail"
+- Si ves pisos manchados → suelos_subfloor = "warning" o "fail"
+- Si ves moho en paredes → paredes_ventanas = "fail"
+- Si ves un panel eléctrico → electricidad = "pass" o "fail"
+- Si ves una regadera/tina → regaderas_tinas = evalúa
+- CADA foto muestra algo — analízala a fondo para TODOS los puntos visibles
+- En "note": describe SOLO lo que ves. Si status es "needs_photo", note debe ser "" (vacío).
+- Si el EMPLEADO ya marcó un ítem ([EMPLEADO YA MARCÓ]), respétalo.
 
 CHECKLIST ({len(CHECKLIST_ITEMS)} puntos):
 {checklist_text}
@@ -363,13 +372,13 @@ CHECKLIST ({len(CHECKLIST_ITEMS)} puntos):
 Responde SOLO en JSON válido:
 {{
   "checklist": [
-    {{"id": "marco_acero", "category": "Estructura", "label": "Marco de acero", "status": "pass", "confidence": "high", "note": "Marco visible sin oxidación significativa, soldaduras intactas"}},
-    ...todos los {len(CHECKLIST_ITEMS)} items...
+    {{"id": "marco_acero", "category": "Estructura", "label": "Marco de acero", "status": "pass|fail|warning|needs_photo", "confidence": "high|medium|low", "note": "descripción de lo observado o vacío"}},
+    ...los {len(CHECKLIST_ITEMS)} items...
   ],
   "property_type": "single_wide" o "double_wide" o "N/A",
   "estimated_year": "YYYY" o "N/A",
   "estimated_bedrooms": número o 0,
-  "photos_coverage": "Áreas cubiertas: exterior frontal, sala, cocina, baño principal. Faltan: exterior trasero, cuartos, faldón, panel eléctrico"
+  "photos_coverage": "Áreas cubiertas: ... Faltan: ..."
 }}"""
 
         response = await client.chat.completions.create(
