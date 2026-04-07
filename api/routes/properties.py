@@ -675,7 +675,63 @@ async def delete_property(property_id: str):
         except Exception as e:
             logger.warning(f"Could not delete sales: {e}")
         
-        # 5. Finally delete the property
+        # 5. Delete payment_orders
+        try:
+            sb.table("payment_orders").delete().eq("property_id", property_id).execute()
+            deleted_records.append("payment_orders")
+        except Exception as e:
+            logger.warning(f"Could not delete payment_orders: {e}")
+
+        # 6. Delete accounting_transactions
+        try:
+            sb.table("accounting_transactions").delete().eq("property_id", property_id).execute()
+            deleted_records.append("accounting_transactions")
+        except Exception as e:
+            logger.warning(f"Could not delete accounting_transactions: {e}")
+
+        # 7. Delete commissions
+        try:
+            sb.table("commissions").delete().eq("property_id", property_id).execute()
+            deleted_records.append("commissions")
+        except Exception as e:
+            logger.warning(f"Could not delete commissions: {e}")
+
+        # 8. Delete evaluation_reports
+        try:
+            sb.table("evaluation_reports").delete().eq("property_id", property_id).execute()
+            deleted_records.append("evaluation_reports")
+        except Exception as e:
+            logger.warning(f"Could not delete evaluation_reports: {e}")
+
+        # 9. Delete notifications
+        try:
+            sb.table("notifications").delete().eq("property_id", property_id).execute()
+            deleted_records.append("notifications")
+        except Exception as e:
+            logger.warning(f"Could not delete notifications: {e}")
+
+        # 10. Delete documents
+        try:
+            sb.table("documents").delete().eq("property_id", property_id).execute()
+            deleted_records.append("documents")
+        except Exception as e:
+            logger.warning(f"Could not delete documents: {e}")
+
+        # 11. Delete moves
+        try:
+            sb.table("moves").delete().eq("property_id", property_id).execute()
+            deleted_records.append("moves")
+        except Exception as e:
+            logger.warning(f"Could not delete moves: {e}")
+
+        # 12. Delete rto_contracts
+        try:
+            sb.table("rto_contracts").delete().eq("property_id", property_id).execute()
+            deleted_records.append("rto_contracts")
+        except Exception as e:
+            logger.warning(f"Could not delete rto_contracts: {e}")
+
+        # 13. Finally delete the property
         sb.table("properties").delete().eq("id", property_id).execute()
         deleted_records.append("property")
         
