@@ -129,8 +129,8 @@ export default function NewPropertyPage() {
   // Preview signed document using the real template component
   const [previewDoc, setPreviewDoc] = useState<'bos' | 'title_app' | null>(null)
 
-  // Property ID after creation (for e-sign linking)
-  const [createdPropertyId, setCreatedPropertyId] = useState<string | null>(null)
+  // Envelope IDs created during this flow (for polling signatures)
+  const [envelopeIds, setEnvelopeIds] = useState<{ bos?: string; title_app?: string }>({})
 
   // Payment state
   const [payment, setPayment] = useState<PaymentInfo>({
@@ -173,16 +173,17 @@ export default function NewPropertyPage() {
     validateSingle(e.target.name, e.target.value)
   }
 
-  // Fetch seller signature status from e-sign envelopes
+  // Fetch seller signature status from e-sign envelopes (by envelope ID)
   const fetchSellerSignatures = useCallback(async () => {
-    // For new properties we use the created property ID if available
-    if (!createdPropertyId) return
+    const ids = Object.values(envelopeIds).filter(Boolean)
+    if (ids.length === 0) return
     try {
-      const res = await fetch(`/api/esign/property/${createdPropertyId}/envelopes`)
-      if (!res.ok) return
-      const { envelopes } = await res.json()
       const sigs: typeof sellerSignatures = { bos: null, title_app: null }
-      for (const env of (envelopes || [])) {
+      for (const [docType, envId] of Object.entries(envelopeIds)) {
+        if (!envId) continue
+        const res = await fetch(`/api/esign/envelopes/${envId}`)
+        if (!res.ok) continue
+        const env = await res.json()
         const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
         if (!sellerSig) continue
         const signed = !!sellerSig.signed_at
@@ -194,20 +195,20 @@ export default function NewPropertyPage() {
           signer_name: sellerSig.signer_name,
           token: sellerSig.token,
         }
-        if (env.document_type === 'bill_of_sale') sigs.bos = entry
-        if (env.document_type === 'title_application') sigs.title_app = entry
+        if (docType === 'bos') sigs.bos = entry
+        if (docType === 'title_app') sigs.title_app = entry
       }
       setSellerSignatures(sigs)
     } catch {}
-  }, [createdPropertyId])
+  }, [envelopeIds])
 
-  // Poll for seller signatures every 10s when on confirm step
+  // Poll for seller signatures every 10s when on confirm step and envelopes exist
   useEffect(() => {
-    if (purchaseStep !== 'confirm') return
+    if (purchaseStep !== 'confirm' || Object.values(envelopeIds).filter(Boolean).length === 0) return
     fetchSellerSignatures()
     const interval = setInterval(fetchSellerSignatures, 10000)
     return () => clearInterval(interval)
-  }, [purchaseStep, fetchSellerSignatures])
+  }, [purchaseStep, envelopeIds, fetchSellerSignatures])
 
   // Send document for e-signature
   const sendForEsign = async (docType: 'bos' | 'title_app') => {
@@ -236,6 +237,11 @@ export default function NewPropertyPage() {
         }),
       })
       if (res.ok) {
+        const data = await res.json()
+        // Store envelope ID for signature polling in Step 4
+        if (data.envelope_id) {
+          setEnvelopeIds(prev => ({ ...prev, [docType]: data.envelope_id }))
+        }
         toast.success(`Firma enviada a ${esignEmail.trim()} — recibirá un email para firmar`)
         setSignRefreshKey(k => k + 1)
         setEsignEmailFor(null)
