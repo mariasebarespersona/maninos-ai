@@ -190,34 +190,19 @@ const CHECKLIST_ITEMS = [
   { id: 'suelos_subfloor', category: 'Estructura', label: 'Suelos/subfloor' },
   { id: 'techo_techumbre', category: 'Estructura', label: 'Techo/techumbre' },
   { id: 'paredes_ventanas', category: 'Estructura', label: 'Paredes/ventanas' },
-  
+
   // INSTALACIONES (5 items)
   { id: 'regaderas_tinas', category: 'Instalaciones', label: 'Regaderas/tinas/coladeras' },
   { id: 'electricidad', category: 'Instalaciones', label: 'Electricidad' },
   { id: 'plomeria', category: 'Instalaciones', label: 'Plomería' },
   { id: 'ac', category: 'Instalaciones', label: 'A/C' },
   { id: 'gas', category: 'Instalaciones', label: 'Gas' },
-  
-  // DOCUMENTACIÓN (5 items)
-  { id: 'titulo_limpio', category: 'Documentación', label: 'Título limpio sin adeudos' },
-  { id: 'vin_revisado', category: 'Documentación', label: 'VIN revisado' },
-  { id: 'docs_vendedor', category: 'Documentación', label: 'Docs vendedor' },
-  { id: 'aplicacion_firmada', category: 'Documentación', label: 'Aplicación firmada vendedor/comprador' },
-  { id: 'bill_of_sale', category: 'Documentación', label: 'Bill of Sale' },
-  
-  // FINANCIERO (4 items)
-  { id: 'precio_costo_obra', category: 'Financiero', label: 'Precio compra + costo obra' },
-  { id: 'reparaciones_30', category: 'Financiero', label: 'Reparaciones < 30% valor venta' },
-  { id: 'comparativa_mercado', category: 'Financiero', label: 'Comparativa precios mercado' },
-  { id: 'costos_extra', category: 'Financiero', label: 'Costos extra traslado/movida/alineación' },
-  
-  // ESPECIFICACIONES (5 items)
-  { id: 'año', category: 'Especificaciones', label: 'Año' },
-  { id: 'condiciones', category: 'Especificaciones', label: 'Condiciones' },
-  { id: 'numero_cuartos', category: 'Especificaciones', label: 'Número cuartos' },
+
+  // ESPECIFICACIONES (3 items)
+  { id: 'condiciones', category: 'Especificaciones', label: 'Condiciones generales' },
   { id: 'lista_reparaciones', category: 'Especificaciones', label: 'Lista reparaciones necesarias' },
   { id: 'recorrido_completo', category: 'Especificaciones', label: 'Recorrido completo' },
-  
+
   // CIERRE (5 items)
   { id: 'deposito_inicial', category: 'Cierre', label: 'Depósito inicial' },
   { id: 'deposit_agreement', category: 'Cierre', label: 'Deposit Agreement firmado' },

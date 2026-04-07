@@ -53,55 +53,31 @@ class LinkPropertyRequest(BaseModel):
 CHECKLIST_ITEMS = [
     # ESTRUCTURA (4)
     {"id": "marco_acero", "category": "Estructura", "label": "Marco de acero",
-     "photo_hint": "Foto del faldón/parte inferior donde se vea el marco metálico"},
+     "photo_hint": "Foto del faldón/parte inferior donde se vea el marco metálico — busca oxidación, dobleces, soldaduras rotas"},
     {"id": "suelos_subfloor", "category": "Estructura", "label": "Suelos/subfloor",
-     "photo_hint": "Fotos de pisos — hundimientos, manchas de agua, partes blandas"},
+     "photo_hint": "Fotos de pisos en cada cuarto — busca hundimientos, manchas de agua, partes blandas, desniveles"},
     {"id": "techo_techumbre", "category": "Estructura", "label": "Techo/techumbre",
-     "photo_hint": "Techo exterior + interiores buscando manchas de humedad"},
+     "photo_hint": "Techo exterior (¿pandeo, parches?) + techos interiores (¿manchas de humedad, goteo, paneles sueltos?)"},
     {"id": "paredes_ventanas", "category": "Estructura", "label": "Paredes/ventanas",
-     "photo_hint": "Panorámicas de paredes y ventanas (¿grietas, vidrios rotos?)"},
+     "photo_hint": "Panorámicas de paredes (¿grietas, huecos, moho?) y cada ventana (¿vidrios rotos, marcos podridos, sellos?)"},
     # INSTALACIONES (5)
     {"id": "regaderas_tinas", "category": "Instalaciones", "label": "Regaderas/tinas/coladeras",
-     "photo_hint": "Regaderas, tinas y coladeras en cada baño"},
+     "photo_hint": "Regaderas, tinas y coladeras en cada baño — busca fugas, moho, azulejos rotos, presión de agua"},
     {"id": "electricidad", "category": "Instalaciones", "label": "Electricidad",
-     "photo_hint": "Panel eléctrico + enchufes/interruptores"},
+     "photo_hint": "Panel eléctrico abierto (¿breakers, cables quemados?) + enchufes/interruptores en cada cuarto"},
     {"id": "plomeria", "category": "Instalaciones", "label": "Plomería",
-     "photo_hint": "Debajo de lavabos — tuberías, conexiones, fugas"},
+     "photo_hint": "Debajo de lavabos y fregadero — tuberías, conexiones, fugas activas, manchas de agua"},
     {"id": "ac", "category": "Instalaciones", "label": "A/C",
-     "photo_hint": "Unidad A/C exterior e interior"},
+     "photo_hint": "Unidad A/C exterior (¿modelo, antigüedad, estado?) + interior (¿ductos, filtro, enciende?)"},
     {"id": "gas", "category": "Instalaciones", "label": "Gas",
-     "photo_hint": "Líneas de gas, conexiones, olores"},
-    # DOCUMENTACIÓN (5)
-    {"id": "titulo_limpio", "category": "Documentación", "label": "Título limpio sin adeudos",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "vin_revisado", "category": "Documentación", "label": "Número de serie VIN revisado",
-     "photo_hint": "Placa VIN/HUD del mobile home"},
-    {"id": "docs_vendedor", "category": "Documentación", "label": "Documentos del vendedor",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "aplicacion_firmada", "category": "Documentación", "label": "Aplicación firmada",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "bill_of_sale", "category": "Documentación", "label": "Bill of Sale",
-     "photo_hint": "Trámite administrativo"},
-    # FINANCIERO (4)
-    {"id": "precio_costo_obra", "category": "Financiero", "label": "Precio compra + costo obra",
-     "photo_hint": "Se estima por el estado general"},
-    {"id": "reparaciones_30", "category": "Financiero", "label": "Reparaciones < 30% valor venta",
-     "photo_hint": "Se estima por el estado de la casa"},
-    {"id": "comparativa_precios", "category": "Financiero", "label": "Comparativa precios mercado",
-     "photo_hint": "Trámite administrativo"},
-    {"id": "costos_extra", "category": "Financiero", "label": "Costos extra (traslado, alineación)",
-     "photo_hint": "Se estima por ubicación y tipo de casa"},
-    # ESPECIFICACIONES (5)
-    {"id": "año", "category": "Especificaciones", "label": "Año",
-     "photo_hint": "Placa VIN/HUD tiene el año"},
+     "photo_hint": "Tanque de gas, líneas de gas, calentador de agua — busca corrosión, conexiones flojas"},
+    # ESPECIFICACIONES (3)
     {"id": "condiciones", "category": "Especificaciones", "label": "Condiciones generales",
-     "photo_hint": "Fotos generales de interior y exterior"},
-    {"id": "numero_cuartos", "category": "Especificaciones", "label": "Número de cuartos",
-     "photo_hint": "Fotos de cada cuarto para contarlos"},
+     "photo_hint": "Fotos generales de interior y exterior para evaluación global del estado de la casa"},
     {"id": "lista_reparaciones", "category": "Especificaciones", "label": "Lista reparaciones necesarias",
-     "photo_hint": "Se genera de todas las fotos"},
+     "photo_hint": "Se genera de todas las fotos — cuantas más fotos detalladas, mejor la lista de reparaciones"},
     {"id": "recorrido_completo", "category": "Especificaciones", "label": "Recorrido completo",
-     "photo_hint": "Fotos de TODAS las áreas"},
+     "photo_hint": "Fotos de TODAS las áreas: exterior (4 lados), sala, cocina, baños, cuartos, faldón, techo"},
     # CIERRE (5)
     {"id": "deposito_inicial", "category": "Cierre", "label": "Depósito inicial",
      "photo_hint": "Trámite administrativo"},
@@ -118,8 +94,7 @@ CHECKLIST_ITEMS = [
 PHOTO_EVALUABLE_IDS = {
     "marco_acero", "suelos_subfloor", "techo_techumbre", "paredes_ventanas",
     "regaderas_tinas", "electricidad", "plomeria", "ac", "gas",
-    "vin_revisado", "precio_costo_obra", "reparaciones_30", "costos_extra",
-    "año", "condiciones", "numero_cuartos", "lista_reparaciones", "recorrido_completo",
+    "condiciones", "lista_reparaciones", "recorrido_completo",
 }
 
 
@@ -309,32 +284,68 @@ async def analyze_photos(
             )
         checklist_text = "\n".join(checklist_text_lines)
 
-        prompt = f"""Eres un evaluador experto de casas móviles para Maninos Homes LLC en Texas.
+        prompt = f"""Eres un inspector profesional de casas móviles (manufactured homes / mobile homes) trabajando para Maninos Homes LLC en Texas. Tu trabajo es evaluar el estado físico de una casa a partir de fotos para determinar si vale la pena comprarla para renovar y revender.
 
-TAREA: Analiza las fotos y evalúa el ESTADO/CONDICIÓN de la casa.
-NO incluyas estimaciones de costo de reparación. Solo evalúa la condición.
+CONTEXTO DEL NEGOCIO:
+- Maninos compra casas móviles usadas, las renueva y las vende
+- Buscamos casas con problemas cosméticos (paredes, pisos, pintura) pero estructura sólida
+- Problemas graves: marco doblado, techo con filtraciones activas, plomería destruida → NO COMPRAR
+- Problemas menores: pintura, carpet manchado, ventana rota, A/C viejo → se pueden renovar
 
-REGLAS:
-1. Si puedes evaluar con las fotos: "pass", "fail" o "warning"
-2. Si falta foto específica: "needs_photo" + explica qué foto necesitas
-3. Para puntos admin/documentos: "not_evaluable"
-4. Si el EMPLEADO ya marcó un ítem (indicado con [EMPLEADO YA MARCÓ]), RESPETA su evaluación y no la cambies.
-5. Sé CONSERVADOR — detectar problemas > pasarlos por alto
-6. En "note" describe la CONDICIÓN observada
+CÓMO ANALIZAR CADA TIPO DE FOTO:
+
+🏠 EXTERIOR:
+- Marco de acero: ¿oxidación severa? ¿dobleces? ¿soldaduras rotas? (mira la parte inferior/faldón)
+- Techo: ¿pandeo? ¿parches? ¿material deteriorado? ¿canaletas rotas?
+- Paredes exteriores: ¿siding dañado? ¿huecos? ¿podredumbre?
+- Ventanas: ¿vidrios rotos? ¿marcos podridos? ¿sellos deteriorados?
+- A/C exterior: ¿modelo/antigüedad? ¿óxido? ¿funcional?
+- Gas: ¿tanque presente? ¿conexiones visibles? ¿corrosión?
+
+🏡 INTERIOR — SALA/COCINA:
+- Pisos: ¿hundimientos? ¿manchas de agua? ¿partes blandas al pisar? ¿desniveles?
+- Paredes: ¿grietas? ¿huecos? ¿moho? ¿paneles sueltos?
+- Techos interiores: ¿manchas de humedad? ¿goteo? ¿pandeo?
+- Electricidad: ¿enchufes/interruptores? ¿panel eléctrico visible?
+- Plomería cocina: ¿debajo del fregadero hay fugas?
+
+🚿 BAÑOS:
+- Regaderas/tinas: ¿fugas? ¿moho? ¿azulejos rotos? ¿calafateo deteriorado?
+- Plomería: ¿tuberías debajo del lavabo? ¿manchas de agua?
+- Inodoro: ¿base firme o se mueve? ¿manchas alrededor?
+
+🛏️ HABITACIONES:
+- Pisos: ¿mismo análisis que sala?
+- Paredes/ventanas: ¿daños?
+- Closets: ¿moho? ¿humedad?
+
+⚡ PANEL ELÉCTRICO:
+- ¿Breakers organizados? ¿cables quemados? ¿capacidad suficiente (100-200 amp)?
+
+REGLAS DE EVALUACIÓN:
+1. Si puedes evaluar con las fotos → "pass" (buena condición), "fail" (problema grave), o "warning" (problema menor/cosmético)
+2. Si necesitas una foto que no tienes → "needs_photo" + en note explica EXACTAMENTE qué foto necesitas
+3. Para ítems administrativos (Cierre) → "not_evaluable"
+4. Si el EMPLEADO ya marcó un ítem (indicado con [EMPLEADO YA MARCÓ]) → RESPETA su evaluación, no la cambies
+5. Sé CONSERVADOR: es mejor detectar un problema que pasarlo por alto
+6. En "note" describe la condición ESPECÍFICA que ves: "Piso de vinyl con mancha de agua de ~30cm en esquina noreste del cuarto principal" — no solo "piso dañado"
+7. Para "lista_reparaciones": genera una lista detallada de TODO lo que necesita reparación basándote en TODAS las fotos
+8. Para "condiciones": da una evaluación global del estado de la casa en 2-3 oraciones
+9. Para "recorrido_completo": indica qué áreas de la casa están cubiertas por las fotos y cuáles faltan
 
 CHECKLIST ({len(CHECKLIST_ITEMS)} puntos):
 {checklist_text}
 
-Responde en JSON:
+Responde SOLO en JSON válido:
 {{
   "checklist": [
-    {{"id": "marco_acero", "category": "Estructura", "label": "Marco de acero", "status": "pass", "confidence": "high", "note": "..."}},
-    ...
+    {{"id": "marco_acero", "category": "Estructura", "label": "Marco de acero", "status": "pass", "confidence": "high", "note": "Marco visible sin oxidación significativa, soldaduras intactas"}},
+    ...todos los {len(CHECKLIST_ITEMS)} items...
   ],
   "property_type": "single_wide" o "double_wide" o "N/A",
   "estimated_year": "YYYY" o "N/A",
-  "estimated_bedrooms": 0,
-  "photos_coverage": "descripción de qué áreas cubren las fotos"
+  "estimated_bedrooms": número o 0,
+  "photos_coverage": "Áreas cubiertas: exterior frontal, sala, cocina, baño principal. Faltan: exterior trasero, cuartos, faldón, panel eléctrico"
 }}"""
 
         response = client.chat.completions.create(

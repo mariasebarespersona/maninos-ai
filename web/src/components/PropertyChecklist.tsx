@@ -13,34 +13,19 @@ const CHECKLIST_ITEMS = [
   { id: 'suelos_subfloor', label: 'Suelos/subfloor', category: 'Estructura' },
   { id: 'techo_techumbre', label: 'Techo/techumbre', category: 'Estructura' },
   { id: 'paredes_ventanas', label: 'Paredes/ventanas', category: 'Estructura' },
-  
+
   // INSTALACIONES (5 items)
   { id: 'regaderas_tinas', label: 'Regaderas/tinas/coladeras', category: 'Instalaciones' },
   { id: 'electricidad', label: 'Electricidad', category: 'Instalaciones' },
   { id: 'plomeria', label: 'Plomería', category: 'Instalaciones' },
   { id: 'ac', label: 'A/C', category: 'Instalaciones' },
   { id: 'gas', label: 'Gas', category: 'Instalaciones' },
-  
-  // DOCUMENTACIÓN (5 items)
-  { id: 'titulo_limpio', label: 'Título limpio sin adeudos', category: 'Documentación' },
-  { id: 'vin_revisado', label: 'VIN revisado', category: 'Documentación' },
-  { id: 'docs_vendedor', label: 'Docs vendedor', category: 'Documentación' },
-  { id: 'aplicacion_firmada', label: 'Aplicación firmada vendedor/comprador', category: 'Documentación' },
-  { id: 'bill_of_sale', label: 'Bill of Sale', category: 'Documentación' },
-  
-  // FINANCIERO (4 items)
-  { id: 'precio_costo_obra', label: 'Precio compra + costo obra', category: 'Financiero' },
-  { id: 'reparaciones_30', label: 'Reparaciones < 30% valor venta', category: 'Financiero' },
-  { id: 'comparativa_mercado', label: 'Comparativa precios mercado', category: 'Financiero' },
-  { id: 'costos_extra', label: 'Costos extra traslado/movida/alineación', category: 'Financiero' },
-  
-  // ESPECIFICACIONES (5 items)
-  { id: 'año', label: 'Año', category: 'Especificaciones' },
-  { id: 'condiciones', label: 'Condiciones', category: 'Especificaciones' },
-  { id: 'numero_cuartos', label: 'Número cuartos', category: 'Especificaciones' },
+
+  // ESPECIFICACIONES (3 items)
+  { id: 'condiciones', label: 'Condiciones generales', category: 'Especificaciones' },
   { id: 'lista_reparaciones', label: 'Lista reparaciones necesarias', category: 'Especificaciones' },
   { id: 'recorrido_completo', label: 'Recorrido completo', category: 'Especificaciones' },
-  
+
   // CIERRE (5 items)
   { id: 'deposito_inicial', label: 'Depósito inicial', category: 'Cierre' },
   { id: 'deposit_agreement', label: 'Deposit Agreement firmado', category: 'Cierre' },
@@ -52,8 +37,6 @@ const CHECKLIST_ITEMS = [
 const CATEGORIES = [
   { id: 'Estructura', icon: '🏗️', color: 'bg-blue-50 border-blue-200' },
   { id: 'Instalaciones', icon: '⚡', color: 'bg-yellow-50 border-yellow-200' },
-  { id: 'Documentación', icon: '📄', color: 'bg-purple-50 border-purple-200' },
-  { id: 'Financiero', icon: '💰', color: 'bg-green-50 border-green-200' },
   { id: 'Especificaciones', icon: '📋', color: 'bg-orange-50 border-orange-200' },
   { id: 'Cierre', icon: '🔑', color: 'bg-emerald-50 border-emerald-200' },
 ]
@@ -66,14 +49,6 @@ const MACRO_GROUPS = [
     description: 'Lo que revisa el empleado en la propiedad',
     categories: ['Estructura', 'Instalaciones', 'Especificaciones'],
     color: 'bg-blue-50 border-blue-200',
-  },
-  {
-    id: 'oficina',
-    label: 'Revisión Oficina',
-    icon: '📋',
-    description: 'Lo que valida Gabriel/Abigail desde la oficina',
-    categories: ['Documentación', 'Financiero'],
-    color: 'bg-purple-50 border-purple-200',
   },
   {
     id: 'cierre',
@@ -150,7 +125,7 @@ export default function PropertyChecklist({
             </div>
             <div>
               <h2 className="font-serif text-xl text-navy-900">Checklist Compra de Casa</h2>
-              <p className="text-sm text-navy-500">28 puntos de verificación</p>
+              <p className="text-sm text-navy-500">17 puntos de verificación</p>
             </div>
           </div>
           
