@@ -1304,7 +1304,7 @@ export default function NewPropertyPage() {
             </div>
 
             {/* ═══ Signed Documents Status ═══ */}
-            <SignedDocsViewer refreshKey={signRefreshKey} />
+            <SignedDocsViewer envelopeIds={envelopeIds} refreshKey={signRefreshKey} />
 
             {/* Title Application (optional) */}
             <div>
@@ -1881,29 +1881,40 @@ export default function NewPropertyPage() {
 // Signed Documents Viewer — shows e-sign envelope status in review
 // ═══════════════════════════════════════════════════════════════
 
-function SignedDocsViewer({ refreshKey }: { refreshKey?: number }) {
+function SignedDocsViewer({ envelopeIds, refreshKey }: { envelopeIds: { bos?: string; title_app?: string }; refreshKey?: number }) {
   const [envelopes, setEnvelopes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  const fetchEnvelopes = useCallback(() => {
+  const ids = Object.values(envelopeIds).filter(Boolean) as string[]
+
+  const fetchEnvelopes = useCallback(async () => {
+    if (ids.length === 0) return
     setLoading(true)
-    // For new property flow, fetch all recent envelopes
-    fetch('/api/esign/envelopes')
-      .then(r => r.json())
-      .then(d => setEnvelopes(d.envelopes || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+    try {
+      const results = await Promise.all(
+        ids.map(id => fetch(`/api/esign/envelopes/${id}`).then(r => r.ok ? r.json() : null).catch(() => null))
+      )
+      // Normalize: GET /envelopes/{id} returns { envelope, signatures } — merge into one object
+      const normalized = results.filter(Boolean).map((r: any) => ({
+        ...r.envelope,
+        document_signatures: r.signatures || [],
+      }))
+      setEnvelopes(normalized)
+    } catch {} finally {
+      setLoading(false)
+    }
+  }, [ids.join(',')])
 
   useEffect(() => { fetchEnvelopes() }, [fetchEnvelopes, refreshKey])
 
   // Auto-refresh every 15 seconds to pick up new signatures
   useEffect(() => {
+    if (ids.length === 0) return
     const interval = setInterval(fetchEnvelopes, 15000)
     return () => clearInterval(interval)
-  }, [fetchEnvelopes])
+  }, [ids.length, fetchEnvelopes])
 
-  if (envelopes.length === 0 && !loading) return null
+  if (ids.length === 0 || (envelopes.length === 0 && !loading)) return null
 
   const docTypeLabels: Record<string, string> = {
     bill_of_sale: "Bill of Sale",
