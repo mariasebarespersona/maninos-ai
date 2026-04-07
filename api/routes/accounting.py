@@ -3389,7 +3389,6 @@ async def _extract_text_from_image(file_content: bytes, ext: str) -> str:
             },
         ],
         max_completion_tokens=4096,
-        temperature=0.0,
     )
 
     return response.choices[0].message.content or ""
@@ -3510,7 +3509,6 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
                     {"role": "user", "content": prompt},
                 ],
                 max_completion_tokens=8192,
-                temperature=0.0,
             )
 
             content = response.choices[0].message.content or "[]"
@@ -3622,7 +3620,6 @@ Return a JSON array with one object per movement (in order):
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=4096,
-        temperature=0.1,
     )
 
     content = response.choices[0].message.content or "[]"

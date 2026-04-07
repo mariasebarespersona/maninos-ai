@@ -1196,7 +1196,6 @@ async def chat(request: ChatRequest):
             messages=messages,
             tools=TOOLS_SCHEMA,
             tool_choice="auto",
-            temperature=0,
         )
 
         response_message = response.choices[0].message
@@ -1235,7 +1234,6 @@ async def chat(request: ChatRequest):
         final_response = client.chat.completions.create(
             model="gpt-5-mini",
             messages=messages,
-            temperature=0,
         )
 
         answer = final_response.choices[0].message.content or "No pude procesar la respuesta."
@@ -1494,7 +1492,6 @@ IMPORTANTE:
                 {"role": "user", "content": messages_content},
             ],
             max_completion_tokens=4096,
-            temperature=0.2,
         )
 
         result_text = response.choices[0].message.content

@@ -3161,7 +3161,6 @@ Return a JSON array with one object per movement (in order):
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=4096,
-        temperature=0.1,
     )
 
     content = response.choices[0].message.content or "[]"

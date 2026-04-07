@@ -179,7 +179,6 @@ async def extract_from_image(
                 },
             ],
             max_completion_tokens=1000,
-            temperature=0.1,
         )
         
         # Parse response
@@ -525,7 +524,6 @@ async def _extract_with_vision(
             {"role": "user", "content": user_content},
         ],
         max_completion_tokens=1000,
-        temperature=0.1,
     )
     
     content = response.choices[0].message.content.strip()

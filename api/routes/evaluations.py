@@ -382,7 +382,6 @@ Responde SOLO en JSON válido:
                 {"role": "user", "content": [{"type": "text", "text": prompt}] + image_contents},
             ],
             max_completion_tokens=4096,
-            temperature=0.1,
         )
 
         result_text = response.choices[0].message.content or "{}"
@@ -533,7 +532,6 @@ NOTAS EXTRAS DEL EMPLEADO:
 Genera un resumen ejecutivo en español (3-5 oraciones) del estado general de la casa y las principales preocupaciones."""},
                 ],
                 max_completion_tokens=500,
-                temperature=0.3,
             )
             ai_summary = response.choices[0].message.content or ""
         else:
