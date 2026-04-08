@@ -209,10 +209,17 @@ async def create_transfer(data: TransferCreate):
             insert_data["notes"] = " | ".join(notes_parts)
         
         result = sb.table("title_transfers").insert(insert_data).execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create transfer")
-        
+
+        # Auto-populate serial/label from property document_data
+        try:
+            from api.services.title_monitor import populate_tdhca_fields_from_document_data
+            populate_tdhca_fields_from_document_data(result.data[0]["id"])
+        except Exception:
+            pass  # Non-critical
+
         return result.data[0]
         
     except Exception as e:

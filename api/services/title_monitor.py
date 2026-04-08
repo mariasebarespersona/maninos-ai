@@ -61,9 +61,9 @@ def populate_tdhca_fields_from_document_data(transfer_id: str) -> dict:
 
     t = transfer.data
 
-    # Already has serial — skip
-    if t.get("tdhca_serial"):
-        return {"ok": True, "serial": t["tdhca_serial"], "label": t.get("tdhca_label", "")}
+    # Already has serial or label — skip
+    if t.get("tdhca_serial") or t.get("tdhca_label"):
+        return {"ok": True, "serial": t.get("tdhca_serial", ""), "label": t.get("tdhca_label", "")}
 
     # Get property document_data
     prop = sb.table("properties").select(

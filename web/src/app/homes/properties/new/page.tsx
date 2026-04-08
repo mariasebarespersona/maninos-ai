@@ -518,6 +518,16 @@ export default function NewPropertyPage() {
       if (billOfSaleData) docData.bos_purchase = billOfSaleData
       if (titleAppData) docData.title_app_purchase = titleAppData
 
+      // Ensure serial/label from TDHCA lookup is in title_app_purchase for title monitoring
+      if (tdhcaResult && (tdhcaResult.serial_number || tdhcaResult.label_seal)) {
+        const existing = docData.title_app_purchase || {}
+        if (!existing.section1_serial && tdhcaResult.serial_number) existing.section1_serial = tdhcaResult.serial_number
+        if (!existing.serial_number && tdhcaResult.serial_number) existing.serial_number = tdhcaResult.serial_number
+        if (!existing.section1_label && tdhcaResult.label_seal) existing.section1_label = tdhcaResult.label_seal
+        if (!existing.label_seal_number && tdhcaResult.label_seal) existing.label_seal_number = tdhcaResult.label_seal
+        docData.title_app_purchase = existing
+      }
+
       const purchasePrice = form.purchase_price ? parseFloat(form.purchase_price) : 0
 
       const payload = {
