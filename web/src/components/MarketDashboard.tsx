@@ -760,7 +760,7 @@ export default function MarketDashboard() {
   // Bill of Sale is complete if either the template was filled or a file was uploaded
   const isBosComplete = !!(billOfSaleData || documents.billOfSale);
   // Title is complete if TDHCA found it or a file was uploaded
-  const isTitleComplete = !!(tdhcaResult || documents.title);
+  const isTitleComplete = !!tdhcaResult;
   // Title application is complete if template was filled or a file was uploaded (OPTIONAL)
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication);
   // Bill of Sale + Title are compulsory; Title Application is optional
@@ -2898,31 +2898,6 @@ export default function MarketDashboard() {
                       </div>
                     )}
                     
-                    {/* Fallback: manual upload if TDHCA lookup doesn't work */}
-                    {!tdhcaResult && (
-                      <div className="mt-2">
-                        <p className="text-xs text-gray-500 mb-2">O sube el título manualmente:</p>
-                        <div className={`border-2 border-dashed rounded-lg p-4 text-center ${
-                          documents.title ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                    }`}>
-                      {documents.title ? (
-                            <div className="flex items-center justify-center gap-3">
-                              <CheckCircle className="w-5 h-5 text-green-600" />
-                              <span className="text-green-700 font-medium text-sm">{documents.title.name}</span>
-                              <button onClick={() => handleFileUpload('title', null)} className="text-red-500 hover:text-red-700">
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="cursor-pointer">
-                              <Upload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
-                              <p className="text-xs text-gray-500">PDF, JPG, PNG</p>
-                              <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => handleFileUpload('title', e.target.files?.[0] || null)} />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* ═══ Signed Documents Status ═══ */}
@@ -3145,7 +3120,7 @@ export default function MarketDashboard() {
                   <p className="text-sm text-amber-600 mt-4 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     {!isBosComplete ? 'Completa el Bill of Sale (template o sube archivo)' : 
-                     !isTitleComplete ? 'Busca el título en TDHCA o sube manualmente' : 
+                     !isTitleComplete ? 'Busca el título en TDHCA con Label/Seal o Serial Number' :
                      'Completa los documentos obligatorios para continuar'}
                   </p>
                 )}
