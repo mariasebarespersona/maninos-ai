@@ -289,6 +289,27 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
         {prop?.address}, {prop?.city} — {fmtDate(prop?.created_at)}
       </div>
 
+      {/* Financiero breakdown */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs bg-white rounded-lg border border-navy-200 p-3">
+        {[
+          { label: 'Compra', value: p.purchase_price },
+          { label: 'Renovación', value: p.renovation_cost },
+          { label: 'Movida', value: p.move_cost },
+          { label: 'Comisión', value: p.commission },
+          { label: 'Margen', value: p.margin },
+          { label: 'Total inversión', value: p.total_investment, bold: true },
+          { label: 'Precio venta', value: p.sale_price, bold: true, color: p.sale_price > 0 ? 'text-navy-900' : 'text-navy-300' },
+          { label: 'Ganancia', value: p.profit, bold: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-300' },
+        ].map(f => (
+          <div key={f.label} className="flex justify-between items-center py-0.5">
+            <span className="text-navy-500">{f.label}</span>
+            <span className={`${f.bold ? 'font-bold' : 'font-medium'} ${f.color || (f.value > 0 ? 'text-navy-900' : 'text-navy-300')}`}>
+              {f.value > 0 ? fmt(f.value) : '—'}
+            </span>
+          </div>
+        ))}
+      </div>
+
       {/* TIMELINE */}
       <div className="space-y-2 pl-2 border-l-2 border-navy-200 ml-2">
 
