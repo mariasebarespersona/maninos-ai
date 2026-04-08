@@ -301,11 +301,13 @@ export default function TransfersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs flex items-center gap-1.5">
-                            {(t as any).property_code && (
-                              <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{(t as any).property_code}</span>
-                            )}
-                            {t.property_address || t.property_id?.slice(0, 8)}
+                          <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs">
+                            <div className="flex items-center gap-1.5">
+                              {(t as any).property_code && (
+                                <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{(t as any).property_code}</span>
+                              )}
+                              <span>{t.property_address || '—'}</span>
+                            </div>
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-xs">
