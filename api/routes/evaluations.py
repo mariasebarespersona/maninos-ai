@@ -480,35 +480,36 @@ async def generate_report(evaluation_id: str):
     checklist = evaluation.get("checklist") or []
     extra_notes = evaluation.get("extra_notes") or []
 
-    # Build summary — count ALL items including pending
+    # Build summary — N/A and unevaluated items are excluded from scoring
     statuses = [i.get("status", "pending") for i in checklist]
     passed = statuses.count("pass")
     failed = statuses.count("fail")
     warnings = statuses.count("warning")
-    pending = statuses.count("pending") + statuses.count("needs_photo") + statuses.count("not_evaluable")
+    not_applicable = statuses.count("not_evaluable") + statuses.count("needs_photo")
+    pending = statuses.count("pending")
     total = len(statuses)
+    # Only count items that have been evaluated (pass/fail/warning)
     total_evaluated = passed + failed + warnings
 
-    # Calculate score — pending items count AGAINST the score (not ignored)
-    if total > 0:
-        # Score based on ALL items: only 'pass' counts positively
-        score = int((passed / total) * 100)
+    # Calculate score — only evaluated items count (N/A items neither add nor subtract)
+    if total_evaluated > 0:
+        score = int((passed / total_evaluated) * 100)
     else:
         score = 0
 
-    # Determine recommendation — pending items are a red flag
-    if failed >= 5 or score < 40:
+    # Determine recommendation
+    if failed >= 5 or (total_evaluated > 0 and score < 40):
         recommendation = "NO COMPRAR"
         recommendation_reason = f"Demasiadas fallas ({failed}) detectadas. Riesgo alto de costos excesivos de renovación."
-    elif pending > total * 0.5:
+    elif pending > 0 and (pending + not_applicable) > total * 0.5:
         recommendation = "REVISAR CON CUIDADO"
         recommendation_reason = f"Evaluación incompleta: {pending} de {total} puntos sin evaluar. Necesita inspección más detallada."
-    elif failed >= 3 or warnings >= 5 or score < 60:
+    elif failed >= 3 or warnings >= 5 or (total_evaluated > 0 and score < 60):
         recommendation = "REVISAR CON CUIDADO"
         recommendation_reason = f"Se encontraron {failed} fallas y {warnings} alertas. Necesita inspección detallada antes de decidir."
     else:
         recommendation = "COMPRAR"
-        recommendation_reason = f"Casa en buenas condiciones ({passed}/{total} puntos aprobados, {pending} sin evaluar). Reparaciones menores esperadas."
+        recommendation_reason = f"Casa en buenas condiciones ({passed}/{total_evaluated} puntos aprobados). Reparaciones menores esperadas."
 
     # Generate AI summary using checklist + notes
     try:

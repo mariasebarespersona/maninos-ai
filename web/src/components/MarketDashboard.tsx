@@ -3126,36 +3126,6 @@ export default function MarketDashboard() {
                           )
                         )}
 
-                        {/* OR upload */}
-                        <div className="text-center text-xs text-gray-400 font-medium">— o sube una aplicación firmada —</div>
-                        <div className={`border-2 border-dashed rounded-lg p-4 text-center ${
-                          documents.titleApplication ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                        }`}>
-                          {documents.titleApplication && !titleAppData ? (
-                            <div className="flex items-center justify-center gap-3">
-                              <CheckCircle className="w-5 h-5 text-green-600" />
-                              <span className="text-green-700 font-medium text-sm">{documents.titleApplication.name}</span>
-                              <button 
-                                onClick={() => handleFileUpload('titleApplication', null)}
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : !titleAppData ? (
-                            <label className="cursor-pointer">
-                              <Upload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
-                              <p className="text-xs text-gray-500">PDF, JPG, PNG (máx. 10MB)</p>
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                className="hidden"
-                                onChange={(e) => handleFileUpload('titleApplication', e.target.files?.[0] || null)}
-                              />
-                            </label>
-                          ) : null}
-                        </div>
-
                         {/* Link to official TDHCA form as reference */}
                         <a
                           href={TDHCA_TITLE_APPLICATION_URL}
