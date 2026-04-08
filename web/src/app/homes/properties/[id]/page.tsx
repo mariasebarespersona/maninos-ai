@@ -247,6 +247,9 @@ export default function PropertyDetailPage() {
   }
 
   // ── E-sign: fetch signature status from envelopes ──
+  // Track known signed IDs to detect new signatures without circular deps
+  const knownSignedRef = React.useRef<Set<string>>(new Set())
+
   const fetchSellerSignatures = useCallback(async () => {
     if (!property?.id) return
     try {
@@ -254,6 +257,7 @@ export default function PropertyDetailPage() {
       if (!res.ok) return
       const { envelopes } = await res.json()
       const sigs: typeof sellerSignatures = { bos: null, title_app: null, bos_sale: null, title_app_sale: null }
+      let hasNewSignature = false
       for (const env of (envelopes || [])) {
         const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
         if (!sellerSig) continue
@@ -265,6 +269,10 @@ export default function PropertyDetailPage() {
           signature_value: sigData.value,
           signer_name: sellerSig.signer_name,
         }
+        if (signed && !knownSignedRef.current.has(sellerSig.id)) {
+          knownSignedRef.current.add(sellerSig.id)
+          hasNewSignature = true
+        }
         // Map document_type + transaction_type to our keys
         const txType = env.transaction_type || 'purchase'
         if (env.document_type === 'bill_of_sale' && txType === 'purchase') sigs.bos = entry
@@ -273,6 +281,16 @@ export default function PropertyDetailPage() {
         if (env.document_type === 'title_application' && txType === 'sale') sigs.title_app_sale = entry
       }
       setSellerSignatures(sigs)
+      // Re-fetch property to get updated document_data with signature fields
+      if (hasNewSignature) {
+        try {
+          const propRes = await fetch(`/api/properties/${property.id}`)
+          if (propRes.ok) {
+            const propData = await propRes.json()
+            setProperty(propData)
+          }
+        } catch {}
+      }
     } catch {}
   }, [property?.id])
 
