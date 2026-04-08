@@ -531,9 +531,10 @@ async def create_property(data: PropertyCreate):
     # Get data from request
     request_data = data.model_dump(exclude_none=True)
     
-    # Auto-generate property_code if not provided
+    # Auto-generate property_code based on leadership
+    leadership = request_data.pop("leadership", None)
     if "property_code" not in request_data or not request_data.get("property_code"):
-        request_data["property_code"] = _generate_next_property_code()
+        request_data["property_code"] = _generate_next_property_code(leadership)
     
     # Build insert data with defaults, but respect values from request
     insert_data = {
@@ -1223,48 +1224,46 @@ async def get_available_actions(property_id: str):
 # HELPERS
 # ============================================================================
 
-def _generate_next_property_code() -> str:
+LEADERSHIP_PREFIXES = {
+    "houston": "H",
+    "conroe": "B",
+    "dallas": "DFW",
+}
+
+
+def _generate_next_property_code(leadership: str = None) -> str:
     """
-    Generate the next property_code in the sequence A1, A2, ..., A999, B1, B2, ...
-    Queries existing codes and returns the next available one.
+    Generate the next property_code based on leadership:
+      Houston → H1, H2, H3...
+      Conroe  → B1, B2, B3...
+      Dallas  → DFW1, DFW2, DFW3...
+    Falls back to B prefix if no leadership specified.
     """
     import re
+    prefix = LEADERSHIP_PREFIXES.get((leadership or "").lower(), "B")
+
     try:
         result = sb.table("properties") \
             .select("property_code") \
             .not_.is_("property_code", "null") \
             .execute()
-        
+
         existing_codes = [r["property_code"] for r in (result.data or []) if r.get("property_code")]
-        
-        if not existing_codes:
-            return "A1"
-        
-        # Parse codes like "A1", "A2", "B1" etc.
-        max_letter = "A"
+
+        # Find max number for this prefix
         max_number = 0
-        
+        pattern = re.compile(rf'^{re.escape(prefix)}(\d+)$', re.IGNORECASE)
         for code in existing_codes:
-            match = re.match(r'^([A-Z])(\d+)$', code.upper())
+            match = pattern.match(code)
             if match:
-                letter, num = match.group(1), int(match.group(2))
-                if letter > max_letter or (letter == max_letter and num > max_number):
-                    max_letter = letter
+                num = int(match.group(1))
+                if num > max_number:
                     max_number = num
-        
-        # Increment
-        next_number = max_number + 1
-        if next_number > 999:
-            # Move to next letter
-            next_letter = chr(ord(max_letter) + 1)
-            if next_letter > 'Z':
-                next_letter = 'A'  # Wrap around (unlikely)
-            return f"{next_letter}1"
-        
-        return f"{max_letter}{next_number}"
+
+        return f"{prefix}{max_number + 1}"
     except Exception as e:
         logger.warning(f"Error generating property code: {e}")
-        return "A1"
+        return f"{prefix}1"
 
 
 def _format_property(data: dict) -> PropertyResponse:

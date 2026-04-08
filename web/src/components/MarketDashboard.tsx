@@ -35,6 +35,7 @@ import {
   Filter,
   HeartHandshake,
   Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
 import AddMarketListingModal from './AddMarketListingModal';
@@ -261,6 +262,9 @@ export default function MarketDashboard() {
   const [showTitleApp, setShowTitleApp] = useState(false);
   const [signRefreshKey, setSignRefreshKey] = useState(0);
   const [titleAppData, setTitleAppData] = useState<TitleApplicationData | null>(null);
+
+  // Leadership (determines property code prefix: H=Houston, B=Conroe, DFW=Dallas)
+  const [leadership, setLeadership] = useState<string>('');
 
   // Seller signature status for confirm step
   const [sellerSignatures, setSellerSignatures] = useState<{
@@ -1229,6 +1233,7 @@ export default function MarketDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          leadership: leadership || undefined,
           address: selectedListing.address,
           city: selectedListing.city,
           state: selectedListing.state,
@@ -3163,6 +3168,37 @@ export default function MarketDashboard() {
             {/* Step 4: Confirm */}
             {purchaseStep === 'confirm' && (
               <div className="p-6">
+                {/* Leadership selector */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+                  <h4 className="font-semibold text-blue-800 mb-3">Leadership</h4>
+                  <p className="text-xs text-blue-600 mb-3">Selecciona el leadership para determinar el ID de la propiedad</p>
+                  <div className="flex gap-3">
+                    {[
+                      { value: 'houston', label: 'Houston', prefix: 'H' },
+                      { value: 'conroe', label: 'Conroe', prefix: 'B' },
+                      { value: 'dallas', label: 'Dallas', prefix: 'DFW' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setLeadership(opt.value)}
+                        className={`flex-1 py-3 px-4 rounded-lg border-2 text-sm font-medium transition-colors ${
+                          leadership === opt.value
+                            ? 'border-blue-500 bg-blue-100 text-blue-800'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="text-lg font-bold">{opt.prefix}</div>
+                        <div>{opt.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {!leadership && (
+                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Selecciona un leadership para continuar
+                    </p>
+                  )}
+                </div>
+
                 <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
                   <h4 className="font-semibold text-green-800 mb-4 flex items-center gap-2">
                     <CheckCircle className="w-5 h-5" />
@@ -3485,10 +3521,11 @@ export default function MarketDashboard() {
               
               {purchaseStep === 'confirm' && (() => {
                 const hasPendingSig = (sellerSignatures.bos?.signed === false) || (sellerSignatures.title_app?.signed === false);
+                const noLeadership = !leadership;
                 return (
                   <button
                     onClick={confirmPurchase}
-                    disabled={processing || hasPendingSig}
+                    disabled={processing || hasPendingSig || noLeadership}
                     className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
                       hasPendingSig ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'btn-gold'
                     }`}

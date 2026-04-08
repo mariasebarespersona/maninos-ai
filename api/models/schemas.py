@@ -75,6 +75,7 @@ class PropertyBase(BaseModel):
 
 class PropertyCreate(PropertyBase):
     """Schema for creating a new property (Paso 1: Compra Casa)"""
+    leadership: Optional[str] = None  # houston, conroe, dallas — determines property_code prefix
     status: Optional[str] = None
     is_renovated: Optional[bool] = None
     photos: Optional[list[str]] = None
