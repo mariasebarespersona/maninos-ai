@@ -288,7 +288,9 @@ def apply_signature(
                 prop = sb.table("properties").select("document_data").eq("id", prop_id).single().execute()
                 if prop.data:
                     doc_data = prop.data.get("document_data") or {}
-                    ta_data = doc_data.get(ta_key) or {}
+                    # Merge legacy "title_app" key into the correct key
+                    legacy = doc_data.get("title_app") or {}
+                    ta_data = {**legacy, **(doc_data.get(ta_key) or {})}
 
                     if sig["signer_role"] == "seller":
                         ta_data["seller_date"] = now[:10]

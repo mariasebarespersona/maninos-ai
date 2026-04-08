@@ -1654,6 +1654,8 @@ ${price}
                   // Block 6 — default Inventory
                   election_inventory: true,
                   // Override with previously saved data (employee-filled fields)
+                  // Also check legacy "title_app" key (before key was fixed to title_app_{type})
+                  ...(property.document_data?.title_app || {}),
                   ...(property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}),
                 }}
                 onSave={async (file, data) => {
