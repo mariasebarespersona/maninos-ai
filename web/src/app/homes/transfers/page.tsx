@@ -254,7 +254,7 @@ export default function TransfersPage() {
                     <Eye className="w-5 h-5 text-gray-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-navy-500">Sin Serial</p>
+                    <p className="text-xs text-navy-500">Sin Serial/Label</p>
                     <p className="text-2xl font-bold text-navy-900">{monitor.no_serial}</p>
                   </div>
                 </div>
@@ -301,8 +301,11 @@ export default function TransfersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs">
-                            {(t as any).properties?.address || t.property_id?.slice(0, 8)}
+                          <Link href={`/homes/properties/${t.property_id}`} className="text-blue-600 hover:underline text-xs flex items-center gap-1.5">
+                            {(t as any).property_code && (
+                              <span className="text-[9px] bg-navy-100 text-navy-600 px-1 py-0.5 rounded font-bold">{(t as any).property_code}</span>
+                            )}
+                            {t.property_address || t.property_id?.slice(0, 8)}
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-xs">
@@ -322,7 +325,7 @@ export default function TransfersPage() {
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           ) : (
-                            <span className="text-amber-600 italic">Sin serial</span>
+                            <span className="text-amber-600 italic">Sin serial/label</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs">

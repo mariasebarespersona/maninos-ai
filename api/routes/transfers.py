@@ -126,7 +126,7 @@ async def list_transfers(
 ):
     """List all title transfers with optional filters"""
     query = sb.table("title_transfers").select(
-        "*, properties(address, city, state)"
+        "*, properties(address, city, state, property_code)"
     )
     
     if status:
@@ -143,6 +143,7 @@ async def list_transfers(
     for t in result.data:
         prop = t.pop("properties", {})
         t["property_address"] = prop.get("address", "Unknown")
+        t["property_code"] = prop.get("property_code", "")
         t["property_location"] = f"{prop.get('city', '')}, {prop.get('state', '')}"
         transfers.append(t)
     

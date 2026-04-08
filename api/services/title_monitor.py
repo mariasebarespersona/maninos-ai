@@ -311,23 +311,37 @@ def get_title_monitor_summary() -> dict:
     """Get a summary of title monitoring status for the dashboard."""
     from tools.supabase_client import sb
 
-    all_transfers = sb.table("title_transfers").select(
+    # Fetch transfers with serial OR label (either one allows monitoring)
+    serial_transfers = sb.table("title_transfers").select(
         "id, property_id, transfer_type, to_name, status, "
         "tdhca_serial, tdhca_label, tdhca_owner_name, title_name_updated, "
         "last_tdhca_check, next_tdhca_check, tdhca_check_count, "
         "created_at"
     ).not_.is_("tdhca_serial", "null").execute()
 
-    transfers = all_transfers.data or []
+    label_transfers = sb.table("title_transfers").select(
+        "id, property_id, transfer_type, to_name, status, "
+        "tdhca_serial, tdhca_label, tdhca_owner_name, title_name_updated, "
+        "last_tdhca_check, next_tdhca_check, tdhca_check_count, "
+        "created_at"
+    ).is_("tdhca_serial", "null").not_.is_("tdhca_label", "null").execute()
+
+    # Merge both sets (serial transfers + label-only transfers)
+    seen_ids = set()
+    transfers = []
+    for t in (serial_transfers.data or []) + (label_transfers.data or []):
+        if t["id"] not in seen_ids:
+            seen_ids.add(t["id"])
+            transfers.append(t)
 
     updated = [t for t in transfers if t.get("title_name_updated")]
     pending = [t for t in transfers if not t.get("title_name_updated")]
     never_checked = [t for t in transfers if not t.get("last_tdhca_check")]
 
-    # Also count transfers without serial (not yet populated)
+    # Also count transfers without serial AND without label (not yet populated)
     no_serial = sb.table("title_transfers").select(
         "id", count="exact"
-    ).is_("tdhca_serial", "null").execute()
+    ).is_("tdhca_serial", "null").is_("tdhca_label", "null").execute()
 
     return {
         "total_monitored": len(transfers),
