@@ -1455,10 +1455,15 @@ ${price}
                   is_new: false,
                   is_used: true,
                   // Override with previously saved data (employee-filled fields)
-                  ...(property.document_data?.[`bos_${showBosTemplate}`] || {}),
+                  // Filter out _uploaded_file metadata if BOS was uploaded as a file
+                  ...(() => {
+                    const saved = property.document_data?.[`bos_${showBosTemplate}`] || {}
+                    const { _uploaded_file, file_url, file_name, ...templateData } = saved
+                    return templateData
+                  })(),
                 }}
                 onSave={async (file, data) => {
-                  // 1. Save the filled-in form data to property.document_data
+                  // 1. Save the filled-in form data to property.document_data (replaces _uploaded_file)
                   const saved = await saveDocumentData(`bos_${showBosTemplate}`, data)
 
                   // 2. Upload the generated PDF to the transfer
@@ -1567,29 +1572,39 @@ ${price}
           {/* Document generation buttons */}
           {!showBosTemplate && !showTitleAppTemplate && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {property.document_data?.bos_purchase?._uploaded_file ? (
-                <a
-                  href={property.document_data.bos_purchase.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Bill of Sale (Compra) — Ver PDF ↗
-                </a>
-              ) : (
+              {/* Bill of Sale (Compra) — uploaded file or template */}
+              <div className="flex items-center gap-1">
+                {property.document_data?.bos_purchase?._uploaded_file && (
+                  <a
+                    href={property.document_data.bos_purchase.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Bill of Sale (Compra) — Ver PDF ↗
+                  </a>
+                )}
                 <button
                   onClick={() => setShowBosTemplate('purchase')}
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
                     property.document_data?.bos_purchase
-                      ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                      ? property.document_data.bos_purchase._uploaded_file
+                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                        : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                       : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
                   }`}
                 >
-                  {property.document_data?.bos_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                  Bill of Sale (Compra)
+                  {property.document_data?.bos_purchase?._uploaded_file ? (
+                    <><Pencil className="w-3.5 h-3.5" /> Editar</>
+                  ) : property.document_data?.bos_purchase ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" /> Bill of Sale (Compra)</>
+                  ) : (
+                    <><FileText className="w-3.5 h-3.5" /> Bill of Sale (Compra)</>
+                  )}
                 </button>
-              )}
+              </div>
+              {/* Aplicación Título (Compra) */}
               <button
                 onClick={() => setShowTitleAppTemplate('purchase')}
                 className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
@@ -1601,17 +1616,39 @@ ${price}
                 {property.document_data?.title_app_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                 Aplicación Título (Compra)
               </button>
-              <button
-                onClick={() => setShowBosTemplate('sale')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.bos_sale
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                {property.document_data?.bos_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Bill of Sale (Venta)
-              </button>
+              {/* Bill of Sale (Venta) */}
+              <div className="flex items-center gap-1">
+                {property.document_data?.bos_sale?._uploaded_file && (
+                  <a
+                    href={property.document_data.bos_sale.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Bill of Sale (Venta) — Ver PDF ↗
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowBosTemplate('sale')}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                    property.document_data?.bos_sale
+                      ? property.document_data.bos_sale._uploaded_file
+                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                        : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                      : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                  }`}
+                >
+                  {property.document_data?.bos_sale?._uploaded_file ? (
+                    <><Pencil className="w-3.5 h-3.5" /> Editar</>
+                  ) : property.document_data?.bos_sale ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" /> Bill of Sale (Venta)</>
+                  ) : (
+                    <><FileText className="w-3.5 h-3.5" /> Bill of Sale (Venta)</>
+                  )}
+                </button>
+              </div>
+              {/* Aplicación Título (Venta) */}
               <button
                 onClick={() => setShowTitleAppTemplate('sale')}
                 className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
