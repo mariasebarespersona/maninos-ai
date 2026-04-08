@@ -127,7 +127,7 @@ async def financial_summary():
     try:
         # 1. All properties
         props_result = sb.table("properties") \
-            .select("id, address, property_code, city, status, purchase_price, sale_price") \
+            .select("id, address, property_code, city, status, purchase_price, sale_price, renovation_cost, move_cost, commission, margin") \
             .order("created_at", desc=True) \
             .execute()
         properties = props_result.data or []
@@ -233,13 +233,15 @@ async def financial_summary():
         for p in properties:
             pid = p["id"]
             pp = float(p.get("purchase_price") or 0)
-            reno = reno_map.get(pid, 0)
-            move = move_map.get(pid, 0)
+            # Use manual overrides if set, otherwise fall back to computed values
+            reno = float(p["renovation_cost"]) if p.get("renovation_cost") is not None else reno_map.get(pid, 0)
+            move = float(p["move_cost"]) if p.get("move_cost") is not None else move_map.get(pid, 0)
             sale = sale_map.get(pid, {})
             sp = sale.get("sale_price") or float(p.get("sale_price") or 0)
-            commission = sale.get("commission", COMMISSION_MAX)
+            commission = float(p["commission"]) if p.get("commission") is not None else sale.get("commission", COMMISSION_MAX)
+            margin = float(p["margin"]) if p.get("margin") is not None else MARGIN_FIXED
             total_inv = pp + reno + move
-            profit = sp - total_inv - commission - MARGIN_FIXED if sp > 0 else 0
+            profit = sp - total_inv - commission - margin if sp > 0 else 0
             po = po_map.get(pid, {"count": 0, "total": 0})
 
             result.append({
@@ -252,7 +254,7 @@ async def financial_summary():
                 "renovation_cost": round(reno, 2),
                 "move_cost": round(move, 2),
                 "commission": round(commission, 2),
-                "margin": MARGIN_FIXED,
+                "margin": margin,
                 "total_investment": round(total_inv, 2),
                 "sale_price": round(sp, 2),
                 "profit": round(profit, 2),
