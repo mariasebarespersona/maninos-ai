@@ -856,7 +856,6 @@ export default function MarketDashboard() {
           data: { listing_id: selectedListing.id },
           signers: [
             { role: 'seller', name: signerName, email: esignEmail.trim() },
-            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
           ],
           send_immediately: true,
         }),

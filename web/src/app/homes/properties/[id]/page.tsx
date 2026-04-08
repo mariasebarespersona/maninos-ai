@@ -329,7 +329,6 @@ export default function PropertyDetailPage() {
           property_id: property.id,
           signers: [
             { role: 'seller', name: signerName, email: esignEmail.trim() },
-            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
           ],
           send_immediately: true,
         }),
@@ -1807,10 +1806,9 @@ ${price}
           {!showBosTemplate && !showTitleAppTemplate && (
             <div className="space-y-3 mb-4">
               {/* ── Purchase documents e-sign ── */}
-              {(property.document_data?.bos_purchase || property.document_data?.title_app_purchase) && (
-                <div className="space-y-2">
-                  {/* BOS Compra — send for signature */}
-                  {property.document_data?.bos_purchase && !property.document_data.bos_purchase._uploaded_file && (
+              <div className="space-y-2">
+                {/* BOS Compra — send for signature */}
+                {property.document_data?.bos_purchase && !property.document_data.bos_purchase._uploaded_file && (
                     esignEmailFor === 'bos' ? (
                       <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-3">
                         <p className="text-xs font-semibold text-blue-800 mb-2">Email del vendedor para firmar Bill of Sale (Compra):</p>
@@ -1851,9 +1849,8 @@ ${price}
                     )
                   )}
 
-                  {/* Title App Compra — send for signature */}
-                  {property.document_data?.title_app_purchase && (
-                    esignEmailFor === 'title_app' ? (
+                  {/* Title App Compra — send for signature (always available) */}
+                  {esignEmailFor === 'title_app' ? (
                       <div className="rounded-xl border-2 border-indigo-300 bg-indigo-50 p-3">
                         <p className="text-xs font-semibold text-indigo-800 mb-2">Email del vendedor para firmar Cambio de Título (Compra):</p>
                         <div className="flex gap-2">
@@ -1891,9 +1888,8 @@ ${price}
                         <span className="text-sm font-semibold text-indigo-700">Enviar Cambio de Título (Compra) para Firma</span>
                       </button>
                     )
-                  )}
-                </div>
-              )}
+                  }
+              </div>
 
               {/* ── Sale documents e-sign ── */}
               {(property.document_data?.bos_sale || property.document_data?.title_app_sale) && (

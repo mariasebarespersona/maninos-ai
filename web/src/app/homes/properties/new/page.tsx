@@ -248,7 +248,6 @@ export default function NewPropertyPage() {
           property_id: null,
           signers: [
             { role: 'seller', name: signerName, email: esignEmail.trim() },
-            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
           ],
           send_immediately: true,
         }),
