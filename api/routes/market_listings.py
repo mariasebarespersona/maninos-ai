@@ -1056,13 +1056,28 @@ async def scrape_facebook_only(
 
         logger.info(f"[FB Scrape] Starting Apify Facebook scrape: ${min_price:,.0f}-${max_price:,.0f}")
 
-        # Build search URLs for Houston, Dallas, San Antonio
-        search_urls = [
-            {"url": f"https://www.facebook.com/marketplace/houston/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
-            {"url": f"https://www.facebook.com/marketplace/dallas/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
-            {"url": f"https://www.facebook.com/marketplace/houston/search?query=manufactured%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
-            {"url": f"https://www.facebook.com/marketplace/sanantonio/search?query=mobile%20home&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"},
+        # Build search URLs — multiple keywords × multiple cities for broader coverage
+        keywords = [
+            "mobile home",
+            "manufactured home",
+            "trailer home",
+            "traila",
+            "casa movil",
+            "rent to own mobile home",
+            "owner financing mobile home",
         ]
+        cities = ["houston", "dallas", "sanantonio", "conroe"]
+        price_params = f"&minPrice={int(min_price)}&maxPrice={int(max_price)}&exact=false"
+
+        search_urls = []
+        for city in cities:
+            for kw in keywords:
+                encoded_kw = kw.replace(" ", "%20")
+                search_urls.append(
+                    {"url": f"https://www.facebook.com/marketplace/{city}/search?query={encoded_kw}{price_params}"}
+                )
+
+        logger.info(f"[FB Scrape] Sending {len(search_urls)} search URLs to Apify")
 
         # Start Apify run
         run_response = req.post(
@@ -1073,7 +1088,7 @@ async def scrape_facebook_only(
             },
             json={
                 "startUrls": search_urls,
-                "maxItems": 30,
+                "maxItems": 100,
             },
             timeout=320,
         )
