@@ -281,13 +281,14 @@ def apply_signature(
             except Exception as prop_err:
                 logger.warning(f"[ESign] Could not update property document_data: {prop_err}")
 
-        # If title_application signature, store in document_data under "title_app" key
+        # If title_application signature, store in document_data under "title_app_{txn_type}" key
         if prop_id and doc_type == "title_application":
+            ta_key = f"title_app_{txn_type}"  # e.g. "title_app_purchase" or "title_app_sale"
             try:
                 prop = sb.table("properties").select("document_data").eq("id", prop_id).single().execute()
                 if prop.data:
                     doc_data = prop.data.get("document_data") or {}
-                    ta_data = doc_data.get("title_app") or {}
+                    ta_data = doc_data.get(ta_key) or {}
 
                     if sig["signer_role"] == "seller":
                         ta_data["seller_date"] = now[:10]
@@ -297,7 +298,7 @@ def apply_signature(
                             ta_data["seller_name"] = sig["signer_name"]
                             ta_data["seller_signature_image"] = sig_value
                         else:
-                            ta_data["seller_name"] = sig_value
+                            ta_data["seller_signature_value"] = sig_value
                     elif sig["signer_role"] in ("buyer", "buyer2"):
                         ta_data["buyer_date"] = now[:10]
                         ta_data["buyer_signed_at"] = now
@@ -306,11 +307,11 @@ def apply_signature(
                             ta_data["buyer_name"] = sig["signer_name"]
                             ta_data["buyer_signature_image"] = sig_value
                         else:
-                            ta_data["buyer_name"] = sig_value
+                            ta_data["buyer_signature_value"] = sig_value
 
-                    doc_data["title_app"] = ta_data
+                    doc_data[ta_key] = ta_data
                     sb.table("properties").update({"document_data": doc_data}).eq("id", prop_id).execute()
-                    logger.info(f"[ESign] Updated property {prop_id} document_data.title_app with {sig['signer_role']} signature")
+                    logger.info(f"[ESign] Updated property {prop_id} document_data.{ta_key} with {sig['signer_role']} signature")
             except Exception as ta_err:
                 logger.warning(f"[ESign] Could not update title_app document_data: {ta_err}")
 

@@ -731,7 +731,18 @@ export default function TitleApplicationTemplate({
             </td>
             <td className="btd sig-col" style={{ width: '50%' }}>
               <p className="sig-h"><u>10(b) &nbsp;Signatures of each purchaser/transferee or owner</u></p>
-              <div className="sig-line"></div>
+              {(data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image ? (
+                <div>
+                  <img src={(data as any).buyer_signature_image} alt="Firma comprador" style={{ height: 40, maxWidth: 200, objectFit: 'contain' }} />
+                  <div style={{ fontSize: '9px', color: '#333', marginTop: 2 }}>{data.buyer_name || data.applicant_name}</div>
+                </div>
+              ) : (data.buyer_name || data.applicant_name) ? (
+                <span style={{ fontFamily: '"Dancing Script", cursive', fontSize: '16px', color: '#1a2744', display: 'block', margin: '4px 0' }}>
+                  {data.buyer_name || data.applicant_name}
+                </span>
+              ) : (
+                <div className="sig-line"></div>
+              )}
               <p className="sig-cap"><em>Signature of purchaser/transferee or owner</em></p>
               <p className="sig-notary">Sworn and subscribed before me this ____ day of ____________, 20___</p>
               <div className="sig-line"></div>
@@ -885,6 +896,9 @@ export default function TitleApplicationTemplate({
           .page-break { page-break-before: always; height: 0; border: none; margin: 0; }
         }
       `}</style>
+      {/* Signature font */}
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet" />
     </div>
   )
 }
@@ -954,6 +968,17 @@ function _openTitleAppPreview_UNUSED(
     sellerSigHtml = `<span style="font-style:italic;font-size:14px">${(d as any).seller_signature_value}</span>`
   } else {
     sellerSigHtml = `<div class="sig-line"></div>`
+  }
+
+  // Buyer signature HTML (auto-cursive for Maninos, or drawn if signed)
+  let buyerSigHtml = ''
+  const buyerName = v(d.buyer_name) || v(d.applicant_name)
+  if ((d as any).buyer_signature_type === 'drawn' && (d as any).buyer_signature_image) {
+    buyerSigHtml = `<div><img src="${(d as any).buyer_signature_image}" style="height:40px;max-width:200px;object-fit:contain" /><div style="font-size:9px;color:#333;margin-top:2px">${buyerName}</div></div>`
+  } else if (buyerName) {
+    buyerSigHtml = `<span style="font-family:'Dancing Script',cursive;font-size:16px;color:#1a2744;display:block;margin:4px 0">${buyerName}</span>`
+  } else {
+    buyerSigHtml = `<div class="sig-line"></div>`
   }
 
   const html = `<!DOCTYPE html><html><head><title>TDHCA Form 1023 - Statement of Ownership</title>
@@ -1077,7 +1102,7 @@ ${getPrintCSS()}
       </td>
       <td class="btd sig-col" style="width:50%">
         <p class="sig-h"><u>10(b) Signatures of each purchaser/transferee or owner</u></p>
-        <div class="sig-line"></div>
+        ${buyerSigHtml}
         <p class="sig-cap"><em>Signature of purchaser/transferee or owner</em></p>
         <div style="margin-top:4px;font-size:9px">Date: ________________</div>
       </td>
@@ -1177,10 +1202,13 @@ export async function generateSignedTitleAppPDF(
   } else {
     ln('________________________________', M, y)
   }
-  // Buyer signature (10b)
+  // Buyer signature (10b) — auto-cursive for Maninos or drawn if signed
+  const pdfBuyerName = data.buyer_name || data.applicant_name || ''
   if ((data as any).buyer_signature_type === 'drawn' && (data as any).buyer_signature_image) {
     const buyerY = y - ((data as any).seller_signature_type === 'drawn' ? 12 : 0)
     try { pdf.addImage((data as any).buyer_signature_image, 'PNG', W/2 + 5, buyerY - 2, 50, 15) } catch {}
+  } else if (pdfBuyerName) {
+    pdf.setFont('times', 'italic'); ln(pdfBuyerName, W/2 + 5, y); pdf.setFont('times', 'normal')
   } else {
     ln('________________________________', W/2 + 5, y)
   }
