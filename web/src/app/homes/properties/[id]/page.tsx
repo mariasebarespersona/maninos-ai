@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -39,6 +39,8 @@ import {
   Copy,
   Send,
   ExternalLink,
+  CheckCircle,
+  Upload,
 } from 'lucide-react'
 import { InputModal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -139,7 +141,19 @@ export default function PropertyDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showBosTemplate, setShowBosTemplate] = useState<'purchase' | 'sale' | null>(null)
   const [showTitleAppTemplate, setShowTitleAppTemplate] = useState<'purchase' | 'sale' | null>(null)
-  
+
+  // E-sign state (send documents for signature post-purchase)
+  const [esignEmailFor, setEsignEmailFor] = useState<'bos' | 'title_app' | 'bos_sale' | 'title_app_sale' | null>(null)
+  const [esignEmail, setEsignEmail] = useState('')
+  const [esignSending, setEsignSending] = useState(false)
+  const [sellerSignatures, setSellerSignatures] = useState<{
+    bos: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+    title_app: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+    bos_sale: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+    title_app_sale: { signed: boolean; signature_type?: string; signature_value?: string; signer_name?: string } | null;
+  }>({ bos: null, title_app: null, bos_sale: null, title_app_sale: null })
+  const [signRefreshKey, setSignRefreshKey] = useState(0)
+
   // Evaluation report
   const [evalReport, setEvalReport] = useState<EvaluationReport | null>(null)
 
@@ -229,6 +243,93 @@ export default function PropertyDetailPage() {
       console.error(`[saveDocumentData] Network error saving ${key}:`, err)
       toast.error('Error de conexión al guardar datos del documento')
       return false
+    }
+  }
+
+  // ── E-sign: fetch signature status from envelopes ──
+  const fetchSellerSignatures = useCallback(async () => {
+    if (!property?.id) return
+    try {
+      const res = await fetch(`/api/esign/property/${property.id}/envelopes`)
+      if (!res.ok) return
+      const { envelopes } = await res.json()
+      const sigs: typeof sellerSignatures = { bos: null, title_app: null, bos_sale: null, title_app_sale: null }
+      for (const env of (envelopes || [])) {
+        const sellerSig = (env.document_signatures || []).find((s: any) => s.signer_role === 'seller')
+        if (!sellerSig) continue
+        const signed = !!sellerSig.signed_at
+        const sigData = sellerSig.signature_data || {}
+        const entry = {
+          signed,
+          signature_type: sigData.type,
+          signature_value: sigData.value,
+          signer_name: sellerSig.signer_name,
+        }
+        // Map document_type + transaction_type to our keys
+        const txType = env.transaction_type || 'purchase'
+        if (env.document_type === 'bill_of_sale' && txType === 'purchase') sigs.bos = entry
+        if (env.document_type === 'title_application' && txType === 'purchase') sigs.title_app = entry
+        if (env.document_type === 'bill_of_sale' && txType === 'sale') sigs.bos_sale = entry
+        if (env.document_type === 'title_application' && txType === 'sale') sigs.title_app_sale = entry
+      }
+      setSellerSignatures(sigs)
+    } catch {}
+  }, [property?.id])
+
+  // Poll for signatures every 15s
+  useEffect(() => {
+    if (!property?.id) return
+    fetchSellerSignatures()
+    const interval = setInterval(fetchSellerSignatures, 15000)
+    return () => clearInterval(interval)
+  }, [property?.id, fetchSellerSignatures])
+
+  // ── E-sign: send document for signature ──
+  const sendForEsign = async (docType: 'bos' | 'title_app' | 'bos_sale' | 'title_app_sale') => {
+    if (!esignEmail.trim() || !property) return
+    setEsignSending(true)
+    try {
+      const isBos = docType === 'bos' || docType === 'bos_sale'
+      const txType = docType.includes('sale') ? 'sale' : 'purchase'
+      const docData = property.document_data || {}
+      const bosData = docData[`bos_${txType}`] || {}
+      const titleData = docData[`title_app_${txType}`] || {}
+
+      const signerName = isBos
+        ? (txType === 'purchase' ? (bosData.seller_name || 'Vendedor') : (bosData.buyer_name || 'Comprador'))
+        : (txType === 'purchase' ? (titleData.seller_transferor_name || bosData.seller_name || 'Vendedor') : (titleData.buyer_name || 'Comprador'))
+
+      const res = await fetch('/api/esign/envelopes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: isBos
+            ? `Bill of Sale (${txType === 'purchase' ? 'Compra' : 'Venta'}) — ${property.address || 'Casa'}`
+            : `Cambio Título (${txType === 'purchase' ? 'Compra' : 'Venta'}) — ${property.address || 'Casa'}`,
+          document_type: isBos ? 'bill_of_sale' : 'title_application',
+          transaction_type: txType,
+          property_id: property.id,
+          signers: [
+            { role: 'seller', name: signerName, email: esignEmail.trim() },
+            { role: 'buyer', name: 'MANINOS HOMES', email: 'info@maninoshomes.com' },
+          ],
+          send_immediately: true,
+        }),
+      })
+      if (res.ok) {
+        toast.success(`Firma enviada a ${esignEmail.trim()} — recibirá un email para firmar`)
+        setSignRefreshKey(k => k + 1)
+        setEsignEmailFor(null)
+        setEsignEmail('')
+        // Refresh signatures after a short delay
+        setTimeout(fetchSellerSignatures, 2000)
+      } else {
+        toast.error('Error enviando firma')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setEsignSending(false)
     }
   }
 
@@ -1684,6 +1785,192 @@ ${price}
             </div>
           )}
 
+          {/* ═══ E-Sign: Send documents for signature ═══ */}
+          {!showBosTemplate && !showTitleAppTemplate && (
+            <div className="space-y-3 mb-4">
+              {/* ── Purchase documents e-sign ── */}
+              {(property.document_data?.bos_purchase || property.document_data?.title_app_purchase) && (
+                <div className="space-y-2">
+                  {/* BOS Compra — send for signature */}
+                  {property.document_data?.bos_purchase && !property.document_data.bos_purchase._uploaded_file && (
+                    esignEmailFor === 'bos' ? (
+                      <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-3">
+                        <p className="text-xs font-semibold text-blue-800 mb-2">Email del vendedor para firmar Bill of Sale (Compra):</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="vendedor@email.com"
+                            className="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('bos')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('bos')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }} className="px-2 py-2 text-gray-500 hover:text-gray-700">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('bos'); setEsignEmail(''); }}
+                        className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors"
+                      >
+                        <Send className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-semibold text-blue-700">Enviar Bill of Sale (Compra) para Firma</span>
+                      </button>
+                    )
+                  )}
+
+                  {/* Title App Compra — send for signature */}
+                  {property.document_data?.title_app_purchase && (
+                    esignEmailFor === 'title_app' ? (
+                      <div className="rounded-xl border-2 border-indigo-300 bg-indigo-50 p-3">
+                        <p className="text-xs font-semibold text-indigo-800 mb-2">Email del vendedor para firmar Cambio de Título (Compra):</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="vendedor@email.com"
+                            className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('title_app')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('title_app')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            }`}
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }} className="px-2 py-2 text-gray-500 hover:text-gray-700">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('title_app'); setEsignEmail(''); }}
+                        className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                      >
+                        <Send className="w-4 h-4 text-indigo-600" />
+                        <span className="text-sm font-semibold text-indigo-700">Enviar Cambio de Título (Compra) para Firma</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* ── Sale documents e-sign ── */}
+              {(property.document_data?.bos_sale || property.document_data?.title_app_sale) && (
+                <div className="space-y-2">
+                  {/* BOS Venta — send for signature */}
+                  {property.document_data?.bos_sale && !property.document_data.bos_sale._uploaded_file && (
+                    esignEmailFor === 'bos_sale' ? (
+                      <div className="rounded-xl border-2 border-purple-300 bg-purple-50 p-3">
+                        <p className="text-xs font-semibold text-purple-800 mb-2">Email del comprador para firmar Bill of Sale (Venta):</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="comprador@email.com"
+                            className="flex-1 border border-purple-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('bos_sale')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('bos_sale')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-purple-600 text-white hover:bg-purple-700'
+                            }`}
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }} className="px-2 py-2 text-gray-500 hover:text-gray-700">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('bos_sale'); setEsignEmail(''); }}
+                        className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
+                      >
+                        <Send className="w-4 h-4 text-purple-600" />
+                        <span className="text-sm font-semibold text-purple-700">Enviar Bill of Sale (Venta) para Firma</span>
+                      </button>
+                    )
+                  )}
+
+                  {/* Title App Venta — send for signature */}
+                  {property.document_data?.title_app_sale && (
+                    esignEmailFor === 'title_app_sale' ? (
+                      <div className="rounded-xl border-2 border-purple-300 bg-purple-50 p-3">
+                        <p className="text-xs font-semibold text-purple-800 mb-2">Email del comprador para firmar Cambio de Título (Venta):</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={esignEmail}
+                            onChange={(e) => setEsignEmail(e.target.value)}
+                            placeholder="comprador@email.com"
+                            className="flex-1 border border-purple-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            onKeyDown={(e) => e.key === 'Enter' && sendForEsign('title_app_sale')}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendForEsign('title_app_sale')}
+                            disabled={esignSending || !esignEmail.trim()}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                              esignSending || !esignEmail.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-purple-600 text-white hover:bg-purple-700'
+                            }`}
+                          >
+                            {esignSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar'}
+                          </button>
+                          <button onClick={() => { setEsignEmailFor(null); setEsignEmail(''); }} className="px-2 py-2 text-gray-500 hover:text-gray-700">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setEsignEmailFor('title_app_sale'); setEsignEmail(''); }}
+                        className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-purple-300 bg-purple-50 hover:bg-purple-100 transition-colors"
+                      >
+                        <Send className="w-4 h-4 text-purple-600" />
+                        <span className="text-sm font-semibold text-purple-700">Enviar Cambio de Título (Venta) para Firma</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* ═══ Signature Status Display ═══ */}
+              <PropertySignedDocs propertyId={property.id} refreshKey={signRefreshKey} />
+            </div>
+          )}
+
           {/* Transfer status info (without TitleTransferCard) */}
           {transfers.sale && transfers.sale.to_name === 'Maninos Homes LLC' && (
             <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-700 flex items-center gap-2">
@@ -2417,6 +2704,101 @@ function DetailItem({ label, value }: { label: string; value?: string }) {
     <div>
       <p className="text-sm text-navy-500">{label}</p>
       <p className="font-medium text-navy-900">{value || '—'}</p>
+    </div>
+  )
+}
+
+// ── Signed Documents Viewer for purchased properties ──
+function PropertySignedDocs({ propertyId, refreshKey }: { propertyId: string; refreshKey?: number }) {
+  const [envelopes, setEnvelopes] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchEnvelopes = useCallback(() => {
+    if (!propertyId) return
+    setLoading(true)
+    fetch(`/api/esign/property/${propertyId}/envelopes`)
+      .then(r => r.json())
+      .then(d => setEnvelopes(d.envelopes || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [propertyId])
+
+  useEffect(() => { fetchEnvelopes() }, [fetchEnvelopes, refreshKey])
+
+  // Auto-refresh every 15s to pick up new signatures
+  useEffect(() => {
+    if (!propertyId) return
+    const interval = setInterval(fetchEnvelopes, 15000)
+    return () => clearInterval(interval)
+  }, [propertyId, fetchEnvelopes])
+
+  if (!propertyId || (envelopes.length === 0 && !loading)) return null
+
+  const docTypeLabels: Record<string, string> = {
+    bill_of_sale: 'Bill of Sale',
+    title_application: 'Cambio de Título',
+  }
+  const txTypeLabels: Record<string, string> = {
+    purchase: 'Compra',
+    sale: 'Venta',
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
+      <h4 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4" />
+        Firmas de Documentos
+      </h4>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-600">
+          <Loader2 className="w-3 h-3 animate-spin" /> Cargando...
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {envelopes.map((env: any) => (
+            <div key={env.id} className="bg-white rounded-lg border border-emerald-100 p-3">
+              <p className="text-sm font-semibold text-navy-900 mb-1.5">
+                {docTypeLabels[env.document_type] || env.document_type}
+                {env.transaction_type && (
+                  <span className="ml-2 text-xs font-normal text-navy-500">
+                    ({txTypeLabels[env.transaction_type] || env.transaction_type})
+                  </span>
+                )}
+              </p>
+              <div className="space-y-1">
+                {(env.document_signatures || []).map((sig: any) => {
+                  const signed = !!sig.signed_at
+                  const sigData = sig.signature_data || {}
+                  const isDrawn = sigData.type === 'drawn'
+                  return (
+                    <div key={sig.id} className="flex items-center gap-2 text-xs">
+                      {signed ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      )}
+                      <span className="font-medium text-navy-700 capitalize">{sig.signer_role}:</span>
+                      <span className="text-navy-600">{sig.signer_name}</span>
+                      {signed ? (
+                        <>
+                          <span className="text-emerald-600">
+                            — firmado {new Date(sig.signed_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}
+                          </span>
+                          {isDrawn && sigData.value && (
+                            <img src={sigData.value} alt="Firma" className="h-6 ml-1 border border-emerald-200 rounded" />
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-amber-600">— pendiente de firma</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
