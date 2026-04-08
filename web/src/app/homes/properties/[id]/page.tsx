@@ -190,6 +190,10 @@ export default function PropertyDetailPage() {
   const [editingCode, setEditingCode] = useState(false)
   const [codeInput, setCodeInput] = useState('')
 
+  // Editable address
+  const [editingAddress, setEditingAddress] = useState(false)
+  const [addressInput, setAddressInput] = useState('')
+
   // 80% rule recommended price
   const [recommendedPrice, setRecommendedPrice] = useState<{
     market_value?: number | null
@@ -675,6 +679,37 @@ export default function PropertyDetailPage() {
     }
   }
 
+  const handleSaveAddress = async () => {
+    if (!property) return
+    const trimmed = addressInput.trim()
+    if (!trimmed) {
+      toast.warning('La dirección no puede estar vacía')
+      return
+    }
+    if (trimmed === property.address) {
+      setEditingAddress(false)
+      return
+    }
+    try {
+      const res = await fetch(`/api/properties/${property.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: trimmed }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setProperty(updated)
+        setEditingAddress(false)
+        toast.success('Dirección actualizada')
+      } else {
+        const data = await res.json()
+        toast.error(data.detail || 'Error al actualizar dirección')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }
+
   const openPublishModal = () => {
     fetchRecommendedPrice()
     setShowPublishModal(true)
@@ -1130,7 +1165,34 @@ ${price}
                   </button>
                 </span>
               )}
-              <span>{property.address}</span>
+              {editingAddress ? (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={addressInput}
+                    onChange={e => setAddressInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveAddress(); if (e.key === 'Escape') setEditingAddress(false) }}
+                    onBlur={handleSaveAddress}
+                    className="px-2 py-0.5 text-xl font-serif border-2 border-blue-400 rounded focus:outline-none focus:border-blue-500 bg-white min-w-[200px]"
+                    autoFocus
+                  />
+                  <button onClick={handleSaveAddress} className="p-0.5 rounded hover:bg-emerald-100 text-emerald-600" title="Guardar">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingAddress(false)} className="p-0.5 rounded hover:bg-red-100 text-red-500" title="Cancelar">
+                    <X className="w-4 h-4" />
+                  </button>
+                </span>
+              ) : (
+                <span
+                  className="group cursor-pointer hover:text-navy-600 transition-colors"
+                  onClick={() => { setAddressInput(property.address); setEditingAddress(true) }}
+                  title="Clic para editar nombre"
+                >
+                  {property.address}
+                  <Pencil className="w-3.5 h-3.5 inline ml-1.5 opacity-0 group-hover:opacity-50 text-navy-400" />
+                </span>
+              )}
             </h1>
             {property.city && (
               <div className="flex items-center gap-1 text-navy-500 mt-1">
