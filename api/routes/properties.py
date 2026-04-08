@@ -41,39 +41,49 @@ MARGIN_FIXED = 9500  # Fixed margin per business rule
 COMMISSION_MAX = 1500  # Max commission (contado = $1500, RTO = $1000)
 
 
-def _calculate_post_renovation_price(property_id: str, purchase_price: float) -> dict:
+def _calculate_post_renovation_price(property_id: str, purchase_price: float, property_overrides: dict = None) -> dict:
     """
     Calculate the recommended sale price post-renovation.
-    Formula: 9500 + purchase_price + commission + renovation_cost + move_cost
+    Formula: margin + purchase_price + commission + renovation_cost + move_cost
+    Uses manual overrides from properties table when set, otherwise calculates from related tables.
     """
-    # Renovation cost
-    reno_cost = 0.0
-    try:
-        reno = sb.table("renovations").select("total_cost, status") \
-            .eq("property_id", property_id) \
-            .order("created_at", desc=True).limit(1).execute()
-        if reno.data:
-            reno_cost = float(reno.data[0].get("total_cost", 0) or 0)
-    except Exception as e:
-        logger.warning(f"[price_calc] Could not fetch renovation cost: {e}")
+    overrides = property_overrides or {}
 
-    # Move cost (sum of all completed or quoted moves for this property)
-    move_cost = 0.0
-    try:
-        moves = sb.table("moves").select("quoted_cost, final_cost, status") \
-            .eq("property_id", property_id).execute()
-        for m in (moves.data or []):
-            cost = float(m.get("final_cost") or m.get("quoted_cost") or 0)
-            if cost > 0:
-                move_cost += cost
-    except Exception as e:
-        logger.warning(f"[price_calc] Could not fetch move cost: {e}")
+    # Renovation cost — use override if set, otherwise calculate from renovations table
+    if overrides.get("renovation_cost") is not None:
+        reno_cost = float(overrides["renovation_cost"])
+    else:
+        reno_cost = 0.0
+        try:
+            reno = sb.table("renovations").select("total_cost, status") \
+                .eq("property_id", property_id) \
+                .order("created_at", desc=True).limit(1).execute()
+            if reno.data:
+                reno_cost = float(reno.data[0].get("total_cost", 0) or 0)
+        except Exception as e:
+            logger.warning(f"[price_calc] Could not fetch renovation cost: {e}")
 
-    commission = COMMISSION_MAX
-    total = MARGIN_FIXED + purchase_price + commission + reno_cost + move_cost
+    # Move cost — use override if set, otherwise calculate from moves table
+    if overrides.get("move_cost") is not None:
+        move_cost = float(overrides["move_cost"])
+    else:
+        move_cost = 0.0
+        try:
+            moves = sb.table("moves").select("quoted_cost, final_cost, status") \
+                .eq("property_id", property_id).execute()
+            for m in (moves.data or []):
+                cost = float(m.get("final_cost") or m.get("quoted_cost") or 0)
+                if cost > 0:
+                    move_cost += cost
+        except Exception as e:
+            logger.warning(f"[price_calc] Could not fetch move cost: {e}")
+
+    commission = float(overrides["commission"]) if overrides.get("commission") is not None else COMMISSION_MAX
+    margin = float(overrides["margin"]) if overrides.get("margin") is not None else MARGIN_FIXED
+    total = margin + purchase_price + commission + reno_cost + move_cost
 
     return {
-        "margin": MARGIN_FIXED,
+        "margin": margin,
         "purchase_price": purchase_price,
         "commission": commission,
         "renovation_cost": round(reno_cost, 2),
@@ -596,13 +606,13 @@ async def update_property(property_id: str, data: PropertyUpdate):
             del update_data[col]
     
     # Convert Decimal to float for JSON serialization
-    for key in ["purchase_price", "sale_price", "bathrooms"]:
+    for key in ["purchase_price", "sale_price", "bathrooms", "renovation_cost", "move_cost", "commission", "margin"]:
         if key in update_data and update_data[key] is not None:
             update_data[key] = float(update_data[key])
     for key in ["year", "bedrooms", "square_feet", "length_ft", "width_ft"]:
         if key in update_data and update_data[key] is not None:
             update_data[key] = int(update_data[key])
-    
+
     if not update_data:
         return _format_property(current.data)
     
@@ -1176,13 +1186,14 @@ async def get_post_renovation_price(property_id: str):
     Get the calculated post-renovation sale price breakdown.
     Formula: 9500 + purchase_price + commission ($1,500) + renovation_cost + move_cost
     """
-    prop = sb.table("properties").select("id, purchase_price, sale_price, address, city") \
+    prop = sb.table("properties").select("id, purchase_price, sale_price, address, city, renovation_cost, move_cost, commission, margin") \
         .eq("id", property_id).single().execute()
     if not prop.data:
         raise HTTPException(status_code=404, detail="Property not found")
 
     purchase_price = float(prop.data.get("purchase_price", 0) or 0)
-    calc = _calculate_post_renovation_price(property_id, purchase_price)
+    overrides = {k: prop.data.get(k) for k in ("renovation_cost", "move_cost", "commission", "margin") if prop.data.get(k) is not None}
+    calc = _calculate_post_renovation_price(property_id, purchase_price, overrides)
     calc["current_sale_price"] = float(prop.data.get("sale_price", 0) or 0)
     calc["property_address"] = f"{prop.data.get('address', '')}, {prop.data.get('city', '')}"
 

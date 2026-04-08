@@ -1536,20 +1536,13 @@ ${price}
                     );
                   };
 
-                  const ReadOnlyField = ({ label, value }: { label: string; value: number }) => (
-                    <div className="flex justify-between items-center">
-                      <span className="text-navy-500">{label}</span>
-                      <span className="font-semibold text-navy-900">${value.toLocaleString()}</span>
-                    </div>
-                  );
-
                   return (
                     <>
                       <EditableField label="Compra" value={purchase} field="purchase_price" bold />
-                      <ReadOnlyField label="Renovación" value={reno} />
-                      <ReadOnlyField label="Movida" value={move} />
-                      <ReadOnlyField label="Comisión" value={commission} />
-                      <ReadOnlyField label="Margen" value={margin} />
+                      <EditableField label="Renovación" value={reno} field="renovation_cost" />
+                      <EditableField label="Movida" value={move} field="move_cost" />
+                      <EditableField label="Comisión" value={commission} field="commission" />
+                      <EditableField label="Margen" value={margin} field="margin" />
                       <div className="pt-2 border-t border-navy-100">
                         <div className="flex justify-between items-center text-xs text-navy-400">
                           <span>Total inversión</span>

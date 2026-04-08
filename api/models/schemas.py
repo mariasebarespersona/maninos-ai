@@ -99,6 +99,10 @@ class PropertyUpdate(BaseModel):
     property_code: Optional[str] = None
     length_ft: Optional[int] = None
     width_ft: Optional[int] = None
+    renovation_cost: Optional[Decimal] = None
+    move_cost: Optional[Decimal] = None
+    commission: Optional[Decimal] = None
+    margin: Optional[Decimal] = None
     document_data: Optional[dict] = None
     photos: Optional[list[str]] = None
     checklist_completed: Optional[bool] = None
