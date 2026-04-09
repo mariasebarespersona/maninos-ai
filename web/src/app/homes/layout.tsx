@@ -113,13 +113,23 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
   // Redirect if user navigates to a restricted page
   useEffect(() => {
     if (!teamUser?.role || pathname === '/homes') return
-    const allowed = ROLE_ALLOWED_HREFS[teamUser.role]
-    if (!allowed) return // no restrictions for this role
+    const roleAllowed = ROLE_ALLOWED_HREFS[teamUser.role]
+    if (!roleAllowed) return // no restrictions for this role (admin)
+    // Merge email-based extras into allowed list
+    const allowed = [...roleAllowed]
+    if (user?.email) {
+      const prefix = user.email.split('@')[0].toLowerCase()
+      for (const [key, hrefs] of Object.entries(EMAIL_EXTRA_HREFS)) {
+        if (prefix.startsWith(key)) {
+          for (const h of hrefs) { if (!allowed.includes(h)) allowed.push(h) }
+        }
+      }
+    }
     const isAllowed = allowed.some(href => href === '/homes' ? pathname === '/homes' : pathname.startsWith(href))
     if (!isAllowed) {
       router.replace('/homes')
     }
-  }, [pathname, teamUser?.role, router])
+  }, [pathname, teamUser?.role, user?.email, router])
 
   const handleLogout = async () => {
     setLoggingOut(true)
