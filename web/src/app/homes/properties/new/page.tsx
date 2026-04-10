@@ -332,6 +332,35 @@ export default function NewPropertyPage() {
         setTdhcaCleanPageText(data.clean_page_text || '')
         setTdhcaRawHtml(data.raw_html || '')
         setTdhcaDebugLog(data.debug_log || [])
+
+        // Auto-save title app data from TDHCA lookup so employees don't need to click Guardar
+        const td = data.data || {}
+        setTitleAppData(prev => ({
+          ...(prev || {} as any),
+          applicant_name: 'MANINOS HOMES LLC',
+          is_new: false, is_used: true,
+          manufacturer: td.manufacturer || '',
+          make: td.model || '',
+          year: td.year || form.year || '',
+          date_of_manufacture: td.date_of_manufacture || '',
+          total_sqft: td.square_feet || '',
+          sqft: td.square_feet || '',
+          section1_label: td.label_seal || '',
+          section1_serial: td.serial_number || '',
+          serial_number: td.serial_number || '',
+          label_seal_number: td.label_seal || '',
+          page2_hud_label: td.label_seal || '',
+          page2_serial: td.serial_number || '',
+          wind_zone: td.wind_zone || '',
+          has_hud_label: true, no_hud_label: false,
+          bedrooms: form.bedrooms || '',
+          bathrooms: form.bathrooms || '',
+          buyer_name: 'MANINOS HOMES LLC',
+          seller_name: td.seller || td.buyer || '',
+          sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
+          sale_date: new Date().toISOString().split('T')[0],
+          election_inventory: true,
+        } as any))
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados')
       }
