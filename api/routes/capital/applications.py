@@ -763,8 +763,7 @@ async def pay_homes(application_id: str):
         # 2. Homes accounting: income from Capital
         sb.table("accounting_transactions").insert({
             "property_id": application.get("property_id"),
-            "transaction_type": "capital_purchase",
-            "category": "income",
+            "transaction_type": "sale_rto_capital",
             "is_income": True,
             "amount": remaining,
             "description": f"Capital paga porción financiada — {prop_addr}",
@@ -772,19 +771,19 @@ async def pay_homes(application_id: str):
             "entity_type": "sale",
             "entity_id": application.get("sale_id"),
             "status": "confirmed",
-            "date": datetime.utcnow().date().isoformat(),
+            "transaction_date": datetime.utcnow().date().isoformat(),
         }).execute()
 
         # 3. Capital accounting: outflow to Homes
         sb.table("capital_transactions").insert({
             "property_id": application.get("property_id"),
-            "txn_type": "acquisition",
+            "transaction_type": "acquisition",
             "is_income": False,
             "amount": remaining,
             "description": f"Pago a Homes por financiamiento — {prop_addr}",
-            "counterparty": "Maninos Homes LLC",
+            "counterparty_name": "Maninos Homes LLC",
             "status": "confirmed",
-            "date": datetime.utcnow().date().isoformat(),
+            "transaction_date": datetime.utcnow().date().isoformat(),
         }).execute()
 
         # 4. Notify Homes

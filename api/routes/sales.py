@@ -773,8 +773,7 @@ async def create_sale(data: SaleCreate):
                     # Register down payment in Homes accounting
                     sb.table("accounting_transactions").insert({
                         "property_id": data.property_id,
-                        "transaction_type": "down_payment",
-                        "category": "income",
+                        "transaction_type": "deposit_received",
                         "is_income": True,
                         "amount": down_payment,
                         "description": f"Enganche de {client_name} — venta financiada",
@@ -782,7 +781,7 @@ async def create_sale(data: SaleCreate):
                         "entity_type": "sale",
                         "entity_id": sale_record["id"],
                         "status": "confirmed",
-                        "date": datetime.utcnow().date().isoformat(),
+                        "transaction_date": datetime.utcnow().date().isoformat(),
                     }).execute()
                     logger.info(f"[sales] Down payment ${down_payment:,.0f} recorded in Homes accounting")
                 except Exception as dp_err:
