@@ -146,55 +146,18 @@ async def review_application(application_id: str, review: ApplicationReview):
                 "rto_down_payment": down_payment,
             }).eq("id", application["sale_id"]).execute()
 
-            # Calculate the remaining amount Capital pays to Homes
+            # Calculate the remaining amount Capital will pay to Homes
             remaining = round(sale_price - down_payment, 2) if sale_price > 0 else 0
 
-            # Update financed fields on the sale
+            # Update financed fields on the sale (payment pending — separate step)
             try:
                 sb.table("sales").update({
                     "financed_down_payment": down_payment,
                     "financed_remaining": remaining,
-                    "capital_payment_status": "paid",
-                    "capital_payment_date": datetime.utcnow().isoformat(),
+                    "capital_payment_status": "pending",
                 }).eq("id", application["sale_id"]).execute()
             except Exception as e:
                 logger.warning(f"[capital] Could not update financed fields on sale: {e}")
-
-            # Record Capital→Homes payment in Homes accounting
-            if remaining > 0:
-                try:
-                    sb.table("accounting_transactions").insert({
-                        "property_id": application.get("property_id"),
-                        "transaction_type": "capital_purchase",
-                        "category": "income",
-                        "is_income": True,
-                        "amount": remaining,
-                        "description": f"Capital paga porción financiada a Homes",
-                        "counterparty_name": "Maninos Capital LLC",
-                        "entity_type": "sale",
-                        "entity_id": application.get("sale_id"),
-                        "status": "confirmed",
-                        "date": datetime.utcnow().date().isoformat(),
-                    }).execute()
-                    logger.info(f"[capital] Homes accounting: +${remaining:,.2f} from Capital for sale {application['sale_id']}")
-                except Exception as e:
-                    logger.warning(f"[capital] Could not create Homes accounting txn: {e}")
-
-                # Record Capital→Homes payment in Capital accounting (outflow)
-                try:
-                    sb.table("capital_transactions").insert({
-                        "property_id": application.get("property_id"),
-                        "txn_type": "acquisition",
-                        "is_income": False,
-                        "amount": remaining,
-                        "description": f"Pago a Homes por porción financiada",
-                        "counterparty": "Maninos Homes LLC",
-                        "status": "confirmed",
-                        "date": datetime.utcnow().date().isoformat(),
-                    }).execute()
-                    logger.info(f"[capital] Capital accounting: -${remaining:,.2f} to Homes for sale {application['sale_id']}")
-                except Exception as e:
-                    logger.warning(f"[capital] Could not create Capital accounting txn: {e}")
 
             # Notify both portals
             try:
@@ -750,5 +713,109 @@ async def rto_calculation(application_id: str):
         raise
     except Exception as e:
         logger.error(f"Error calculating RTO for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{application_id}/pay-homes")
+async def pay_homes(application_id: str):
+    """
+    Capital confirms payment to Homes for the financed portion.
+    This is a manual step after approving the RTO application.
+    Records the payment in both Homes and Capital accounting.
+    """
+    try:
+        app_result = sb.table("rto_applications") \
+            .select("*, sales(*), properties(id, address), clients(id, name)") \
+            .eq("id", application_id) \
+            .single() \
+            .execute()
+
+        if not app_result.data:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+        application = app_result.data
+        sale = application.get("sales") or {}
+
+        if application["status"] != "approved":
+            raise HTTPException(status_code=400, detail="La solicitud debe estar aprobada primero")
+
+        if sale.get("capital_payment_status") == "paid":
+            raise HTTPException(status_code=400, detail="El pago a Homes ya fue registrado")
+
+        remaining = float(sale.get("financed_remaining") or 0)
+        if remaining <= 0:
+            remaining = float(sale.get("sale_price", 0)) - float(sale.get("financed_down_payment") or sale.get("rto_down_payment") or 0)
+
+        if remaining <= 0:
+            raise HTTPException(status_code=400, detail="No hay monto pendiente de pagar a Homes")
+
+        prop = application.get("properties") or {}
+        client = application.get("clients") or {}
+        prop_addr = prop.get("address", "Propiedad")
+        client_name = client.get("name", "Cliente")
+
+        # 1. Update sale: capital_payment_status → paid
+        sb.table("sales").update({
+            "capital_payment_status": "paid",
+            "capital_payment_date": datetime.utcnow().isoformat(),
+        }).eq("id", application["sale_id"]).execute()
+
+        # 2. Homes accounting: income from Capital
+        sb.table("accounting_transactions").insert({
+            "property_id": application.get("property_id"),
+            "transaction_type": "capital_purchase",
+            "category": "income",
+            "is_income": True,
+            "amount": remaining,
+            "description": f"Capital paga porción financiada — {prop_addr}",
+            "counterparty_name": "Maninos Capital LLC",
+            "entity_type": "sale",
+            "entity_id": application.get("sale_id"),
+            "status": "confirmed",
+            "date": datetime.utcnow().date().isoformat(),
+        }).execute()
+
+        # 3. Capital accounting: outflow to Homes
+        sb.table("capital_transactions").insert({
+            "property_id": application.get("property_id"),
+            "txn_type": "acquisition",
+            "is_income": False,
+            "amount": remaining,
+            "description": f"Pago a Homes por financiamiento — {prop_addr}",
+            "counterparty": "Maninos Homes LLC",
+            "status": "confirmed",
+            "date": datetime.utcnow().date().isoformat(),
+        }).execute()
+
+        # 4. Notify Homes
+        try:
+            sb.table("notifications").insert({
+                "type": "capital_payment_confirmed",
+                "title": f"Capital pagó ${remaining:,.0f} — {prop_addr}",
+                "message": (
+                    f"Capital ha confirmado el pago de ${remaining:,.0f} a Homes por la venta financiada de {prop_addr}.\n"
+                    f"Cliente: {client_name}\n"
+                    f"Este ingreso ya está registrado en contabilidad."
+                ),
+                "category": "homes",
+                "priority": "normal",
+                "property_id": application.get("property_id"),
+                "sale_id": application.get("sale_id"),
+            }).execute()
+        except Exception:
+            pass
+
+        logger.info(f"[capital] Payment ${remaining:,.2f} to Homes confirmed for application {application_id}")
+
+        return {
+            "ok": True,
+            "amount": remaining,
+            "message": f"Pago de ${remaining:,.0f} a Homes registrado exitosamente",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing pay-homes for {application_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
