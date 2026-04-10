@@ -658,12 +658,13 @@ async def create_sale(data: SaleCreate):
     )
     
     # Create sale
+    sale_price = float(data.sale_price)
+    status = SaleStatus.PENDING.value
     insert_data = {
         "property_id": data.property_id,
         "client_id": data.client_id,
         "sale_type": data.sale_type.value,
-        "sale_price": float(data.sale_price),
-        "status": SaleStatus.PENDING.value,
+        "sale_price": sale_price,
         "sold_before_renovation": sold_before_renovation,
         # Commission fields
         "found_by_employee_id": data.found_by_employee_id,
@@ -672,6 +673,19 @@ async def create_sale(data: SaleCreate):
         "commission_found_by": float(commission["commission_found_by"]),
         "commission_sold_by": float(commission["commission_sold_by"]),
     }
+
+    # RTO/financed sale: set status + financial split
+    if data.sale_type == SaleType.RTO:
+        status = SaleStatus.RTO_PENDING.value
+        down_payment = float(data.rto_down_payment or data.initial_payment_amount or 0)
+        insert_data["rto_monthly_payment"] = float(data.rto_monthly_payment or 0)
+        insert_data["rto_term_months"] = data.rto_term_months
+        insert_data["rto_down_payment"] = down_payment
+        insert_data["financed_down_payment"] = down_payment
+        insert_data["financed_remaining"] = round(sale_price - down_payment, 2)
+        insert_data["capital_payment_status"] = "pending"
+
+    insert_data["status"] = status
     
     result = sb.table("sales").insert(insert_data).execute()
     
@@ -699,15 +713,46 @@ async def create_sale(data: SaleCreate):
     # If RTO sale, automatically create an RTO application in Capital
     if data.sale_type == SaleType.RTO:
         try:
+            down_payment = float(data.rto_down_payment or data.initial_payment_amount or 0)
             rto_app_data = {
                 "sale_id": sale_record["id"],
                 "client_id": data.client_id,
                 "property_id": data.property_id,
                 "status": "submitted",
                 "monthly_income": float(client_result.data.get("monthly_income", 0)) if client_result.data.get("monthly_income") else None,
+                "desired_down_payment": down_payment,
+                "desired_term_months": data.rto_term_months,
             }
             sb.table("rto_applications").insert(rto_app_data).execute()
             logger.info(f"[sales] RTO application created for sale {sale_record['id']}")
+
+            # Notify Capital about the pending financed sale
+            try:
+                remaining = round(float(data.sale_price) - down_payment, 2)
+                client_name = client_result.data.get("name", "Cliente")
+                prop_addr = prop.get("address", "Propiedad")
+                sb.table("notifications").insert({
+                    "type": "financed_sale",
+                    "title": f"Venta Financiada: ${float(data.sale_price):,.0f} — {prop_addr}",
+                    "message": (
+                        f"Nueva venta financiada registrada por Homes.\n"
+                        f"Cliente: {client_name}\n"
+                        f"Precio: ${float(data.sale_price):,.0f}\n"
+                        f"Enganche: ${down_payment:,.0f} (Homes)\n"
+                        f"Restante: ${remaining:,.0f} (Capital debe pagar a Homes)\n"
+                        f"Mensualidad: ${float(data.rto_monthly_payment or 0):,.0f}\n"
+                        f"Plazo: {data.rto_term_months or '—'} meses"
+                    ),
+                    "category": "both",
+                    "priority": "urgent",
+                    "action_required": True,
+                    "property_id": data.property_id,
+                    "sale_id": sale_record["id"],
+                }).execute()
+                logger.info(f"[sales] Capital notification created for financed sale {sale_record['id']}")
+            except Exception as notif_err:
+                logger.warning(f"[sales] Could not create Capital notification: {notif_err}")
+
         except Exception as e:
             logger.error(f"[sales] Failed to create RTO application: {e}")
             # Don't fail the sale - the application can be created manually

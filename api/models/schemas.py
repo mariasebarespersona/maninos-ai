@@ -35,6 +35,7 @@ class SaleStatus(str, Enum):
     PENDING = "pending"
     TRANSFER_REPORTED = "transfer_reported"
     PAID = "paid"
+    RTO_PENDING = "rto_pending"
     RTO_APPROVED = "rto_approved"
     RTO_ACTIVE = "rto_active"
     COMPLETED = "completed"
@@ -256,6 +257,10 @@ class SaleCreate(BaseModel):
     initial_payment_amount: Optional[Decimal] = None
     initial_payment_method: Optional[str] = None
     initial_payment_type: Optional[str] = "down_payment"  # down_payment | full
+    # RTO/financed fields (used when sale_type is 'rto')
+    rto_monthly_payment: Optional[Decimal] = None
+    rto_term_months: Optional[int] = None
+    rto_down_payment: Optional[Decimal] = None
 
 
 class SaleComplete(BaseModel):

@@ -61,11 +61,12 @@ interface TeamUser {
   role?: string
 }
 
-type PaymentType = 'contado'
+type PaymentType = 'contado' | 'rto'
 type Step = 'property' | 'client' | 'employees' | 'confirm'
 
 // Commission amounts (must match backend: api/utils/commissions.py)
 const COMMISSION_CASH = 1500
+const COMMISSION_RTO = 1000
 
 function calculateCommissionPreview(
   saleType: PaymentType | null,
@@ -102,7 +103,11 @@ function NewSaleContent() {
   const preselectedClient = searchParams.get('client')
 
   const [step, setStep] = useState<Step>(preselectedProperty ? 'client' : 'property')
-  const [paymentType] = useState<PaymentType>('contado')
+  const [paymentType, setPaymentType] = useState<PaymentType>('contado')
+  // RTO fields
+  const [rtoDownPayment, setRtoDownPayment] = useState('')
+  const [rtoMonthlyPayment, setRtoMonthlyPayment] = useState('')
+  const [rtoTermMonths, setRtoTermMonths] = useState('36')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -273,17 +278,25 @@ function NewSaleContent() {
       }
 
       // Create sale
+      const salePayload: any = {
+        property_id: selectedProperty.id,
+        client_id: clientId,
+        sale_price: selectedProperty.sale_price,
+        sale_type: paymentType || 'contado',
+        found_by_employee_id: foundByEmployeeId || undefined,
+        sold_by_employee_id: soldByEmployeeId || undefined,
+      }
+      if (paymentType === 'rto') {
+        salePayload.rto_down_payment = rtoDownPayment ? parseFloat(rtoDownPayment) : undefined
+        salePayload.rto_monthly_payment = rtoMonthlyPayment ? parseFloat(rtoMonthlyPayment) : undefined
+        salePayload.rto_term_months = rtoTermMonths ? parseInt(rtoTermMonths) : undefined
+        salePayload.initial_payment_amount = rtoDownPayment ? parseFloat(rtoDownPayment) : undefined
+        salePayload.initial_payment_type = 'down_payment'
+      }
       const saleRes = await fetch('/api/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          property_id: selectedProperty.id,
-          client_id: clientId,
-          sale_price: selectedProperty.sale_price,
-          sale_type: paymentType || 'contado',
-          found_by_employee_id: foundByEmployeeId || undefined,
-          sold_by_employee_id: soldByEmployeeId || undefined,
-        }),
+        body: JSON.stringify(salePayload),
       })
 
       if (!saleRes.ok) {
@@ -729,19 +742,91 @@ function NewSaleContent() {
                 )}
               </div>
 
-              {/* Payment Type */}
-              <div className={`p-4 rounded-lg border ${
-                paymentType === 'contado' 
-                  ? 'bg-emerald-50 border-emerald-200' 
-                  : 'bg-purple-50 border-purple-200'
-              }`}>
-                <p className={`text-sm ${paymentType === 'contado' ? 'text-emerald-600' : 'text-purple-600'}`}>
-                  Tipo de Pago
-                </p>
-                <p className={`font-semibold ${paymentType === 'contado' ? 'text-emerald-700' : 'text-purple-700'}`}>
-                  💵 Contado (Cash)
-                </p>
+              {/* Payment Type Selector */}
+              <div>
+                <p className="text-sm text-navy-500 mb-2">Tipo de Venta</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setPaymentType('contado')}
+                    className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                      paymentType === 'contado'
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-gray-200 hover:border-emerald-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-emerald-700">💵 Contado</p>
+                    <p className="text-xs text-gray-500 mt-1">Cliente paga el total directamente</p>
+                  </button>
+                  <button
+                    onClick={() => setPaymentType('rto')}
+                    className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                      paymentType === 'rto'
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-purple-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-purple-700">📋 Financiada (RTO)</p>
+                    <p className="text-xs text-gray-500 mt-1">Enganche + mensualidades via Capital</p>
+                  </button>
+                </div>
               </div>
+
+              {/* RTO fields */}
+              {paymentType === 'rto' && selectedProperty && (
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                  <p className="text-sm font-semibold text-purple-800">Términos Financiados</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-purple-600 mb-1">Enganche ($)</label>
+                      <input
+                        type="number"
+                        value={rtoDownPayment}
+                        onChange={e => setRtoDownPayment(e.target.value)}
+                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm"
+                        placeholder={`Mín. ${Math.round(selectedProperty.sale_price * 0.3).toLocaleString()}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-purple-600 mb-1">Mensualidad ($)</label>
+                      <input
+                        type="number"
+                        value={rtoMonthlyPayment}
+                        onChange={e => setRtoMonthlyPayment(e.target.value)}
+                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm"
+                        placeholder="850"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-purple-600 mb-1">Plazo (meses)</label>
+                      <select
+                        value={rtoTermMonths}
+                        onChange={e => setRtoTermMonths(e.target.value)}
+                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm"
+                      >
+                        {[12, 18, 24, 36, 48, 60].map(m => (
+                          <option key={m} value={m}>{m} meses</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {rtoDownPayment && (
+                    <div className="text-xs text-purple-700 bg-purple-100 rounded-lg p-3 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Enganche (Homes recibe)</span>
+                        <span className="font-bold">${parseFloat(rtoDownPayment).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Restante (Capital paga a Homes)</span>
+                        <span className="font-bold">${(selectedProperty.sale_price - parseFloat(rtoDownPayment)).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-purple-300 pt-1 mt-1">
+                        <span>Total que recibe Homes</span>
+                        <span className="font-bold">${selectedProperty.sale_price.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Price */}
               <div className="p-4 bg-gold-50 rounded-lg border border-gold-200">

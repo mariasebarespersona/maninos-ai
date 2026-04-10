@@ -74,6 +74,10 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   paid: { label: 'Pagada', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: CreditCard },
   completed: { label: 'Completada', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
   cancelled: { label: 'Cancelada', color: 'bg-red-50 text-red-700 border-red-200', icon: XCircle },
+  rto_pending: { label: 'RTO Pendiente', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: Clock },
+  rto_approved: { label: 'RTO Aprobado', color: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: CheckCircle2 },
+  rto_active: { label: 'RTO Activo', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: CreditCard },
+  transfer_reported: { label: 'Transferencia Reportada', color: 'bg-cyan-50 text-cyan-700 border-cyan-200', icon: Clock },
 }
 
 export default function SalesPageWrapper() {
