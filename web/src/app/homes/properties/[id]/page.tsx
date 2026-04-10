@@ -181,7 +181,18 @@ export default function PropertyDetailPage() {
     scheduled_date: '',
     quoted_cost: '',
     notes: '',
-    special_instructions: '',
+    special_instructions: 'INCLUDE A/C UNIT FOR DELIVERY',
+    // Delivery Request Sheet fields
+    customer_name: '',
+    customer_phone: '',
+    delivery_date: '',
+    hud_label: '',
+    serial_number: '',
+    manufacturer: '',
+    home_size: '',
+    home_year: '',
+    has_hitch: true,   // default YES per template
+    tires_axles: false, // default NO per template
   })
   const [savingMove, setSavingMove] = useState(false)
   const [expandedMove, setExpandedMove] = useState<string | null>(null)
@@ -431,22 +442,75 @@ export default function PropertyDetailPage() {
     }))
   }
 
+  // Pre-fill delivery request sheet fields from property data
+  const openMoveModal = (moveType: string = 'purchase') => {
+    const dd = property?.document_data || {}
+    const titleApp = dd.title_app_purchase || dd.title_app || {}
+    const bos = dd.bos_purchase || {}
+    setNewMove(prev => ({
+      ...prev,
+      move_type: moveType,
+      origin_address: moveType === 'sale' ? '15891 Old Houston Rd' : (property?.address || ''),
+      origin_city: moveType === 'sale' ? 'Conroe' : (property?.city || ''),
+      customer_name: bos.buyer_name || bos.seller_name || '',
+      customer_phone: bos.buyer_phone || bos.seller_phone || '',
+      hud_label: titleApp.section1_label || titleApp.label_seal_number || titleApp.page2_hud_label || '',
+      serial_number: titleApp.section1_serial || titleApp.serial_number || bos.serial_number || '',
+      manufacturer: titleApp.manufacturer || bos.manufacturer || '',
+      home_size: titleApp.total_sqft || titleApp.sqft || (property?.square_feet ? `${property.square_feet}` : ''),
+      home_year: titleApp.year || titleApp.date_of_manufacture || (property?.year ? `${property.year}` : ''),
+      has_hitch: true,
+      tires_axles: false,
+      special_instructions: 'INCLUDE A/C UNIT FOR DELIVERY',
+    }))
+    setShowNewMoveModal(true)
+  }
+
   const handleSmsProvider = async (providerId: string, move?: any) => {
-    const moveType = move?.move_type || newMove.move_type || 'purchase'
-    const originAddr = move?.origin_address || newMove.origin_address || ''
-    const originCity = move?.origin_city || newMove.origin_city || ''
+    const m = move || newMove
+    const originAddr = m.origin_address || ''
+    const originCity = m.origin_city || ''
     const origin = originAddr ? `${originAddr}, ${originCity}` : originCity
-    const destAddr = move?.destination_address || newMove.destination_address || ''
-    const destCity = move?.destination_city || newMove.destination_city || ''
+    const destAddr = m.destination_address || ''
+    const destCity = m.destination_city || ''
     const dest = destAddr ? `${destAddr}, ${destCity}` : destCity
-    // For "sale" (Yard→Cliente), the house is at the yard, not the property address
-    const addr = moveType === 'sale' ? `${originAddr || '15891 Old Houston Rd'}, ${originCity || 'Conroe'}` : (property?.address || '')
+    const today = new Date().toLocaleDateString('en-US')
+
+    // Build Delivery Request Sheet SMS
+    const lines = [
+      `DELIVERY REQUEST`,
+      ``,
+      `HOME #: ${property?.property_code || '—'}`,
+      `REQUESTED DATE: ${today}`,
+      `DELIVERY DATE: ${m.delivery_date || m.scheduled_date || 'TBD'}`,
+      ``,
+      `CUSTOMER: ${m.customer_name || '—'}`,
+      `PHONE: ${m.customer_phone || '—'}`,
+      `PICK UP: ${origin || '—'}`,
+      `DELIVERY: ${dest || '—'}`,
+      ``,
+      `HOME INFO:`,
+      `HUD #: ${m.hud_label || '—'}`,
+      `SERIAL: ${m.serial_number || '—'}`,
+      `MANUF: ${m.manufacturer || '—'}`,
+      `SIZE: ${m.home_size || '—'}`,
+      `YEAR: ${m.home_year || '—'}`,
+      ``,
+      `HITCH: ${m.has_hitch ? 'YES' : 'NO'}`,
+      `TIRES & AXLES: ${m.tires_axles ? 'YES' : 'NO'}`,
+      ``,
+      `SPECIAL: ${m.special_instructions || m.notes || '—'}`,
+      `PRICE: $${m.quoted_cost || 'TBD'}`,
+    ]
+    const message = lines.join('\n')
+
     try {
       const params = new URLSearchParams({
         provider_id: providerId,
-        property_address: addr,
+        property_address: property?.address || '',
         origin,
         destination: dest,
+        message,
       })
       const res = await fetch(`/api/moves/providers/sms-url?${params}`)
       if (res.ok) {
@@ -550,7 +614,7 @@ export default function PropertyDetailPage() {
       if (res.ok) {
         toast.success('🚛 Movida contratada exitosamente')
         setShowNewMoveModal(false)
-        setNewMove({ move_type: 'purchase', origin_address: '', origin_city: '', destination_address: '', destination_city: '', destination_yard: '', moving_company: '', driver_name: '', driver_phone: '', estimated_distance_miles: '', requires_escort: false, requires_wide_load_permit: false, scheduled_date: '', quoted_cost: '', notes: '', special_instructions: '' })
+        setNewMove({ move_type: 'purchase', origin_address: '', origin_city: '', destination_address: '', destination_city: '', destination_yard: '', moving_company: '', driver_name: '', driver_phone: '', estimated_distance_miles: '', requires_escort: false, requires_wide_load_permit: false, scheduled_date: '', quoted_cost: '', notes: '', special_instructions: 'INCLUDE A/C UNIT FOR DELIVERY', customer_name: '', customer_phone: '', delivery_date: '', hud_label: '', serial_number: '', manufacturer: '', home_size: '', home_year: '', has_hitch: true, tires_axles: false })
         fetchMoves()
         fetchCostBreakdown() // Update financiero with new move cost
       } else {
@@ -1314,7 +1378,7 @@ ${price}
                   </Link>
                 )}
                 <button
-                  onClick={() => { setNewMove(prev => ({ ...prev, move_type: 'purchase', origin_address: property?.address || '', origin_city: property?.city || '' })); setShowNewMoveModal(true) }}
+                  onClick={() => openMoveModal('purchase')}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg font-medium hover:bg-orange-100 transition-colors"
                 >
                   <Truck className="w-5 h-5" />
@@ -2265,7 +2329,7 @@ ${price}
               })}
             </div>
             <button
-              onClick={() => { setNewMove(prev => ({ ...prev, move_type: 'purchase', origin_address: property?.address || '', origin_city: property?.city || '' })); setShowNewMoveModal(true) }}
+              onClick={() => openMoveModal('purchase')}
               className="mt-3 flex items-center gap-2 text-sm text-orange-600 hover:text-orange-800 font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -2622,6 +2686,78 @@ ${price}
                 </div>
               </div>
 
+              {/* Customer Info */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name</label>
+                  <input type="text" value={newMove.customer_name} onChange={e => setNewMove({...newMove, customer_name: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Nombre del cliente" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                  <input type="text" value={newMove.customer_phone} onChange={e => setNewMove({...newMove, customer_phone: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Teléfono cliente" />
+                </div>
+              </div>
+
+              {/* Home Info */}
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-xs font-bold text-navy-700 mb-2 uppercase tracking-wider">Home Info</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">HUD / Label #</label>
+                    <input type="text" value={newMove.hud_label} onChange={e => setNewMove({...newMove, hud_label: e.target.value})}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="TEX0012345" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Serial #</label>
+                    <input type="text" value={newMove.serial_number} onChange={e => setNewMove({...newMove, serial_number: e.target.value})}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Serial number" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mt-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Manufacturer</label>
+                    <input type="text" value={newMove.manufacturer} onChange={e => setNewMove({...newMove, manufacturer: e.target.value})}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Fabricante" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Size (sqft)</label>
+                    <input type="text" value={newMove.home_size} onChange={e => setNewMove({...newMove, home_size: e.target.value})}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Sqft" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Year</label>
+                    <input type="text" value={newMove.home_year} onChange={e => setNewMove({...newMove, home_year: e.target.value})}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Año" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <label className="flex items-center gap-2 text-sm p-2 rounded-lg border border-gray-200">
+                    <input type="checkbox" checked={newMove.has_hitch} onChange={e => setNewMove({...newMove, has_hitch: e.target.checked})} className="rounded" />
+                    <span className="text-gray-700">Does home have a hitch?</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm p-2 rounded-lg border border-gray-200">
+                    <input type="checkbox" checked={newMove.tires_axles} onChange={e => setNewMove({...newMove, tires_axles: e.target.checked})} className="rounded" />
+                    <span className="text-gray-700">Tires & Axles?</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Delivery Date */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Delivery Date</label>
+                <input type="date" value={newMove.delivery_date} onChange={e => setNewMove({...newMove, delivery_date: e.target.value})}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              {/* Special Instructions */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Special Instructions</label>
+                <input type="text" value={newMove.special_instructions} onChange={e => setNewMove({...newMove, special_instructions: e.target.value})}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="INCLUDE A/C UNIT FOR DELIVERY" />
+              </div>
+
               {/* Logistics */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -2712,13 +2848,13 @@ ${price}
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notas / Instrucciones especiales</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notas adicionales</label>
                 <textarea
                   value={newMove.notes}
                   onChange={e => setNewMove({...newMove, notes: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                   rows={2}
-                  placeholder="Observaciones, acceso difícil, dimensiones especiales..."
+                  placeholder="Observaciones internas..."
                 />
               </div>
             </div>
