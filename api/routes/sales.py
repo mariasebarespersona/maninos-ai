@@ -1162,7 +1162,7 @@ async def cancel_sale(sale_id: str):
     if not sale.data:
         raise HTTPException(status_code=404, detail="Sale not found")
     
-    if sale.data["status"] not in [SaleStatus.PENDING.value, SaleStatus.PAID.value]:
+    if sale.data["status"] not in [SaleStatus.PENDING.value, SaleStatus.PAID.value, SaleStatus.RTO_PENDING.value, SaleStatus.RTO_APPROVED.value]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel sale with status: {sale.data['status']}"
