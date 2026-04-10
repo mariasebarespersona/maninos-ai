@@ -146,22 +146,77 @@ async def review_application(application_id: str, review: ApplicationReview):
                 "rto_down_payment": down_payment,
             }).eq("id", application["sale_id"]).execute()
 
-            # Notify Homes: Capital is buying this property (internal sale)
+            # Calculate the remaining amount Capital pays to Homes
+            remaining = round(sale_price - down_payment, 2) if sale_price > 0 else 0
+
+            # Update financed fields on the sale
+            try:
+                sb.table("sales").update({
+                    "financed_down_payment": down_payment,
+                    "financed_remaining": remaining,
+                    "capital_payment_status": "paid",
+                    "capital_payment_date": datetime.utcnow().isoformat(),
+                }).eq("id", application["sale_id"]).execute()
+            except Exception as e:
+                logger.warning(f"[capital] Could not update financed fields on sale: {e}")
+
+            # Record Capital→Homes payment in Homes accounting
+            if remaining > 0:
+                try:
+                    sb.table("accounting_transactions").insert({
+                        "property_id": application.get("property_id"),
+                        "transaction_type": "capital_purchase",
+                        "category": "income",
+                        "is_income": True,
+                        "amount": remaining,
+                        "description": f"Capital paga porción financiada a Homes",
+                        "counterparty_name": "Maninos Capital LLC",
+                        "entity_type": "sale",
+                        "entity_id": application.get("sale_id"),
+                        "status": "confirmed",
+                        "date": datetime.utcnow().date().isoformat(),
+                    }).execute()
+                    logger.info(f"[capital] Homes accounting: +${remaining:,.2f} from Capital for sale {application['sale_id']}")
+                except Exception as e:
+                    logger.warning(f"[capital] Could not create Homes accounting txn: {e}")
+
+                # Record Capital→Homes payment in Capital accounting (outflow)
+                try:
+                    sb.table("capital_transactions").insert({
+                        "property_id": application.get("property_id"),
+                        "txn_type": "acquisition",
+                        "is_income": False,
+                        "amount": remaining,
+                        "description": f"Pago a Homes por porción financiada",
+                        "counterparty": "Maninos Homes LLC",
+                        "status": "confirmed",
+                        "date": datetime.utcnow().date().isoformat(),
+                    }).execute()
+                    logger.info(f"[capital] Capital accounting: -${remaining:,.2f} to Homes for sale {application['sale_id']}")
+                except Exception as e:
+                    logger.warning(f"[capital] Could not create Capital accounting txn: {e}")
+
+            # Notify both portals
             try:
                 from api.services.notification_service import create_notification
                 client_name = application.get("clients", {}).get("name", "") if isinstance(application.get("clients"), dict) else ""
+                prop_addr = application.get("properties", {}).get("address", "") if isinstance(application.get("properties"), dict) else ""
                 create_notification(
                     type="capital_payment",
-                    title=f"Capital compra propiedad: ${sale_price:,.0f}",
-                    message=f"Capital aprobó RTO para {client_name}. Capital debe pagar ${sale_price:,.0f} a Homes por la propiedad. Contrato RTO: ${monthly_rent:,.0f}/mes × {term_months} meses. Enganche: ${down_payment:,.0f}.",
+                    title=f"RTO Aprobado: {prop_addr}",
+                    message=(
+                        f"Capital aprobó RTO para {client_name}.\n"
+                        f"Enganche: ${down_payment:,.0f} (cliente → Homes)\n"
+                        f"Capital paga: ${remaining:,.0f} a Homes\n"
+                        f"Contrato: ${monthly_rent:,.0f}/mes × {term_months} meses"
+                    ),
                     category="both",
                     property_id=application.get("property_id"),
                     related_entity_type="sale",
                     related_entity_id=application.get("sale_id"),
-                    amount=sale_price,
+                    amount=remaining,
                     priority="urgent",
-                    action_required=True,
-                    action_type="pay",
+                    action_required=False,
                     created_by="capital",
                 )
             except Exception:
