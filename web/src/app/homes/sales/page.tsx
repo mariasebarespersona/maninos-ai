@@ -64,6 +64,9 @@ interface Sale {
   rto_monthly_payment?: number
   rto_term_months?: number
   rto_down_payment?: number
+  financed_down_payment?: number
+  financed_remaining?: number
+  capital_payment_status?: string
   // Payment tracking
   amount_paid?: number
   amount_pending?: number
@@ -475,20 +478,22 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 {showDocs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
 
-              {/* Payments toggle (contado sales only) */}
-              {sale.sale_type === 'contado' && (
-                <button
-                  onClick={handleTogglePayments}
-                  className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full hover:bg-emerald-100 transition-colors"
-                >
-                  <CreditCard className="w-3 h-3" />
-                  Pagos
-                  {sale.amount_paid != null && sale.amount_paid > 0 && (
-                    <span className="font-semibold">${Number(sale.amount_paid).toLocaleString()}</span>
-                  )}
-                  {showPayments ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </button>
-              )}
+              {/* Payments toggle */}
+              <button
+                onClick={handleTogglePayments}
+                className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors ${
+                  sale.sale_type === 'rto'
+                    ? 'text-purple-700 bg-purple-50 hover:bg-purple-100'
+                    : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                }`}
+              >
+                <CreditCard className="w-3 h-3" />
+                {sale.sale_type === 'rto' ? 'Enganche' : 'Pagos'}
+                {sale.amount_paid != null && sale.amount_paid > 0 && (
+                  <span className="font-semibold">${Number(sale.amount_paid).toLocaleString()}</span>
+                )}
+                {showPayments ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
 
               {/* Payment method badge */}
               {sale.payment_method && (
@@ -562,25 +567,31 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
         )}
 
         {/* Payments Section (expandable) */}
-        {showPayments && sale.sale_type === 'contado' && (
+        {showPayments && (
           <div className="mt-3 pt-3 border-t border-navy-100">
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+            <div className={`p-4 rounded-xl border ${sale.sale_type === 'rto' ? 'bg-purple-50 border-purple-200' : 'bg-emerald-50 border-emerald-200'}`}>
               {/* Payment Summary */}
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-emerald-800 flex items-center gap-2">
+                <h4 className={`font-semibold flex items-center gap-2 ${sale.sale_type === 'rto' ? 'text-purple-800' : 'text-emerald-800'}`}>
                   <CreditCard className="w-4 h-4" />
-                  Pagos — ${Number(sale.amount_paid || 0).toLocaleString()} de ${sale.sale_price.toLocaleString()}
+                  {sale.sale_type === 'rto' ? 'Enganche' : 'Pagos'} — ${Number(sale.amount_paid || 0).toLocaleString()} de ${sale.sale_type === 'rto' ? Number(sale.rto_down_payment || sale.financed_down_payment || 0).toLocaleString() : sale.sale_price.toLocaleString()}
                 </h4>
-                <span className="text-xs font-bold text-emerald-700">
-                  {sale.sale_price > 0 ? Math.round((Number(sale.amount_paid || 0) / sale.sale_price) * 100) : 0}%
+                <span className={`text-xs font-bold ${sale.sale_type === 'rto' ? 'text-purple-700' : 'text-emerald-700'}`}>
+                  {(() => {
+                    const target = sale.sale_type === 'rto' ? Number(sale.rto_down_payment || sale.financed_down_payment || 0) : sale.sale_price
+                    return target > 0 ? Math.round((Number(sale.amount_paid || 0) / target) * 100) : 0
+                  })()}%
                 </span>
               </div>
 
               {/* Progress Bar */}
-              <div className="w-full h-2.5 bg-emerald-200 rounded-full mb-4">
+              <div className={`w-full h-2.5 rounded-full mb-4 ${sale.sale_type === 'rto' ? 'bg-purple-200' : 'bg-emerald-200'}`}>
                 <div
-                  className="h-full bg-emerald-600 rounded-full transition-all"
-                  style={{ width: `${Math.min(100, sale.sale_price > 0 ? (Number(sale.amount_paid || 0) / sale.sale_price) * 100 : 0)}%` }}
+                  className={`h-full rounded-full transition-all ${sale.sale_type === 'rto' ? 'bg-purple-600' : 'bg-emerald-600'}`}
+                  style={{ width: `${(() => {
+                    const target = sale.sale_type === 'rto' ? Number(sale.rto_down_payment || sale.financed_down_payment || 0) : sale.sale_price
+                    return Math.min(100, target > 0 ? (Number(sale.amount_paid || 0) / target) * 100 : 0)
+                  })()}%` }}
                 />
               </div>
 
