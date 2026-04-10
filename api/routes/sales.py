@@ -753,6 +753,41 @@ async def create_sale(data: SaleCreate):
             except Exception as notif_err:
                 logger.warning(f"[sales] Could not create Capital notification: {notif_err}")
 
+            # Notify Homes: down payment received from client
+            if down_payment > 0:
+                try:
+                    sb.table("notifications").insert({
+                        "type": "down_payment_received",
+                        "title": f"Enganche recibido: ${down_payment:,.0f} — {prop_addr}",
+                        "message": (
+                            f"Cliente {client_name} pagó enganche de ${down_payment:,.0f} por {prop_addr}.\n"
+                            f"Venta financiada — pendiente de aprobación por Capital.\n"
+                            f"Restante: ${remaining:,.0f} (Capital pagará a Homes al aprobar)."
+                        ),
+                        "category": "homes",
+                        "priority": "normal",
+                        "property_id": data.property_id,
+                        "sale_id": sale_record["id"],
+                    }).execute()
+
+                    # Register down payment in Homes accounting
+                    sb.table("accounting_transactions").insert({
+                        "property_id": data.property_id,
+                        "transaction_type": "down_payment",
+                        "category": "income",
+                        "is_income": True,
+                        "amount": down_payment,
+                        "description": f"Enganche de {client_name} — venta financiada",
+                        "counterparty_name": client_name,
+                        "entity_type": "sale",
+                        "entity_id": sale_record["id"],
+                        "status": "confirmed",
+                        "date": datetime.utcnow().date().isoformat(),
+                    }).execute()
+                    logger.info(f"[sales] Down payment ${down_payment:,.0f} recorded in Homes accounting")
+                except Exception as dp_err:
+                    logger.warning(f"[sales] Could not create down payment notification/accounting: {dp_err}")
+
         except Exception as e:
             logger.error(f"[sales] Failed to create RTO application: {e}")
             # Don't fail the sale - the application can be created manually
