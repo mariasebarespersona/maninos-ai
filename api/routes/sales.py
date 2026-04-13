@@ -464,6 +464,18 @@ async def register_sale_payment(sale_id: str, data: dict):
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to register payment")
 
+    # Mark property as sold when a payment is received (down_payment or full)
+    if is_staff and payment_data.payment_type in ("down_payment", "full"):
+        try:
+            property_id = sale.data.get("property_id")
+            if property_id:
+                sb.table("properties").update({
+                    "status": "sold",
+                }).eq("id", property_id).execute()
+                logger.info(f"[sales] Property {property_id} marked SOLD after {payment_data.payment_type} payment on sale {sale_id}")
+        except Exception as e:
+            logger.warning(f"[sales] Could not update property status to sold: {e}")
+
     # Create payment_order so it flows through Notificaciones tabs
     # (Por Aprobar → Aprobadas → Recibidos → Contabilidad)
     try:
