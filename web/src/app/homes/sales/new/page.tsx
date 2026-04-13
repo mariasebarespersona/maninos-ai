@@ -240,6 +240,17 @@ function NewSaleContent() {
   const handleCreateSale = async () => {
     if (!selectedProperty) return
     
+    // Validate RTO down payment minimum 30%
+    if (paymentType === 'rto' && selectedProperty) {
+      const dp = parseFloat(rtoDownPayment || '0')
+      const minDp = selectedProperty.sale_price * 0.30
+      if (dp < minDp) {
+        setError(`El enganche mínimo es 30% del precio de venta ($${Math.ceil(minDp).toLocaleString()})`)
+        toast.error(`Enganche mínimo: $${Math.ceil(minDp).toLocaleString()} (30%)`)
+        return
+      }
+    }
+
     setLoading(true)
     setError('')
 
@@ -777,14 +788,26 @@ function NewSaleContent() {
                   <p className="text-sm font-semibold text-purple-800">Términos Financiados</p>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-purple-600 mb-1">Enganche ($)</label>
+                      <label className="block text-xs text-purple-600 mb-1">
+                        Enganche ($) <span className="text-purple-400">— mín. 30%</span>
+                      </label>
                       <input
                         type="number"
                         value={rtoDownPayment}
                         onChange={e => setRtoDownPayment(e.target.value)}
-                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm"
-                        placeholder={`Mín. ${Math.round(selectedProperty.sale_price * 0.3).toLocaleString()}`}
+                        className={`w-full border rounded-lg px-3 py-2 text-sm ${
+                          rtoDownPayment && parseFloat(rtoDownPayment) < selectedProperty.sale_price * 0.3
+                            ? 'border-red-400 bg-red-50'
+                            : 'border-purple-300'
+                        }`}
+                        placeholder={`Mín. $${Math.ceil(selectedProperty.sale_price * 0.3).toLocaleString()}`}
+                        min={Math.ceil(selectedProperty.sale_price * 0.3)}
                       />
+                      {rtoDownPayment && parseFloat(rtoDownPayment) < selectedProperty.sale_price * 0.3 && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Mínimo: ${Math.ceil(selectedProperty.sale_price * 0.3).toLocaleString()} (30% de ${selectedProperty.sale_price.toLocaleString()})
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs text-purple-600 mb-1">Mensualidad ($)</label>
