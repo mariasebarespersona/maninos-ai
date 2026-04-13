@@ -739,8 +739,7 @@ async def pay_homes(application_id: str):
         if application["status"] != "approved":
             raise HTTPException(status_code=400, detail="La solicitud debe estar aprobada primero")
 
-        if sale.get("capital_payment_status") == "paid":
-            raise HTTPException(status_code=400, detail="El pago a Homes ya fue registrado")
+        already_paid = sale.get("capital_payment_status") == "paid"
 
         remaining = float(sale.get("financed_remaining") or 0)
         if remaining <= 0:
@@ -754,37 +753,45 @@ async def pay_homes(application_id: str):
         prop_addr = prop.get("address", "Propiedad")
         client_name = client.get("name", "Cliente")
 
-        # 1. Update sale: capital_payment_status → paid
-        sb.table("sales").update({
-            "capital_payment_status": "paid",
-            "capital_payment_date": datetime.utcnow().isoformat(),
-        }).eq("id", application["sale_id"]).execute()
+        # 1-3: Only record payment + accounting if not already done
+        if not already_paid:
+            # 1. Update sale: capital_payment_status → paid
+            sb.table("sales").update({
+                "capital_payment_status": "paid",
+                "capital_payment_date": datetime.utcnow().isoformat(),
+            }).eq("id", application["sale_id"]).execute()
 
-        # 2. Homes accounting: income from Capital
-        sb.table("accounting_transactions").insert({
-            "property_id": application.get("property_id"),
-            "transaction_type": "sale_rto_capital",
-            "is_income": True,
-            "amount": remaining,
-            "description": f"Capital paga porción financiada — {prop_addr}",
-            "counterparty_name": "Maninos Capital LLC",
-            "entity_type": "sale",
-            "entity_id": application.get("sale_id"),
-            "status": "confirmed",
-            "transaction_date": datetime.utcnow().date().isoformat(),
-        }).execute()
+            # 2. Homes accounting: income from Capital
+            try:
+                sb.table("accounting_transactions").insert({
+                    "property_id": application.get("property_id"),
+                    "transaction_type": "sale_rto_capital",
+                    "is_income": True,
+                    "amount": remaining,
+                    "description": f"Capital paga porción financiada — {prop_addr}",
+                    "counterparty_name": "Maninos Capital LLC",
+                    "entity_type": "sale",
+                    "entity_id": application.get("sale_id"),
+                    "status": "confirmed",
+                    "transaction_date": datetime.utcnow().date().isoformat(),
+                }).execute()
+            except Exception as e:
+                logger.warning(f"[capital] Homes accounting insert error: {e}")
 
-        # 3. Capital accounting: outflow to Homes
-        sb.table("capital_transactions").insert({
-            "property_id": application.get("property_id"),
-            "transaction_type": "acquisition",
-            "is_income": False,
-            "amount": remaining,
-            "description": f"Pago a Homes por financiamiento — {prop_addr}",
-            "counterparty_name": "Maninos Homes LLC",
-            "status": "confirmed",
-            "transaction_date": datetime.utcnow().date().isoformat(),
-        }).execute()
+            # 3. Capital accounting: outflow to Homes
+            try:
+                sb.table("capital_transactions").insert({
+                    "property_id": application.get("property_id"),
+                    "transaction_type": "acquisition",
+                    "is_income": False,
+                    "amount": remaining,
+                    "description": f"Pago a Homes por financiamiento — {prop_addr}",
+                    "counterparty_name": "Maninos Homes LLC",
+                    "status": "confirmed",
+                    "transaction_date": datetime.utcnow().date().isoformat(),
+                }).execute()
+            except Exception as e:
+                logger.warning(f"[capital] Capital accounting insert error: {e}")
 
         # 4. Notify Homes
         try:

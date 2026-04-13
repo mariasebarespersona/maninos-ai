@@ -1958,52 +1958,46 @@ export default function ApplicationDetailPage() {
                     </Link>
                   </div>
 
-                  {/* Pay Homes button — visible when approved but not yet paid */}
-                  {(!app.sales?.capital_payment_status || app.sales.capital_payment_status === 'pending') && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-amber-800">Pago pendiente a Homes</p>
-                          <p className="text-sm text-amber-700">
-                            Capital debe pagar <strong>${Number(app.sales?.financed_remaining || (Number(app.sales?.sale_price || 0) - Number(app.sales?.rto_down_payment || 0))).toLocaleString()}</strong> a Homes por la porción financiada
-                          </p>
+                  {/* Pay Homes button */}
+                  {(() => {
+                    const amount = Number(app.sales?.financed_remaining || (Number(app.sales?.sale_price || 0) - Number(app.sales?.rto_down_payment || 0)))
+                    const isPaid = app.sales?.capital_payment_status === 'paid'
+                    return (
+                      <div className={`p-4 rounded-xl border ${isPaid ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`font-semibold ${isPaid ? 'text-emerald-800' : 'text-amber-800'}`}>
+                              {isPaid ? 'Pago a Homes registrado' : 'Pago pendiente a Homes'}
+                            </p>
+                            <p className={`text-sm ${isPaid ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              <strong>${amount.toLocaleString()}</strong> — porción financiada
+                            </p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`¿${isPaid ? 'Reenviar notificación de' : 'Confirmar'} pago de $${amount.toLocaleString()} a Homes?`)) return
+                              try {
+                                const res = await fetch(`/api/capital/applications/${id}/pay-homes`, { method: 'POST' })
+                                const data = await res.json()
+                                if (data.ok) {
+                                  toast.success(data.message || 'Pago registrado y notificado a Homes')
+                                  loadApplication()
+                                } else {
+                                  toast.error(data.detail || 'Error')
+                                }
+                              } catch { toast.error('Error de conexión') }
+                            }}
+                            className={`px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors flex items-center gap-2 ${
+                              isPaid ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                            }`}
+                          >
+                            <DollarSign className="w-4 h-4" />
+                            {isPaid ? 'Notificar a Homes' : 'Confirmar Pago a Homes'}
+                          </button>
                         </div>
-                        <button
-                          onClick={async () => {
-                            const amount = Number(app.sales?.financed_remaining || (Number(app.sales?.sale_price || 0) - Number(app.sales?.rto_down_payment || 0)))
-                            if (!confirm(`¿Confirmar pago de $${amount.toLocaleString()} a Homes?`)) return
-                            try {
-                              const res = await fetch(`/api/capital/applications/${id}/pay-homes`, { method: 'POST' })
-                              const data = await res.json()
-                              if (data.ok) {
-                                toast.success(data.message || 'Pago registrado')
-                                loadApplication()
-                              } else {
-                                toast.error(data.detail || 'Error al registrar pago')
-                              }
-                            } catch { toast.error('Error de conexión') }
-                          }}
-                          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 transition-colors flex items-center gap-2"
-                        >
-                          <DollarSign className="w-4 h-4" />
-                          Confirmar Pago a Homes
-                        </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Payment confirmed */}
-                  {app.sales?.capital_payment_status === 'paid' && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                      <div>
-                        <p className="font-semibold text-emerald-800">Pago a Homes confirmado</p>
-                        <p className="text-xs text-emerald-600">
-                          ${Number(app.sales?.financed_remaining || 0).toLocaleString()} registrado en contabilidad de ambos portales
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Editable contract fields (only while pending_signature) */}
                   {app.sales?.rto_contract_id && (
