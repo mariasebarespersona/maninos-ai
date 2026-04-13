@@ -180,9 +180,15 @@ export default function NotificacionesPage() {
 
   const fetchInboundReceived = useCallback(async () => {
     try {
-      const res = await fetch('/api/payment-orders?status=completed')
+      // Inbound payments: approved (enganche, capital) go to "Recibidos"
+      const res = await fetch('/api/payment-orders?status=approved')
       const data = await res.json()
-      if (data.ok) setInboundReceived((data.data || []).filter((o: any) => o.direction === 'inbound'))
+      const approved = (data.data || []).filter((o: any) => o.direction === 'inbound')
+      // Also include completed inbound for history
+      const res2 = await fetch('/api/payment-orders?status=completed')
+      const data2 = await res2.json()
+      const completed = (data2.data || []).filter((o: any) => o.direction === 'inbound')
+      setInboundReceived([...approved, ...completed])
     } catch {}
   }, [])
 

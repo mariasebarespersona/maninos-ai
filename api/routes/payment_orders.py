@@ -207,48 +207,18 @@ async def approve_payment_order(order_id: str, approved_by: Optional[str] = Quer
     except Exception:
         pass
 
-    # For inbound orders (pago_venta), auto-complete and create accounting transaction
+    # Inbound orders (enganche, pago capital): approve → goes to "Recibidos" tab
+    # Outbound orders (comisiones): approve → goes to "Aprobadas" tab, then "Realizados" on complete
     if order.get("direction") == "inbound":
-        try:
-            now2 = datetime.utcnow().isoformat()
-            sb.table("payment_orders").update({
-                "status": "completed",
-                "completed_by": approved_by,
-                "completed_at": now2,
-            }).eq("id", order_id).execute()
-
-            # Create accounting transaction (income)
-            from datetime import date as date_type
-            today = date_type.today()
-            prefix = f"TXN-{today.strftime('%y%m%d')}-"
-            existing_txns = sb.table("accounting_transactions") \
-                .select("transaction_number") \
-                .like("transaction_number", f"{prefix}%") \
-                .execute()
-            txn_count = len(existing_txns.data) if existing_txns.data else 0
-            txn_number = f"{prefix}{txn_count + 1:03d}"
-
-            txn_data = {
-                "transaction_number": txn_number,
-                "transaction_date": today.isoformat(),
-                "transaction_type": "deposit_received",
-                "amount": float(order.get("amount", 0)),
-                "is_income": True,
-                "entity_type": "payment_order",
-                "entity_id": order_id,
-                "property_id": order.get("property_id"),
-                "counterparty_name": order.get("payee_name", ""),
-                "counterparty_type": "client",
-                "description": order.get("notes", f"Pago recibido: ${float(order.get('amount', 0)):,.0f}"),
-                "status": "confirmed",
-            }
-            txn_data = {k: v for k, v in txn_data.items() if v is not None}
-            sb.table("accounting_transactions").insert(txn_data).execute()
-            logger.info(f"[payment_orders] Inbound order {order_id} auto-completed + accounting txn {txn_number}")
-        except Exception as e:
-            logger.warning(f"[payment_orders] Inbound auto-complete error: {e}")
-
-        return {"ok": True, "data": result.data[0], "message": "Pago recibido confirmado y registrado en contabilidad."}
+        # Mark property as sold when enganche or capital payment is approved
+        property_id = order.get("property_id")
+        if property_id and order.get("concept") in ("enganche", "pago_capital"):
+            try:
+                sb.table("properties").update({"status": "sold"}).eq("id", property_id).execute()
+                logger.info(f"[payment_orders] Property {property_id} marked SOLD after inbound {order.get('concept')} approved")
+            except Exception as e:
+                logger.warning(f"[payment_orders] Could not mark property as sold: {e}")
+        return {"ok": True, "data": result.data[0], "message": "Pago recibido aprobado."}
 
     return {"ok": True, "data": result.data[0], "message": "Orden aprobada. Tesorería puede ejecutar el pago."}
 
