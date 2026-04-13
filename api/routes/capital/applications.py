@@ -755,10 +755,13 @@ async def pay_homes(application_id: str):
 
         # 1-3: Only record payment + accounting if not already done
         if not already_paid:
-            # 1. Update sale: capital_payment_status → paid
+            # 1. Update sale: capital_payment_status → paid + add to amount_paid
+            current_paid = float(sale.get("amount_paid") or 0)
             sb.table("sales").update({
                 "capital_payment_status": "paid",
                 "capital_payment_date": datetime.utcnow().isoformat(),
+                "amount_paid": round(current_paid + remaining, 2),
+                "amount_pending": max(0, round(float(sale.get("sale_price", 0)) - current_paid - remaining, 2)),
             }).eq("id", application["sale_id"]).execute()
 
             # 2. Homes accounting: income from Capital

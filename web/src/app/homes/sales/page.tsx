@@ -426,7 +426,32 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               }`}>
                 {sale.sale_type === 'rto' ? 'RTO' : 'Contado'}
               </span>
+              {sale.sale_type === 'rto' && (sale.amount_paid != null && sale.amount_paid > 0) && (
+                <span className={`text-xs font-medium ${
+                  Number(sale.amount_paid) >= sale.sale_price ? 'text-emerald-600' : 'text-amber-600'
+                }`}>
+                  {Number(sale.amount_paid) >= sale.sale_price ? '✓ Pago completo' : `Recibido: $${Number(sale.amount_paid).toLocaleString()}`}
+                </span>
+              )}
             </div>
+            {/* RTO payment breakdown */}
+            {sale.sale_type === 'rto' && (
+              <div className="flex items-center gap-3 mt-1 text-[11px] text-purple-600">
+                {(sale.rto_down_payment || sale.financed_down_payment) ? (
+                  <>
+                    <span>Enganche: ${Number(sale.rto_down_payment || sale.financed_down_payment).toLocaleString()}</span>
+                    <span>·</span>
+                    <span>Capital: ${Number(sale.financed_remaining || (sale.sale_price - Number(sale.rto_down_payment || sale.financed_down_payment || 0))).toLocaleString()}</span>
+                    <span>·</span>
+                    <span className={sale.capital_payment_status === 'paid' ? 'text-emerald-600 font-medium' : 'text-amber-600'}>
+                      {sale.capital_payment_status === 'paid' ? '✓ Capital pagó' : '⏳ Capital pendiente'}
+                    </span>
+                  </>
+                ) : (
+                  <span>${Number(sale.rto_monthly_payment || 0).toLocaleString()}/mes × {sale.rto_term_months || '—'} meses</span>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-4 mt-2 text-sm text-navy-500">
               <span className="flex items-center gap-1">

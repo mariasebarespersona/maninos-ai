@@ -310,6 +310,33 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
         ))}
       </div>
 
+      {/* RTO breakdown if financed sale */}
+      {p.sale_type === 'rto' && p.sale_price > 0 && (
+        <div className="bg-purple-50 rounded-lg border border-purple-200 p-3 text-xs space-y-1">
+          <p className="font-bold text-purple-800 text-[11px] uppercase tracking-wider">Venta Financiada (RTO)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
+            <div className="flex justify-between">
+              <span className="text-purple-600">Precio venta</span>
+              <span className="font-bold text-purple-800">{fmt(p.sale_price)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-purple-600">Enganche (cliente)</span>
+              <span className="font-medium text-purple-800">{fmt(p.amount_paid > 0 ? Math.min(p.amount_paid, p.sale_price * 0.5) : 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-purple-600">Capital paga</span>
+              <span className="font-medium text-purple-800">{fmt(p.sale_price - (p.amount_paid > 0 ? Math.min(p.amount_paid, p.sale_price * 0.5) : 0))}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-purple-600">Total recibido</span>
+              <span className={`font-bold ${p.amount_paid >= p.sale_price ? 'text-emerald-700' : 'text-amber-600'}`}>
+                {fmt(p.amount_paid)} {p.amount_paid >= p.sale_price ? '✓' : `(falta ${fmt(p.sale_price - p.amount_paid)})`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TIMELINE */}
       <div className="space-y-2 pl-2 border-l-2 border-navy-200 ml-2">
 
