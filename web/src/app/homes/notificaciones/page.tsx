@@ -169,7 +169,7 @@ export default function NotificacionesPage() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications?category=homes&limit=20')
+      const res = await fetch('/api/notifications?category=homes&limit=20&unread_only=true')
       if (res.ok) {
         const data = await res.json()
         setNotifications(data.notifications || [])
