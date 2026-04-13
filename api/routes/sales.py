@@ -767,8 +767,42 @@ async def create_sale(data: SaleCreate):
             except Exception as notif_err:
                 logger.warning(f"[sales] Could not create Capital notification: {notif_err}")
 
-            # Notify Homes: down payment received from client
+            # Create payment_order for enganche (appears in "Por Aprobar" like commissions)
             if down_payment > 0:
+                try:
+                    prop_code = prop.get("property_code", "")
+                    code_str = f" ({prop_code})" if prop_code else ""
+                    order_data = {
+                        "property_id": data.property_id,
+                        "property_address": prop_addr,
+                        "payee_name": f"Enganche de {client_name}",
+                        "amount": down_payment,
+                        "method": "transferencia",
+                        "status": "pending",
+                        "concept": "enganche",
+                        "direction": "inbound",
+                        "notes": (
+                            f"Enganche venta financiada: ${down_payment:,.0f} de {client_name}. "
+                            f"Propiedad: {prop_addr}{code_str}. "
+                            f"Precio venta: ${float(data.sale_price):,.0f}. "
+                            f"Restante: ${remaining:,.0f} (Capital pagará a Homes)."
+                        ),
+                        "created_by": "sistema_ventas",
+                    }
+                    po_result = sb.table("payment_orders").insert(order_data).execute()
+                    if po_result.data:
+                        from api.services.notification_service import notify_payment_order_created
+                        notify_payment_order_created(
+                            po_result.data[0]["id"], data.property_id, down_payment,
+                            f"Enganche de {client_name}",
+                            property_address=prop_addr,
+                            concept=f"Enganche RTO: ${down_payment:,.0f} de {client_name}. {prop_addr}{code_str}",
+                        )
+                    logger.info(f"[sales] Enganche payment_order created: ${down_payment:,.0f}")
+                except Exception as po_err:
+                    logger.warning(f"[sales] Could not create enganche payment_order: {po_err}")
+
+                # Also create notification
                 try:
                     sb.table("notifications").insert({
                         "type": "down_payment_received",
@@ -785,8 +819,11 @@ async def create_sale(data: SaleCreate):
                         "related_entity_id": sale_record["id"],
                         "amount": down_payment,
                     }).execute()
+                except Exception:
+                    pass
 
-                    # Register down payment in Homes accounting
+                # Register down payment in Homes accounting
+                try:
                     sb.table("accounting_transactions").insert({
                         "property_id": data.property_id,
                         "transaction_type": "deposit_received",
