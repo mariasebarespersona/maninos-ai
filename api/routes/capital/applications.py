@@ -793,26 +793,36 @@ async def pay_homes(application_id: str):
             except Exception as e:
                 logger.warning(f"[capital] Capital accounting insert error: {e}")
 
-        # 4. Notify Homes
+        # 4. Create payment_order for Homes (appears in Por Aprobar → Recibidos flow)
         try:
-            sb.table("notifications").insert({
-                "type": "capital_payment_confirmed",
-                "title": f"Capital pagó ${remaining:,.0f} — {prop_addr}",
-                "message": (
-                    f"Capital ha confirmado el pago de ${remaining:,.0f} a Homes por la venta financiada de {prop_addr}.\n"
-                    f"Cliente: {client_name}\n"
-                    f"Este ingreso ya está registrado en contabilidad."
-                ),
-                "category": "homes",
-                "priority": "normal",
+            po_data = {
                 "property_id": application.get("property_id"),
-                "related_entity_type": "sale",
-                "related_entity_id": application.get("sale_id"),
+                "property_address": prop_addr,
+                "payee_name": f"Pago de Maninos Capital",
                 "amount": remaining,
-            }).execute()
-            logger.info(f"[capital] Notification created: Capital pagó ${remaining:,.0f} for {prop_addr}")
-        except Exception as notif_err:
-            logger.error(f"[capital] FAILED to create notification: {notif_err}")
+                "method": "transferencia",
+                "status": "pending",
+                "concept": "pago_capital",
+                "direction": "inbound",
+                "notes": (
+                    f"Capital paga ${remaining:,.0f} a Homes por venta financiada de {prop_addr}. "
+                    f"Cliente: {client_name}. "
+                    f"Venta RTO aprobada."
+                ),
+                "created_by": "capital",
+            }
+            po_result = sb.table("payment_orders").insert(po_data).execute()
+            if po_result.data:
+                from api.services.notification_service import notify_payment_order_created
+                notify_payment_order_created(
+                    po_result.data[0]["id"], application.get("property_id"), remaining,
+                    "Maninos Capital",
+                    property_address=prop_addr,
+                    concept=f"Capital paga ${remaining:,.0f} por venta financiada. Cliente: {client_name}",
+                )
+            logger.info(f"[capital] Payment order created: Capital → Homes ${remaining:,.0f}")
+        except Exception as po_err:
+            logger.error(f"[capital] FAILED to create payment_order: {po_err}")
 
         logger.info(f"[capital] Payment ${remaining:,.2f} to Homes confirmed for application {application_id}")
 

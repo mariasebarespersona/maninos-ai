@@ -531,47 +531,6 @@ export default function NotificacionesPage() {
         </div>
       )}
 
-      {/* General notifications (capital payments, down payments, RTO approvals, etc.) */}
-      {notifications.length > 0 && (
-        <div className="mb-6 space-y-3">
-          {(showAllNotifs ? notifications : notifications.slice(0, 5)).map((n: any) => (
-            <div key={n.id} className={`p-4 rounded-xl border ${
-              n.type === 'capital_payment_confirmed' ? 'bg-emerald-50 border-emerald-200' :
-              n.type === 'down_payment_received' ? 'bg-blue-50 border-blue-200' :
-              n.type === 'financed_sale' ? 'bg-purple-50 border-purple-200' :
-              'bg-gray-50 border-gray-200'
-            }`}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className={`font-semibold text-sm ${
-                    n.type === 'capital_payment_confirmed' ? 'text-emerald-800' :
-                    n.type === 'down_payment_received' ? 'text-blue-800' :
-                    n.type === 'financed_sale' ? 'text-purple-800' :
-                    'text-gray-800'
-                  }`}>
-                    {n.title}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{n.message}</p>
-                </div>
-                {n.amount && (
-                  <span className="text-lg font-bold ml-4 flex-shrink-0" style={{ color: 'var(--ink)' }}>
-                    ${Number(n.amount).toLocaleString()}
-                  </span>
-                )}
-              </div>
-              <p className="text-[10px] text-gray-400 mt-2">
-                {new Date(n.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          ))}
-          {notifications.length > 5 && (
-            <button onClick={() => setShowAllNotifs(!showAllNotifs)} className="text-xs text-blue-600 hover:text-blue-800">
-              {showAllNotifs ? 'Mostrar menos' : `Ver todas (${notifications.length})`}
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1" style={{ borderColor: 'var(--sand)' }}>
         {/* Admin sees "Pending" (to approve), Treasury sees "Approved" (to execute) */}
