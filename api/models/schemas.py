@@ -105,6 +105,7 @@ class PropertyUpdate(BaseModel):
     move_cost: Optional[Decimal] = None
     commission: Optional[Decimal] = None
     margin: Optional[Decimal] = None
+    status: Optional[str] = None
     document_data: Optional[dict] = None
     photos: Optional[list[str]] = None
     checklist_completed: Optional[bool] = None
