@@ -759,7 +759,9 @@ async def create_sale(data: SaleCreate):
                     "priority": "urgent",
                     "action_required": True,
                     "property_id": data.property_id,
-                    "sale_id": sale_record["id"],
+                    "related_entity_type": "sale",
+                    "related_entity_id": sale_record["id"],
+                    "amount": float(data.sale_price),
                 }).execute()
                 logger.info(f"[sales] Capital notification created for financed sale {sale_record['id']}")
             except Exception as notif_err:
@@ -779,7 +781,9 @@ async def create_sale(data: SaleCreate):
                         "category": "homes",
                         "priority": "normal",
                         "property_id": data.property_id,
-                        "sale_id": sale_record["id"],
+                        "related_entity_type": "sale",
+                        "related_entity_id": sale_record["id"],
+                        "amount": down_payment,
                     }).execute()
 
                     # Register down payment in Homes accounting

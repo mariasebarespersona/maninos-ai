@@ -806,10 +806,13 @@ async def pay_homes(application_id: str):
                 "category": "homes",
                 "priority": "normal",
                 "property_id": application.get("property_id"),
-                "sale_id": application.get("sale_id"),
+                "related_entity_type": "sale",
+                "related_entity_id": application.get("sale_id"),
+                "amount": remaining,
             }).execute()
-        except Exception:
-            pass
+            logger.info(f"[capital] Notification created: Capital pagó ${remaining:,.0f} for {prop_addr}")
+        except Exception as notif_err:
+            logger.error(f"[capital] FAILED to create notification: {notif_err}")
 
         logger.info(f"[capital] Payment ${remaining:,.2f} to Homes confirmed for application {application_id}")
 
