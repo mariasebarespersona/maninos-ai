@@ -98,7 +98,7 @@ export default function ResumenFinancieroPage() {
           { label: 'Invertido', value: totals.investment, color: 'text-navy-900' },
           { label: 'Vendido', value: totals.sale, color: 'text-navy-900' },
           { label: 'Cobrado', value: totals.paid, color: 'text-emerald-700' },
-          { label: 'Ganancia', value: totals.profit, color: totals.profit >= 0 ? 'text-emerald-700' : 'text-red-600' },
+          { label: 'Utilidad', value: totals.profit, color: totals.profit >= 0 ? 'text-emerald-700' : 'text-red-600' },
         ].map(kpi => (
           <div key={kpi.label} className="card-luxury p-3">
             <p className="text-[10px] text-navy-500 uppercase tracking-wider">{kpi.label}</p>
@@ -134,7 +134,7 @@ export default function ResumenFinancieroPage() {
                 <th className="px-2 py-2">Estado</th>
                 <th className="px-2 py-2 text-right">Inversión</th>
                 <th className="px-2 py-2">Venta</th>
-                <th className="px-2 py-2 text-right">Ganancia</th>
+                <th className="px-2 py-2 text-right">Utilidad</th>
               </tr>
             </thead>
             <tbody>
@@ -299,7 +299,7 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
           { label: 'Margen', value: p.margin },
           { label: 'Total inversión', value: p.total_investment, bold: true },
           { label: 'Precio venta', value: p.sale_price, bold: true, color: p.sale_price > 0 ? 'text-navy-900' : 'text-navy-300' },
-          { label: 'Ganancia', value: p.profit, bold: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-300' },
+          { label: 'Utilidad', value: p.profit, bold: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-300' },
         ].map(f => (
           <div key={f.label} className="flex justify-between items-center py-0.5">
             <span className="text-navy-500">{f.label}</span>
