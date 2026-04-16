@@ -54,7 +54,7 @@ const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
 // Extra nav access by email (additive — merged with role-based access)
 const EMAIL_EXTRA_HREFS: Record<string, string[]> = {
   'aldair': ['/homes/commissions'],
-  'aruiz': ['/homes/properties'],
+  'aruiz': ['/homes/properties', '/homes/accounting'],
 }
 
 function getNavForRole(role?: string, email?: string): NavItem[] {
