@@ -54,10 +54,24 @@ const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
 // Extra nav access by email (additive — merged with role-based access)
 const EMAIL_EXTRA_HREFS: Record<string, string[]> = {
   'aldair': ['/homes/commissions'],
-  'aruiz': ['/homes/properties', '/homes/commissions', '/homes/accounting', '/homes/notificaciones'],
+}
+
+// Override nav access by email (replaces role-based access — user sees ONLY these)
+const EMAIL_OVERRIDE_HREFS: Record<string, string[]> = {
+  'aruiz': ['/homes', '/homes/properties', '/homes/commissions', '/homes/accounting', '/homes/notificaciones'],
 }
 
 function getNavForRole(role?: string, email?: string): NavItem[] {
+  // Check email override first (takes priority over role)
+  if (email) {
+    const prefix = email.split('@')[0].toLowerCase()
+    for (const [key, hrefs] of Object.entries(EMAIL_OVERRIDE_HREFS)) {
+      if (prefix.startsWith(key)) {
+        return allNavigation.filter(item => hrefs.includes(item.href))
+      }
+    }
+  }
+
   let allowed: string[] | null = null
   if (role && ROLE_ALLOWED_HREFS[role]) {
     allowed = [...ROLE_ALLOWED_HREFS[role]]
@@ -113,16 +127,32 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
 
   // Redirect if user navigates to a restricted page
   useEffect(() => {
-    if (!teamUser?.role || pathname === '/homes') return
-    const roleAllowed = ROLE_ALLOWED_HREFS[teamUser.role]
-    if (!roleAllowed) return // no restrictions for this role (admin)
-    // Merge email-based extras into allowed list
-    const allowed = [...roleAllowed]
+    if (pathname === '/homes') return
+
+    // Check email override first (takes priority)
+    let allowed: string[] | null = null
     if (user?.email) {
       const prefix = user.email.split('@')[0].toLowerCase()
-      for (const [key, hrefs] of Object.entries(EMAIL_EXTRA_HREFS)) {
+      for (const [key, hrefs] of Object.entries(EMAIL_OVERRIDE_HREFS)) {
         if (prefix.startsWith(key)) {
-          for (const h of hrefs) { if (!allowed.includes(h)) allowed.push(h) }
+          allowed = hrefs
+          break
+        }
+      }
+    }
+
+    if (!allowed) {
+      if (!teamUser?.role) return
+      const roleAllowed = ROLE_ALLOWED_HREFS[teamUser.role]
+      if (!roleAllowed) return // no restrictions for this role (admin)
+      // Merge email-based extras into allowed list
+      allowed = [...roleAllowed]
+      if (user?.email) {
+        const prefix = user.email.split('@')[0].toLowerCase()
+        for (const [key, hrefs] of Object.entries(EMAIL_EXTRA_HREFS)) {
+          if (prefix.startsWith(key)) {
+            for (const h of hrefs) { if (!allowed.includes(h)) allowed.push(h) }
+          }
         }
       }
     }
