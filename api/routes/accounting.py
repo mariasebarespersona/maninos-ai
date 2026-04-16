@@ -1243,6 +1243,22 @@ async def mark_reconciled(transaction_ids: List[str]):
     return {"reconciled": reconciled}
 
 
+@router.post("/reconciliation/reset-all")
+async def reset_all_reconciliation():
+    """Reset all reconciled transactions back to confirmed (for demo / testing)."""
+    try:
+        result = sb.table("accounting_transactions").update({
+            "status": "confirmed",
+            "reconciled_at": None,
+        }).eq("status", "reconciled").execute()
+        count = len(result.data) if result.data else 0
+        logger.info(f"[reconcile] Reset {count} reconciled transactions back to confirmed")
+        return {"ok": True, "reset_count": count}
+    except Exception as e:
+        logger.error(f"[reconcile] Reset error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/reconciliation/unreconciled")
 async def get_unreconciled(
     bank_account_id: Optional[str] = None,
