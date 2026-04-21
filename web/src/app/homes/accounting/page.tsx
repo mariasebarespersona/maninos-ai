@@ -496,6 +496,45 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
 }) {
   const [attachTxnId, setAttachTxnId] = useState<string | null>(null)
   const [txnsWithReceipts, setTxnsWithReceipts] = useState<Set<string>>(new Set())
+  const [editingTxnId, setEditingTxnId] = useState<string | null>(null)
+  const [editData, setEditData] = useState<{ amount: string; description: string; counterparty_name: string }>({ amount: '', description: '', counterparty_name: '' })
+  const [splitTxnId, setSplitTxnId] = useState<string | null>(null)
+  const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([{ amount: '', description: '' }, { amount: '', description: '' }])
+
+  const handleEditSave = async (id: string) => {
+    try {
+      const res = await fetch(`/api/accounting/transactions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(editData.amount) || undefined,
+          description: editData.description || undefined,
+          counterparty_name: editData.counterparty_name || undefined,
+        }),
+      })
+      if (res.ok) { setEditingTxnId(null); onRefresh() }
+    } catch {}
+  }
+
+  const handleSplitTxn = async (id: string) => {
+    const txn = transactions.find(t => t.id === id)
+    if (!txn) return
+    const absTotal = Math.abs(txn.amount)
+    const parts = splitParts.filter(p => p.amount && parseFloat(p.amount) !== 0)
+      .map(p => ({ amount: Math.abs(parseFloat(p.amount)), description: p.description || txn.description }))
+    const total = parts.reduce((s, p) => s + p.amount, 0)
+    if (Math.abs(total - absTotal) > 0.01) { alert(`Las partes suman $${total.toFixed(2)} pero la transacción es $${absTotal.toFixed(2)}`); return }
+    if (parts.length < 2) { alert('Necesitas al menos 2 partes'); return }
+    try {
+      const res = await fetch(`/api/accounting/transactions/${id}/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts }),
+      })
+      if (res.ok) { alert('Transacción dividida'); setSplitTxnId(null); onRefresh() }
+      else { const err = await res.json().catch(() => ({})); alert(err.detail || 'Error') }
+    } catch { alert('Error de conexión') }
+  }
 
   useEffect(() => {
     const fetchReceiptStatus = async () => {
@@ -574,14 +613,71 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--ash)' }}>{PAYMENT_LABELS[t.payment_method || ''] || t.payment_method || '—'}</td>
                       <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>{t.is_income ? '+' : '-'}{fmtFull(t.amount)}</td>
                       <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>{t.status}</span></td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center relative">
                         <div className="flex items-center justify-center gap-1">
+                          {t.status !== 'voided' && (
+                            <button onClick={() => { setEditingTxnId(t.id); setEditData({ amount: String(t.amount), description: t.description, counterparty_name: t.counterparty_name || '' }) }}
+                              className="text-blue-400 hover:text-blue-600 transition-colors" title="Editar">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {t.status !== 'voided' && (
+                            <button onClick={() => { setSplitTxnId(splitTxnId === t.id ? null : t.id); setSplitParts([{ amount: '', description: '' }, { amount: '', description: '' }]) }}
+                              className="text-amber-500 hover:text-amber-700 transition-colors" title="Dividir">
+                              <Scissors className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button onClick={() => setAttachTxnId(t.id)} className={`${txnsWithReceipts.has(t.id) ? 'text-emerald-500 hover:text-emerald-700' : 'text-stone-400 hover:text-navy-700'} transition-colors relative`} title={txnsWithReceipts.has(t.id) ? 'Documentos adjuntos ✓' : 'Adjuntar documento'}>
                             <Paperclip className="w-4 h-4" />
                             {txnsWithReceipts.has(t.id) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 absolute -top-1 -right-1" />}
                           </button>
                           {t.status !== 'voided' && <button onClick={() => handleVoid(t.id)} className="text-red-400 hover:text-red-600" title="Anular"><X className="w-4 h-4" /></button>}
                         </div>
+                        {/* Inline edit */}
+                        {editingTxnId === t.id && (
+                          <div className="absolute right-0 z-20 w-72 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
+                            <p className="text-xs font-semibold mb-2">Editar transacción</p>
+                            <div className="space-y-1.5">
+                              <input type="number" step="0.01" value={editData.amount} onChange={e => setEditData({ ...editData, amount: e.target.value })}
+                                className="w-full text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} placeholder="Monto" />
+                              <input type="text" value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })}
+                                className="w-full text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} placeholder="Descripción" />
+                              <input type="text" value={editData.counterparty_name} onChange={e => setEditData({ ...editData, counterparty_name: e.target.value })}
+                                className="w-full text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} placeholder="Contraparte" />
+                            </div>
+                            <div className="flex justify-end gap-1 mt-2">
+                              <button onClick={() => setEditingTxnId(null)} className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+                              <button onClick={() => handleEditSave(t.id)} className="text-xs px-2 py-1 rounded text-white bg-blue-600">Guardar</button>
+                            </div>
+                          </div>
+                        )}
+                        {/* Split form */}
+                        {splitTxnId === t.id && (
+                          <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
+                            <p className="text-xs font-semibold mb-2">Dividir ${Math.abs(t.amount).toFixed(2)}</p>
+                            {splitParts.map((part, i) => (
+                              <div key={i} className="flex items-center gap-1 mb-1.5">
+                                <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
+                                <input type="number" step="0.01" placeholder="Monto" value={part.amount}
+                                  onChange={e => { const p = [...splitParts]; p[i].amount = e.target.value; setSplitParts(p) }}
+                                  className="w-20 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                                <input type="text" placeholder="Descripción" value={part.description}
+                                  onChange={e => { const p = [...splitParts]; p[i].description = e.target.value; setSplitParts(p) }}
+                                  className="flex-1 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                                {splitParts.length > 2 && (
+                                  <button onClick={() => setSplitParts(splitParts.filter((_, j) => j !== i))} className="text-red-400"><X className="w-3 h-3" /></button>
+                                )}
+                              </div>
+                            ))}
+                            <div className="flex items-center justify-between mt-2">
+                              <button onClick={() => setSplitParts([...splitParts, { amount: '', description: '' }])} className="text-[10px] text-blue-600 hover:underline">+ Añadir parte</button>
+                              <div className="flex gap-1">
+                                <button onClick={() => setSplitTxnId(null)} className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+                                <button onClick={() => handleSplitTxn(t.id)} className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: 'var(--gold-600)' }}>Dividir</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )

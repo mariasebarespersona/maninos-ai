@@ -609,6 +609,53 @@ async def update_transaction(transaction_id: str, data: TransactionUpdate):
     return result.data[0]
 
 
+@router.post("/transactions/{transaction_id}/split")
+async def split_transaction(transaction_id: str, data: dict):
+    """Split a transaction into multiple parts. Sum of parts must equal original amount."""
+    parts = data.get("parts")
+    if not parts or not isinstance(parts, list) or len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Must provide at least 2 parts")
+
+    parent = sb.table("accounting_transactions").select("*").eq("id", transaction_id).execute()
+    if not parent.data:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    p = parent.data[0]
+
+    parent_amount = float(p["amount"])
+    parts_total = sum(abs(float(pt["amount"])) for pt in parts)
+    if abs(parts_total - abs(parent_amount)) > 0.01:
+        raise HTTPException(status_code=400, detail=f"Parts total ({parts_total:.2f}) != transaction ({abs(parent_amount):.2f})")
+
+    # Void original
+    sb.table("accounting_transactions").update({"status": "voided"}).eq("id", transaction_id).execute()
+    _log_audit("accounting_transactions", transaction_id, "split", description=f"Split into {len(parts)} parts")
+
+    created = []
+    for pt in parts:
+        child = {
+            "transaction_date": p["transaction_date"],
+            "transaction_type": p["transaction_type"],
+            "amount": float(pt["amount"]),
+            "is_income": p["is_income"],
+            "description": pt.get("description", p.get("description", ""))[:500],
+            "counterparty_name": p.get("counterparty_name"),
+            "property_id": p.get("property_id"),
+            "entity_type": p.get("entity_type"),
+            "entity_id": p.get("entity_id"),
+            "payment_method": p.get("payment_method"),
+            "status": "confirmed",
+        }
+        child = {k: v for k, v in child.items() if v is not None}
+        try:
+            r = sb.table("accounting_transactions").insert(child).execute()
+            if r.data:
+                created.append(r.data[0])
+        except Exception as e:
+            logger.error(f"[accounting] Split child error: {e}")
+
+    return {"ok": True, "message": f"Split into {len(created)} parts", "children": created}
+
+
 @router.delete("/transactions/{transaction_id}")
 async def void_transaction(transaction_id: str):
     result = sb.table("accounting_transactions").update({"status": "voided"}).eq("id", transaction_id).execute()
