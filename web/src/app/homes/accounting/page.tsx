@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -2296,6 +2296,7 @@ interface StatementMovement {
   ai_confidence?: number; ai_reasoning?: string; needs_subcategory?: boolean
   final_account_id?: string; final_transaction_type?: string; final_notes?: string
   status: string; transaction_id?: string
+  parent_movement_id?: string; is_split_parent?: boolean
   accounting_accounts?: { code: string; name: string; account_type: string; category: string }
 }
 
@@ -2530,6 +2531,24 @@ function EstadoCuentaTab() {
         setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, ...updated } : m))
       }
     } catch (e) { console.error(e) }
+  }
+
+  const splitMovement = async (mvId: string, parts: { amount: number; description: string }[]) => {
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/movements/${mvId}/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`Movimiento dividido en ${data.children?.length || parts.length} partes`)
+        if (activeStatement) await openStatement(activeStatement)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.detail || 'Error al dividir movimiento')
+      }
+    } catch (e) { alert('Error de conexión') }
   }
 
   const postMovements = async (stmtId: string) => {
@@ -3188,7 +3207,7 @@ function EstadoCuentaTab() {
                       </thead>
                       <tbody>
                         {activeMovements.map((mv) => (
-                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} />
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} onSplit={splitMovement} />
                         ))}
                       </tbody>
                     </table>
@@ -3253,13 +3272,19 @@ function EstadoCuentaTab() {
 }
 
 
-function MovementRow({ movement: mv, accounts, onUpdate }: {
+function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
   movement: StatementMovement
   accounts: any[]
   onUpdate: (id: string, data: Record<string, any>) => void
+  onSplit: (id: string, parts: { amount: number; description: string }[]) => void
 }) {
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [accountSearch, setAccountSearch] = useState('')
+  const [showSplit, setShowSplit] = useState(false)
+  const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([
+    { amount: '', description: '' },
+    { amount: '', description: '' },
+  ])
 
   const displayAccount = mv.final_account_id
     ? accounts.find((a: any) => a.id === mv.final_account_id)
@@ -3269,8 +3294,38 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
 
   const isPosted = mv.status === 'posted'
   const isSkipped = mv.status === 'skipped'
+  const isSplit = mv.status === 'split' || mv.is_split_parent
+  const isChild = !!mv.parent_movement_id
   const isConfirmed = mv.status === 'confirmed'
   const isReconciled = mv.status === 'reconciled'
+
+  const handleSplit = () => {
+    const absTotal = Math.abs(mv.amount)
+    const parts = splitParts
+      .filter(p => p.amount && parseFloat(p.amount) !== 0)
+      .map(p => ({ amount: Math.abs(parseFloat(p.amount)), description: p.description || mv.description }))
+    const total = parts.reduce((s, p) => s + p.amount, 0)
+    if (Math.abs(total - absTotal) > 0.01) {
+      return // toast handled by caller
+    }
+    if (parts.length < 2) return
+    onSplit(mv.id, parts)
+    setShowSplit(false)
+  }
+
+  // Split parent: show greyed out row
+  if (isSplit && !isChild) {
+    return (
+      <tr className="border-b bg-stone-50/50 opacity-60" style={{ borderColor: '#f0f0f0' }}>
+        <td className="px-3 py-2.5 whitespace-nowrap"><span className="text-xs font-mono" style={{ color: 'var(--ash)' }}>{mv.movement_date}</span></td>
+        <td className="px-3 py-2.5 max-w-md"><p className="text-xs line-through" style={{ color: 'var(--ash)' }}>{mv.description}</p></td>
+        <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">${Math.abs(mv.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+        <td className="px-3 py-2.5"><span className="text-xs text-stone-400">—</span></td>
+        <td className="px-3 py-2.5 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-200 text-stone-600 font-medium">Dividido</span></td>
+        <td className="px-3 py-2.5"></td>
+      </tr>
+    )
+  }
 
   const filteredAccounts = accountSearch
     ? accounts.filter((a: any) =>
@@ -3413,8 +3468,8 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
       </td>
 
       {/* Actions */}
-      <td className="px-3 py-2.5 text-center">
-        {!isPosted && !isSkipped && (
+      <td className="px-3 py-2.5 text-center relative">
+        {!isPosted && !isSkipped && !isSplit && (
           <div className="flex items-center justify-center gap-1">
             {(mv.status === 'suggested' || (mv.status === 'reconciled' && !mv.final_account_id)) && mv.suggested_account_id && (
               <button onClick={confirmSuggestion}
@@ -3428,6 +3483,13 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
               title="Cambiar cuenta">
               <Settings className="w-3.5 h-3.5" />
             </button>
+            {!isChild && (
+              <button onClick={() => setShowSplit(!showSplit)}
+                className="p-1 rounded hover:bg-amber-100 text-amber-600 transition-colors"
+                title="Dividir monto">
+                <Scissors className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button onClick={skipMovement}
               className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors"
               title="Omitir">
@@ -3436,6 +3498,35 @@ function MovementRow({ movement: mv, accounts, onUpdate }: {
           </div>
         )}
         {isPosted && <CheckCircle2 className="w-4 h-4 text-blue-500 mx-auto" />}
+
+        {/* Split form overlay */}
+        {showSplit && (
+          <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir ${Math.abs(mv.amount).toFixed(2)}</p>
+            {splitParts.map((part, i) => (
+              <div key={i} className="flex items-center gap-1 mb-1.5">
+                <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
+                <input type="number" step="0.01" placeholder="Monto" value={part.amount}
+                  onChange={e => { const p = [...splitParts]; p[i].amount = e.target.value; setSplitParts(p) }}
+                  className="w-20 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                <input type="text" placeholder="Descripción" value={part.description}
+                  onChange={e => { const p = [...splitParts]; p[i].description = e.target.value; setSplitParts(p) }}
+                  className="flex-1 text-xs px-1.5 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                {splitParts.length > 2 && (
+                  <button onClick={() => setSplitParts(splitParts.filter((_, j) => j !== i))} className="text-red-400"><X className="w-3 h-3" /></button>
+                )}
+              </div>
+            ))}
+            <div className="flex items-center justify-between mt-2">
+              <button onClick={() => setSplitParts([...splitParts, { amount: '', description: '' }])}
+                className="text-[10px] text-blue-600 hover:underline">+ Añadir parte</button>
+              <div className="flex gap-1">
+                <button onClick={() => setShowSplit(false)} className="text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+                <button onClick={handleSplit} className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: 'var(--gold-600)' }}>Dividir</button>
+              </div>
+            </div>
+          </div>
+        )}
       </td>
     </tr>
   )

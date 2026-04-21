@@ -3050,6 +3050,64 @@ async def update_movement_classification(movement_id: str, data: dict):
     return result.data[0]
 
 
+@router.post("/bank-statements/movements/{movement_id}/split")
+async def split_movement(movement_id: str, data: dict):
+    """Split a bank-statement movement into multiple child parts.
+
+    Body: {"parts": [{"amount": 100, "description": "Part 1"}, ...]}
+    The sum of part amounts must equal the parent movement amount.
+    """
+    parts = data.get("parts")
+    if not parts or not isinstance(parts, list) or len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Must provide at least 2 parts")
+
+    parent_result = sb.table("statement_movements").select("*").eq("id", movement_id).execute()
+    if not parent_result.data:
+        raise HTTPException(status_code=404, detail="Movement not found")
+    parent = parent_result.data[0]
+
+    parent_amount = float(parent["amount"])
+    abs_parent = abs(parent_amount)
+    sign = -1 if parent_amount < 0 else 1
+    parts_total = sum(abs(float(p["amount"])) for p in parts)
+    if abs(parts_total - abs_parent) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parts total ({parts_total:.2f}) does not match movement amount ({abs_parent:.2f})",
+        )
+
+    sb.table("statement_movements").update({
+        "is_split_parent": True,
+        "status": "split",
+    }).eq("id", movement_id).execute()
+
+    base_sort = parent.get("sort_order", 0)
+    created_children = []
+    for idx, part in enumerate(parts):
+        child_data = {
+            "statement_id": parent["statement_id"],
+            "movement_date": parent["movement_date"],
+            "description": part.get("description", parent.get("description", ""))[:500],
+            "amount": sign * abs(float(part["amount"])),
+            "is_credit": parent["is_credit"],
+            "reference": parent.get("reference"),
+            "counterparty": part.get("counterparty", parent.get("counterparty")),
+            "parent_movement_id": movement_id,
+            "sort_order": base_sort + idx + 1,
+            "status": "pending",
+        }
+        child_data = {k: v for k, v in child_data.items() if v is not None}
+        try:
+            child_result = sb.table("statement_movements").insert(child_data).execute()
+            if child_result.data:
+                created_children.append(child_result.data[0])
+        except Exception as e:
+            logger.error(f"[BankStmt] Failed to create split child {idx}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to create split part {idx + 1}: {str(e)}")
+
+    return {"message": f"Split into {len(created_children)} parts", "children": created_children}
+
+
 @router.post("/bank-statements/{statement_id}/post")
 async def post_confirmed_movements(statement_id: str):
     """Create accounting transactions from confirmed movements."""
