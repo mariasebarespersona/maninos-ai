@@ -333,13 +333,21 @@ export default function NewPropertyPage() {
         setTdhcaRawHtml(data.raw_html || '')
         setTdhcaDebugLog(data.debug_log || [])
 
-        // Auto-save title app data from TDHCA lookup so employees don't need to click Guardar
+        // Auto-save title app data from TDHCA lookup — same fields as the template initialData
         const td = data.data || {}
+        const mfr = td.manufacturer || ''
+        const mfrParts = mfr.split(/\s{2,}|\n/)
+        const mfrName = mfrParts[0] || ''
+        const mfrAddr = mfrParts[1] || ''
+        const mfrCSZ = mfrParts[2] || ''
+        const today = new Date().toISOString().split('T')[0]
         setTitleAppData(prev => ({
           ...(prev || {} as any),
           applicant_name: 'MANINOS HOMES LLC',
           is_new: false, is_used: true,
-          manufacturer: td.manufacturer || '',
+          manufacturer: mfrName,
+          manufacturer_address: mfrAddr,
+          manufacturer_city_state_zip: mfrCSZ,
           make: td.model || '',
           year: td.year || form.year || '',
           date_of_manufacture: td.date_of_manufacture || '',
@@ -347,6 +355,8 @@ export default function NewPropertyPage() {
           sqft: td.square_feet || '',
           section1_label: td.label_seal || '',
           section1_serial: td.serial_number || '',
+          section1_width: td.width || '',
+          section1_length: td.length || '',
           serial_number: td.serial_number || '',
           label_seal_number: td.label_seal || '',
           page2_hud_label: td.label_seal || '',
@@ -355,10 +365,13 @@ export default function NewPropertyPage() {
           has_hud_label: true, no_hud_label: false,
           bedrooms: form.bedrooms || '',
           bathrooms: form.bathrooms || '',
+          location_address: '', location_city: '', location_state: '', location_zip: '', location_county: '',
+          home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
           buyer_name: 'MANINOS HOMES LLC',
           seller_name: td.seller || td.buyer || '',
           sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
-          sale_date: new Date().toISOString().split('T')[0],
+          sale_date: today,
+          sale_transfer_date: today,
           election_inventory: true,
         } as any))
       } else {

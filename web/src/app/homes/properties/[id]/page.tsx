@@ -1768,11 +1768,11 @@ ${price}
                   // Block 2B — default Yes
                   has_hud_label: true,
                   no_hud_label: false,
-                  // Block 3 — always empty, default No ticked
-                  location_address: '',
-                  location_city: '',
-                  location_state: '',
-                  location_zip: '',
+                  // Block 3 — default from property address
+                  location_address: property.address || '',
+                  location_city: property.city || '',
+                  location_state: property.state || 'TX',
+                  location_zip: property.zip_code || '',
                   location_county: '',
                   home_moved: false,
                   home_moved_no: true,
