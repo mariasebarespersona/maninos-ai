@@ -764,6 +764,66 @@ export default function MarketDashboard() {
   // Bill of Sale is complete if either the template was filled or a file was uploaded
   const isBosComplete = !!(billOfSaleData || documents.billOfSale);
   // Title is complete if TDHCA found it or a file was uploaded
+  // Auto-save title app data when TDHCA result arrives — uses same helpers as template initialData
+  useEffect(() => {
+    if (!tdhcaResult || !selectedListing) return;
+    const mfr = splitManufacturerParts();
+    const serial = cleanSuspiciousValue(
+      getField('serial_number', ['Serial #', 'Serial', 'Serial Number', 'Complete Serial Number'],
+        [/Serial\s*#?\s*[:=]?\s*([A-Z0-9]{4,})/i]));
+    const label = cleanSuspiciousValue(
+      getField('label_seal', ['Label/Seal#', 'Label/Seal', 'Label/Seal Number', 'Label/Seal #', 'HUD Label'],
+        [/Label\/Seal\s*#?\s*[:=]?\s*([A-Z]{2,4}\d{5,})/i, /(?:TEX|NTA|RAD|TRA)\d{5,}/i]));
+    const model = getField('model', ['Model', 'Make'], [/Model\s*[:=]?\s*([A-Z][A-Z0-9\s\-]+)/i]);
+    const dateManf = getField('date_of_manufacture', ['Date Manf', 'Date of Manufacture'],
+      [/Date\s*(?:Manf|of\s*Manufacture)\s*[:=]?\s*(\d{1,2}\/\d{4})/i])
+      || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i]);
+    const sqft = getField('square_feet', ['Square Ftg', 'Square Feet', 'Sq Ftg', 'Total Square Feet'],
+      [/Square\s*(?:Ftg|Feet|Footage)\s*[:=]?\s*(\d{3,})/i]);
+    const rawWind = getField('wind_zone', ['Wind Zone'], [/Wind\s*Zone\s*[:=]?\s*([IVX123]{1,3})\b/i]);
+    const windZone = isValidWindZone(rawWind) ? rawWind : '';
+    const dims = deriveDimensions();
+    const buyer = getField('buyer', ['Buyer/Transferee', 'Buyer'],
+      [/Buyer\/Transferee\s*[:=]?\s*([A-Z][A-Z\s\.,&]+)/i]);
+    const year = dateManf || getField('year', ['Year'], [/\bYear\s*[:=]?\s*(\d{4})\b/i]) || '';
+    const today = new Date().toISOString().split('T')[0];
+    const computedSqFt = selectedListing.bedrooms && selectedListing.bathrooms
+      ? parseInt(String(selectedListing.sqft || '0')) : 0;
+
+    setTitleAppData({
+      applicant_name: 'MANINOS HOMES LLC',
+      is_new: false, is_used: true,
+      manufacturer: mfr.name,
+      manufacturer_address: mfr.address,
+      manufacturer_city_state_zip: mfr.cityStateZip,
+      make: model,
+      year,
+      date_of_manufacture: dateManf,
+      total_sqft: sqft || computedSqFt?.toString() || '',
+      section1_label: label,
+      section1_serial: serial,
+      section1_width: dims.width,
+      section1_length: dims.length,
+      wind_zone: windZone,
+      serial_number: serial,
+      label_seal_number: label,
+      sqft: sqft || computedSqFt?.toString() || '',
+      bedrooms: selectedListing.bedrooms?.toString() || '',
+      bathrooms: selectedListing.bathrooms?.toString() || '',
+      has_hud_label: true, no_hud_label: false,
+      location_address: '', location_city: '', location_state: '', location_zip: '', location_county: '',
+      home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
+      seller_name: buyer,
+      buyer_name: 'MANINOS HOMES LLC',
+      sale_price: selectedListing.listing_price ? `$${selectedListing.listing_price.toLocaleString()}` : '',
+      sale_date: today,
+      sale_transfer_date: today,
+      page2_hud_label: label,
+      page2_serial: serial,
+      election_inventory: true,
+    } as any);
+  }, [tdhcaResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isTitleComplete = !!tdhcaResult;
   // Title application is complete if template was filled or a file was uploaded (OPTIONAL)
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication);
@@ -931,49 +991,7 @@ export default function MarketDashboard() {
         setTdhcaCleanPageText(data.clean_page_text || '');
         setTdhcaRawHtml(data.raw_html || '');
         setTdhcaDebugLog(data.debug_log || []);
-
-        // Auto-save title app data from TDHCA lookup — same fields as the template initialData
-        const td = data.data || {};
-        const listing = selectedListing;
-        const mfr = td.manufacturer || '';
-        const mfrParts = mfr.split(/\s{2,}|\n/);
-        const mfrName = mfrParts[0] || '';
-        const mfrAddr = mfrParts[1] || '';
-        const mfrCSZ = mfrParts[2] || '';
-        const today = new Date().toISOString().split('T')[0];
-        setTitleAppData(((prev: any) => ({
-          ...(prev || {}),
-          applicant_name: 'MANINOS HOMES LLC',
-          is_new: false, is_used: true,
-          manufacturer: mfrName,
-          manufacturer_address: mfrAddr,
-          manufacturer_city_state_zip: mfrCSZ,
-          make: td.model || '',
-          year: td.year || '',
-          date_of_manufacture: td.date_of_manufacture || '',
-          total_sqft: td.square_feet || '',
-          sqft: td.square_feet || '',
-          section1_label: td.label_seal || '',
-          section1_serial: td.serial_number || '',
-          section1_width: td.width || '',
-          section1_length: td.length || '',
-          serial_number: td.serial_number || '',
-          label_seal_number: td.label_seal || '',
-          page2_hud_label: td.label_seal || '',
-          page2_serial: td.serial_number || '',
-          wind_zone: td.wind_zone || '',
-          has_hud_label: true, no_hud_label: false,
-          bedrooms: listing?.bedrooms?.toString() || '',
-          bathrooms: listing?.bathrooms?.toString() || '',
-          location_address: '', location_city: '', location_state: '', location_zip: '', location_county: '',
-          home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
-          buyer_name: 'MANINOS HOMES LLC',
-          seller_name: td.seller || td.buyer || '',
-          sale_price: listing?.listing_price ? `$${listing.listing_price.toLocaleString()}` : '',
-          sale_date: today,
-          sale_transfer_date: today,
-          election_inventory: true,
-        })) as any);
+        // Auto-save happens in useEffect when tdhcaResult state updates
         // Title found via TDHCA — URL will be stored as detail_url, no fake file needed
       } else {
         setTdhcaError(data.message || 'No se encontraron resultados');
