@@ -3472,13 +3472,13 @@ async def _extract_text_from_image(file_content: bytes, ext: str) -> str:
     if not api_key:
         raise ValueError("OPENAI_API_KEY not configured")
 
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=120.0)
 
     b64 = base64.b64encode(file_content).decode("utf-8")
     mime = f"image/{ext}" if ext in ("png", "jpg", "jpeg") else "image/png"
 
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-5",
         messages=[
             {
@@ -3559,8 +3559,8 @@ async def _ai_parse_movements(raw_text: str, account_key: str) -> list:
     if not api_key:
         raise ValueError("OPENAI_API_KEY not configured")
 
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=120.0)
 
     # Split long text into chunks of ~6000 chars (enough for ~1 page of transactions)
     chunk_size = 6000
@@ -3623,7 +3623,7 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
 {chunk}"""
 
         try:
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model="gpt-5",
                 messages=[
                     {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, etc.) in English or Spanish. Return valid JSON arrays only."},
@@ -3685,8 +3685,8 @@ async def _ai_classify_movements(
     if not api_key:
         raise ValueError("OPENAI_API_KEY not configured")
 
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=120.0)
 
     movements_lines = []
     for i, mv in enumerate(movements):
@@ -3735,7 +3735,7 @@ Return a JSON array with one object per movement (in order):
 }}"""
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-5",
             messages=[
                 {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
