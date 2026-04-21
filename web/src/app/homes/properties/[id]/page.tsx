@@ -1705,17 +1705,19 @@ ${price}
                     const { _uploaded_file, file_url, file_name, ...templateData } = saved
                     return templateData
                   })(),
-                  // Merge envelope signature data (in case backend didn't persist to document_data)
+                  // Merge envelope signature (image/type only — don't override saved names)
                   ...(() => {
                     const sigKey = showBosTemplate === 'purchase' ? 'bos' : 'bos_sale'
                     const sig = sellerSignatures[sigKey]
                     if (!sig?.signed) return {}
+                    const saved = property.document_data?.[`bos_${showBosTemplate}`] || {}
                     const extra: Record<string, any> = {}
                     extra.seller_signature_type = sig.signature_type
                     if (sig.signature_type === 'drawn') {
                       extra.seller_signature_image = sig.signature_value
-                      if (sig.signer_name) extra.seller_name = sig.signer_name
-                    } else {
+                      // Only set seller_name from envelope if not already in saved data
+                      if (!saved.seller_name && sig.signer_name) extra.seller_name = sig.signer_name
+                    } else if (!saved.seller_name) {
                       extra.seller_name = sig.signature_value
                     }
                     return extra
@@ -1798,17 +1800,18 @@ ${price}
                   // Also check legacy "title_app" key (before key was fixed to title_app_{type})
                   ...(property.document_data?.title_app || {}),
                   ...(property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}),
-                  // Merge envelope signature data (in case backend didn't persist to document_data)
+                  // Merge envelope signature (image/type only — don't override saved names)
                   ...(() => {
                     const sigKey = showTitleAppTemplate === 'purchase' ? 'title_app' : 'title_app_sale'
                     const sig = sellerSignatures[sigKey]
                     if (!sig?.signed) return {}
+                    const saved = property.document_data?.[`title_app_${showTitleAppTemplate}`] || property.document_data?.title_app || {}
                     const extra: Record<string, any> = {}
                     extra.seller_signature_type = sig.signature_type
                     if (sig.signature_type === 'drawn') {
                       extra.seller_signature_image = sig.signature_value
-                      if (sig.signer_name) extra.seller_name = sig.signer_name
-                    } else {
+                      if (!saved.seller_name && sig.signer_name) extra.seller_name = sig.signer_name
+                    } else if (!saved.seller_name) {
                       extra.seller_signature_value = sig.signature_value
                     }
                     return extra
