@@ -3734,17 +3734,23 @@ Return a JSON array with one object per movement (in order):
   "needs_subcategory": true/false
 }}"""
 
-    response = client.chat.completions.create(
-        model="gpt-5",
-        messages=[
-            {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
-            {"role": "user", "content": prompt},
-        ],
-        max_completion_tokens=4096,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5",
+            messages=[
+                {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=4096,
+        )
+    except Exception as api_err:
+        logger.error(f"[AI Classify] OpenAI API error: {api_err}")
+        return [{"account_code": "", "confidence": 0, "reasoning": f"OpenAI error: {str(api_err)[:100]}"}] * len(movements)
 
     content = response.choices[0].message.content or "[]"
+    finish_reason = response.choices[0].finish_reason
     content = content.strip()
+    logger.info(f"[AI Classify] GPT response: finish_reason={finish_reason}, content_len={len(content)}, first_100={content[:100]}")
 
     import re
     if content.startswith("```"):
@@ -3755,9 +3761,11 @@ Return a JSON array with one object per movement (in order):
         suggestions = json.loads(content)
         if not isinstance(suggestions, list):
             suggestions = [suggestions]
+        logger.info(f"[AI Classify] Parsed {len(suggestions)} suggestions for {len(movements)} movements")
         # Pad or trim to match movements count
         while len(suggestions) < len(movements):
             suggestions.append({"account_code": "", "confidence": 0, "reasoning": "AI did not classify"})
         return suggestions[:len(movements)]
-    except json.JSONDecodeError:
-        return [{"account_code": "", "confidence": 0, "reasoning": "AI parse error"}] * len(movements)
+    except json.JSONDecodeError as je:
+        logger.error(f"[AI Classify] JSON parse error: {je}. Content: {content[:200]}")
+        return [{"account_code": "", "confidence": 0, "reasoning": f"AI parse error: {str(je)[:50]}"}] * len(movements)
