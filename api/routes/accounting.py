@@ -2520,11 +2520,39 @@ async def reset_homes_account_balances(request: Request):
 
         deleted_count = 0
         if scope_account_ids:
-            # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
-            sb.table("accounting_transactions") \
-                .update({"linked_transaction_id": None}) \
+            # Clear all FK references that point to these transactions before deleting
+            txn_ids_result = sb.table("accounting_transactions") \
+                .select("id") \
                 .in_("account_id", scope_account_ids) \
                 .execute()
+            txn_ids = [t["id"] for t in (txn_ids_result.data or [])]
+
+            if txn_ids:
+                # Clear self-references
+                sb.table("accounting_transactions") \
+                    .update({"linked_transaction_id": None}) \
+                    .in_("account_id", scope_account_ids) \
+                    .execute()
+
+                # Clear commission_payments references
+                for tid in txn_ids:
+                    try:
+                        sb.table("commission_payments") \
+                            .update({"accounting_transaction_id": None}) \
+                            .eq("accounting_transaction_id", tid) \
+                            .execute()
+                    except Exception:
+                        pass
+
+                # Clear statement_movements references
+                for tid in txn_ids:
+                    try:
+                        sb.table("statement_movements") \
+                            .update({"transaction_id": None}) \
+                            .eq("transaction_id", tid) \
+                            .execute()
+                    except Exception:
+                        pass
 
             # Delete ALL transactions for the scoped accounts
             deleted = sb.table("accounting_transactions") \
