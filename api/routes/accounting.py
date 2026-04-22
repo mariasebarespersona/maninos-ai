@@ -2520,46 +2520,21 @@ async def reset_homes_account_balances(request: Request):
 
         deleted_count = 0
         if scope_account_ids:
-            # Clear all FK references that point to these transactions before deleting
-            txn_ids_result = sb.table("accounting_transactions") \
-                .select("id") \
+            # Void all transactions for the scoped accounts (safer than DELETE — avoids FK issues)
+            voided = sb.table("accounting_transactions") \
+                .update({"status": "voided", "amount": 0}) \
                 .in_("account_id", scope_account_ids) \
+                .neq("status", "voided") \
                 .execute()
-            txn_ids = [t["id"] for t in (txn_ids_result.data or [])]
+            deleted_count = len(voided.data or [])
 
-            if txn_ids:
-                # Clear self-references
-                sb.table("accounting_transactions") \
-                    .update({"linked_transaction_id": None}) \
-                    .in_("account_id", scope_account_ids) \
-                    .execute()
-
-                # Clear commission_payments references
-                for tid in txn_ids:
-                    try:
-                        sb.table("commission_payments") \
-                            .update({"accounting_transaction_id": None}) \
-                            .eq("accounting_transaction_id", tid) \
-                            .execute()
-                    except Exception:
-                        pass
-
-                # Clear statement_movements references
-                for tid in txn_ids:
-                    try:
-                        sb.table("statement_movements") \
-                            .update({"transaction_id": None}) \
-                            .eq("transaction_id", tid) \
-                            .execute()
-                    except Exception:
-                        pass
-
-            # Delete ALL transactions for the scoped accounts
-            deleted = sb.table("accounting_transactions") \
-                .delete() \
-                .in_("account_id", scope_account_ids) \
+            # Also void transactions without account_id (orphaned)
+            orphaned = sb.table("accounting_transactions") \
+                .update({"status": "voided", "amount": 0}) \
+                .is_("account_id", "null") \
+                .neq("status", "voided") \
                 .execute()
-            deleted_count = len(deleted.data or [])
+            deleted_count += len(orphaned.data or [])
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
