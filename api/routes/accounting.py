@@ -3045,9 +3045,9 @@ async def classify_statement_movements(statement_id: str):
     except Exception as e:
         logger.warning(f"Could not load correction history: {e}")
 
-    # Classify in batches
+    # Classify in small batches to avoid token limits
     classified = 0
-    batch_size = 20
+    batch_size = 5
     mvs = movements.data
 
     for batch_start in range(0, len(mvs), batch_size):
@@ -3700,51 +3700,44 @@ async def _ai_classify_movements(
         movements_lines.append(line)
     movements_text = "\n".join(movements_lines)
 
-    prompt = f"""Classify each bank movement into the correct QuickBooks account for Maninos Homes LLC (mobile home sales, Texas).
+    prompt = f"""Classify EVERY bank movement into the correct account. You MUST assign an account to EVERY movement — never leave account_code empty.
+
+COMPANY: Maninos Homes LLC — buys, renovates, sells mobile homes in Texas (Conroe, Houston, Dallas).
 
 RULES:
-- Use ONLY account codes from the chart below. No other codes.
-- Credits (deposits) → income accounts (4xxxx)
-- Debits (withdrawals) → expense/COGS accounts (5xxxx, 6xxxx, 8xxxx)
-- Bank transfers → transaction_type "bank_transfer", closest expense account.
+- EVERY movement MUST get an account_code from the chart below. NO EXCEPTIONS.
+- Credits (deposits) = income → use 40000 or ING-xxx accounts
+- Debits (withdrawals) = expense → use 50020, 6xxxx, 8xxxx, or GAS-xxx accounts
+- If unsure, use the BEST MATCH. Never return empty account_code.
+
+CLASSIFICATION GUIDE:
+- House purchases (wire out, mortgage, property) → 50020 (House Sales - COGS) or GAS-100 (Compra de Casas)
+- Sales income / deposits / enganche / pago → 40000 (House Sales) or ING-100 (Ventas Contado)
+- Capital transfers (RTO, internal) → 40000 or ING-200 (Ventas Capital RTO)
+- Commissions → 60640 (Commissions & fees) or GAS-400 (Comisiones Empleados)
+- Moving / transport → GAS-300 (Transporte / Movida)
+- Bank fees → 60120 (Bank fees)
+- Office supplies → 60510 (Office supplies)
+- Renovations / materials → 61700 (Supplies & materials) or GAS-200 (Renovaciones)
+- Payroll / Semana / Quincena → 80010/80020/80040 (employee accounts)
 
 CHART OF ACCOUNTS:
 {accounts_reference}
 
-CLASSIFICATION GUIDE FOR RECONCILED MOVEMENTS:
-Movements marked "RECONCILED with app transaction: ..." have a known internal description. Use it as the PRIMARY source:
-- "Venta contado" or "Depósito" → 40000 House Sales
-- "Venta RTO" or "Capital" → 40000 House Sales
-- "Compra propiedad" or "Compra:" → 50020 House Sales - COGS
-- "Renovación" → 61700 Supplies & materials or 61300 Other Contractors
-
-BUSINESS CONTEXT:
-- Buys, renovates, and resells mobile homes (Conroe, Houston, Dallas)
-- Zelle = common payment method
-- Wire transfers often = house purchases from counties
-- "Movida" = moving a house, "Comisión" = sales commission, "Semana"/"Quincena" = payroll
-
-{f"HUMAN CORRECTIONS (the accountant overrode the AI — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS:
+{f"HUMAN CORRECTIONS (follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS TO CLASSIFY:
 {movements_text}
 
-Return a JSON array with one object per movement (in order):
-{{
-  "account_code": "exact code from chart above",
-  "account_name": "account name",
-  "transaction_type": "sale_cash"|"sale_rto_capital"|"deposit_received"|"other_income"|"purchase_house"|"renovation"|"moving_transport"|"commission"|"operating_expense"|"other_expense"|"bank_transfer"|"adjustment",
-  "confidence": 0.0-1.0,
-  "reasoning": "brief explanation",
-  "needs_subcategory": true/false
-}}"""
+Return a JSON array with EXACTLY {len(movements)} objects (one per movement, in order):
+[{{"account_code":"exact code","account_name":"name","transaction_type":"purchase_house","confidence":0.9,"reasoning":"brief"}}]"""
 
     try:
         response = await client.chat.completions.create(
             model="gpt-5",
             messages=[
-                {"role": "system", "content": "You are an expert accountant for a mobile home sales company. Return valid JSON arrays only."},
+                {"role": "system", "content": "You are an expert accountant. Return ONLY a valid JSON array. Every movement MUST have an account_code from the chart provided. Never return empty account_code."},
                 {"role": "user", "content": prompt},
             ],
-            max_completion_tokens=4096,
+            max_completion_tokens=8192,
         )
     except Exception as api_err:
         logger.error(f"[AI Classify] OpenAI API error: {api_err}")
