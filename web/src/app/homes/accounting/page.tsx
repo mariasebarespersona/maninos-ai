@@ -2639,7 +2639,8 @@ function EstadoCuentaTab() {
       if (res.ok) {
         const data = await res.json()
         alert(`Movimiento dividido en ${data.children?.length || parts.length} partes`)
-        if (activeStatement) await openStatement(activeStatement)
+        // Reload movements without resetting wizard step
+        if (activeStatement) await reloadMovements(activeStatement)
       } else {
         const err = await res.json().catch(() => ({}))
         alert(err.detail || 'Error al dividir movimiento')
