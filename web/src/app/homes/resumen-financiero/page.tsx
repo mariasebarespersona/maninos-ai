@@ -126,7 +126,7 @@ export default function ResumenFinancieroPage() {
         <div className="flex items-center justify-center py-12 gap-2 text-navy-500"><Loader2 className="w-5 h-5 animate-spin" /> Cargando...</div>
       ) : (
         <div className="card-luxury overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-navy-200 text-left text-[11px] text-navy-500 uppercase tracking-wider">
                 <th className="px-2 py-2 w-6"></th>
@@ -281,7 +281,7 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
   )
 
   return (
-    <div className="px-8 py-5 bg-slate-50 border-t border-navy-200 space-y-3">
+    <div className="px-3 sm:px-8 py-3 sm:py-5 bg-slate-50 border-t border-navy-200 space-y-3">
       {/* Property header */}
       <div className="flex items-center gap-2 text-sm font-semibold text-navy-700">
         <Building2 className="w-4 h-4" />

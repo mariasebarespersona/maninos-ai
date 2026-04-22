@@ -327,7 +327,7 @@ function ComisionesTab({
                     onClick={() => setExpandedEmployee(
                       expandedEmployee === emp.employee_id ? null : emp.employee_id
                     )}
-                    className="w-full p-5 flex items-center gap-4 text-left hover:bg-navy-50/50 transition-colors"
+                    className="w-full p-3 sm:p-5 flex items-center gap-3 sm:gap-4 text-left hover:bg-navy-50/50 transition-colors"
                   >
                     {/* Rank */}
                     <div className={`
@@ -391,9 +391,9 @@ function ComisionesTab({
                         {emp.payments.map((p) => (
                           <div
                             key={p.id}
-                            className="flex items-center justify-between py-2.5 px-3 bg-white rounded-lg border border-navy-100"
+                            className="flex items-center justify-between gap-3 py-2.5 px-3 bg-white rounded-lg border border-navy-100 flex-wrap"
                           >
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                 p.role === 'found_by'
                                   ? 'bg-blue-50 text-blue-700'
@@ -414,7 +414,7 @@ function ComisionesTab({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 shrink-0">
+                            <div className="flex items-center gap-3 shrink-0 ml-auto">
                               <span className="font-semibold text-navy-900">
                                 ${p.amount.toLocaleString()}
                               </span>

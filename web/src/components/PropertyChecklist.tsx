@@ -96,23 +96,23 @@ export default function PropertyChecklist({
   return (
     <div className="space-y-6">
       {/* Header con progreso */}
-      <div className="card-luxury p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-gold-100 rounded-xl">
+      <div className="card-luxury p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-3 bg-gold-100 rounded-xl flex-shrink-0">
               <ClipboardCheck className="w-6 h-6 text-gold-600" />
             </div>
-            <div>
-              <h2 className="font-serif text-xl text-navy-900">Checklist Compra de Casa</h2>
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg sm:text-xl text-navy-900">Checklist Compra de Casa</h2>
               <p className="text-sm text-navy-500">9 puntos de verificación</p>
             </div>
           </div>
-          
+
           {!readOnly && (
             <button
               onClick={handleSave}
               disabled={saving || !hasChanges}
-              className="btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-gold disabled:opacity-50 disabled:cursor-not-allowed self-start sm:self-auto"
             >
               {saving ? (
                 <>

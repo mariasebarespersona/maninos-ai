@@ -2493,33 +2493,33 @@ export default function MarketDashboard() {
       {/* Purchase Flow Modal - Multi-step */}
       {selectedListing && (
         <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-auto my-8 overflow-hidden" style={{ minHeight: 'min-content' }}>
+          <div className="bg-white sm:rounded-2xl shadow-xl max-w-3xl w-full mx-auto sm:my-8 overflow-hidden" style={{ minHeight: 'min-content' }}>
             {/* Header with property info */}
-            <div className="bg-gradient-to-r from-navy-900 to-navy-800 p-6 text-white">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-semibold">
+            <div className="bg-gradient-to-r from-navy-900 to-navy-800 p-4 sm:p-6 text-white">
+              <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg sm:text-xl font-semibold">
                     {purchaseStep === 'documents' && 'Paso 1: Documentos'}
                     {purchaseStep === 'checklist' && 'Paso 2: Evaluación en Campo'}
                     {purchaseStep === 'payment' && 'Paso 3: Orden de Pago'}
                     {purchaseStep === 'confirm' && 'Paso 4: Confirmar Compra'}
                   </h3>
-                  <p className="text-navy-200 mt-1 text-sm">
+                  <p className="text-navy-200 mt-1 text-xs sm:text-sm">
                     {purchaseStep === 'documents' && 'Completa los templates de Bill of Sale, Título y Aplicación de Título'}
                     {purchaseStep === 'checklist' && 'Evalúa la casa con la app móvil antes de continuar'}
                     {purchaseStep === 'payment' && 'Completa los datos de la orden de pago al vendedor'}
                     {purchaseStep === 'confirm' && 'Revisa y confirma la compra'}
                   </p>
                 </div>
-                <button onClick={closeModal} className="text-white/70 hover:text-white">
+                <button onClick={closeModal} className="text-white/70 hover:text-white flex-shrink-0">
                   <X className="w-6 h-6" />
                 </button>
               </div>
-              
+
               {/* Property summary */}
               <div className="mt-4 bg-white/10 rounded-lg p-3">
-                <p className="font-medium">{selectedListing.address}</p>
-                <div className="flex items-center gap-4 mt-2 text-sm">
+                <p className="font-medium break-words">{selectedListing.address}</p>
+                <div className="flex items-center gap-3 sm:gap-4 mt-2 text-sm flex-wrap">
                   <span className="text-2xl font-bold">${selectedListing.listing_price.toLocaleString()}</span>
                   {selectedListing.price_type === 'down_payment' && (
                     <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase">
@@ -2596,10 +2596,10 @@ export default function MarketDashboard() {
               {/* Step indicators */}
               <div className="mt-4 flex items-center justify-between">
                 {STEP_ORDER.map((step, index) => (
-                  <div key={step} className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                      purchaseStep === step 
-                        ? 'bg-gold-500 text-white' 
+                  <div key={step} className="flex items-center flex-1 last:flex-initial">
+                    <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0 ${
+                      purchaseStep === step
+                        ? 'bg-gold-500 text-white'
                         : STEP_ORDER.indexOf(purchaseStep) > index
                           ? 'bg-green-500 text-white'
                           : 'bg-white/20 text-white/60'
@@ -2607,7 +2607,7 @@ export default function MarketDashboard() {
                       {STEP_ORDER.indexOf(purchaseStep) > index ? '✓' : index + 1}
                     </div>
                     {index < 3 && (
-                      <div className={`w-12 h-1 mx-1 ${
+                      <div className={`flex-1 h-1 mx-1 ${
                         STEP_ORDER.indexOf(purchaseStep) > index
                           ? 'bg-green-500'
                           : 'bg-white/20'
@@ -2620,7 +2620,7 @@ export default function MarketDashboard() {
             
             {/* Step 1: Documents (FIRST) */}
             {purchaseStep === 'documents' && (
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <div className="space-y-6">
                   {/* Bill of Sale */}
                   <div>
@@ -2631,7 +2631,7 @@ export default function MarketDashboard() {
                     
                     {/* Bill of Sale — Interactive Template OR Upload */}
                     {showBillOfSale ? (
-                      <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="border border-gray-200 rounded-xl overflow-x-auto">
                         <BillOfSaleTemplate
                           transactionType="purchase"
                           initialData={selectedListing ? {
@@ -2988,7 +2988,7 @@ export default function MarketDashboard() {
                     </label>
                     
                     {showTitleApp ? (
-                      <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="border border-gray-200 rounded-xl overflow-x-auto">
                         <TitleApplicationTemplate
                           transactionType="purchase"
                           initialData={selectedListing ? (() => {
@@ -3205,7 +3205,7 @@ export default function MarketDashboard() {
             
             {/* Step 2: Evaluation — Interactive or Link Existing */}
             {purchaseStep === 'checklist' && (
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <DesktopEvaluatorPanel
                   listingId={selectedListing?.id}
                   onReportGenerated={(report) => {
@@ -3217,7 +3217,7 @@ export default function MarketDashboard() {
             
             {/* Step 3: Payment — Bank Transfer Only */}
             {purchaseStep === 'payment' && (
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <BankTransferStep
                   payment={payment}
                   onPaymentChange={setPayment}
@@ -3228,12 +3228,12 @@ export default function MarketDashboard() {
             
             {/* Step 4: Confirm */}
             {purchaseStep === 'confirm' && (
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {/* Leadership selector */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-5 mb-6">
                   <h4 className="font-semibold text-blue-800 mb-3">Leadership</h4>
                   <p className="text-xs text-blue-600 mb-3">Selecciona el leadership para determinar el ID de la propiedad</p>
-                  <div className="flex gap-3">
+                  <div className="flex gap-2 sm:gap-3">
                     {[
                       { value: 'houston', label: 'Houston', prefix: 'H' },
                       { value: 'conroe', label: 'Conroe', prefix: 'B' },
@@ -3260,19 +3260,19 @@ export default function MarketDashboard() {
                   )}
                 </div>
 
-                <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 sm:p-6 mb-6">
                   <h4 className="font-semibold text-green-800 mb-4 flex items-center gap-2">
                     <CheckCircle className="w-5 h-5" />
                     Resumen de la Compra
                   </h4>
-                  
+
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center py-2 border-b border-green-200">
-                      <span className="text-green-700">Propiedad</span>
-                      <span className="font-medium text-green-900">{selectedListing.address}</span>
+                    <div className="flex justify-between items-start gap-3 py-2 border-b border-green-200 flex-wrap">
+                      <span className="text-green-700 flex-shrink-0">Propiedad</span>
+                      <span className="font-medium text-green-900 text-right break-words">{selectedListing.address}</span>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-green-200">
-                      <span className="text-green-700">Precio de Compra</span>
+                    <div className="flex justify-between items-start gap-3 py-2 border-b border-green-200 flex-wrap">
+                      <span className="text-green-700 flex-shrink-0">Precio de Compra</span>
                       <div className="text-right">
                         <span className="font-bold text-green-900 text-xl">
                           ${(selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
@@ -3287,21 +3287,21 @@ export default function MarketDashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-green-200">
-                      <span className="text-green-700">Evaluación</span>
-                      <span className="font-medium text-green-900">
+                    <div className="flex justify-between items-start gap-3 py-2 border-b border-green-200 flex-wrap">
+                      <span className="text-green-700 flex-shrink-0">Evaluación</span>
+                      <span className="font-medium text-green-900 text-right break-words">
                         {evalReport ? `${evalReport.report_number} — Score ${evalReport.score}/100 (${evalReport.recommendation})` : 'Completada en app móvil ✓'}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-green-200">
-                      <span className="text-green-700">Documentos</span>
-                      <span className="font-medium text-green-900">
+                    <div className="flex justify-between items-start gap-3 py-2 border-b border-green-200 flex-wrap">
+                      <span className="text-green-700 flex-shrink-0">Documentos</span>
+                      <span className="font-medium text-green-900 text-right break-words">
                         Bill of Sale ✓ | Título ✓ | Cambio Título {isTitleAppComplete ? '✓' : '(opcional)'}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-green-700">Pago</span>
-                      <span className="font-medium text-green-900">
+                    <div className="flex justify-between items-start gap-3 py-2 flex-wrap">
+                      <span className="text-green-700 flex-shrink-0">Pago</span>
+                      <span className="font-medium text-green-900 text-right break-words">
                         Transferencia Bancaria{payment.payee_name ? ` a ${payment.payee_name}` : ''}
                       </span>
                     </div>
@@ -3310,7 +3310,7 @@ export default function MarketDashboard() {
 
                 {/* ═══ Seller Signature Status — blocks confirmation if pending ═══ */}
                 {(sellerSignatures.bos || sellerSignatures.title_app) && (
-                  <div className={`rounded-lg p-5 mb-6 border-2 ${
+                  <div className={`rounded-lg p-4 sm:p-5 mb-6 border-2 ${
                     (sellerSignatures.bos?.signed !== false && sellerSignatures.title_app?.signed !== false)
                       ? 'border-emerald-300 bg-emerald-50'
                       : 'border-amber-300 bg-amber-50'
@@ -3324,7 +3324,7 @@ export default function MarketDashboard() {
                     </h4>
                     <div className="space-y-3">
                       {sellerSignatures.bos && (
-                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100 flex-wrap">
                           <div className="flex-shrink-0">
                             {sellerSignatures.bos.signed ? (
                               <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -3356,7 +3356,7 @@ export default function MarketDashboard() {
                         </div>
                       )}
                       {sellerSignatures.title_app && (
-                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-100 flex-wrap">
                           <div className="flex-shrink-0">
                             {sellerSignatures.title_app.signed ? (
                               <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -3513,7 +3513,7 @@ export default function MarketDashboard() {
             )}
             
             {/* Actions */}
-            <div className="p-6 bg-gray-50 border-t flex gap-3">
+            <div className="p-4 sm:p-6 bg-gray-50 border-t flex flex-wrap gap-2 sm:gap-3 safe-area-bottom">
               {purchaseStep !== 'documents' && (
                 <button
                   onClick={goToPrevStep}

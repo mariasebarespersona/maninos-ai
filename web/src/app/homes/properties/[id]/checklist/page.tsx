@@ -126,13 +126,13 @@ export default function PropertyChecklistPage() {
           <ArrowLeft className="w-4 h-4" />
           Volver a {property.address}
         </Link>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gold-100 rounded-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-gold-100 rounded-lg flex-shrink-0">
               <Home className="w-5 h-5 text-gold-600" />
             </div>
-            <div>
-              <h1 className="font-serif text-2xl text-navy-900">
+            <div className="min-w-0">
+              <h1 className="font-serif text-xl sm:text-2xl text-navy-900 break-words">
                 {property.property_code && (
                   <span className="inline-flex items-center justify-center px-1.5 py-0.5 mr-1.5 text-xs font-bold rounded bg-gold-100 text-gold-700 border border-gold-200 align-middle">
                     {property.property_code}
@@ -140,13 +140,13 @@ export default function PropertyChecklistPage() {
                 )}
                 {property.address}
               </h1>
-              <p className="text-navy-500">{property.city}</p>
+              <p className="text-navy-500 truncate">{property.city}</p>
             </div>
           </div>
           <button
             onClick={handleExportPDF}
             disabled={exporting}
-            className="btn-ghost flex items-center gap-2"
+            className="btn-ghost flex items-center gap-2 flex-shrink-0 self-start sm:self-auto"
           >
             {exporting ? (
               <Loader2 className="w-4 h-4 animate-spin" />

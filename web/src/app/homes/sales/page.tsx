@@ -453,16 +453,16 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               </div>
             )}
 
-            <div className="flex items-center gap-4 mt-2 text-sm text-navy-500">
-              <span className="flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5" />
-                {sale.property_address || 'Propiedad'}
+            <div className="flex items-center gap-x-4 gap-y-1 mt-2 text-sm text-navy-500 flex-wrap">
+              <span className="flex items-center gap-1 min-w-0">
+                <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{sale.property_address || 'Propiedad'}</span>
               </span>
-              <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
-                {sale.client_name || 'Cliente'}
+              <span className="flex items-center gap-1 min-w-0">
+                <Users className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{sale.client_name || 'Cliente'}</span>
               </span>
-              <span className="text-xs text-navy-400">
+              <span className="text-xs text-navy-400 whitespace-nowrap">
                 {new Date(sale.created_at).toLocaleDateString('es-MX')}
               </span>
             </div>
@@ -530,7 +530,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 flex-shrink-0 flex-wrap">
             {/* RTO sales: link to Capital portal */}
             {sale.sale_type === 'rto' && (
               <Link
@@ -650,8 +650,8 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                     const isEditing = editingPaymentId === p.id
 
                     return (
-                      <div key={p.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-emerald-100">
-                        <span className="text-xs font-medium text-emerald-600 w-16">{typeLabels[p.payment_type] || p.payment_type}</span>
+                      <div key={p.id} className="flex items-center gap-x-3 gap-y-1 p-2 bg-white rounded-lg border border-emerald-100 flex-wrap">
+                        <span className="text-xs font-medium text-emerald-600 w-16 flex-shrink-0">{typeLabels[p.payment_type] || p.payment_type}</span>
                         {isEditing ? (
                           <input
                             type="number"
@@ -671,11 +671,11 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                             ${Number(p.amount).toLocaleString()}
                           </span>
                         )}
-                        <span className="text-xs text-navy-400">{p.payment_method || '—'}</span>
-                        <span className="text-xs text-navy-400">{p.payment_date ? new Date(p.payment_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
+                        <span className="text-xs text-navy-400 truncate">{p.payment_method || '—'}</span>
+                        <span className="text-xs text-navy-400 whitespace-nowrap">{p.payment_date ? new Date(p.payment_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
                         {p.reported_by === 'client' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Cliente</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 whitespace-nowrap">Cliente</span>
                         )}
                       </div>
                     )

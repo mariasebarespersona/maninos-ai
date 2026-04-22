@@ -205,7 +205,7 @@ export default function EditPropertyPage() {
         )}
 
         {/* Address Section */}
-        <div className="card-luxury p-6 space-y-4">
+        <div className="card-luxury p-4 sm:p-6 space-y-4">
           <div className="flex items-center gap-2 text-navy-900 font-medium mb-2">
             <MapPin className="w-5 h-5 text-gold-500" />
             Ubicación
@@ -222,7 +222,7 @@ export default function EditPropertyPage() {
             error={getFieldError('address')}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               label="Ciudad"
               name="city"
@@ -242,7 +242,7 @@ export default function EditPropertyPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               label="Código Postal"
               name="zip_code"
@@ -265,7 +265,7 @@ export default function EditPropertyPage() {
         </div>
 
         {/* Details Section */}
-        <div className="card-luxury p-6 space-y-4">
+        <div className="card-luxury p-4 sm:p-6 space-y-4">
           <div className="flex items-center gap-2 text-navy-900 font-medium mb-2">
             <Home className="w-5 h-5 text-gold-500" />
             Detalles de la Propiedad
@@ -281,7 +281,7 @@ export default function EditPropertyPage() {
             helperText="Identificador corto (ej: A1, A2, B1)"
           />
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormInput
               type="number"
               label="Año"
@@ -325,7 +325,7 @@ export default function EditPropertyPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               type="number"
               label="Habitaciones"
@@ -355,13 +355,13 @@ export default function EditPropertyPage() {
         </div>
 
         {/* Financial Section */}
-        <div className="card-luxury p-6 space-y-4">
+        <div className="card-luxury p-4 sm:p-6 space-y-4">
           <div className="flex items-center gap-2 text-navy-900 font-medium mb-2">
             <DollarSign className="w-5 h-5 text-gold-500" />
             Información Financiera
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               type="number"
               label="Precio de Compra"

@@ -395,8 +395,8 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
   }
 
   return (
-    <div className="card-luxury p-6">
-      <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
+    <div className="card-luxury p-4 sm:p-6">
+      <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2 flex-wrap">
         <ClipboardCheck className="w-5 h-5 text-gold-500" />
         Evaluación de Casa
         {reportNumber && (
@@ -425,17 +425,17 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
                 Evalúa la condición de la casa con fotos y el checklist de Maninos.<br />
                 La IA analiza las fotos y rellena lo que detecte.
               </p>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
                   onClick={startEvaluation}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gold-500 text-white rounded-lg font-medium hover:bg-gold-600 transition-colors"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gold-500 text-white rounded-lg font-medium hover:bg-gold-600 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                   Iniciar Nueva Evaluación
                 </button>
                 <button
                   onClick={() => setLinkMode(true)}
-                  className="flex items-center gap-2 px-5 py-2.5 border border-navy-200 text-navy-700 rounded-lg font-medium hover:bg-navy-50 transition-colors"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 border border-navy-200 text-navy-700 rounded-lg font-medium hover:bg-navy-50 transition-colors"
                 >
                   <Hash className="w-4 h-4" />
                   Vincular por Número
@@ -468,14 +468,14 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
               <p className="text-xs text-indigo-600 mb-3">
                 ¿Ya hiciste la evaluación desde el móvil? Ingresa el número de reporte para vincularla a esta propiedad.
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="text"
                   value={linkReportNumber}
                   onChange={e => setLinkReportNumber(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') linkExistingReport() }}
                   placeholder="Ej: EVL-260216-001"
-                  className="flex-1 px-3 py-2 border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="flex-1 min-w-[180px] px-3 py-2 border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   autoFocus
                 />
                 <button
@@ -524,7 +524,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
 
           {/* Summary Stats */}
           {checklist.length > 0 && (
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {[
                 { n: summary.passed, l: 'Aprobado', c: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
                 { n: summary.failed, l: 'Falla', c: 'text-red-700 bg-red-50 border-red-200' },
@@ -652,7 +652,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
             {showPhotos && (
               <div className="p-4 space-y-3">
                 {previews.length > 0 && (
-                  <div className="grid grid-cols-6 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                     {previews.map((p, i) => (
                       <div key={i} className="relative aspect-square rounded-lg overflow-hidden group">
                         <img src={p} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />

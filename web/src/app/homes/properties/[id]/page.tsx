@@ -1448,7 +1448,7 @@ ${price}
           {/* Main Info */}
           <div className="lg:col-span-2 space-y-6">
             {/* Photos */}
-            <div className="card-luxury p-6">
+            <div className="card-luxury p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium text-navy-900 flex items-center gap-2">
                   <Image className="w-5 h-5 text-gold-500" />
@@ -1499,7 +1499,7 @@ ${price}
             </div>
 
             {/* Property Details */}
-            <div className="card-luxury p-6">
+            <div className="card-luxury p-4 sm:p-6">
               <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
                 <Home className="w-5 h-5 text-gold-500" />
                 Detalles
@@ -1535,7 +1535,7 @@ ${price}
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Financials */}
-            <div className="card-luxury p-6">
+            <div className="card-luxury p-4 sm:p-6">
               <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-gold-500" />
                 Financiero
@@ -1639,7 +1639,7 @@ ${price}
             </div>
 
             {/* Timeline */}
-            <div className="card-luxury p-6">
+            <div className="card-luxury p-4 sm:p-6">
               <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-gold-500" />
                 Historial
@@ -1663,7 +1663,7 @@ ${price}
         </div>
 
         {/* Documents Section */}
-        <div className="card-luxury p-6">
+        <div className="card-luxury p-4 sm:p-6">
           <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
             <FileText className="w-5 h-5 text-gold-500" />
             Documentos de la Transacción
@@ -2161,7 +2161,7 @@ ${price}
 
         {/* ========== MOVIDA (MOVES) SECTION ========== */}
         {moves.length > 0 && (
-          <div className="card-luxury p-6">
+          <div className="card-luxury p-4 sm:p-6">
             <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
               <Truck className="w-5 h-5 text-orange-500" />
               Movidas (Transporte)
@@ -2343,7 +2343,7 @@ ${price}
 
         {/* Evaluation Section — interactive evaluator or completed report */}
         {evalReport ? (
-          <div className="card-luxury p-6">
+          <div className="card-luxury p-4 sm:p-6">
             <h3 className="font-medium text-navy-900 mb-4 flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5 text-gold-500" />
               Reporte de Evaluación
@@ -2639,7 +2639,7 @@ ${price}
               )}
 
               {/* Origin */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Dirección origen</label>
                   <input
@@ -2663,7 +2663,7 @@ ${price}
               </div>
 
               {/* Destination */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Dirección destino</label>
                   <input
@@ -2690,7 +2690,7 @@ ${price}
               </div>
 
               {/* Customer Info */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name</label>
                   <input type="text" value={newMove.customer_name} onChange={e => setNewMove({...newMove, customer_name: e.target.value})}
@@ -2706,7 +2706,7 @@ ${price}
               {/* Home Info */}
               <div className="border-t border-gray-100 pt-3">
                 <p className="text-xs font-bold text-navy-700 mb-2 uppercase tracking-wider">Home Info</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">HUD / Label #</label>
                     <input type="text" value={newMove.hud_label} onChange={e => setNewMove({...newMove, hud_label: e.target.value})}
@@ -2718,7 +2718,7 @@ ${price}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Serial number" />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Manufacturer</label>
                     <input type="text" value={newMove.manufacturer} onChange={e => setNewMove({...newMove, manufacturer: e.target.value})}
@@ -2735,7 +2735,7 @@ ${price}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Año" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                   <label className="flex items-center gap-2 text-sm p-2 rounded-lg border border-gray-200">
                     <input type="checkbox" checked={newMove.has_hitch} onChange={e => setNewMove({...newMove, has_hitch: e.target.checked})} className="rounded" />
                     <span className="text-gray-700">Does home have a hitch?</span>
@@ -2762,7 +2762,7 @@ ${price}
               </div>
 
               {/* Logistics */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Compañía de transporte</label>
                   <input
@@ -2785,7 +2785,7 @@ ${price}
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Teléfono conductor</label>
                   <input
@@ -2818,7 +2818,7 @@ ${price}
               </div>
 
               {/* Distance + permits */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Distancia (millas)</label>
                   <input

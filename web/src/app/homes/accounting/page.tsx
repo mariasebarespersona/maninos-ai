@@ -2175,7 +2175,7 @@ function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
           <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>Nueva Transacción</h2>
@@ -2192,7 +2192,7 @@ function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated
             <select value={form.transaction_type} onChange={e => setForm(f => ({ ...f, transaction_type: e.target.value, is_income: incomeTypes.includes(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
               {(form.is_income ? incomeTypes : expenseTypes).map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
             </select></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($)</label>
               <input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Fecha</label>
@@ -2200,14 +2200,14 @@ function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción</label>
             <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Ej: Pago de renta yard Conroe" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Contraparte</label>
               <input type="text" value={form.counterparty_name} onChange={e => setForm(f => ({ ...f, counterparty_name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Método Pago</label>
               <select value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
                 <option value="">—</option>{Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta Bancaria</label>
               <select value={form.bank_account_id} onChange={e => setForm(f => ({ ...f, bank_account_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
                 <option value="">—</option>{bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
@@ -2242,7 +2242,7 @@ function NewBankAccountModal({ onClose, onCreated }: { onClose: () => void; onCr
     } catch (e) { alert('Error') } finally { setSaving(false) }
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
           <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>Nueva Cuenta Bancaria</h2>
@@ -2250,16 +2250,16 @@ function NewBankAccountModal({ onClose, onCreated }: { onClose: () => void; onCr
         </div>
         <div className="p-6 space-y-4">
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nombre *</label><input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Chase Business Checking" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Banco</label><input type="text" value={form.bank_name} onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Últimos 4</label><input type="text" maxLength={4} value={form.account_number_last4} onChange={e => setForm(f => ({ ...f, account_number_last4: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Tipo</label><select value={form.account_type} onChange={e => setForm(f => ({ ...f, account_type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}><option value="checking">Checking</option><option value="savings">Savings</option><option value="zelle">Zelle</option><option value="other">Otro</option></select></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Saldo ($)</label><input type="number" step="0.01" value={form.current_balance} onChange={e => setForm(f => ({ ...f, current_balance: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Routing Number</label><input type="text" value={form.routing_number} onChange={e => setForm(f => ({ ...f, routing_number: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Zelle Email</label><input type="email" value={form.zelle_email} onChange={e => setForm(f => ({ ...f, zelle_email: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Zelle Tel</label><input type="tel" value={form.zelle_phone} onChange={e => setForm(f => ({ ...f, zelle_phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="832-745-9600" /></div>
           </div>
@@ -2290,7 +2290,7 @@ function NewRecurringExpenseModal({ accounts, onClose, onCreated }: { accounts: 
     } catch (e) { alert('Error') } finally { setSaving(false) }
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
           <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>Nuevo Gasto Recurrente</h2>
@@ -2298,7 +2298,7 @@ function NewRecurringExpenseModal({ accounts, onClose, onCreated }: { accounts: 
         </div>
         <div className="p-6 space-y-4">
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nombre *</label><input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Renta Yard Conroe" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($) *</label><input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Frecuencia</label><select value={form.frequency} onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}><option value="weekly">Semanal</option><option value="biweekly">Quincenal</option><option value="monthly">Mensual</option><option value="quarterly">Trimestral</option><option value="yearly">Anual</option></select></div>
           </div>
@@ -2331,7 +2331,7 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
     } catch (e) { alert('Error') } finally { setSaving(false) }
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
           <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>Nueva Factura</h2>
@@ -2350,7 +2350,7 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>{form.direction === 'receivable' ? 'Cliente' : 'Proveedor'} *</label>
             <input type="text" value={form.counterparty_name} onChange={e => setForm(f => ({ ...f, counterparty_name: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($) *</label>
               <input type="number" step="0.01" value={form.total_amount} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Vencimiento</label>

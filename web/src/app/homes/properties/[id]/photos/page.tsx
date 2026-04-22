@@ -121,7 +121,7 @@ export default function PropertyPhotosPage() {
       </div>
 
       {/* Photo Uploader */}
-      <div className="card-luxury p-6">
+      <div className="card-luxury p-4 sm:p-6">
         <PhotoUploader
           propertyId={property.id}
           existingPhotos={photos}
