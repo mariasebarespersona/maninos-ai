@@ -1,0 +1,18 @@
+import { NextRequest, NextResponse } from 'next/server'
+const API = process.env.API_URL || 'http://localhost:8000'
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ movementId: string }> }) {
+  try {
+    const { movementId } = await params
+    const body = await request.json()
+    const res = await fetch(`${API}/api/accounting/bank-statements/movements/${movementId}/split`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (e) {
+    return NextResponse.json({ detail: 'API error' }, { status: 500 })
+  }
+}
