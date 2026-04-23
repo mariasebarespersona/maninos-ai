@@ -2603,7 +2603,9 @@ function EstadoCuentaTab() {
   const classifyMovements = async (stmtId: string) => {
     setClassifying(true)
     try {
-      const res = await fetch(`/api/accounting/bank-statements/${stmtId}/classify`, { method: 'POST' })
+      // Call Railway directly — Vercel Hobby has 60s limit but AI classify takes 2+ min
+      const directApi = 'https://maninos-ai-production.up.railway.app'
+      const res = await fetch(`${directApi}/api/accounting/bank-statements/${stmtId}/classify`, { method: 'POST' })
       if (res.ok) {
         await reloadMovements(stmtId)
         fetchStatements()
@@ -2611,7 +2613,7 @@ function EstadoCuentaTab() {
         const err = await res.json().catch(() => ({}))
         alert(`Error: ${err.detail || 'Error al clasificar'}`)
       }
-    } catch (e) { alert('Error de conexión') }
+    } catch (e) { alert('Error de conexión — la clasificación puede tardar hasta 2 min. Reintenta.') }
     finally { setClassifying(false) }
   }
 
