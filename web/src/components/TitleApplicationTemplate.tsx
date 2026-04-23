@@ -399,6 +399,7 @@ export default function TitleApplicationTemplate({
       )}
 
       {/* ═══════════ FORM DOCUMENT ═══════════ */}
+      <div className="ta-doc-viewport">
       <div ref={printRef} className="doc">
 
         {/* ══ HEADER ══ */}
@@ -770,13 +771,30 @@ export default function TitleApplicationTemplate({
         <div className="page-footer">MHD FORM 1023 / Statement of Ownership Appl.doc &nbsp;&nbsp;&nbsp; Page 2 of 2 &nbsp;&nbsp;&nbsp; Rev. 09/19/25</div>
 
       </div>{/* end doc */}
+      </div>{/* end ta-doc-viewport */}
 
       {/* ═══════════ STYLES ═══════════ */}
       <style>{`
-        .taw { background: #f1f1f1; border-radius: 12px; overflow: hidden; }
+        .taw { background: #f1f1f1; border-radius: 12px; }
         .toolbar {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd;
+          display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+          gap: 6px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd;
+          border-top-left-radius: 12px; border-top-right-radius: 12px;
+          position: sticky; top: 0; z-index: 10;
+        }
+        .ta-doc-viewport {
+          overflow-x: auto;
+          overflow-y: visible;
+          -webkit-overflow-scrolling: touch;
+        }
+        @media (max-width: 820px) {
+          .toolbar { padding: 8px 10px; }
+          .toolbar .tbtn { padding: 5px 9px; font-size: 11px; }
+          .doc { min-width: 740px; }
+          .ta-doc-viewport {
+            background:
+              linear-gradient(to left, rgba(241,241,241,0.95), transparent) right center/32px 100% no-repeat;
+          }
         }
         .badge { font-size: 11px; padding: 2px 10px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-weight: 600; }
         .tbtn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 7px;

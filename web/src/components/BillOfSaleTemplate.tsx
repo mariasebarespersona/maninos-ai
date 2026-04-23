@@ -330,6 +330,7 @@ export default function BillOfSaleTemplate({
       </div>
 
       {/* Document */}
+      <div className="bos-doc-viewport">
       <div ref={printRef} className="bos-container">
         {/* Header */}
         <div className="bos-header">
@@ -557,21 +558,50 @@ export default function BillOfSaleTemplate({
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet" />
       </div>
+      </div>{/* end bos-doc-viewport */}
 
       {/* Scoped styles */}
       <style>{`
         .bos-wrapper {
           background: #f8f9fa;
           border-radius: 12px;
-          overflow: hidden;
         }
         .bos-toolbar {
           display: flex;
+          flex-wrap: wrap;
           justify-content: space-between;
           align-items: center;
+          gap: 8px;
           padding: 12px 20px;
           background: white;
           border-bottom: 1px solid #e5e7eb;
+          border-top-left-radius: 12px;
+          border-top-right-radius: 12px;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+        }
+        .bos-doc-viewport {
+          overflow-x: auto;
+          overflow-y: visible;
+          -webkit-overflow-scrolling: touch;
+          padding: 0;
+          position: relative;
+        }
+        /* Hint that doc scrolls horizontally on mobile */
+        @media (max-width: 820px) {
+          .bos-toolbar { padding: 10px 12px; }
+          .bos-toolbar .bos-btn { padding: 6px 10px; font-size: 12px; }
+          .bos-toolbar h3 { font-size: 15px; }
+          .bos-doc-viewport {
+            background:
+              linear-gradient(to right, #f8f9fa, transparent) left center/20px 100% no-repeat,
+              linear-gradient(to left, rgba(248,249,250,0.95), transparent) right center/32px 100% no-repeat;
+          }
+          /* Ensure the document has a minimum readable width that triggers horizontal scroll */
+          .bos-container {
+            min-width: 720px;
+          }
         }
         .bos-btn {
           display: inline-flex;

@@ -2631,7 +2631,7 @@ export default function MarketDashboard() {
                     
                     {/* Bill of Sale — Interactive Template OR Upload */}
                     {showBillOfSale ? (
-                      <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                      <div className="border border-gray-200 rounded-xl overflow-hidden">
                         <BillOfSaleTemplate
                           transactionType="purchase"
                           initialData={selectedListing ? {
@@ -2988,7 +2988,7 @@ export default function MarketDashboard() {
                     </label>
                     
                     {showTitleApp ? (
-                      <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                      <div className="border border-gray-200 rounded-xl overflow-hidden">
                         <TitleApplicationTemplate
                           transactionType="purchase"
                           initialData={selectedListing ? (() => {
