@@ -3314,7 +3314,7 @@ function EstadoCuentaTab() {
                       </thead>
                       <tbody>
                         {activeMovements.map((mv) => (
-                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts} onUpdate={updateMovement} onSplit={splitMovement} />
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => ['income', 'expense', 'cogs'].includes(a.account_type) && !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
                         ))}
                       </tbody>
                     </table>
