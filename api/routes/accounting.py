@@ -1390,19 +1390,20 @@ async def get_income_statement(
         accounts = (sb.table("accounting_accounts").select("*")
                     .eq("is_active", True).order("code").execute()).data or []
 
-    # Compute balances from transactions in period (only bank_statement source)
+    # Compute balances from transactions in period
+    # Only include P&L accounts (income/expense/cogs) — exclude bank/asset entries to avoid double-counting
+    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("income", "expense", "cogs"))
     balances = {}
     try:
         q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
             .neq("status", "voided") \
-            .eq("source", "bank_statement") \
             .gte("transaction_date", sd).lte("transaction_date", ed)
         if yard_id:
             q = q.eq("yard_id", yard_id)
         txns = (q.execute()).data or []
         for t in txns:
             aid = t.get("account_id")
-            if aid:
+            if aid and aid in pl_account_ids:
                 balances[aid] = balances.get(aid, 0) + float(t["amount"])
     except Exception as e:
         logger.warning(f"[income-statement] Error fetching transactions: {e}")
@@ -1453,21 +1454,34 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
         accounts = (sb.table("accounting_accounts").select("*")
                     .eq("is_active", True).order("code").execute()).data or []
 
-    # Compute cumulative balances from bank_statement transactions up to as_of_date
+    # Compute cumulative balances — separate BS and P&L accounts to avoid double-counting
+    bs_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("asset", "liability", "equity"))
+    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("income", "expense", "cogs"))
+    income_acct_ids = set(a["id"] for a in accounts if a.get("account_type") == "income")
+    expense_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in ("expense", "cogs"))
+
     balances = {}
+    net_income = 0
     try:
         q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
             .neq("status", "voided") \
-            .eq("source", "bank_statement") \
             .lte("transaction_date", as_of)
         if yard_id:
             q = q.eq("yard_id", yard_id)
         txns = (q.execute()).data or []
         for t in txns:
             aid = t.get("account_id")
-            if aid:
-                amt = float(t["amount"])
+            if not aid:
+                continue
+            amt = float(t["amount"])
+            # Only add to balances if it's a BS account
+            if aid in bs_account_ids:
                 balances[aid] = balances.get(aid, 0) + amt
+            # Compute net income from P&L accounts
+            if aid in income_acct_ids:
+                net_income += amt
+            elif aid in expense_acct_ids:
+                net_income -= amt
     except Exception as e:
         logger.warning(f"[balance-sheet] Error fetching transactions: {e}")
 
@@ -1479,24 +1493,6 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     total_assets = sum(n["total"] for n in assets_tree)
     total_liabilities = sum(n["total"] for n in liabilities_tree)
     total_equity = sum(n["total"] for n in equity_tree)
-
-    # Add Net Income line to equity (calculated from P&L accounts)
-    net_income = 0
-    try:
-        ytd_start = date(date.today().year, 1, 1).isoformat()
-        income_accts = [a["id"] for a in accounts if a["account_type"] == "income"]
-        expense_accts = [a["id"] for a in accounts if a["account_type"] in ("expense", "cogs")]
-        for t in txns:
-            aid = t.get("account_id")
-            if not aid:
-                continue
-            amt = float(t["amount"])
-            if aid in income_accts:
-                net_income += amt
-            elif aid in expense_accts:
-                net_income -= amt
-    except Exception:
-        pass
 
     return {
         "format": "quickbooks",
@@ -1935,11 +1931,12 @@ async def get_cash_flow_statement(
     sd = start_date or date(now.year, 1, 1).isoformat()
     ed = end_date or now.isoformat()
 
-    txns = (sb.table("accounting_transactions")
+    all_txns = (sb.table("accounting_transactions")
             .select("*, accounting_accounts(account_type, category)")
             .gte("transaction_date", sd).lte("transaction_date", ed)
-            .neq("status", "voided")
-            .eq("source", "bank_statement").execute()).data or []
+            .neq("status", "voided").execute()).data or []
+    # Only P&L accounts for cash flow — exclude bank-side double-entry
+    txns = [t for t in all_txns if (t.get("accounting_accounts") or {}).get("account_type") in ("income", "expense", "cogs")]
 
     sales = (sb.table("sales")
              .select("sale_price, sale_type, status, created_at")
