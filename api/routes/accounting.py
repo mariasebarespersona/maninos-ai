@@ -3194,9 +3194,31 @@ async def post_confirmed_movements(statement_id: str):
     all_accts = sb.table("accounting_accounts").select("id, account_type").eq("is_active", True).execute().data or []
     acct_type_map = {a["id"]: a.get("account_type", "") for a in all_accts}
 
+    # Valid transaction_types per DB CHECK constraint
+    VALID_TXN_TYPES = {
+        'sale_cash', 'sale_rto_capital', 'deposit_received', 'other_income',
+        'purchase_house', 'renovation', 'moving_transport', 'commission',
+        'operating_expense', 'other_expense', 'bank_transfer', 'adjustment',
+    }
+    # Map AI-invented types to valid ones
+    TXN_TYPE_MAP = {
+        'sale_income': 'sale_cash', 'income_sale': 'sale_cash', 'income_sale_deposit': 'deposit_received',
+        'commission_expense': 'commission', 'expense_commission': 'commission',
+        'down_payment_income': 'deposit_received', 'down_payment': 'deposit_received',
+        'capital_transfer_income': 'sale_rto_capital', 'income_capital_transfer': 'sale_rto_capital',
+        'capital_transfer': 'sale_rto_capital', 'internal_transfer': 'bank_transfer',
+        'expense_office_supplies': 'operating_expense', 'office_supplies': 'operating_expense',
+        'expense_bank_fee': 'operating_expense', 'bank_fee': 'operating_expense',
+        'purchase': 'purchase_house', 'house_purchase': 'purchase_house',
+        'cogs': 'purchase_house', 'cost_of_goods': 'purchase_house',
+        'expense': 'other_expense', 'income': 'other_income',
+    }
+
     for mv in movements.data:
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
-        txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
+        raw_txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
+        # Normalize to valid type
+        txn_type = raw_txn_type if raw_txn_type in VALID_TXN_TYPES else TXN_TYPE_MAP.get(raw_txn_type, "adjustment")
 
         if not account_id:
             skipped += 1
@@ -3283,9 +3305,10 @@ async def post_confirmed_movements(statement_id: str):
             posted += 1
 
         except Exception as e:
-            logger.warning(f"[BankStmt] Failed to post movement {mv['id']}: {e}")
+            full_err = str(e)
+            logger.error(f"[BankStmt] Failed to post movement {mv['id']}: {full_err}")
             skipped += 1
-            errors.append(f"'{mv.get('description', '')[:60]}' — {str(e)[:80]}")
+            errors.append(f"'{mv.get('description', '')[:60]}' — {full_err[:200]}")
 
     # Update statement stats
     total_posted = (sb.table("statement_movements")
