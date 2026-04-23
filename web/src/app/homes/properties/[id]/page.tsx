@@ -1306,7 +1306,7 @@ ${price}
               </>
             )}
             
-            {/* Publicada: WhatsApp, Vender, Renovar */}
+            {/* Publicada: WhatsApp, Renovar */}
             {property.status === 'published' && (
               <>
                 <button
@@ -1316,13 +1316,6 @@ ${price}
                   <MessageCircle className="w-5 h-5" />
                   WhatsApp
                 </button>
-                <Link
-                  href={`/homes/sales/new?property=${property.id}`}
-                  className="btn-gold"
-                >
-                  <Tag className="w-5 h-5" />
-                  Vender (Contado)
-                </Link>
                 <button
                   onClick={handleStartRenovation}
                   disabled={actionLoading}
