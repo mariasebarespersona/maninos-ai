@@ -2618,6 +2618,8 @@ function EstadoCuentaTab() {
   }
 
   const updateMovement = async (mvId: string, data: Record<string, any>) => {
+    // Optimistic update — instant UI feedback
+    setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, ...data } : m))
     try {
       const res = await fetch(`/api/accounting/bank-statements/movements/${mvId}`, {
         method: 'PATCH',
@@ -2627,8 +2629,14 @@ function EstadoCuentaTab() {
       if (res.ok) {
         const updated = await res.json()
         setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, ...updated } : m))
+      } else {
+        // Revert on failure
+        setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, status: 'suggested' } : m))
       }
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      setActiveMovements(prev => prev.map(m => m.id === mvId ? { ...m, status: 'suggested' } : m))
+    }
   }
 
   const splitMovement = async (mvId: string, parts: { amount: number; description: string }[]) => {
@@ -3572,27 +3580,31 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
           <div className="flex items-center justify-center gap-1">
             {(mv.status === 'suggested' || (mv.status === 'reconciled' && !mv.final_account_id)) && mv.suggested_account_id && (
               <button onClick={confirmSuggestion}
-                className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors"
-                title="Confirmar sugerencia">
+                className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors group/btn relative"
+                title="Confirmar cuenta sugerida">
                 <Check className="w-3.5 h-3.5" />
+                <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none">Confirmar</span>
               </button>
             )}
             <button onClick={() => setShowAccountPicker(true)}
-              className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
-              title="Cambiar cuenta">
+              className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors group/btn relative"
+              title="Cambiar cuenta contable">
               <Settings className="w-3.5 h-3.5" />
+              <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none">Cambiar cuenta</span>
             </button>
             {!isChild && (
               <button onClick={() => setShowSplit(!showSplit)}
-                className="p-1 rounded hover:bg-amber-100 text-amber-600 transition-colors"
-                title="Dividir monto">
+                className="p-1 rounded hover:bg-amber-100 text-amber-600 transition-colors group/btn relative"
+                title="Dividir movimiento en partes">
                 <Scissors className="w-3.5 h-3.5" />
+                <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none">Dividir</span>
               </button>
             )}
             <button onClick={skipMovement}
-              className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors"
-              title="Omitir">
+              className="p-1 rounded hover:bg-stone-200 text-stone-400 transition-colors group/btn relative"
+              title="Omitir este movimiento">
               <SkipForward className="w-3.5 h-3.5" />
+              <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none">Omitir</span>
             </button>
           </div>
         )}
