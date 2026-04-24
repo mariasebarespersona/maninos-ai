@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import TitleTransferCard from '@/components/TitleTransferCard'
 import ManualTitleUploadModal from '@/components/ManualTitleUploadModal'
+import SchedulerRunsWidget from '@/components/SchedulerRunsWidget'
 import { useToast } from '@/components/ui/Toast'
 
 interface Transfer {
@@ -225,6 +226,9 @@ export default function TransfersPage() {
           fetchMonitor()
         }}
       />
+
+      {/* Scheduler status — shows last run time + OK/fail + summary */}
+      <SchedulerRunsWidget />
 
       {/* Title Monitoring */}
       {(
