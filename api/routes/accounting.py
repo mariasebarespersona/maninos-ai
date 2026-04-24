@@ -29,6 +29,52 @@ from pydantic import BaseModel
 
 from tools.supabase_client import sb
 
+
+def _fetch_all_accounts(active_only: bool = True) -> list:
+    """Fetch all accounting_accounts, paginating past Supabase's 1000-row limit."""
+    rows: list = []
+    offset = 0
+    page_size = 1000
+    while True:
+        try:
+            q = sb.table("accounting_accounts").select("*")
+            if active_only:
+                q = q.eq("is_active", True)
+            batch = q.order("display_order, code").range(offset, offset + page_size - 1).execute().data or []
+        except Exception:
+            q = sb.table("accounting_accounts").select("*")
+            if active_only:
+                q = q.eq("is_active", True)
+            batch = q.order("code").range(offset, offset + page_size - 1).execute().data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
+def _fetch_all_transactions(extra_filters: dict = None) -> list:
+    """Fetch all accounting_transactions (non-voided), paginating past 1000-row limit."""
+    rows: list = []
+    offset = 0
+    page_size = 1000
+    while True:
+        q = sb.table("accounting_transactions").select("account_id, amount, is_income").neq("status", "voided")
+        if extra_filters:
+            for k, v in extra_filters.items():
+                if k == "gte_date":
+                    q = q.gte("transaction_date", v)
+                elif k == "lte_date":
+                    q = q.lte("transaction_date", v)
+                elif k == "yard_id":
+                    q = q.eq("yard_id", v)
+        batch = q.range(offset, offset + page_size - 1).execute().data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    return rows
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -691,8 +737,7 @@ class AccountUpdate(BaseModel):
 
 @router.get("/accounts")
 async def list_accounts():
-    result = sb.table("accounting_accounts").select("*").eq("is_active", True).order("display_order, code").execute()
-    return {"accounts": result.data or []}
+    return {"accounts": _fetch_all_accounts()}
 
 
 @router.get("/accounts/tree")
@@ -701,41 +746,17 @@ async def get_accounts_tree(
     end_date: Optional[str] = None,
 ):
     """Get full hierarchical chart of accounts with computed balances from transactions."""
-    # Paginate to bypass Supabase default 1000 row limit
-    accounts: list = []
-    page_size = 1000
-    offset = 0
-    while True:
-        try:
-            batch = (sb.table("accounting_accounts").select("*")
-                      .eq("is_active", True).order("display_order, code")
-                      .range(offset, offset + page_size - 1).execute()).data or []
-        except Exception:
-            batch = (sb.table("accounting_accounts").select("*")
-                      .eq("is_active", True).order("code")
-                      .range(offset, offset + page_size - 1).execute()).data or []
-        accounts.extend(batch)
-        if len(batch) < page_size:
-            break
-        offset += page_size
+    accounts = _fetch_all_accounts()
 
     # Compute balances from transactions
     balances = {}
     try:
-        # Also paginate transactions
-        txns: list = []
-        t_offset = 0
-        while True:
-            q = sb.table("accounting_transactions").select("account_id, amount, is_income").neq("status", "voided")
-            if start_date:
-                q = q.gte("transaction_date", start_date)
-            if end_date:
-                q = q.lte("transaction_date", end_date)
-            batch = (q.range(t_offset, t_offset + page_size - 1).execute()).data or []
-            txns.extend(batch)
-            if len(batch) < page_size:
-                break
-            t_offset += page_size
+        filters = {}
+        if start_date:
+            filters["gte_date"] = start_date
+        if end_date:
+            filters["lte_date"] = end_date
+        txns = _fetch_all_transactions(filters)
         for t in txns:
             aid = t.get("account_id")
             if aid:
@@ -853,7 +874,7 @@ async def get_accounts_summary(
     sd = start_date or date(now.year, now.month, 1).isoformat()
     ed = end_date or now.isoformat()
 
-    accounts = sb.table("accounting_accounts").select("*").eq("is_active", True).order("code").execute()
+    accounts_data = _fetch_all_accounts()
     q = sb.table("accounting_transactions") \
         .select("account_id, amount, is_income") \
         .gte("transaction_date", sd).lte("transaction_date", ed) \
@@ -874,7 +895,7 @@ async def get_accounts_summary(
                 account_totals[aid]["expense"] += float(txn["amount"])
 
     summary = []
-    for acc in (accounts.data or []):
+    for acc in accounts_data:
         totals = account_totals.get(acc["id"], {"income": 0, "expense": 0})
         summary.append({**acc, "total_income": totals["income"],
                         "total_expense": totals["expense"],
@@ -1400,13 +1421,7 @@ async def get_income_statement(
     sd = start_date or date(now.year, 1, 1).isoformat()
     ed = end_date or now.isoformat()
 
-    # Fetch all accounts
-    try:
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("display_order, code").execute()).data or []
-    except Exception:
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("code").execute()).data or []
+    accounts = _fetch_all_accounts()
 
     # Compute balances from transactions in period
     # Only include P&L accounts — exclude bank/asset entries to avoid double-counting
@@ -1414,12 +1429,10 @@ async def get_income_statement(
     pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
     balances = {}
     try:
-        q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
-            .neq("status", "voided") \
-            .gte("transaction_date", sd).lte("transaction_date", ed)
+        filters = {"gte_date": sd, "lte_date": ed}
         if yard_id:
-            q = q.eq("yard_id", yard_id)
-        txns = (q.execute()).data or []
+            filters["yard_id"] = yard_id
+        txns = _fetch_all_transactions(filters)
         for t in txns:
             aid = t.get("account_id")
             if aid and aid in pl_account_ids:
@@ -1465,13 +1478,7 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     """QuickBooks-style hierarchical Balance Sheet (Balance General)."""
     as_of = as_of_date or date.today().isoformat()
 
-    # Fetch all accounts
-    try:
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("display_order, code").execute()).data or []
-    except Exception:
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("code").execute()).data or []
+    accounts = _fetch_all_accounts()
 
     # Compute cumulative balances — separate BS and P&L accounts to avoid double-counting
     BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets", "Other Assets",
@@ -1489,12 +1496,10 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     balances = {}
     net_income = 0
     try:
-        q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
-            .neq("status", "voided") \
-            .lte("transaction_date", as_of)
+        filters = {"lte_date": as_of}
         if yard_id:
-            q = q.eq("yard_id", yard_id)
-        txns = (q.execute()).data or []
+            filters["yard_id"] = yard_id
+        txns = _fetch_all_transactions(filters)
         for t in txns:
             aid = t.get("account_id")
             if not aid:
@@ -3028,8 +3033,7 @@ async def classify_statement_movements(statement_id: str):
             mv["_matched_txn_counterparty"] = txn.get("counterparty_name", "")
 
     # Get chart of accounts for AI context — ONLY QuickBooks accounts (with parent_account_id set)
-    accounts = sb.table("accounting_accounts").select("id, code, name, account_type, category, is_header, parent_account_id").eq("is_active", True).order("display_order").execute()
-    all_accounts = accounts.data or []
+    all_accounts = _fetch_all_accounts()
     # Only use accounts that are part of the QuickBooks hierarchy (have a parent, or are QB roots)
     qb_root_codes = {"PL_INCOME", "PL_COGS", "PL_EXPENSES", "PL_OTHER_EXPENSES", "BS_ASSETS", "BS_LIABILITIES", "BS_EQUITY"}
     qb_accounts = [a for a in all_accounts if a.get("parent_account_id") or a["code"] in qb_root_codes]
@@ -3230,7 +3234,7 @@ async def post_confirmed_movements(statement_id: str):
     stmt_label = f"{statement.get('account_label', '')} - {statement.get('original_filename', '')}"
 
     # Pre-load account types for determining bank-side direction
-    all_accts = sb.table("accounting_accounts").select("id, account_type").eq("is_active", True).execute().data or []
+    all_accts = _fetch_all_accounts()
     acct_type_map = {a["id"]: a.get("account_type", "") for a in all_accts}
 
     # Valid transaction_types per DB CHECK constraint
