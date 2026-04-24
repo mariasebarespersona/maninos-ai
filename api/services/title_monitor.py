@@ -93,8 +93,23 @@ def populate_tdhca_fields_from_document_data(transfer_id: str) -> dict:
         ""
     )
 
+    # Fallback: older purchases only captured serial/label in the Bill of Sale,
+    # not the Title Application. Check bos_purchase / bos_sale too so these
+    # properties still get monitored.
+    if not serial or not label:
+        bos_key = f"bos_{t['transfer_type']}"
+        bos = doc_data.get(bos_key, {}) or {}
+        if not serial:
+            serial = bos.get("serial_number") or ""
+        if not label:
+            label = (
+                bos.get("hud_label_number") or
+                bos.get("label_seal_number") or
+                ""
+            )
+
     if not serial and not label:
-        return {"ok": False, "error": f"No serial/label in document_data[{key}]"}
+        return {"ok": False, "error": f"No serial/label in document_data[{key}] or bos_{t['transfer_type']}"}
 
     # Save to transfer and set next check to 30 days from now
     update = {}
