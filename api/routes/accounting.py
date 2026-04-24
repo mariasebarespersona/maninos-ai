@@ -2498,10 +2498,14 @@ async def reset_homes_account_balances(request: Request):
         scope = body.get("scope", "all")
 
         # 1. Reset current_balance on accounts
-        accounts = sb.table("accounting_accounts") \
-            .select("id, code, account_type, current_balance") \
-            .eq("is_active", True) \
-            .execute().data or []
+        accounts = _fetch_all_accounts()
+
+        # QuickBooks + legacy account type sets
+        PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense",
+                     "income", "expense", "cogs"}
+        BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets",
+                     "Other Assets", "Accounts payable (A/P)", "Other Current Liabilities",
+                     "Long Term Liabilities", "Equity", "asset", "liability", "equity"}
 
         reset_count = 0
         for acc in accounts:
@@ -2509,9 +2513,9 @@ async def reset_homes_account_balances(request: Request):
             if bal == 0:
                 continue
             atype = acc.get("account_type", "")
-            if scope == "profit_loss" and atype not in ("income", "expense", "cogs"):
+            if scope == "profit_loss" and atype not in PL_TYPES:
                 continue
-            if scope == "balance_sheet" and atype not in ("asset", "liability", "equity"):
+            if scope == "balance_sheet" and atype not in BS_TYPES:
                 continue
             sb.table("accounting_accounts") \
                 .update({"current_balance": 0}) \
@@ -2558,26 +2562,35 @@ async def reset_homes_account_balances(request: Request):
                     break
         else:
             scope_types = {
-                "profit_loss": ("income", "expense", "cogs"),
-                "balance_sheet": ("asset", "liability", "equity"),
+                "profit_loss": PL_TYPES,
+                "balance_sheet": BS_TYPES,
             }
-            target_types = scope_types.get(scope, ())
+            target_types = scope_types.get(scope, set())
             scope_account_ids = [a["id"] for a in accounts if a.get("account_type") in target_types]
             if scope_account_ids:
-                voided = sb.table("accounting_transactions") \
-                    .update({"status": "voided", "amount": 0}) \
-                    .in_("account_id", scope_account_ids) \
-                    .neq("status", "voided") \
-                    .execute()
-                deleted_count = len(voided.data or [])
+                # Loop to handle Supabase row limits
+                for _ in range(20):
+                    voided = sb.table("accounting_transactions") \
+                        .update({"status": "voided", "amount": 0}) \
+                        .in_("account_id", scope_account_ids) \
+                        .neq("status", "voided") \
+                        .execute()
+                    batch = len(voided.data or [])
+                    deleted_count += batch
+                    if batch == 0:
+                        break
 
         # Also void orphaned transactions (no account_id)
-        orphaned = sb.table("accounting_transactions") \
-            .update({"status": "voided", "amount": 0}) \
-            .is_("account_id", "null") \
-            .neq("status", "voided") \
-            .execute()
-        deleted_count += len(orphaned.data or [])
+        for _ in range(5):
+            orphaned = sb.table("accounting_transactions") \
+                .update({"status": "voided", "amount": 0}) \
+                .is_("account_id", "null") \
+                .neq("status", "voided") \
+                .execute()
+            batch = len(orphaned.data or [])
+            deleted_count += batch
+            if batch == 0:
+                break
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
