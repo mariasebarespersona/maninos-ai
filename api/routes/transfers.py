@@ -643,10 +643,28 @@ async def delete_document_file(transfer_id: str, doc_key: str):
 # MANUAL TITLE UPLOAD — old houses without TDHCA record
 # ============================================================================
 
+class NewPropertyForManualTitle(BaseModel):
+    """Basic property info for creating a legacy (pre-existing) property
+    inline when submitting a manual title upload."""
+    property_code: Optional[str] = None  # User-provided old ID like "B70"
+    address: str
+    city: Optional[str] = None
+    state: Optional[str] = "Texas"
+    zip_code: Optional[str] = None
+    year: Optional[int] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    purchase_price: Optional[float] = None
+    status: Optional[str] = "sold"  # default: legacy houses are usually sold
+    notes: Optional[str] = None
+
+
 class ManualTitleUploadRequest(BaseModel):
     """Body for POST /api/transfers/manual-upload.
-    All fields are optional except property_id; unset fields stay blank."""
-    property_id: str
+    Either `property_id` (existing) OR `new_property` (create legacy property
+    inline) must be provided. All title fields are optional; unset stay blank."""
+    property_id: Optional[str] = None
+    new_property: Optional[NewPropertyForManualTitle] = None
     tdhca_serial: Optional[str] = None
     tdhca_label: Optional[str] = None
     tdhca_owner_name: Optional[str] = None
@@ -668,17 +686,66 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
     """Create a title_transfer row for a property whose title was NEVER
     captured by the TDHCA-lookup flow (old house, legacy property).
 
+    Supports two modes:
+      1. Existing property: pass `property_id`
+      2. Legacy property (not yet in DB): pass `new_property` with basic info
+         — the property is created first, then the title is attached.
+
     Creates a transfer with is_manual_upload=true and also mirrors the fields
     into properties.document_data.title_app_purchase so the rest of the app
     (title monitor, title application template, etc.) works as usual.
     """
-    # Verify property exists
-    prop_res = sb.table("properties").select("id, document_data").eq(
-        "id", data.property_id
-    ).execute()
-    if not prop_res.data:
-        raise HTTPException(status_code=404, detail="Property not found")
-    prop = prop_res.data[0]
+    # Resolve property_id — either existing or create a legacy property
+    if data.property_id:
+        prop_res = sb.table("properties").select("id, document_data").eq(
+            "id", data.property_id
+        ).execute()
+        if not prop_res.data:
+            raise HTTPException(status_code=404, detail="Property not found")
+        prop = prop_res.data[0]
+        property_id = data.property_id
+    elif data.new_property:
+        np = data.new_property
+        if not np.address or not np.address.strip():
+            raise HTTPException(
+                status_code=400, detail="La dirección es obligatoria para una propiedad nueva"
+            )
+        new_prop_payload = {
+            "address":         np.address.strip(),
+            "city":            np.city,
+            "state":           np.state or "Texas",
+            "zip_code":        np.zip_code,
+            "year":            np.year,
+            "bedrooms":        np.bedrooms,
+            "bathrooms":       float(np.bathrooms) if np.bathrooms is not None else None,
+            "purchase_price":  float(np.purchase_price) if np.purchase_price is not None else None,
+            "status":          np.status or "sold",
+            "property_code":   np.property_code,
+            "notes":           (
+                "Propiedad antigua creada desde 'Subir Título Manual'"
+                + (f". {np.notes}" if np.notes else "")
+            ),
+            "is_renovated":    False,
+            "checklist_completed": False,
+            "document_data":   {},
+            "photos":          [],
+        }
+        # Strip keys with None so Supabase uses column defaults
+        new_prop_payload = {k: v for k, v in new_prop_payload.items() if v is not None}
+        try:
+            created = sb.table("properties").insert(new_prop_payload).execute()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"No se pudo crear la propiedad: {e}")
+        if not created.data:
+            raise HTTPException(status_code=500, detail="No se creó la propiedad")
+        prop = created.data[0]
+        property_id = prop["id"]
+        logger.info(f"[manual-upload] Created legacy property {property_id} — {np.address}")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes indicar property_id (propiedad existente) o new_property (propiedad nueva)",
+        )
 
     # Build title_app_purchase payload (for UI + title monitor compatibility)
     title_app_purchase = {
@@ -712,11 +779,11 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
     }
     sb.table("properties").update({
         "document_data": existing_doc_data
-    }).eq("id", data.property_id).execute()
+    }).eq("id", property_id).execute()
 
     # Create the title_transfer row (purchase direction)
     transfer_payload = {
-        "property_id":          data.property_id,
+        "property_id":          property_id,
         "transfer_type":        "purchase",
         "from_name":            data.seller_name or "Previous Owner",
         "to_name":              data.buyer_name or "Maninos Homes LLC",
@@ -747,7 +814,8 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
     return {
         "ok": True,
         "transfer": ins.data[0],
-        "property_id": data.property_id,
+        "property_id": property_id,
+        "property_created": bool(data.new_property),
     }
 
 
