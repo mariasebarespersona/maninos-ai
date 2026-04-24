@@ -701,23 +701,41 @@ async def get_accounts_tree(
     end_date: Optional[str] = None,
 ):
     """Get full hierarchical chart of accounts with computed balances from transactions."""
-    try:
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("display_order, code").execute()).data or []
-    except Exception:
-        # Fallback if display_order column doesn't exist yet
-        accounts = (sb.table("accounting_accounts").select("*")
-                    .eq("is_active", True).order("code").execute()).data or []
+    # Paginate to bypass Supabase default 1000 row limit
+    accounts: list = []
+    page_size = 1000
+    offset = 0
+    while True:
+        try:
+            batch = (sb.table("accounting_accounts").select("*")
+                      .eq("is_active", True).order("display_order, code")
+                      .range(offset, offset + page_size - 1).execute()).data or []
+        except Exception:
+            batch = (sb.table("accounting_accounts").select("*")
+                      .eq("is_active", True).order("code")
+                      .range(offset, offset + page_size - 1).execute()).data or []
+        accounts.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
 
     # Compute balances from transactions
     balances = {}
     try:
-        q = sb.table("accounting_transactions").select("account_id, amount, is_income").neq("status", "voided")
-        if start_date:
-            q = q.gte("transaction_date", start_date)
-        if end_date:
-            q = q.lte("transaction_date", end_date)
-        txns = (q.execute()).data or []
+        # Also paginate transactions
+        txns: list = []
+        t_offset = 0
+        while True:
+            q = sb.table("accounting_transactions").select("account_id, amount, is_income").neq("status", "voided")
+            if start_date:
+                q = q.gte("transaction_date", start_date)
+            if end_date:
+                q = q.lte("transaction_date", end_date)
+            batch = (q.range(t_offset, t_offset + page_size - 1).execute()).data or []
+            txns.extend(batch)
+            if len(batch) < page_size:
+                break
+            t_offset += page_size
         for t in txns:
             aid = t.get("account_id")
             if aid:
