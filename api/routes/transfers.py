@@ -704,7 +704,11 @@ class NewPropertyForManualTitle(BaseModel):
 class ManualTitleUploadRequest(BaseModel):
     """Body for POST /api/transfers/manual-upload.
     Either `property_id` (existing) OR `new_property` (create legacy property
-    inline) must be provided. All title fields are optional; unset stay blank."""
+    inline) must be provided. All title fields are optional; unset stay blank.
+
+    If the property is (or will be) sold, `sold_to_name` should be provided
+    and the backend will create a transfer_type='sale' row representing
+    Maninos → buyer transfer. Otherwise a 'purchase' row is created."""
     property_id: Optional[str] = None
     new_property: Optional[NewPropertyForManualTitle] = None
     tdhca_serial: Optional[str] = None
@@ -721,6 +725,9 @@ class ManualTitleUploadRequest(BaseModel):
     buyer_name: Optional[str] = None
     date_of_title: Optional[str] = None
     notes: Optional[str] = None
+    # If the house was sold to a client, name of the buyer. If set, a sale
+    # transfer is created instead of a purchase transfer.
+    sold_to_name: Optional[str] = None
 
 
 @router.post("/manual-upload")
@@ -814,30 +821,71 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
         "_manual_upload":      True,
     }
 
-    # Merge into properties.document_data
+    # Determine whether this manual upload represents a SALE (Maninos → buyer)
+    # or a PURCHASE (previous owner → Maninos). Rule: if the user provided a
+    # sold_to_name OR the (new) property status is 'sold', treat as sale.
+    prop_status = (
+        (data.new_property.status if data.new_property else None)
+        or prop.get("status")
+        or ""
+    ).lower()
+    is_sale = bool(data.sold_to_name) or prop_status == "sold"
+
+    # Merge title data into the matching key (title_app_sale for sale,
+    # title_app_purchase for purchase). Also mirror to title_app_purchase
+    # so the home-identification fields are always there for display.
     existing_doc_data = prop.get("document_data") or {}
     existing_doc_data["title_app_purchase"] = {
         **(existing_doc_data.get("title_app_purchase") or {}),
         **title_app_purchase,
     }
+    if is_sale:
+        title_app_sale = {
+            **title_app_purchase,
+            "seller_name": "MANINOS HOMES",
+            "buyer_name":  data.sold_to_name or "",
+        }
+        existing_doc_data["title_app_sale"] = {
+            **(existing_doc_data.get("title_app_sale") or {}),
+            **title_app_sale,
+        }
     sb.table("properties").update({
         "document_data": existing_doc_data
     }).eq("id", property_id).execute()
 
-    # Create the title_transfer row (purchase direction)
+    # Build the title_transfer row. Manual uploads always go in as
+    # status='completed' (the paper title exists) and title_name_updated=TRUE
+    # so the scheduler skips them — legacy titles don't need to be monitored.
+    if is_sale:
+        transfer_type   = "sale"
+        from_name       = "Maninos Homes LLC"
+        to_name         = data.sold_to_name or "Buyer"
+        tdhca_owner     = data.sold_to_name or "Buyer"
+        transfer_notes  = ("Título subido manualmente (casa antigua vendida)"
+                           + (f" — {data.notes}" if data.notes else ""))
+    else:
+        transfer_type   = "purchase"
+        from_name       = data.seller_name or "Previous Owner"
+        to_name         = data.buyer_name or "Maninos Homes LLC"
+        tdhca_owner     = data.tdhca_owner_name or data.buyer_name or "Maninos Homes LLC"
+        transfer_notes  = ("Título subido manualmente (casa antigua sin captura TDHCA)"
+                           + (f" — {data.notes}" if data.notes else ""))
+
     transfer_payload = {
         "property_id":          property_id,
-        "transfer_type":        "purchase",
-        "from_name":            data.seller_name or "Previous Owner",
-        "to_name":              data.buyer_name or "Maninos Homes LLC",
-        "status":               "completed" if data.date_of_title else "pending",
+        "transfer_type":        transfer_type,
+        "from_name":            from_name,
+        "to_name":              to_name,
+        "status":               "completed",         # manual titles are already final
         "tdhca_serial":         data.tdhca_serial,
         "tdhca_label":          data.tdhca_label,
-        "tdhca_owner_name":     data.tdhca_owner_name or data.buyer_name or "Maninos Homes LLC",
+        "tdhca_owner_name":     tdhca_owner,
+        # Flag so the scheduler skips (it only checks title_name_updated=FALSE)
+        "title_name_updated":   True,
+        "next_tdhca_check":     None,
         "is_manual_upload":     True,
         "manual_upload_notes":  data.notes,
-        "notes":                "Título subido manualmente (casa antigua sin captura TDHCA)"
-                                + (f" — {data.notes}" if data.notes else ""),
+        "notes":                transfer_notes,
         "documents_checklist":  {},
     }
 
@@ -859,6 +907,7 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
         "transfer": ins.data[0],
         "property_id": property_id,
         "property_created": bool(data.new_property),
+        "transfer_type": transfer_type,
     }
 
 

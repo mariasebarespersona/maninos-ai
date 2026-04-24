@@ -43,6 +43,7 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
   const [propertySearch, setPropertySearch] = useState('')
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
   const [newProp, setNewProp] = useState({ ...EMPTY_NEW_PROP })
+  const [soldToName, setSoldToName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [uploadingPdf, setUploadingPdf] = useState(false)
   const [form, setForm] = useState({
@@ -71,6 +72,7 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
     setSelectedProperty(null)
     setPropertySearch('')
     setNewProp({ ...EMPTY_NEW_PROP })
+    setSoldToName('')
     setPdfFile(null)
     setCreatedTransferId(null)
     setForm({
@@ -105,11 +107,20 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
     })
     .slice(0, 20)
 
+  // Is the target property marked sold? Either the existing one or the new
+  // one's chosen status. Drives the "Vendida a (comprador)" UI + sale transfer.
+  const isSoldContext = (() => {
+    if (propertyMode === 'existing') return selectedProperty?.status === 'sold'
+    return newProp.status === 'sold'
+  })()
+
   const isFormReady = (() => {
     if (!form.tdhca_serial && !form.tdhca_label) return false
-    if (propertyMode === 'existing') return !!selectedProperty
-    // new property requires address
-    return !!newProp.address.trim()
+    if (propertyMode === 'existing' && !selectedProperty) return false
+    if (propertyMode === 'new' && !newProp.address.trim()) return false
+    // If the house is sold, we need the buyer name so the sale transfer has a "to_name"
+    if (isSoldContext && !soldToName.trim()) return false
+    return true
   })()
 
   const handleSubmit = async () => {
@@ -117,8 +128,15 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
       toast.error('Ingresa al menos el Serial o el Label/Seal del título')
       return
     }
+    if (isSoldContext && !soldToName.trim()) {
+      toast.error('Ingresa el nombre del comprador (Vendida a)')
+      return
+    }
 
     let payload: any = { ...form }
+    if (isSoldContext) {
+      payload.sold_to_name = soldToName.trim()
+    }
     if (propertyMode === 'existing') {
       if (!selectedProperty) {
         toast.error('Selecciona una propiedad')
@@ -392,6 +410,27 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
             <label className="block text-xs font-semibold text-slate mb-2 uppercase tracking-wide">
               2. Datos del Título
             </label>
+            <p className="text-xs text-slate mb-3 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              El estado del título se guardará como <strong>Completado</strong>.
+              El scheduler diario no procesará este título (es un registro histórico).
+            </p>
+            {isSoldContext && (
+              <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <label className="block text-xs font-semibold text-purple-800 mb-1">
+                  Vendida a (nombre del comprador) *
+                </label>
+                <input
+                  type="text"
+                  value={soldToName}
+                  onChange={e => setSoldToName(e.target.value)}
+                  placeholder="Ej: Juan Pérez"
+                  className="w-full px-3 py-2 rounded-lg border border-purple-300 text-sm focus:outline-none focus:border-purple-500"
+                />
+                <p className="text-[11px] text-purple-600 mt-1">
+                  Como la casa está vendida, este título se registrará como transferencia de tipo <strong>Venta</strong> (Maninos → comprador).
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Serial Number *" value={form.tdhca_serial}
                      onChange={v => setForm({ ...form, tdhca_serial: v })}
