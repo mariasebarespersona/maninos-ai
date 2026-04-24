@@ -625,9 +625,40 @@ async def create_transaction(data: TransactionCreate):
     if not result.data:
         raise HTTPException(status_code=500, detail="Error creating transaction")
 
-    _log_audit("accounting_transactions", result.data[0]["id"], "create",
+    pnl_txn = result.data[0]
+    pnl_txn_id = pnl_txn["id"]
+    _log_audit("accounting_transactions", pnl_txn_id, "create",
                description=f"Created {txn_number}: ${data.amount}")
-    return result.data[0]
+
+    # Double-entry: if a bank_account_id is provided, create the bank-side counterpart
+    if data.bank_account_id:
+        # Look up the accounting_account_id linked to this bank account
+        ba = sb.table("bank_accounts").select("accounting_account_id").eq("id", data.bank_account_id).execute()
+        bank_accounting_id = ba.data[0].get("accounting_account_id") if ba.data else None
+        if bank_accounting_id:
+            bank_data = {
+                "transaction_number": _generate_transaction_number(),
+                "transaction_date": data.transaction_date,
+                "transaction_type": data.transaction_type,
+                "amount": data.amount,
+                "is_income": data.is_income,  # deposits increase bank, withdrawals decrease
+                "account_id": bank_accounting_id,
+                "bank_account_id": data.bank_account_id,
+                "linked_transaction_id": pnl_txn_id,
+                "counterparty_name": data.counterparty_name,
+                "description": data.description,
+                "notes": f"Contrapartida bancaria de {txn_number}",
+                "status": "confirmed",
+            }
+            bank_data = {k: v for k, v in bank_data.items() if v is not None}
+            bank_result = sb.table("accounting_transactions").insert(bank_data).execute()
+            if bank_result.data:
+                # Link back
+                sb.table("accounting_transactions").update(
+                    {"linked_transaction_id": bank_result.data[0]["id"]}
+                ).eq("id", pnl_txn_id).execute()
+
+    return pnl_txn
 
 
 @router.patch("/transactions/{transaction_id}")
