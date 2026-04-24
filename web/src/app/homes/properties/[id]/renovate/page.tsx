@@ -593,6 +593,8 @@ export default function RenovationPage() {
     recognition.interimResults = true
 
     let gotAnyResult = false
+    let lastTranscript = ''
+    let processedFinal = false
     let watchdog: any = null
 
     recognition.onresult = (event: any) => {
@@ -601,9 +603,11 @@ export default function RenovationPage() {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript
       }
+      lastTranscript = transcript
       setVoiceTranscript(transcript)
 
       if (event.results[event.resultIndex].isFinal) {
+        processedFinal = true
         processVoiceCommand(transcript.toLowerCase().trim())
         setVoiceTranscript('')
       }
@@ -627,13 +631,18 @@ export default function RenovationPage() {
 
     recognition.onend = () => {
       setIsListening(false)
-      setVoiceTranscript('')
       if (watchdog) clearTimeout(watchdog)
-      if (!gotAnyResult) {
-        // On iOS Safari: onend can fire without any onresult. Tell user.
-        if (isIOS) {
-          toast.warning('No se captó ninguna palabra. Intenta de nuevo hablando más cerca del micrófono.')
-        }
+
+      // iOS Safari frequently ends the session without ever firing an event
+      // with isFinal=true. If we have a transcript that was never processed,
+      // process it now so the voice command still runs.
+      if (gotAnyResult && !processedFinal && lastTranscript.trim().length > 0) {
+        processVoiceCommand(lastTranscript.toLowerCase().trim())
+      }
+      setVoiceTranscript('')
+
+      if (!gotAnyResult && isIOS) {
+        toast.warning('No se captó ninguna palabra. Intenta de nuevo hablando más cerca del micrófono.')
       }
     }
 

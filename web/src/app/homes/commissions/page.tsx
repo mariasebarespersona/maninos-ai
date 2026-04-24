@@ -423,19 +423,6 @@ function ComisionesTab({
                                   <CheckCircle2 className="w-3 h-3" />
                                   Pagada
                                 </span>
-                              ) : canMarkPaid ? (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleMarkPaid(p.id) }}
-                                  disabled={markingPaid === p.id}
-                                  className="text-xs px-3 py-1 rounded-full bg-gold-500 text-white font-medium hover:bg-gold-600 transition-colors disabled:opacity-50 flex items-center gap-1"
-                                >
-                                  {markingPaid === p.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <DollarSign className="w-3 h-3" />
-                                  )}
-                                  Marcar Pagada
-                                </button>
                               ) : (
                                 <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
