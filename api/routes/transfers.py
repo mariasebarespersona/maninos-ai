@@ -635,6 +635,160 @@ async def delete_document_file(transfer_id: str, doc_key: str):
     result = sb.table("title_transfers").update({
         "documents_checklist": checklist
     }).eq("id", transfer_id).execute()
-    
+
     return {"success": True, "doc_key": doc_key}
+
+
+# ============================================================================
+# MANUAL TITLE UPLOAD — old houses without TDHCA record
+# ============================================================================
+
+class ManualTitleUploadRequest(BaseModel):
+    """Body for POST /api/transfers/manual-upload.
+    All fields are optional except property_id; unset fields stay blank."""
+    property_id: str
+    tdhca_serial: Optional[str] = None
+    tdhca_label: Optional[str] = None
+    tdhca_owner_name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[str] = None
+    county: Optional[str] = None
+    bedrooms: Optional[str] = None
+    baths: Optional[str] = None
+    sqft: Optional[str] = None
+    seller_name: Optional[str] = None
+    buyer_name: Optional[str] = None
+    date_of_title: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.post("/manual-upload")
+async def create_manual_title_upload(data: ManualTitleUploadRequest):
+    """Create a title_transfer row for a property whose title was NEVER
+    captured by the TDHCA-lookup flow (old house, legacy property).
+
+    Creates a transfer with is_manual_upload=true and also mirrors the fields
+    into properties.document_data.title_app_purchase so the rest of the app
+    (title monitor, title application template, etc.) works as usual.
+    """
+    # Verify property exists
+    prop_res = sb.table("properties").select("id, document_data").eq(
+        "id", data.property_id
+    ).execute()
+    if not prop_res.data:
+        raise HTTPException(status_code=404, detail="Property not found")
+    prop = prop_res.data[0]
+
+    # Build title_app_purchase payload (for UI + title monitor compatibility)
+    title_app_purchase = {
+        "serial_number":       data.tdhca_serial or "",
+        "section1_serial":     data.tdhca_serial or "",
+        "page2_serial":        data.tdhca_serial or "",
+        "label_seal_number":   data.tdhca_label or "",
+        "section1_label":      data.tdhca_label or "",
+        "page2_label":         data.tdhca_label or "",
+        "manufacturer":        data.manufacturer or "",
+        "model":               data.model or "",
+        "model_year":          data.year or "",
+        "date_manufactured":   data.year or "",
+        "county":              data.county or "",
+        "bedrooms":            data.bedrooms or "",
+        "baths":               data.baths or "",
+        "dimensions":          f"{data.sqft} sqft" if data.sqft else "",
+        "seller_name":         data.seller_name or "",
+        "buyer_name":          data.buyer_name or "MANINOS HOMES",
+        "buyer_date":          data.date_of_title or "",
+        "is_new":              False,
+        "is_used":             True,
+        "_manual_upload":      True,
+    }
+
+    # Merge into properties.document_data
+    existing_doc_data = prop.get("document_data") or {}
+    existing_doc_data["title_app_purchase"] = {
+        **(existing_doc_data.get("title_app_purchase") or {}),
+        **title_app_purchase,
+    }
+    sb.table("properties").update({
+        "document_data": existing_doc_data
+    }).eq("id", data.property_id).execute()
+
+    # Create the title_transfer row (purchase direction)
+    transfer_payload = {
+        "property_id":          data.property_id,
+        "transfer_type":        "purchase",
+        "from_name":            data.seller_name or "Previous Owner",
+        "to_name":              data.buyer_name or "Maninos Homes LLC",
+        "status":               "completed" if data.date_of_title else "pending",
+        "tdhca_serial":         data.tdhca_serial,
+        "tdhca_label":          data.tdhca_label,
+        "tdhca_owner_name":     data.tdhca_owner_name or data.buyer_name or "Maninos Homes LLC",
+        "is_manual_upload":     True,
+        "manual_upload_notes":  data.notes,
+        "notes":                "Título subido manualmente (casa antigua sin captura TDHCA)"
+                                + (f" — {data.notes}" if data.notes else ""),
+        "documents_checklist":  {},
+    }
+
+    try:
+        ins = sb.table("title_transfers").insert(transfer_payload).execute()
+    except Exception as e:
+        # If is_manual_upload column doesn't exist yet (migration 086 not
+        # applied), fall back to inserting without those columns.
+        logger.warning(f"[manual-upload] falling back without manual flag: {e}")
+        transfer_payload.pop("is_manual_upload", None)
+        transfer_payload.pop("manual_upload_notes", None)
+        ins = sb.table("title_transfers").insert(transfer_payload).execute()
+
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Failed to create transfer")
+
+    return {
+        "ok": True,
+        "transfer": ins.data[0],
+        "property_id": data.property_id,
+    }
+
+
+@router.post("/manual-upload/{transfer_id}/pdf")
+async def upload_manual_title_pdf(transfer_id: str, file: UploadFile = File(...)):
+    """Upload the physical title PDF for a manual-upload transfer.
+    Stored in the same transaction-documents bucket, filed under the 'titulo'
+    document key so it shows up in the standard docs checklist."""
+    current = sb.table("title_transfers").select(
+        "documents_checklist, is_manual_upload"
+    ).eq("id", transfer_id).single().execute()
+    if not current.data:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+
+    allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"]
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400,
+                            detail=f"File type {file.content_type} not allowed")
+
+    file_ext = file.filename.split(".")[-1] if "." in (file.filename or "") else "pdf"
+    unique = f"{transfer_id}/titulo_manual_{uuid.uuid4().hex[:8]}.{file_ext}"
+
+    try:
+        content = await file.read()
+        sb.storage.from_(DOCUMENT_BUCKET).upload(
+            unique, content, {"content-type": file.content_type or "application/pdf"}
+        )
+        file_url = sb.storage.from_(DOCUMENT_BUCKET).get_public_url(unique)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+
+    checklist = current.data.get("documents_checklist") or {}
+    checklist["titulo"] = {
+        "checked": True,
+        "file_url": file_url,
+        "uploaded_at": datetime.now().isoformat(),
+        "manual": True,
+    }
+    sb.table("title_transfers").update({
+        "documents_checklist": checklist
+    }).eq("id", transfer_id).execute()
+
+    return {"ok": True, "file_url": file_url, "filename": file.filename}
 

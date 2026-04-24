@@ -14,9 +14,11 @@ import {
   ShieldCheck,
   ShieldAlert,
   Eye,
-  ExternalLink
+  ExternalLink,
+  Upload,
 } from 'lucide-react'
 import TitleTransferCard from '@/components/TitleTransferCard'
+import ManualTitleUploadModal from '@/components/ManualTitleUploadModal'
 import { useToast } from '@/components/ui/Toast'
 
 interface Transfer {
@@ -79,6 +81,7 @@ export default function TransfersPage() {
   const [monitor, setMonitor] = useState<TitleMonitor | null>(null)
   const [monitorLoading, setMonitorLoading] = useState(false)
   const [recheckingId, setRecheckingId] = useState<string | null>(null)
+  const [showManualUpload, setShowManualUpload] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -204,7 +207,24 @@ export default function TransfersPage() {
             Monitoreo de titulos TDHCA
           </p>
         </div>
+        <button
+          onClick={() => setShowManualUpload(true)}
+          className="btn-gold whitespace-nowrap"
+          title="Subir el título de una casa antigua sin registro TDHCA"
+        >
+          <Upload className="w-5 h-5" />
+          Subir Título Manual
+        </button>
       </div>
+
+      <ManualTitleUploadModal
+        open={showManualUpload}
+        onClose={() => setShowManualUpload(false)}
+        onCreated={() => {
+          fetchData()
+          fetchMonitor()
+        }}
+      />
 
       {/* Title Monitoring */}
       {(
