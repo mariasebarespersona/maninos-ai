@@ -1474,9 +1474,10 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             if not aid:
                 continue
             amt = float(t["amount"])
-            # Only add to balances if it's a BS account
+            # For BS accounts: credits (is_income=true) increase, debits decrease
             if aid in bs_account_ids:
-                balances[aid] = balances.get(aid, 0) + amt
+                signed_amt = amt if t.get("is_income") else -amt
+                balances[aid] = balances.get(aid, 0) + signed_amt
             # Compute net income from P&L accounts
             if aid in income_acct_ids:
                 net_income += amt
