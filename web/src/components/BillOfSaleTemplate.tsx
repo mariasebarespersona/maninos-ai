@@ -588,21 +588,21 @@ export default function BillOfSaleTemplate({
           padding: 0;
           position: relative;
         }
-        /* Hint that doc scrolls horizontally on mobile */
+        /* Fit-to-screen: scale the 720px legal document so it entirely fits
+           the viewport width on mobile. Uses CSS zoom (supported Chrome/Edge/Safari
+           16.4+/FF 126+). Tradeoff: inputs visually smaller but document fully visible. */
         @media (max-width: 820px) {
           .bos-toolbar { padding: 10px 12px; }
           .bos-toolbar .bos-btn { padding: 6px 10px; font-size: 12px; }
           .bos-toolbar h3 { font-size: 15px; }
-          .bos-doc-viewport {
-            background:
-              linear-gradient(to right, #f8f9fa, transparent) left center/20px 100% no-repeat,
-              linear-gradient(to left, rgba(248,249,250,0.95), transparent) right center/32px 100% no-repeat;
-          }
-          /* Ensure the document has a minimum readable width that triggers horizontal scroll */
-          .bos-container {
-            min-width: 720px;
-          }
+          .bos-doc-viewport { overflow-x: hidden; }
         }
+        /* Discrete breakpoints so template fits each typical mobile width */
+        @media (max-width: 375px) { .bos-container { zoom: 0.42; } }
+        @media (min-width: 376px) and (max-width: 420px) { .bos-container { zoom: 0.48; } }
+        @media (min-width: 421px) and (max-width: 500px) { .bos-container { zoom: 0.58; } }
+        @media (min-width: 501px) and (max-width: 640px) { .bos-container { zoom: 0.75; } }
+        @media (min-width: 641px) and (max-width: 820px) { .bos-container { zoom: 0.92; } }
         .bos-btn {
           display: inline-flex;
           align-items: center;

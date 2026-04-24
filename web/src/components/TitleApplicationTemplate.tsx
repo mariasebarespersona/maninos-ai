@@ -790,12 +790,14 @@ export default function TitleApplicationTemplate({
         @media (max-width: 820px) {
           .toolbar { padding: 8px 10px; }
           .toolbar .tbtn { padding: 5px 9px; font-size: 11px; }
-          .doc { min-width: 740px; }
-          .ta-doc-viewport {
-            background:
-              linear-gradient(to left, rgba(241,241,241,0.95), transparent) right center/32px 100% no-repeat;
-          }
+          .ta-doc-viewport { overflow-x: hidden; }
         }
+        /* Fit-to-screen: scale document so it fits mobile viewport */
+        @media (max-width: 375px) { .doc { zoom: 0.40; } }
+        @media (min-width: 376px) and (max-width: 420px) { .doc { zoom: 0.46; } }
+        @media (min-width: 421px) and (max-width: 500px) { .doc { zoom: 0.56; } }
+        @media (min-width: 501px) and (max-width: 640px) { .doc { zoom: 0.72; } }
+        @media (min-width: 641px) and (max-width: 820px) { .doc { zoom: 0.90; } }
         .badge { font-size: 11px; padding: 2px 10px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-weight: 600; }
         .tbtn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 7px;
           font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; }
