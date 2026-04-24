@@ -758,17 +758,30 @@ async def get_accounts_tree(
         if end_date:
             filters["lte_date"] = end_date
         txns = _fetch_all_transactions(filters)
+        # Build account type lookup for sign logic
+        _INCOME_T = {"Income", "Other Income", "income"}
+        _EXPENSE_T = {"Cost of Goods Sold", "Expenses", "Other Expense", "expense", "cogs"}
+        _BS_T = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets",
+                 "Other Assets", "Accounts payable (A/P)", "Other Current Liabilities",
+                 "Long Term Liabilities", "Equity", "asset", "liability", "equity"}
+        _atype_map = {a["id"]: a.get("account_type", "") for a in accounts}
+
         for t in txns:
             aid = t.get("account_id")
             if aid:
                 amt = float(t["amount"])
                 if aid not in balances:
                     balances[aid] = 0
-                # Income/Revenue: credit (+), Expenses/COGS: debit (+)
-                if t["is_income"]:
-                    balances[aid] += amt
+                atype = _atype_map.get(aid, "")
+                if atype in _BS_T:
+                    # BS accounts: credits increase, debits decrease
+                    balances[aid] += amt if t.get("is_income") else -amt
+                elif atype in _EXPENSE_T:
+                    # Expense accounts: debits increase, credits (contra-expense) decrease
+                    balances[aid] += amt if not t.get("is_income") else -amt
                 else:
-                    balances[aid] += amt
+                    # Income accounts: credits increase, debits (refunds) decrease
+                    balances[aid] += amt if t.get("is_income") else -amt
     except Exception as e:
         logger.warning(f"[accounts/tree] Could not compute balances: {e}")
 
@@ -1427,7 +1440,10 @@ async def get_income_statement(
     # Compute balances from transactions in period
     # Only include P&L accounts — exclude bank/asset entries to avoid double-counting
     PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
+    INCOME_TYPES = {"Income", "Other Income", "income"}
+    EXPENSE_TYPES_PL = {"Cost of Goods Sold", "Expenses", "Other Expense", "expense", "cogs"}
     pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
+    acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
     balances = {}
     try:
         filters = {"gte_date": sd, "lte_date": ed}
@@ -1437,7 +1453,25 @@ async def get_income_statement(
         for t in txns:
             aid = t.get("account_id")
             if aid and aid in pl_account_ids:
-                balances[aid] = balances.get(aid, 0) + float(t["amount"])
+                amt = float(t["amount"])
+                atype = acct_type_by_id.get(aid, "")
+                is_expense_acct = atype in EXPENSE_TYPES_PL
+                is_income_acct = atype in INCOME_TYPES
+                # Apply correct double-entry sign:
+                # Credits (is_income=True) increase income accounts, decrease expense accounts
+                # Debits (is_income=False) increase expense accounts, decrease income accounts
+                if t.get("is_income"):
+                    # Credit entry
+                    if is_expense_acct:
+                        balances[aid] = balances.get(aid, 0) - amt  # contra-expense (reduces expenses)
+                    else:
+                        balances[aid] = balances.get(aid, 0) + amt  # normal income
+                else:
+                    # Debit entry
+                    if is_income_acct:
+                        balances[aid] = balances.get(aid, 0) - amt  # contra-income (refund/return)
+                    else:
+                        balances[aid] = balances.get(aid, 0) + amt  # normal expense
     except Exception as e:
         logger.warning(f"[income-statement] Error fetching transactions: {e}")
 
@@ -1514,11 +1548,17 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             if aid in bs_account_ids:
                 signed_amt = amt if t.get("is_income") else -amt
                 balances[aid] = balances.get(aid, 0) + signed_amt
-            # Compute net income from P&L accounts
+            # Compute net income from P&L accounts using correct double-entry signs
             if aid in income_acct_ids:
-                net_income += amt
+                if t.get("is_income"):
+                    net_income += amt   # normal income (credit to income account)
+                else:
+                    net_income -= amt   # contra-income / refund (debit to income account)
             elif aid in expense_acct_ids:
-                net_income -= amt
+                if t.get("is_income"):
+                    net_income += amt   # contra-expense like House Lease Income (credit to expense account)
+                else:
+                    net_income -= amt   # normal expense (debit to expense account)
     except Exception as e:
         logger.warning(f"[balance-sheet] Error fetching transactions: {e}")
 
