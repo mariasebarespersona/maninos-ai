@@ -1919,6 +1919,7 @@ export default function MarketDashboard() {
             <div
               key={listing.id}
               data-testid="listing-card"
+              data-listing-id={listing.id}
               className={`card hover:shadow-lg transition-all duration-300 overflow-hidden ${
                 dismissingIds.has(listing.id) ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
               }`}
