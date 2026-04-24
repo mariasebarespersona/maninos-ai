@@ -886,21 +886,39 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
         "is_manual_upload":     True,
         "manual_upload_notes":  data.notes,
         "notes":                transfer_notes,
-        "documents_checklist":  {},
     }
 
+    # Prefer UPDATE over INSERT when the property already has a transfer of the
+    # same type — avoids creating a duplicate row next to the one that came
+    # from Revisar Casa, which confused ops ("my entered label isn't showing").
+    existing_q = sb.table("title_transfers").select("id, documents_checklist") \
+        .eq("property_id", property_id).eq("transfer_type", transfer_type) \
+        .limit(1).execute()
+    existing_row = existing_q.data[0] if existing_q.data else None
+
     try:
-        ins = sb.table("title_transfers").insert(transfer_payload).execute()
+        if existing_row:
+            # Preserve any uploaded documents_checklist entries from the prior row
+            transfer_payload["documents_checklist"] = existing_row.get("documents_checklist") or {}
+            ins = sb.table("title_transfers").update(transfer_payload) \
+                .eq("id", existing_row["id"]).execute()
+        else:
+            transfer_payload["documents_checklist"] = {}
+            ins = sb.table("title_transfers").insert(transfer_payload).execute()
     except Exception as e:
         # If is_manual_upload column doesn't exist yet (migration 086 not
-        # applied), fall back to inserting without those columns.
+        # applied), fall back without those columns.
         logger.warning(f"[manual-upload] falling back without manual flag: {e}")
         transfer_payload.pop("is_manual_upload", None)
         transfer_payload.pop("manual_upload_notes", None)
-        ins = sb.table("title_transfers").insert(transfer_payload).execute()
+        if existing_row:
+            ins = sb.table("title_transfers").update(transfer_payload) \
+                .eq("id", existing_row["id"]).execute()
+        else:
+            ins = sb.table("title_transfers").insert(transfer_payload).execute()
 
     if not ins.data:
-        raise HTTPException(status_code=500, detail="Failed to create transfer")
+        raise HTTPException(status_code=500, detail="Failed to upsert transfer")
 
     return {
         "ok": True,
@@ -908,6 +926,7 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
         "property_id": property_id,
         "property_created": bool(data.new_property),
         "transfer_type": transfer_type,
+        "transfer_action": "updated" if existing_row else "created",
     }
 
 
