@@ -25,6 +25,7 @@ export default function PropertyPhotosPage() {
   const [saving, setSaving] = useState(false)
   const [photos, setPhotos] = useState<string[]>([])
   const [hasChanges, setHasChanges] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
   useEffect(() => {
     fetchProperty()
@@ -48,35 +49,46 @@ export default function PropertyPhotosPage() {
     }
   }
 
-  const handlePhotosChange = (newPhotos: string[]) => {
-    setPhotos(newPhotos)
-    setHasChanges(true)
-  }
-
-  const handleSave = async () => {
-    if (!property) return
-    
-    setSaving(true)
+  // Save photos to DB — called automatically when photos change
+  const savePhotosToDb = async (photosToSave: string[], silent: boolean = false) => {
+    if (!property) return false
     try {
       const res = await fetch(`/api/properties/${property.id}/photos`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(photos),
+        body: JSON.stringify(photosToSave),
       })
-
       if (res.ok) {
-        toast.success('Fotos guardadas exitosamente')
+        setLastSaved(new Date())
         setHasChanges(false)
-        router.push(`/homes/properties/${property.id}`)
-      } else {
-        const data = await res.json()
-        toast.error(data.detail || 'Error al guardar las fotos')
+        if (!silent) toast.success('Fotos guardadas')
+        return true
       }
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.detail || 'Error al guardar las fotos')
+      return false
     } catch (error) {
       console.error('Error saving photos:', error)
-      toast.error('Error de conexión')
-    } finally {
-      setSaving(false)
+      toast.error('Error de conexión al guardar')
+      return false
+    }
+  }
+
+  // Auto-save on every photo change (upload or remove) so users don't lose
+  // photos by navigating away without clicking a Save button.
+  const handlePhotosChange = (newPhotos: string[]) => {
+    setPhotos(newPhotos)
+    setHasChanges(true)
+    // Fire and forget — the save runs in the background
+    savePhotosToDb(newPhotos, true)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    const ok = await savePhotosToDb(photos, false)
+    setSaving(false)
+    if (ok && property) {
+      router.push(`/homes/properties/${property.id}`)
     }
   }
 
@@ -130,31 +142,44 @@ export default function PropertyPhotosPage() {
         />
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-between mt-6">
-        <Link 
+      {/* Actions + auto-save status */}
+      <div className="flex items-center justify-between mt-6 flex-wrap gap-3">
+        <Link
           href={`/homes/properties/${property.id}`}
           className="btn-ghost"
         >
-          Cancelar
+          <ArrowLeft className="w-4 h-4" />
+          Volver
         </Link>
-        <button 
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-          className="btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Guardando...
-            </>
-          ) : (
-            <>
-              <Save className="w-5 h-5" />
-              Guardar Fotos
-            </>
+        <div className="flex items-center gap-3">
+          {lastSaved && !hasChanges && (
+            <span className="text-xs text-emerald-600 flex items-center gap-1">
+              ✓ Guardado automáticamente
+            </span>
           )}
-        </button>
+          {hasChanges && (
+            <span className="text-xs text-amber-600 flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5" />
+                Terminar
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Info box */}
