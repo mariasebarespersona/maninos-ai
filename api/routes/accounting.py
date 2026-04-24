@@ -1391,8 +1391,9 @@ async def get_income_statement(
                     .eq("is_active", True).order("code").execute()).data or []
 
     # Compute balances from transactions in period
-    # Only include P&L accounts (income/expense/cogs) — exclude bank/asset entries to avoid double-counting
-    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("income", "expense", "cogs"))
+    # Only include P&L accounts — exclude bank/asset entries to avoid double-counting
+    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
+    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
     balances = {}
     try:
         q = sb.table("accounting_transactions").select("account_id, amount, is_income") \
@@ -1455,10 +1456,17 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
                     .eq("is_active", True).order("code").execute()).data or []
 
     # Compute cumulative balances — separate BS and P&L accounts to avoid double-counting
-    bs_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("asset", "liability", "equity"))
-    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in ("income", "expense", "cogs"))
-    income_acct_ids = set(a["id"] for a in accounts if a.get("account_type") == "income")
-    expense_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in ("expense", "cogs"))
+    BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets", "Other Assets",
+                "Accounts payable (A/P)", "Other Current Liabilities", "Long Term Liabilities", "Equity",
+                "asset", "liability", "equity"}
+    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
+    INCOME_TYPES = {"Income", "Other Income", "income"}
+    EXPENSE_TYPES = {"Expenses", "Other Expense", "Cost of Goods Sold", "expense", "cogs"}
+
+    bs_account_ids = set(a["id"] for a in accounts if a.get("account_type") in BS_TYPES)
+    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
+    income_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in INCOME_TYPES)
+    expense_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in EXPENSE_TYPES)
 
     balances = {}
     net_income = 0
@@ -1937,7 +1945,8 @@ async def get_cash_flow_statement(
             .gte("transaction_date", sd).lte("transaction_date", ed)
             .neq("status", "voided").execute()).data or []
     # Only P&L accounts for cash flow — exclude bank-side double-entry
-    txns = [t for t in all_txns if (t.get("accounting_accounts") or {}).get("account_type") in ("income", "expense", "cogs")]
+    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
+    txns = [t for t in all_txns if (t.get("accounting_accounts") or {}).get("account_type") in PL_TYPES]
 
     sales = (sb.table("sales")
              .select("sale_price, sale_type, status, created_at")
@@ -3010,7 +3019,8 @@ async def classify_statement_movements(statement_id: str):
     acct_by_id = {a["id"]: a for a in accounts_list}
 
     # Build accounts reference for the AI — only leaf P&L accounts (income/expense/cogs)
-    pl_accounts = [a for a in accounts_list if a["account_type"] in ("income", "expense", "cogs")]
+    PL_CLASSIFY_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
+    pl_accounts = [a for a in accounts_list if a["account_type"] in PL_CLASSIFY_TYPES]
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category','')})"
         for a in pl_accounts

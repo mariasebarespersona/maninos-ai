@@ -2531,7 +2531,7 @@ function EstadoCuentaTab() {
 
   // Build drawers from bank accounts — use ba.id as drawer key so it matches bank_account_id in statements
   // QB bank accounts for linking (10100 series)
-  const qbBankAccounts = allAccounts.filter((a: any) => a.account_type === 'asset' && a.code?.match(/^101\d/))
+  const qbBankAccounts = allAccounts.filter((a: any) => (a.account_type === 'Bank' || a.account_type === 'asset') && !a.is_header)
   const accountDrawers = bankAccounts.map((ba, i) => ({
     key: ba.id,       // Use the UUID so grouping by bank_account_id works
     id: ba.id,
@@ -3314,7 +3314,7 @@ function EstadoCuentaTab() {
                       </thead>
                       <tbody>
                         {activeMovements.map((mv) => (
-                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => ['income', 'expense', 'cogs'].includes(a.account_type) && !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => ['Income', 'Other Income', 'Cost of Goods Sold', 'Expenses', 'Other Expense', 'income', 'expense', 'cogs'].includes(a.account_type) && !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
                         ))}
                       </tbody>
                     </table>
