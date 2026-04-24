@@ -728,6 +728,7 @@ class AccountCreate(BaseModel):
 class AccountUpdate(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
+    account_type: Optional[str] = None
     category: Optional[str] = None
     parent_account_id: Optional[str] = None
     is_header: Optional[bool] = None
@@ -3779,41 +3780,37 @@ async def _ai_classify_movements(
         movements_lines.append(line)
     movements_text = "\n".join(movements_lines)
 
-    prompt = f"""Classify EVERY bank movement into the correct account. You MUST assign an account to EVERY movement — never leave account_code empty.
+    prompt = f"""You are the staff accountant for Maninos Homes LLC, a company that buys, renovates, and sells mobile homes in Texas (yards in Conroe, Houston, and Dallas).
 
-COMPANY: Maninos Homes LLC — buys, renovates, sells mobile homes in Texas (Conroe, Houston, Dallas).
+YOUR TASK: Classify each bank movement below into the correct account from our QuickBooks Chart of Accounts.
 
-RULES:
-- EVERY movement MUST get an account_code from the chart below. NO EXCEPTIONS.
-- Credits (deposits) = income → use 40000 or ING-xxx accounts
-- Debits (withdrawals) = expense → use 50020, 6xxxx, 8xxxx, or GAS-xxx accounts
-- If unsure, use the BEST MATCH. Never return empty account_code.
+CRITICAL: The Chart of Accounts below is the ONLY source of truth. You MUST use ONLY account codes that exist in this chart. Do NOT invent codes. Every movement MUST get an account_code — never leave it empty.
 
-CLASSIFICATION GUIDE:
-- House purchases (wire out, mortgage, property) → 50020 (House Sales - COGS) or GAS-100 (Compra de Casas)
-- Sales income / deposits / enganche / pago → 40000 (House Sales) or ING-100 (Ventas Contado)
-- Capital transfers (RTO, internal) → 40000 or ING-200 (Ventas Capital RTO)
-- Commissions → 60640 (Commissions & fees) or GAS-400 (Comisiones Empleados)
-- Moving / transport → GAS-300 (Transporte / Movida)
-- Bank fees → 60120 (Bank fees)
-- Office supplies → 60510 (Office supplies)
-- Renovations / materials → 61700 (Supplies & materials) or GAS-200 (Renovaciones)
-- Payroll / Semana / Quincena → 80010/80020/80040 (employee accounts)
+BUSINESS CONTEXT (use this to pick the right account):
+- We buy mobile homes cheap, renovate them, and resell them.
+- Renovation materials (lumber, plumbing, paint, flooring, drywall, electrical supplies from Home Depot, Lowes, Sherwin Williams, Menards, Harbor Freight, etc.) are COST OF GOODS SOLD — they are direct costs of the product we sell. Look for COGS accounts like "Cost of goods sold", "Supplies & materials" under COGS, "Remodeling", etc.
+- House sale proceeds, down payments (enganche), and deposits from buyers are INCOME — use "House Sales" or similar income accounts.
+- Rent/lease payments received go wherever the chart places them (check the chart — they may be under Income, Other Income, or even Expenses depending on how QuickBooks has them set up). Trust the chart structure.
+- Inter-company transfers (to/from "Capital LLC", "Maninos Capital", between our own bank accounts) are NOT income or expenses — they are balance sheet movements. Use "Loans to others", "Loans to officers", or other asset/liability accounts from the chart.
+- Commission payments to salespeople are operating expenses.
+- Bank fees, insurance, phone, internet, fuel, office supplies are operating expenses — find the matching account in the chart.
 
-CHART OF ACCOUNTS:
+CHART OF ACCOUNTS (QuickBooks — source of truth):
 {accounts_reference}
 
-{f"HUMAN CORRECTIONS (follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS TO CLASSIFY:
+{f"HUMAN CORRECTIONS (these override the chart when there is a conflict — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}BANK MOVEMENTS TO CLASSIFY:
 {movements_text}
 
-Return a JSON array with EXACTLY {len(movements)} objects (one per movement, in order):
-[{{"account_code":"exact code","account_name":"name","transaction_type":"purchase_house","confidence":0.9,"reasoning":"brief"}}]"""
+Return a JSON array with EXACTLY {len(movements)} objects (one per movement, in same order):
+[{{"account_code":"exact code from chart","account_name":"account name","transaction_type":"descriptive_type","confidence":0.9,"reasoning":"one line explaining why"}}]
+
+Remember: ONLY use account codes from the chart above. If you cannot find a perfect match, use the closest one."""
 
     try:
         response = await client.chat.completions.create(
             model="gpt-5",
             messages=[
-                {"role": "system", "content": "You are an expert accountant. Return ONLY a valid JSON array. Every movement MUST have an account_code from the chart provided. Never return empty account_code."},
+                {"role": "system", "content": "You are an expert staff accountant for Maninos Homes LLC. Return ONLY a valid JSON array. Every movement MUST have an account_code that exists in the QuickBooks Chart of Accounts provided — that chart is the single source of truth. Never invent account codes. Never return empty account_code."},
                 {"role": "user", "content": prompt},
             ],
             max_completion_tokens=8192,
