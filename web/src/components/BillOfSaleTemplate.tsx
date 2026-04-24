@@ -588,21 +588,22 @@ export default function BillOfSaleTemplate({
           padding: 0;
           position: relative;
         }
-        /* Fit-to-screen: scale the 720px legal document so it entirely fits
-           the viewport width on mobile. Uses CSS zoom (supported Chrome/Edge/Safari
-           16.4+/FF 126+). Tradeoff: inputs visually smaller but document fully visible. */
+        /* On mobile: document at natural width (720px) with horizontal scroll. */
         @media (max-width: 820px) {
           .bos-toolbar { padding: 10px 12px; }
           .bos-toolbar .bos-btn { padding: 6px 10px; font-size: 12px; }
           .bos-toolbar h3 { font-size: 15px; }
-          .bos-doc-viewport { overflow-x: hidden; }
+          .bos-container { min-width: 720px; }
+          .bos-doc-viewport {
+            overflow-x: auto !important;
+            overflow-y: visible;
+            -webkit-overflow-scrolling: touch;
+          }
+          /* Visible scrollbar on mobile to hint scrollability */
+          .bos-doc-viewport::-webkit-scrollbar { height: 6px; }
+          .bos-doc-viewport::-webkit-scrollbar-thumb { background: #c9a84c; border-radius: 3px; }
+          .bos-doc-viewport::-webkit-scrollbar-track { background: #eee; }
         }
-        /* Discrete breakpoints so template fits each typical mobile width */
-        @media (max-width: 375px) { .bos-container { zoom: 0.42; } }
-        @media (min-width: 376px) and (max-width: 420px) { .bos-container { zoom: 0.48; } }
-        @media (min-width: 421px) and (max-width: 500px) { .bos-container { zoom: 0.58; } }
-        @media (min-width: 501px) and (max-width: 640px) { .bos-container { zoom: 0.75; } }
-        @media (min-width: 641px) and (max-width: 820px) { .bos-container { zoom: 0.92; } }
         .bos-btn {
           display: inline-flex;
           align-items: center;
