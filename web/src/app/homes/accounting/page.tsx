@@ -1367,6 +1367,16 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
           ))}
           <QBComputedLine label="Total for Income" amount={sec.income?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold />
 
+          {/* Other Income */}
+          {(sec.other_income || []).length > 0 && (
+            <>
+              {(sec.other_income || []).map((node: QBTreeNode) => (
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+              ))}
+              <QBComputedLine label="Total for Other Income" amount={sec.total_other_income || 0} bold />
+            </>
+          )}
+
           {/* COGS */}
           {(sec.cost_of_goods_sold || []).map((node: QBTreeNode) => (
             <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />

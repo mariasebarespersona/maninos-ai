@@ -1443,13 +1443,15 @@ async def get_income_statement(
 
     # Build trees for each P&L section
     income_tree = _build_report_tree(accounts, balances, ["PL_INCOME"])
+    other_income_tree = _build_report_tree(accounts, balances, ["PL_OTHER_INCOME"])
     cogs_tree = _build_report_tree(accounts, balances, ["PL_COGS"])
     expenses_tree = _build_report_tree(accounts, balances, ["PL_EXPENSES"])
     other_expenses_tree = _build_report_tree(accounts, balances, ["PL_OTHER_EXPENSES"])
 
     total_income = sum(n["total"] for n in income_tree)
+    total_other_income = sum(n["total"] for n in other_income_tree)
     total_cogs = sum(n["total"] for n in cogs_tree)
-    gross_profit = total_income - total_cogs
+    gross_profit = total_income + total_other_income - total_cogs
     total_expenses = sum(n["total"] for n in expenses_tree)
     total_other_expenses = sum(n["total"] for n in other_expenses_tree)
     net_operating_income = gross_profit - total_expenses
@@ -1461,6 +1463,8 @@ async def get_income_statement(
         "period": {"start": sd, "end": ed},
         "sections": {
             "income": income_tree,
+            "other_income": other_income_tree,
+            "total_other_income": total_other_income,
             "cost_of_goods_sold": cogs_tree,
             "gross_profit": gross_profit,
             "expenses": expenses_tree,
@@ -3284,9 +3288,9 @@ async def post_confirmed_movements(statement_id: str):
             logger.warning(f"[BankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
 
-        # Determine bank direction from account type, not is_credit
-        pnl_acct_type = acct_type_map.get(account_id, "")
-        bank_is_income = pnl_acct_type in ("income",)
+        # Bank-side direction: deposits (credits) increase bank balance,
+        # withdrawals (debits) decrease it — use the movement's is_credit flag directly
+        bank_is_income = mv.get("is_credit", False)
 
         try:
             abs_amount = abs(float(mv["amount"]))
