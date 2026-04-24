@@ -371,7 +371,8 @@ async def get_sms_url(
     import urllib.parse
     encoded = urllib.parse.quote(str(text))
     phone = provider["phone_raw"]
-    url = f"sms:{phone}&body={encoded}"
+    # RFC 5724: sms:PHONE?body=TEXT — works on both iOS and Android
+    url = f"sms:{phone}?body={encoded}"
 
     return {"ok": True, "url": url, "provider": provider, "message": text}
 

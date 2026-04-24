@@ -513,10 +513,25 @@ export default function PropertyDetailPage() {
         message,
       })
       const res = await fetch(`/api/moves/providers/sms-url?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        if (data.ok) window.open(data.url, '_blank')
+      if (!res.ok) {
+        toast.error('Error generando link SMS')
+        return
       }
+      const data = await res.json()
+      if (!data.ok || !data.url) {
+        toast.error('Link SMS inválido')
+        return
+      }
+      // sms: URI scheme — window.open('_blank') is blocked on mobile Safari after
+      // an async fetch. Using an anchor click preserves the user gesture chain
+      // and lets the browser hand off to the native SMS app.
+      const anchor = document.createElement('a')
+      anchor.href = data.url
+      anchor.target = '_self'
+      anchor.rel = 'noopener'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
     } catch (err) {
       toast.error('Error generando link SMS')
     }
