@@ -31,6 +31,7 @@ const EMPTY_NEW_PROP = {
   bedrooms: '',
   bathrooms: '',
   purchase_price: '',
+  sale_price: '',
   status: 'sold',
   notes: '',
 }
@@ -139,6 +140,9 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
         bedrooms: newProp.bedrooms ? parseInt(newProp.bedrooms) : undefined,
         bathrooms: newProp.bathrooms ? parseFloat(newProp.bathrooms) : undefined,
         purchase_price: newProp.purchase_price ? parseFloat(newProp.purchase_price) : undefined,
+        // sale_price only sent if status === 'sold' and field has a value
+        sale_price: (newProp.status === 'sold' && newProp.sale_price)
+          ? parseFloat(newProp.sale_price) : undefined,
         status: newProp.status || 'sold',
         notes: newProp.notes.trim() || undefined,
       }
@@ -360,6 +364,14 @@ export default function ManualTitleUploadModal({ open, onClose, onCreated }: Pro
                       <option value="pending_payment">Pendiente de pago</option>
                     </select>
                   </div>
+                  {newProp.status === 'sold' && (
+                    <div className="sm:col-span-2">
+                      <Field label="Precio de venta ($)"
+                             value={newProp.sale_price}
+                             onChange={v => setNewProp({ ...newProp, sale_price: v })}
+                             placeholder="55000" />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate mb-1">Notas (origen)</label>

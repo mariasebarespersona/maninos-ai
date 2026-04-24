@@ -346,24 +346,65 @@ async def trigger_title_monitor():
 
 @router.post("/title-monitor/populate")
 async def populate_all_tdhca_fields():
-    """Populate tdhca_serial/label from document_data for all transfers missing them"""
+    """Populate tdhca_serial/label from document_data for all transfers missing
+    them. Two passes:
+      1. For each transfer (purchase OR sale) with NULL serial/label, look in
+         its property's document_data.title_app_{type} (+ bos_{type} fallback).
+      2. For each SALE transfer still missing serial/label, copy from its
+         property's PURCHASE transfer — fixes legacy sales created before the
+         propagation fix, and sales where the purchase got populated later."""
     from api.services.title_monitor import populate_tdhca_fields_from_document_data
 
     try:
-        transfers = sb.table("title_transfers").select("id").is_(
-            "tdhca_serial", "null"
-        ).execute()
+        # Pass 1 — from document_data
+        transfers = sb.table("title_transfers").select(
+            "id, transfer_type, tdhca_serial, tdhca_label"
+        ).or_("tdhca_serial.is.null,tdhca_label.is.null").execute()
 
         populated = 0
         errors = 0
         for t in (transfers.data or []):
             result = populate_tdhca_fields_from_document_data(t["id"])
-            if result.get("ok") and result.get("serial"):
+            if result.get("ok") and (result.get("serial") or result.get("label")):
                 populated += 1
             elif not result.get("ok"):
                 errors += 1
 
-        return {"ok": True, "populated": populated, "errors": errors, "total": len(transfers.data or [])}
+        # Pass 2 — propagate from purchase to sale of the same property
+        propagated = 0
+        sales_missing = sb.table("title_transfers").select(
+            "id, property_id, tdhca_serial, tdhca_label, tdhca_owner_name"
+        ).eq("transfer_type", "sale").or_(
+            "tdhca_serial.is.null,tdhca_label.is.null"
+        ).execute()
+
+        for sale_t in (sales_missing.data or []):
+            # Look up the purchase transfer of the same property
+            purchase_q = sb.table("title_transfers").select(
+                "tdhca_serial, tdhca_label, tdhca_owner_name"
+            ).eq("property_id", sale_t["property_id"]) \
+             .eq("transfer_type", "purchase").limit(1).execute()
+            if not purchase_q.data:
+                continue
+            p = purchase_q.data[0]
+            update = {}
+            if not sale_t.get("tdhca_serial") and p.get("tdhca_serial"):
+                update["tdhca_serial"] = p["tdhca_serial"]
+            if not sale_t.get("tdhca_label") and p.get("tdhca_label"):
+                update["tdhca_label"] = p["tdhca_label"]
+            if not sale_t.get("tdhca_owner_name") and p.get("tdhca_owner_name"):
+                update["tdhca_owner_name"] = p["tdhca_owner_name"]
+            if update:
+                sb.table("title_transfers").update(update).eq("id", sale_t["id"]).execute()
+                propagated += 1
+
+        return {
+            "ok": True,
+            "populated": populated,
+            "propagated_to_sales": propagated,
+            "errors": errors,
+            "total": len(transfers.data or []),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -655,6 +696,7 @@ class NewPropertyForManualTitle(BaseModel):
     bedrooms: Optional[int] = None
     bathrooms: Optional[float] = None
     purchase_price: Optional[float] = None
+    sale_price: Optional[float] = None  # Only meaningful if status == 'sold'
     status: Optional[str] = "sold"  # default: legacy houses are usually sold
     notes: Optional[str] = None
 
@@ -719,6 +761,7 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
             "bedrooms":        np.bedrooms,
             "bathrooms":       float(np.bathrooms) if np.bathrooms is not None else None,
             "purchase_price":  float(np.purchase_price) if np.purchase_price is not None else None,
+            "sale_price":      float(np.sale_price) if np.sale_price is not None else None,
             "status":          np.status or "sold",
             "property_code":   np.property_code,
             "notes":           (
