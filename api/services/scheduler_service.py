@@ -13,6 +13,8 @@ Uses APScheduler to run:
 
 import logging
 import os
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -39,6 +41,74 @@ def _log_job(job_name: str, result: dict):
     _job_history.insert(0, entry)
     if len(_job_history) > MAX_HISTORY:
         _job_history.pop()
+
+
+def _persist_run_start(job_name: str) -> Optional[str]:
+    """Insert a scheduler_runs row at job start. Returns row id or None if
+    the table doesn't exist yet (migration 085 not applied)."""
+    try:
+        from tools.supabase_client import sb
+        res = sb.table("scheduler_runs").insert({
+            "job_name": job_name,
+            "started_at": datetime.utcnow().isoformat() + "Z",
+        }).execute()
+        return res.data[0]["id"] if res.data else None
+    except Exception as e:
+        logger.debug(f"[scheduler] Could not persist run start for {job_name}: {e}")
+        return None
+
+
+def _persist_run_end(run_id: Optional[str], ok: bool, duration_ms: int,
+                     summary: dict, error: Optional[str]):
+    """Close a scheduler_runs row after the job completes."""
+    if not run_id:
+        return
+    try:
+        from tools.supabase_client import sb
+        sb.table("scheduler_runs").update({
+            "finished_at": datetime.utcnow().isoformat() + "Z",
+            "ok": ok,
+            "duration_ms": duration_ms,
+            "summary": summary,
+            "error": error,
+        }).eq("id", run_id).execute()
+    except Exception as e:
+        logger.debug(f"[scheduler] Could not persist run end for {run_id}: {e}")
+
+
+@contextmanager
+def _track_run(job_name: str):
+    """Context manager that records start/finish of a scheduler job to both
+    the in-memory history and the persistent scheduler_runs table.
+
+    Usage:
+        with _track_run("title_monitor") as tracker:
+            result = do_work()
+            tracker.set_result(result)
+    """
+    class _Tracker:
+        def __init__(self):
+            self.result: dict = {"ok": False}
+        def set_result(self, r: dict):
+            self.result = r or {"ok": False}
+
+    tracker = _Tracker()
+    run_id = _persist_run_start(job_name)
+    t0 = time.monotonic()
+    err_msg: Optional[str] = None
+    try:
+        yield tracker
+    except Exception as e:
+        err_msg = f"{type(e).__name__}: {e}"
+        tracker.result = {"ok": False, "error": err_msg}
+        raise
+    finally:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        r = tracker.result or {}
+        ok = bool(r.get("ok", False))
+        summary = {k: v for k, v in r.items() if k != "ok"}
+        _log_job(job_name, r)
+        _persist_run_end(run_id, ok, duration_ms, summary, err_msg)
 
 
 # =========================================================================
@@ -260,20 +330,25 @@ def _job_investor_followup_emails():
 
 
 def _job_title_monitor():
-    """Job: Check TDHCA for title name updates on pending transfers."""
-    try:
-        from api.services.title_monitor import run_title_monitor_job
-        result = run_title_monitor_job()
-        _log_job("title_monitor", result)
-        checked = result.get("checked", 0)
-        matched = result.get("matched", 0)
-        if checked > 0:
-            logger.info(f"[scheduler] Title monitor: checked {checked}, matched {matched}")
-        return result
-    except Exception as e:
-        logger.error(f"[scheduler] Error in title_monitor: {e}")
-        _log_job("title_monitor", {"ok": False, "error": str(e)})
-        return {"ok": False, "error": str(e)}
+    """Job: Check TDHCA for title name updates on pending transfers.
+    Persists start/finish to scheduler_runs so runs can be audited even
+    across Railway restarts."""
+    from api.services.title_monitor import run_title_monitor_job
+    with _track_run("title_monitor") as tracker:
+        try:
+            result = run_title_monitor_job() or {"ok": True}
+            if "ok" not in result:
+                result["ok"] = True
+            tracker.set_result(result)
+            checked = result.get("checked", 0)
+            matched = result.get("matched", 0)
+            if checked > 0:
+                logger.info(f"[scheduler] Title monitor: checked {checked}, matched {matched}")
+            return result
+        except Exception as e:
+            logger.error(f"[scheduler] Error in title_monitor: {e}")
+            tracker.set_result({"ok": False, "error": str(e)})
+            return {"ok": False, "error": str(e)}
 
 
 # =========================================================================

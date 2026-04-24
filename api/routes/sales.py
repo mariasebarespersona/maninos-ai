@@ -27,6 +27,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_purchase_serial_label(property_id: str) -> dict:
+    """Look up the purchase title_transfer for a property and return its
+    serial/label/owner so we can propagate them to the sale transfer.
+    Returns empty dict if no purchase transfer or no serial data."""
+    try:
+        purchase = sb.table("title_transfers") \
+            .select("tdhca_serial, tdhca_label, tdhca_owner_name") \
+            .eq("property_id", property_id) \
+            .eq("transfer_type", "purchase") \
+            .limit(1) \
+            .execute()
+        if purchase.data:
+            p = purchase.data[0]
+            out = {}
+            if p.get("tdhca_serial"): out["tdhca_serial"] = p["tdhca_serial"]
+            if p.get("tdhca_label"): out["tdhca_label"] = p["tdhca_label"]
+            # Owner is the CURRENT tdhca owner from last monitoring check — copy
+            # as starting point for the sale (will get re-monitored after sale).
+            if p.get("tdhca_owner_name"): out["tdhca_owner_name"] = p["tdhca_owner_name"]
+            return out
+    except Exception as e:
+        logger.warning(f"[sale-transfer] Failed to copy serial from purchase transfer: {e}")
+    return {}
+
+
 # ============================================================================
 # SALES CRUD
 # ============================================================================
@@ -1003,7 +1028,7 @@ async def confirm_transfer(sale_id: str):
             .execute()
 
         if not existing_transfer.data:
-            sb.table("title_transfers").insert({
+            sale_transfer_payload = {
                 "property_id": sale["property_id"],
                 "sale_id": sale_id,
                 "transfer_type": "sale",
@@ -1011,8 +1036,10 @@ async def confirm_transfer(sale_id: str):
                 "to_name": sale["clients"]["name"],
                 "to_contact": sale["clients"].get("phone"),
                 "status": "pending",
-                "notes": "Venta contado - transferencia bancaria confirmada"
-            }).execute()
+                "notes": "Venta contado - transferencia bancaria confirmada",
+                **_get_purchase_serial_label(sale["property_id"]),
+            }
+            sb.table("title_transfers").insert(sale_transfer_payload).execute()
 
         # 6. Auto-generate Bill of Sale + Title PDFs
         documents = {}
@@ -1420,7 +1447,7 @@ async def complete_rto_contract(sale_id: str):
             .execute()
 
         if not existing_transfer.data:
-            sb.table("title_transfers").insert({
+            sale_transfer_payload = {
                 "property_id": sale["property_id"],
                 "sale_id": sale_id,
                 "transfer_type": "sale",
@@ -1428,8 +1455,10 @@ async def complete_rto_contract(sale_id: str):
                 "to_name": sale["clients"]["name"],
                 "to_contact": sale["clients"].get("phone"),
                 "status": "pending",
-                "notes": "Venta RTO - contrato completado, todos los pagos recibidos"
-            }).execute()
+                "notes": "Venta RTO - contrato completado, todos los pagos recibidos",
+                **_get_purchase_serial_label(sale["property_id"]),
+            }
+            sb.table("title_transfers").insert(sale_transfer_payload).execute()
 
         # 9. Auto-generate Bill of Sale + Title PDFs
         documents = {}

@@ -314,6 +314,36 @@ async def get_title_monitor():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/title-monitor/runs")
+async def get_title_monitor_runs(limit: int = 30):
+    """Persistent log of title_monitor scheduler runs (from scheduler_runs table).
+    Unlike /emails/scheduler/status which is in-memory, this survives restarts."""
+    from tools.supabase_client import sb
+    try:
+        result = sb.table("scheduler_runs") \
+            .select("*") \
+            .eq("job_name", "title_monitor") \
+            .order("started_at", desc=True) \
+            .limit(max(1, min(limit, 200))) \
+            .execute()
+        return {"runs": result.data or [], "count": len(result.data or [])}
+    except Exception as e:
+        # Table might not exist yet (migration 085 not applied)
+        return {"runs": [], "count": 0, "error": str(e)}
+
+
+@router.post("/title-monitor/trigger")
+async def trigger_title_monitor():
+    """Manually fire the title monitor job NOW (doesn't wait for the 10am cron).
+    Used for testing / on-demand checks. Writes to scheduler_runs like a normal run."""
+    from api.services.scheduler_service import _job_title_monitor
+    try:
+        result = _job_title_monitor()
+        return {"ok": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/title-monitor/populate")
 async def populate_all_tdhca_fields():
     """Populate tdhca_serial/label from document_data for all transfers missing them"""
