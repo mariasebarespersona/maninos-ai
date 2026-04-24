@@ -561,19 +561,42 @@ export default function RenovationPage() {
   // VOICE COMMANDS
   // ============================================
 
-  const startVoice = () => {
+  const startVoice = async () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       toast.error('Tu navegador no soporta reconocimiento de voz')
       return
     }
 
+    // Detect iOS — webkitSpeechRecognition on iOS Safari has quirks:
+    // - continuous=true often doesn't fire events
+    // - requires explicit microphone permission via getUserMedia first
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.userAgent.includes('Mac') && 'ontouchend' in document)
+
+    // Pre-request microphone permission so iOS grants it before start()
+    if (isIOS && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Immediately release — we only wanted the permission prompt
+        stream.getTracks().forEach(t => t.stop())
+      } catch (err: any) {
+        toast.error('Permiso de micrófono denegado. Habilitalo en Ajustes → Safari → Micrófono')
+        return
+      }
+    }
+
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
     const recognition = new SpeechRecognition()
     recognition.lang = 'es-MX'
-    recognition.continuous = true
+    // iOS Safari: continuous mode doesn't fire onresult reliably
+    recognition.continuous = !isIOS
     recognition.interimResults = true
 
+    let gotAnyResult = false
+    let watchdog: any = null
+
     recognition.onresult = (event: any) => {
+      gotAnyResult = true
       let transcript = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript
@@ -586,17 +609,62 @@ export default function RenovationPage() {
       }
     }
 
-    recognition.onerror = () => setIsListening(false)
-    recognition.onend = () => setIsListening(false)
+    recognition.onerror = (event: any) => {
+      const err = event?.error || 'unknown'
+      const messages: Record<string, string> = {
+        'no-speech': 'No detecté voz. Intenta hablar más cerca del micrófono.',
+        'audio-capture': 'No se puede acceder al micrófono. Verifica permisos.',
+        'not-allowed': 'Permiso de micrófono denegado.',
+        'network': 'Error de red — el reconocimiento de voz requiere internet.',
+        'aborted': '',
+      }
+      const msg = messages[err] ?? `Error de voz: ${err}`
+      if (msg) toast.error(msg)
+      setIsListening(false)
+      setVoiceTranscript('')
+      if (watchdog) clearTimeout(watchdog)
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      setVoiceTranscript('')
+      if (watchdog) clearTimeout(watchdog)
+      if (!gotAnyResult) {
+        // On iOS Safari: onend can fire without any onresult. Tell user.
+        if (isIOS) {
+          toast.warning('No se captó ninguna palabra. Intenta de nuevo hablando más cerca del micrófono.')
+        }
+      }
+    }
 
     recognitionRef.current = recognition
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (err: any) {
+      toast.error(`No se pudo iniciar el reconocimiento: ${err?.message || err}`)
+      setIsListening(false)
+      return
+    }
     setIsListening(true)
-    toast.info('Escuchando... Di "pon en demolición 500 de materiales" o cualquier comando')
+    toast.info(isIOS
+      ? 'Escuchando... Habla ahora (iOS captura una frase por vez)'
+      : 'Escuchando... Di "pon en demolición 500 de materiales" o cualquier comando')
+
+    // Watchdog: if nothing happens in 10 seconds, stop to avoid freeze
+    watchdog = setTimeout(() => {
+      if (!gotAnyResult && recognitionRef.current) {
+        try { recognitionRef.current.stop() } catch {}
+        setIsListening(false)
+        setVoiceTranscript('')
+        toast.warning('Tiempo agotado — no se detectó voz. Intenta de nuevo.')
+      }
+    }, 10000)
   }
 
   const stopVoice = () => {
-    if (recognitionRef.current) recognitionRef.current.stop()
+    try {
+      if (recognitionRef.current) recognitionRef.current.stop()
+    } catch {}
     setIsListening(false)
     setVoiceTranscript('')
   }
@@ -1414,14 +1482,49 @@ export default function RenovationPage() {
                       </div>
                     )}
 
-                    {item.is_custom && (
-                      <button
-                        onClick={() => removeCustomItem(item.id)}
-                        className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"
-                      >
-                        <Trash2 className="w-3 h-3" /> Eliminar
-                      </button>
-                    )}
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                      {item.precio > 0 ? (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`¿Enviar orden de pago por ${item.concepto} ($${item.precio.toLocaleString()})?`)) return
+                            try {
+                              const res = await fetch('/api/payment-orders', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  property_id: propertyId,
+                                  property_address: quote?.address || '',
+                                  payee_name: item.responsable || 'Contratista',
+                                  amount: item.precio,
+                                  method: 'transferencia',
+                                  notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
+                                }),
+                              })
+                              if (res.ok) {
+                                toast.success(`Orden de pago enviada: ${item.concepto} — $${item.precio.toLocaleString()}`)
+                              } else {
+                                toast.error('Error al crear orden de pago')
+                              }
+                            } catch { toast.error('Error de conexión') }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-navy-700 bg-navy-50 hover:bg-navy-100 rounded-lg transition-colors"
+                          title={`Enviar orden de pago: ${item.concepto}`}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Enviar orden de pago
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                      {item.is_custom && (
+                        <button
+                          onClick={() => removeCustomItem(item.id)}
+                          className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" /> Eliminar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
