@@ -2505,15 +2505,24 @@ async def reset_homes_account_balances(request: Request):
             .in_("status", ["completed", "partial"]) \
             .execute()
 
-        # 3. Void ALL transactions (scoped or all)
+        # 3. Void ALL transactions (scoped or all) — loop to handle Supabase row limits
         deleted_count = 0
         if scope == "all":
-            # Void everything — no exceptions
-            voided = sb.table("accounting_transactions") \
-                .update({"status": "voided", "amount": 0}) \
-                .neq("status", "voided") \
-                .execute()
-            deleted_count = len(voided.data or [])
+            # Void everything in batches until nothing remains
+            for _ in range(20):  # safety limit
+                remaining = sb.table("accounting_transactions") \
+                    .select("id", count="exact") \
+                    .neq("status", "voided").execute()
+                if not remaining.data:
+                    break
+                voided = sb.table("accounting_transactions") \
+                    .update({"status": "voided", "amount": 0}) \
+                    .neq("status", "voided") \
+                    .execute()
+                batch = len(voided.data or [])
+                deleted_count += batch
+                if batch == 0:
+                    break
         else:
             scope_types = {
                 "profit_loss": ("income", "expense", "cogs"),
