@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+
+  <title>Maninos OS — La Plataforma Operativa para Dealers de Activos Físicos</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reset.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/theme/black.css" id="theme" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@500;600;700;800;900&display=swap" />
+
+  <style>
+    :root {
+      --navy-900: #0a1628;
+      --navy-800: #0f2342;
+      --navy-700: #15315c;
+      --navy-500: #2c5491;
+      --navy-300: #6b8bc4;
+      --gold-500: #c9a047;
+      --gold-400: #d9b76a;
+      --gold-300: #e6cf95;
+      --ivory:    #f6f1e3;
+      --sand:     #e8dfc8;
+      --emerald:  #10b981;
+      --red:      #ef4444;
+      --slate:    #94a3b8;
+    }
+
+    .reveal {
+      font-family: 'Inter', -apple-system, sans-serif;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      color: var(--ivory);
+    }
+    .reveal .slides {
+      text-align: left;
+    }
+    .reveal .slides section {
+      padding: 0 40px;
+    }
+    .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-weight: 700;
+      color: var(--ivory);
+      text-transform: none;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 0.4em;
+    }
+    .reveal h1 { font-size: 3.6rem; }
+    .reveal h2 { font-size: 2.6rem; }
+    .reveal h3 { font-size: 1.8rem; }
+    .reveal h4 { font-size: 1.3rem; }
+    .reveal p, .reveal li { font-size: 1.05rem; line-height: 1.6; color: #d8dde8; }
+    .reveal strong { color: var(--gold-400); font-weight: 600; }
+    .reveal em { color: var(--gold-300); font-style: normal; font-weight: 500; }
+    .reveal a { color: var(--gold-400); text-decoration: none; border-bottom: 1px dotted var(--gold-500); }
+
+    .reveal .slide-bg {
+      background: radial-gradient(ellipse at top right, var(--navy-700) 0%, var(--navy-900) 60%);
+    }
+
+    body, .reveal-viewport {
+      background: var(--navy-900);
+    }
+
+    /* Title slide */
+    .title-slide {
+      text-align: center !important;
+      padding-top: 60px !important;
+    }
+    .title-slide .eyebrow {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold-500);
+      margin-bottom: 1.5em;
+    }
+    .title-slide h1 {
+      font-size: 5rem;
+      margin-bottom: 0.3em;
+      background: linear-gradient(135deg, var(--ivory) 30%, var(--gold-400) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .title-slide .tagline {
+      font-size: 1.5rem;
+      color: var(--slate);
+      font-weight: 300;
+      max-width: 720px;
+      margin: 0 auto 2em;
+    }
+    .title-slide .footer {
+      margin-top: 3em;
+      font-size: 0.9rem;
+      color: var(--navy-300);
+      letter-spacing: 0.1em;
+    }
+
+    /* Section dividers */
+    .section-divider {
+      background: linear-gradient(135deg, var(--navy-800) 0%, var(--navy-700) 100%);
+      text-align: center !important;
+    }
+    .section-divider .number {
+      font-family: 'Playfair Display', serif;
+      font-size: 7rem;
+      font-weight: 800;
+      color: var(--gold-500);
+      opacity: 0.4;
+      line-height: 1;
+      margin-bottom: 0;
+    }
+    .section-divider h2 {
+      font-size: 3.5rem;
+      margin-top: 0.2em;
+    }
+
+    /* Cards / KPIs */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-top: 2em;
+    }
+    .kpi {
+      background: linear-gradient(180deg, rgba(201,160,71,0.08) 0%, rgba(15,35,66,0.4) 100%);
+      border: 1px solid rgba(201,160,71,0.25);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .kpi-value {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      color: var(--gold-400);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .kpi-label {
+      font-size: 0.85rem;
+      color: var(--slate);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* Two-col layout */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+    .three-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+    }
+
+    /* Pillar cards */
+    .pillar {
+      background: rgba(15,35,66,0.5);
+      border: 1px solid rgba(201,160,71,0.2);
+      border-radius: 14px;
+      padding: 24px;
+      transition: transform .2s;
+    }
+    .pillar:hover { transform: translateY(-4px); }
+    .pillar h4 { color: var(--gold-400); font-size: 1.2rem; margin-bottom: 0.5em; }
+    .pillar .icon { font-size: 1.6rem; margin-bottom: 0.5em; }
+    .pillar p { font-size: 0.95rem; color: #c4ccd9; }
+
+    /* Feature lists */
+    .feature-list { list-style: none; padding: 0; margin: 1em 0; }
+    .feature-list li {
+      padding: 10px 0 10px 32px;
+      position: relative;
+      border-bottom: 1px solid rgba(201,160,71,0.1);
+      font-size: 1rem;
+    }
+    .feature-list li:before {
+      content: "◆";
+      position: absolute;
+      left: 0;
+      top: 10px;
+      color: var(--gold-500);
+      font-size: 0.8em;
+    }
+    .feature-list li strong { display: block; color: var(--ivory); margin-bottom: 2px; }
+
+    /* Tables */
+    .reveal table {
+      font-size: 0.9rem;
+      border-collapse: collapse;
+      margin: 1em 0;
+      width: 100%;
+    }
+    .reveal table th {
+      background: var(--navy-700);
+      color: var(--gold-400);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid var(--gold-500);
+    }
+    .reveal table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: #d8dde8;
+    }
+    .reveal table tr:hover td { background: rgba(201,160,71,0.05); }
+
+    /* Quote block */
+    blockquote {
+      border-left: 4px solid var(--gold-500);
+      padding: 20px 24px;
+      margin: 1em 0;
+      background: rgba(201,160,71,0.05);
+      font-style: italic;
+      color: #e8eaef;
+      font-size: 1.1rem;
+    }
+    blockquote cite {
+      display: block;
+      margin-top: 0.8em;
+      font-size: 0.85rem;
+      color: var(--slate);
+      font-style: normal;
+    }
+
+    /* Eyebrow */
+    .eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold-500);
+      margin-bottom: 0.8em;
+      display: block;
+    }
+
+    /* Pricing */
+    .price-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-top: 1.5em;
+    }
+    .price-card {
+      background: rgba(15,35,66,0.5);
+      border: 1px solid rgba(201,160,71,0.2);
+      border-radius: 14px;
+      padding: 24px;
+    }
+    .price-card.featured {
+      background: linear-gradient(180deg, rgba(201,160,71,0.15) 0%, rgba(15,35,66,0.5) 100%);
+      border: 2px solid var(--gold-500);
+      transform: scale(1.04);
+    }
+    .price-card h4 { color: var(--gold-400); font-size: 1.1rem; }
+    .price-amount {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      color: var(--ivory);
+      margin: 0.4em 0;
+    }
+    .price-amount small { font-size: 0.85rem; color: var(--slate); font-weight: 400; }
+    .price-card ul { list-style: none; padding: 0; font-size: 0.85rem; }
+    .price-card li { padding: 5px 0; color: #c4ccd9; }
+    .price-card li:before { content: "✓ "; color: var(--emerald); }
+
+    /* Tags / pills */
+    .pill {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      margin-right: 6px;
+    }
+    .pill.gold { background: rgba(201,160,71,0.15); color: var(--gold-400); border: 1px solid rgba(201,160,71,0.4); }
+    .pill.emerald { background: rgba(16,185,129,0.15); color: var(--emerald); border: 1px solid rgba(16,185,129,0.4); }
+    .pill.red { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.4); }
+
+    /* Workflow */
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin: 1.5em 0;
+    }
+    .workflow-step {
+      background: rgba(15,35,66,0.6);
+      border: 1px solid rgba(201,160,71,0.2);
+      border-radius: 10px;
+      padding: 16px 12px;
+      text-align: center;
+      position: relative;
+    }
+    .workflow-step .step-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      color: var(--gold-500);
+      font-weight: 700;
+    }
+    .workflow-step h4 { font-size: 0.95rem; margin: 0.3em 0; color: var(--ivory); }
+    .workflow-step p { font-size: 0.8rem; color: var(--slate); margin: 0; }
+
+    /* Footnotes */
+    .footnote {
+      position: absolute;
+      bottom: 18px;
+      left: 40px;
+      right: 40px;
+      font-size: 0.7rem;
+      color: var(--navy-300);
+      opacity: 0.7;
+    }
+
+    /* Slide counter / brand mark */
+    .reveal .slide-number {
+      color: var(--gold-500);
+      background: rgba(15,35,66,0.8);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+    }
+
+    /* Highlight */
+    .highlight-box {
+      background: linear-gradient(135deg, rgba(201,160,71,0.12) 0%, rgba(15,35,66,0.4) 100%);
+      border-left: 4px solid var(--gold-500);
+      padding: 20px 24px;
+      border-radius: 8px;
+      margin: 1em 0;
+    }
+
+    .small { font-size: 0.85rem; }
+    .text-center { text-align: center; }
+    .text-gold { color: var(--gold-400); }
+    .text-slate { color: var(--slate); }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- 1. TITLE -->
+      <section class="title-slide slide-bg">
+        <div class="eyebrow">Maninos Operating System</div>
+        <h1>Maninos&nbsp;OS</h1>
+        <p class="tagline">El sistema operativo end-to-end para dealers que compran, renuevan, financian y venden activos físicos de alto valor.</p>
+        <div class="footer">PRESENTACIÓN COMERCIAL · 2026</div>
+      </section>
+
+      <!-- 2. TL;DR -->
+      <section class="slide-bg">
+        <span class="eyebrow">El pitch en 30 segundos</span>
+        <h2>Replace 4 sistemas con uno.</h2>
+        <div class="two-col" style="margin-top:1.5em;">
+          <div>
+            <p style="font-size:1.2rem; line-height:1.7;">
+              Hoy un dealer de mobile homes opera en <strong>Excel + WhatsApp + QuickBooks + un CRM genérico</strong>. Pierde dinero en cada paso: subestimación de renovación, errores de título, mora descontrolada, sin visibilidad de inversores.
+            </p>
+            <p style="font-size:1.2rem; line-height:1.7;">
+              <strong>Maninos&nbsp;OS</strong> reemplaza los 4 con una sola plataforma: <em>operaciones + financiamiento propio + portal cliente + contabilidad</em>, con 5 agentes de IA integrados.
+            </p>
+          </div>
+          <div>
+            <div class="highlight-box">
+              <div class="text-gold" style="font-size:0.85rem; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.5em;">Probado en producción</div>
+              <p style="margin:0; font-size:1.05rem;">Plataforma corriendo en Texas con <strong>Maninos Homes LLC</strong> y <strong>Maninos Capital LLC</strong>. Operaciones reales, dinero real, dealers reales.</p>
+            </div>
+            <div class="highlight-box" style="margin-top:1em;">
+              <div class="text-gold" style="font-size:0.85rem; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.5em;">Listo para escalar</div>
+              <p style="margin:0; font-size:1.05rem;">Arquitectura multi-tenant, multi-estado, <em>multi-activo</em>. Mobile homes hoy. RVs, boats y BHPH used cars mañana.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. SECTION DIVIDER 1 -->
+      <section class="section-divider">
+        <div class="number">01</div>
+        <h2>El problema</h2>
+        <p class="text-slate" style="font-size:1.2rem;">Los dealers de activos físicos operan con software de hace 20 años o sin software.</p>
+      </section>
+
+      <!-- 4. MARKET SIZE -->
+      <section class="slide-bg">
+        <span class="eyebrow">Mercado: Mobile Homes USA</span>
+        <h2>Un mercado de $13.7B con software obsoleto.</h2>
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-value">103,314</div>
+            <div class="kpi-label">unidades nuevas vendidas en 2024</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">+15.8%</div>
+            <div class="kpi-label">crecimiento YoY (2023→2024)</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">6.7M</div>
+            <div class="kpi-label">unidades ocupadas (mercado de reventa)</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">~1,500</div>
+            <div class="kpi-label">dealers activos NAICS 459930</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">$13.7B</div>
+            <div class="kpi-label">tamaño de mercado USA 2025</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">8.9%</div>
+            <div class="kpi-label">de todas las casas single-family nuevas</div>
+          </div>
+        </div>
+        <p class="footnote">Fuentes: Manufactured Housing Institute (Dec 2024), Mordor Intelligence US MH Market Report 2025, Construction Coverage 2025, NAICS 459930 / SamSearch.</p>
+      </section>
+
+      <!-- 5. STATE CONCENTRATION -->
+      <section class="slide-bg">
+        <span class="eyebrow">Concentración geográfica</span>
+        <h2>El Sun Belt manda.</h2>
+        <div class="two-col">
+          <div>
+            <table>
+              <thead>
+                <tr><th>Estado</th><th>Envíos 2024</th><th>Stock total</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Texas</strong></td><td>18,343</td><td>~776,200</td></tr>
+                <tr><td>Florida</td><td>7,405</td><td>~824,400</td></tr>
+                <tr><td>Carolina del Norte</td><td>6,768</td><td>~600,000</td></tr>
+                <tr><td>Alabama</td><td>5,200</td><td>13% del stock estatal</td></tr>
+                <tr><td>Carolina del Sur</td><td>4,800</td><td>12% del stock estatal</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h4>Por qué importa</h4>
+            <ul class="feature-list">
+              <li><strong>Texas concentra 18%</strong> de los envíos nacionales — y es donde Maninos ya opera.</li>
+              <li><strong>Cada estado tiene su propia agencia de títulos</strong> (TDHCA en TX, FLHSMV en FL, NC OSFM, AZDOT…). Maninos OS abstrae la diferencia.</li>
+              <li><strong>El Sun Belt comparte demografía y dinámica de demanda</strong> — el mismo dealer puede expandirse cruzando estados sin cambiar de software.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="footnote">Fuentes: TMHA Texas Manufactured Housing Sales 2024, Construction Coverage State-by-State 2025.</p>
+      </section>
+
+      <!-- 6. FINANCING GAP -->
+      <section class="slide-bg">
+        <span class="eyebrow">El cuello de botella</span>
+        <h2>Los bancos no financian. Los dealers tienen que hacerlo ellos mismos.</h2>
+        <div class="two-col">
+          <div>
+            <div class="kpi" style="margin-bottom:1em;">
+              <div class="kpi-value">&lt;30%</div>
+              <div class="kpi-label">tasa de aprobación de préstamos para mobile home (vs >70% para casa tradicional)</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-value">42%</div>
+              <div class="kpi-label">de las compras financiadas son chattel loans (no hipoteca)</div>
+            </div>
+          </div>
+          <div>
+            <h4 class="text-gold">Por qué los bancos huyen</h4>
+            <ul class="feature-list">
+              <li>El mobile home es <strong>propiedad personal</strong>, no inmueble — depreciación, no apreciación.</li>
+              <li><strong>Sin terreno como colateral</strong>, el banco no tiene gancho.</li>
+              <li>La unidad es <strong>físicamente movible</strong> — pesadilla de recuperación.</li>
+            </ul>
+            <h4 class="text-gold" style="margin-top:1.5em;">Resultado</h4>
+            <p>Los dealers ofrecen <strong>Rent-to-Own (RTO)</strong> o <strong>Buy-Here-Pay-Here</strong>. <em>Se vuelven el banco.</em> Y necesitan herramientas para serlo.</p>
+          </div>
+        </div>
+        <p class="footnote">Fuente: CFPB Manufactured Housing Loan Borrowers Report (HMDA 2021).</p>
+      </section>
+
+      <!-- 7. COMPETITORS -->
+      <section class="slide-bg">
+        <span class="eyebrow">Software actual del sector</span>
+        <h2>El status quo es lamentable.</h2>
+        <table>
+          <thead>
+            <tr><th>Producto</th><th>Precio</th><th>Cobertura</th><th>Limitación</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>EverLogic</strong></td>
+              <td>$129/mo/license · 3 mín · $4,000 onboarding</td>
+              <td>DMS específico de MH (20 años)</td>
+              <td>Sin IA, sin tracking de renovación, sin UI en español, sin módulo inversor</td>
+            </tr>
+            <tr>
+              <td>Wayne-Reaves</td>
+              <td>$98/usuario/mo</td>
+              <td>BHPH/colecciones</td>
+              <td>ADN de autos, no MH; sin IA</td>
+            </tr>
+            <tr>
+              <td>DealerSocket IDMS</td>
+              <td>$750–$3,500/rooftop/mo</td>
+              <td>BHPH autos</td>
+              <td>No es MH-nativo; caro</td>
+            </tr>
+            <tr>
+              <td>Frazer</td>
+              <td>$50/mo</td>
+              <td>BHPH autos (~20K dealers)</td>
+              <td>Software Windows on-prem; no cloud, no APIs</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="highlight-box" style="margin-top:1.5em;">
+          <strong>Brecha universal:</strong> ningún incumbente ofrece estimación de costos por IA, valuación por imagen, módulo de capital de inversores, UI en español, ni workflow integrado de TDHCA / título estatal.
+        </div>
+        <p class="footnote">Pricing: páginas oficiales (everlogic.com, frazer.com), revisiones G2/Capterra, RFPs públicos.</p>
+      </section>
+
+      <!-- 8. PAIN POINTS -->
+      <section class="slide-bg">
+        <span class="eyebrow">Lo que duele cada día</span>
+        <h2>Los 7 dolores que un dealer SMB tiene hoy.</h2>
+        <div class="three-col">
+          <div class="pillar">
+            <div class="icon">📋</div>
+            <h4>Renovación en hojas de cálculo</h4>
+            <p>Spreadsheets, WhatsApp, listas en papel. Nadie sabe si el rehab está dentro de presupuesto.</p>
+          </div>
+          <div class="pillar">
+            <div class="icon">📸</div>
+            <h4>Fotos repartidas en 5 plataformas</h4>
+            <p>Subidas a mano a Marketplace, Craigslist, MHVillage, Zillow. Sin librería central.</p>
+          </div>
+          <div class="pillar">
+            <div class="icon">💸</div>
+            <h4>Estimación de costos a ojo</h4>
+            <p>Renovación de $5K–$15K calculada con la "experiencia". Errores frecuentes destruyen márgenes.</p>
+          </div>
+          <div class="pillar">
+            <div class="icon">⚡</div>
+            <h4>Leads de Marketplace que se enfrían en 15 min</h4>
+            <p>Sin auto-respuesta o lead-routing, los closers responden tarde y pierden la venta.</p>
+          </div>
+          <div class="pillar">
+            <div class="icon">🏦</div>
+            <h4>RTO + mora ingestionada a mano</h4>
+            <p>Pagos atrasados, late fees, NSF, holdover — todo en Excel. CFPB compliance es un riesgo.</p>
+          </div>
+          <div class="pillar">
+            <div class="icon">💼</div>
+            <h4>Inversores privados sin visibilidad</h4>
+            <p>Capital de prestamistas privados sin tracking de aporte, retornos o lien position.</p>
+          </div>
+          <div class="pillar" style="grid-column: span 3;">
+            <div class="icon">📑</div>
+            <h4>Fricción de título estatal (TDHCA, FLHSMV, NC OSFM…)</h4>
+            <p>Aplicación a 60 días con $100 de late fee. Sin APIs estatales, los dealers tipean a mano 6+ formularios por venta.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9. SECTION DIVIDER 2 -->
+      <section class="section-divider">
+        <div class="number">02</div>
+        <h2>La solución</h2>
+        <p class="text-slate" style="font-size:1.2rem;">Un sistema operativo end-to-end. Tres portales. Cinco agentes de IA. Una sola fuente de verdad.</p>
+      </section>
+
+      <!-- 10. PRODUCT OVERVIEW -->
+      <section class="slide-bg">
+        <span class="eyebrow">Producto</span>
+        <h2>Maninos&nbsp;OS — tres portales, una arquitectura.</h2>
+        <div class="three-col" style="margin-top:1.5em;">
+          <div class="pillar">
+            <span class="pill gold">Operaciones</span>
+            <h4 style="margin-top:0.5em;">Homes</h4>
+            <p>Para tu staff. Compra → renovación → venta. Inventario, fotos, contabilidad, comisiones, títulos, dashboards.</p>
+          </div>
+          <div class="pillar">
+            <span class="pill gold">Financiamiento</span>
+            <h4 style="margin-top:0.5em;">Capital</h4>
+            <p>Para tus underwriters y socios financieros. RTO, mora, KYC, contratos, inversores, promissory notes, reportes.</p>
+          </div>
+          <div class="pillar">
+            <span class="pill gold">Cliente final</span>
+            <h4 style="margin-top:0.5em;">Clientes</h4>
+            <p>Para el comprador. Catálogo público, simulador RTO, solicitud de crédito, KYC, firma electrónica, estado de cuenta.</p>
+          </div>
+        </div>
+        <div class="highlight-box" style="margin-top:1.5em;">
+          <strong>El truco:</strong> los tres portales comparten la misma base de datos. Un cambio en operaciones se refleja al instante en finanzas y en el portal del cliente. <em>No hay sincronización ni dobles entradas.</em>
+        </div>
+      </section>
+
+      <!-- 11. WORKFLOW -->
+      <section class="slide-bg">
+        <span class="eyebrow">El loop completo</span>
+        <h2>Comprar → Renovar → Vender → Cobrar — sin salir del sistema.</h2>
+        <div class="workflow">
+          <div class="workflow-step">
+            <div class="step-num">1</div>
+            <h4>Adquirir</h4>
+            <p>Scraping de Marketplace, VMF, 21st Mortgage. Análisis de viabilidad por IA.</p>
+          </div>
+          <div class="workflow-step">
+            <div class="step-num">2</div>
+            <h4>Renovar</h4>
+            <p>Wizard "Revisar Casa" + agente de costos + checklist + tracking de gastos.</p>
+          </div>
+          <div class="workflow-step">
+            <div class="step-num">3</div>
+            <h4>Listar</h4>
+            <p>Agente de fotos clasifica before/after; agente de precio sugiere precio óptimo (techo 80% mercado).</p>
+          </div>
+          <div class="workflow-step">
+            <div class="step-num">4</div>
+            <h4>Vender</h4>
+            <p>Cliente compra contado o RTO desde el portal público. KYC + contrato + firma electrónica.</p>
+          </div>
+          <div class="workflow-step">
+            <div class="step-num">5</div>
+            <h4>Cobrar</h4>
+            <p>Pagos mensuales, late fees, mora dashboard, reportes a inversores, cierre del título en TDHCA.</p>
+          </div>
+        </div>
+        <div class="highlight-box">
+          <strong>Esto es lo que ningún incumbente hace.</strong> EverLogic es un DMS. Frazer es BHPH. QuickBooks es contabilidad. <em>Maninos&nbsp;OS es las tres cosas — sincronizadas en tiempo real.</em>
+        </div>
+      </section>
+
+      <!-- 12. AI AGENTS -->
+      <section class="slide-bg">
+        <span class="eyebrow">Capa de inteligencia</span>
+        <h2>5 agentes de IA, cada uno con un trabajo claro.</h2>
+        <div class="three-col">
+          <div class="pillar">
+            <h4>🧮 Agente Costos</h4>
+            <p>Estima materiales y labor de renovación a partir de sqft, año y condición. Confidence score + factores de riesgo.</p>
+          </div>
+          <div class="pillar">
+            <h4>💰 Agente Precio</h4>
+            <p>4 estrategias de pricing (mínimo, target, mercado, agresivo). Aplica techo del 80% del valor de mercado automáticamente.</p>
+          </div>
+          <div class="pillar">
+            <h4>📷 Agente Fotos</h4>
+            <p>Vision real (no keywords). Clasifica before/after, exterior/interior. Ordena la galería de venta automáticamente.</p>
+          </div>
+          <div class="pillar">
+            <h4>🎙️ Agente Voz</h4>
+            <p>Whisper en español + extracción de intención. El staff dicta materiales en el yard, el sistema los registra.</p>
+          </div>
+          <div class="pillar">
+            <h4>🤖 Agente Renovación</h4>
+            <p>Conversacional. Guía al staff en la planificación de la renovación. Sin sqft, no estima — fail loud.</p>
+          </div>
+          <div class="pillar">
+            <h4>💬 Asistente conversacional</h4>
+            <p>Chat con tool-calling sobre 16 herramientas de DB. "¿Cuántas casas vendí en abril?" → consulta SQL real.</p>
+          </div>
+        </div>
+        <p class="footnote">Modelos: GPT-5 para agentes especializados, GPT-5-mini para chat. Whisper-1 para transcripción. Latencia conversacional.</p>
+      </section>
+
+      <!-- 13. CAPITAL DIFFERENTIATOR -->
+      <section class="slide-bg">
+        <span class="eyebrow">Por qué Maninos es único</span>
+        <h2>El módulo Capital — financiamiento propio + inversores.</h2>
+        <div class="two-col">
+          <div>
+            <p>La mayoría de DMS te ayudan a vender. Casi ninguno te ayuda a <em>ser el banco</em>. Maninos&nbsp;Capital sí:</p>
+            <ul class="feature-list">
+              <li><strong>RTO end-to-end</strong> — contratos de 33 cláusulas (Texas), tabla de amortización, late fee diario, NSF, holdover.</li>
+              <li><strong>Mora dashboard</strong> — aging por bucket (0-30, 31-60, 61-90, 90+), at-risk clients, collection rate.</li>
+              <li><strong>KYC manual con storage propio</strong> — sin pagar a Stripe Identity ni Persona.</li>
+              <li><strong>Comisiones split</strong> — finder vs closer, 50/50 automático.</li>
+              <li><strong>Capital de inversores</strong> — promissory notes, alertas de maturity, distribución de retornos, capital flows.</li>
+              <li><strong>Reportes mensuales</strong> — extractos PDF para cada inversor.</li>
+              <li><strong>Contabilidad GL completa</strong> — chart of accounts QuickBooks-style con bank reconciliation.</li>
+            </ul>
+          </div>
+          <div>
+            <div class="highlight-box">
+              <div class="text-gold" style="font-size:0.85rem; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.5em;">El insight</div>
+              <p style="margin:0;">Cuando el dealer es el banco, su software también tiene que ser el banco. Maninos OS es el primero que asume ese rol nativamente.</p>
+            </div>
+            <div class="highlight-box" style="margin-top:1em;">
+              <div class="text-gold" style="font-size:0.85rem; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.5em;">Defaults sensatos</div>
+              <p style="margin:0; font-size:0.95rem;">$15/día late fee · 5 días de gracia · día 15 due · $250 NSF · $695 holdover. Configurables por contrato.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 14. TECH STACK -->
+      <section class="slide-bg">
+        <span class="eyebrow">Bajo el capó</span>
+        <h2>Stack moderno. Multi-tenant ready. Cloud-first.</h2>
+        <div class="two-col">
+          <div>
+            <h4>Backend</h4>
+            <ul class="feature-list">
+              <li><strong>Python 3.12 + FastAPI</strong> — async, tipo-seguro, OpenAPI nativo.</li>
+              <li><strong>Supabase (Postgres + Auth + Storage)</strong> — RLS, realtime, escalable.</li>
+              <li><strong>OpenAI GPT-5 + Whisper</strong> — agentes en producción.</li>
+              <li><strong>APScheduler</strong> — 10 jobs (title monitor, RTO reminders, scrapers, alerts).</li>
+              <li><strong>Playwright + Apify</strong> — scraping de listings competidores.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Frontend</h4>
+            <ul class="feature-list">
+              <li><strong>Next.js 14 App Router</strong> — server components, streaming, edge-ready.</li>
+              <li><strong>Tailwind + design system propio</strong> — navy/gold luxury.</li>
+              <li><strong>Mobile-first responsive</strong> — staff trabaja desde el yard, en el celular.</li>
+              <li><strong>Resend</strong> — transaccional + bulk + adjuntos PDF.</li>
+              <li><strong>Vercel + Railway</strong> — deploys auto en cada push.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="highlight-box" style="margin-top:1em;">
+          <strong>Multi-tenant by design.</strong> Cada cliente puede tener su propia instancia con su branding, su dominio, sus integraciones estatales. Roadmap de white-label en Q3 2026.
+        </div>
+      </section>
+
+      <!-- 15. SECTION DIVIDER 3 -->
+      <section class="section-divider">
+        <div class="number">03</div>
+        <h2>Más allá de mobile homes</h2>
+        <p class="text-slate" style="font-size:1.2rem;">El mismo motor sirve para cualquier activo físico de alto valor con título y financiamiento propio.</p>
+      </section>
+
+      <!-- 16. EXPANSION VERTICALS -->
+      <section class="slide-bg">
+        <span class="eyebrow">Verticales adyacentes</span>
+        <h2>El patrón se repite en 4 industrias más.</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Vertical</th>
+              <th># Dealers USA</th>
+              <th>Cartera / Volumen</th>
+              <th>Fit Score</th>
+              <th>Razón</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>BHPH Used Cars</strong></td>
+              <td>~25,000</td>
+              <td>$80B portfolio · 2.4M unidades/año</td>
+              <td><span class="pill gold">9 / 10</span></td>
+              <td>Mismo loop: comprar (auctions) → reacondicionar → financiar → cobrar. Frazer es Windows on-prem.</td>
+            </tr>
+            <tr>
+              <td><strong>RV / Travel Trailers</strong></td>
+              <td>~3,400</td>
+              <td>$30B retail · 600K unidades/año</td>
+              <td><span class="pill gold">8.5 / 10</span></td>
+              <td>PDI checklist = Revisar Casa. IDS Astra cuesta $1.5K–$5K/mo y tiene UI dated.</td>
+            </tr>
+            <tr>
+              <td><strong>Boats (Used)</strong></td>
+              <td>~4,300</td>
+              <td>$56B mercado · 970K unidades/año</td>
+              <td><span class="pill gold">7.5 / 10</span></td>
+              <td>Reconditioning + título estatal. Financiamiento propio &lt;5% del mercado — gap claro.</td>
+            </tr>
+            <tr>
+              <td>Heavy Equipment</td>
+              <td>~3,000</td>
+              <td>$25–30B/año</td>
+              <td><span class="pill emerald">5 / 10</span></td>
+              <td>OEM lock-in (Deere). Solo aplica al segmento independent used-only.</td>
+            </tr>
+            <tr>
+              <td>Tiny Home / ADU / Park Models</td>
+              <td>~500</td>
+              <td>$3.6B mercado tiny home</td>
+              <td><span class="pill emerald">6 / 10</span></td>
+              <td>Fit alto, TAM bajo. Bundle con MH como upsell.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="footnote">Fuentes: NIADA (BHPH), NMMA & MRAA (boats), RVIA & RVDA (RV), NAEDA (heavy equipment), market reports 2023-2025.</p>
+      </section>
+
+      <!-- 17. PORTABILITY -->
+      <section class="slide-bg">
+        <span class="eyebrow">Por qué la plataforma es portable</span>
+        <h2>El modelo de datos abstrae el activo.</h2>
+        <div class="two-col">
+          <div>
+            <h4>Lo que se queda igual</h4>
+            <ul class="feature-list">
+              <li><strong>Pipeline de adquisición</strong> — fuente, listing, viabilidad.</li>
+              <li><strong>Workflow de reacondicionamiento</strong> — checklist + materiales + costos por IA.</li>
+              <li><strong>Galería de fotos clasificada</strong> — agente de fotos no necesita saber si es casa o lancha.</li>
+              <li><strong>Motor RTO/BHPH</strong> — contratos, amortización, mora.</li>
+              <li><strong>Portal cliente, KYC, firma, pagos</strong> — universales.</li>
+              <li><strong>Capital de inversores</strong> — universal.</li>
+              <li><strong>Contabilidad GL</strong> — universal.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Lo que se adapta por vertical</h4>
+            <ul class="feature-list">
+              <li><strong>Schema del activo</strong> — sqft / HUD label en MH; HIN + engine # en boats; VIN + odómetro en autos.</li>
+              <li><strong>Workflow de título</strong> — TDHCA / FLHSMV / NC OSFM / state DMV. Plug-in por estado y por activo.</li>
+              <li><strong>Plantilla de contrato</strong> — Texas Residential Lease w/ Purchase Option en MH; contrato BHPH para autos; documentación USCG opcional para boats.</li>
+              <li><strong>Integraciones específicas</strong> — Manheim/ADESA en autos, MHVillage en MH, BoatTrader en boats.</li>
+              <li><strong>Plantillas de prompt de IA</strong> — el agente de costos sabe de pintura y tablaroca; en boats sabe de gelcoat y bottom paint.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="highlight-box" style="margin-top:1em;">
+          <strong>El roadmap claro:</strong> el "Asset Pack" como abstracción. Cada vertical es un Asset Pack (MH Pack, RV Pack, Auto Pack, Boat Pack) que define schema, contratos, integraciones de título y prompts de IA. <em>El core no cambia.</em>
+        </div>
+      </section>
+
+      <!-- 18. SECTION DIVIDER 4 -->
+      <section class="section-divider">
+        <div class="number">04</div>
+        <h2>Modelo de negocio</h2>
+        <p class="text-slate" style="font-size:1.2rem;">SaaS por rooftop + revenue share en pagos y financiamiento.</p>
+      </section>
+
+      <!-- 19. PRICING -->
+      <section class="slide-bg">
+        <span class="eyebrow">Pricing</span>
+        <h2>Tres tiers. Por rooftop. Sin sorpresas.</h2>
+        <div class="price-grid">
+          <div class="price-card">
+            <h4>Starter</h4>
+            <div class="price-amount">$399<small>/mes/rooftop</small></div>
+            <ul>
+              <li>DMS core</li>
+              <li>Portal cliente</li>
+              <li>Hasta 25 unidades activas</li>
+              <li>5 usuarios</li>
+              <li>2 agentes de IA (fotos + precio)</li>
+              <li>Soporte por email</li>
+            </ul>
+            <p class="text-slate small" style="margin-top:1em;">Onboarding: $1,500 · ACV ~$4.8K</p>
+          </div>
+          <div class="price-card featured">
+            <span class="pill gold">Más popular</span>
+            <h4 style="margin-top:0.6em;">Growth</h4>
+            <div class="price-amount">$899<small>/mes/rooftop</small></div>
+            <ul>
+              <li>Todo lo de Starter</li>
+              <li>Módulo de contabilidad</li>
+              <li>Motor RTO / BHPH completo</li>
+              <li>Los 5 agentes de IA</li>
+              <li>Pagos + KYC integrados</li>
+              <li>Hasta 100 unidades · usuarios ilimitados</li>
+              <li>Soporte programado</li>
+            </ul>
+            <p class="text-slate small" style="margin-top:1em;">Onboarding: $4,500 · ACV ~$10.8K</p>
+          </div>
+          <div class="price-card">
+            <h4>Enterprise</h4>
+            <div class="price-amount">$1,899<small>/mes/rooftop</small></div>
+            <ul>
+              <li>Todo lo de Growth</li>
+              <li>Portal de inversores / Capital</li>
+              <li>Multi-rooftop rollup</li>
+              <li>IA con fine-tuning del cliente</li>
+              <li>Title monitoring estatal</li>
+              <li>API + webhooks</li>
+              <li>CSM dedicado</li>
+            </ul>
+            <p class="text-slate small" style="margin-top:1em;">Onboarding: $12,000 · ACV ~$22.8K</p>
+          </div>
+        </div>
+        <div class="highlight-box" style="margin-top:1em;">
+          <strong>Add-on de revenue share:</strong> 50–75 bps de GMV en pagos contado · 1.5–2.5% de originación en notas RTO. <em>El verdadero foso a largo plazo.</em>
+        </div>
+        <p class="footnote">Benchmarks: OpenView SaaS 2023, SaaS Capital 2024, MRAA marine survey, frazer.com, everlogic.com.</p>
+      </section>
+
+      <!-- 20. WHY NOW -->
+      <section class="slide-bg">
+        <span class="eyebrow">Por qué ahora</span>
+        <h2>Tres olas convergiendo.</h2>
+        <div class="three-col">
+          <div class="pillar">
+            <h4>1. Crisis de affordability housing</h4>
+            <p>Mobile homes son la única respuesta sub-$200K. Volumen creció 15.8% YoY. La demanda no para.</p>
+          </div>
+          <div class="pillar">
+            <h4>2. IA generativa en producción</h4>
+            <p>Agentes especializados (vision, voz, costo) <em>realmente funcionan</em> en 2026. Hace 2 años eran demos. Hoy ahorran horas/día.</p>
+          </div>
+          <div class="pillar">
+            <h4>3. SaaS vertical maduró</h4>
+            <p>Toast, ServiceTitan, Procore probaron que SaaS especializado por industria + payments rev-share es 10x más sticky que SaaS horizontal.</p>
+          </div>
+        </div>
+        <div class="highlight-box" style="margin-top:1.5em;">
+          <strong>Y un dato más:</strong> EverLogic, el incumbente de MH, lleva 20 años. Su UI, su pricing y su modelo cloud-Windows están maduros para disrupción. Frazer (BHPH) es on-prem. <em>La ventana está abierta.</em>
+        </div>
+      </section>
+
+      <!-- 21. ROADMAP -->
+      <section class="slide-bg">
+        <span class="eyebrow">Roadmap 2026–2027</span>
+        <h2>De Texas a multi-vertical en 18 meses.</h2>
+        <table>
+          <thead>
+            <tr><th>Trimestre</th><th>Hito</th><th>Mercado</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Q2 2026</td>
+              <td>Multi-tenant + white-label v1</td>
+              <td>5 dealers MH en Texas (design partners)</td>
+            </tr>
+            <tr>
+              <td>Q3 2026</td>
+              <td>Asset Pack Florida — FLHSMV integration</td>
+              <td>Expansión Sun Belt: FL, NC, AL, SC</td>
+            </tr>
+            <tr>
+              <td>Q4 2026</td>
+              <td>Stripe Connect real + revenue share live</td>
+              <td>Modelo de payments rev-share activo</td>
+            </tr>
+            <tr>
+              <td>Q1 2027</td>
+              <td>Asset Pack BHPH Used Auto</td>
+              <td>Beachhead: 50 dealers BHPH small-mid</td>
+            </tr>
+            <tr>
+              <td>Q2 2027</td>
+              <td>Asset Pack RV (PDI workflow)</td>
+              <td>RV dealers independents (vs IDS Astra)</td>
+            </tr>
+            <tr>
+              <td>Q3 2027</td>
+              <td>Asset Pack Boats (HIN + state title)</td>
+              <td>Boat dealers con financiamiento propio</td>
+            </tr>
+            <tr>
+              <td>Q4 2027</td>
+              <td>Marketplace de Asset Packs (3rd party)</td>
+              <td>Plataforma horizontal, packs por vertical</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 22. THE ASK / CTA -->
+      <section class="slide-bg title-slide">
+        <div class="eyebrow" style="margin-top:60px;">Próximos pasos</div>
+        <h2 style="font-size:3.2rem; margin:0.5em 0;">Hablemos de cómo Maninos&nbsp;OS encaja con tu operación.</h2>
+        <p class="tagline">Te montamos un piloto en 4–6 semanas en tu rooftop. Sin onboarding fee para los primeros 5 design partners por vertical.</p>
+        <div class="kpi-grid" style="max-width:680px; margin:2em auto;">
+          <div class="kpi">
+            <div class="kpi-value">4–6 sem</div>
+            <div class="kpi-label">tiempo a producción</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">5</div>
+            <div class="kpi-label">design partners por vertical</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-value">$0</div>
+            <div class="kpi-label">onboarding (cohorte 1)</div>
+          </div>
+        </div>
+        <div style="margin-top:2.5em; padding-top:2em; border-top:1px solid rgba(201,160,71,0.3); max-width:600px; margin-left:auto; margin-right:auto;">
+          <p style="font-size:1.2rem; color:var(--ivory); margin-bottom:0.3em;"><strong>Maninos&nbsp;OS</strong></p>
+          <p class="text-slate" style="margin:0; font-size:0.95rem;">contact@maninos.ai · maninos.ai</p>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      slideNumber: 'c/t',
+      transition: 'fade',
+      transitionSpeed: 'default',
+      backgroundTransition: 'fade',
+      controls: true,
+      controlsLayout: 'edges',
+      progress: true,
+      width: 1280,
+      height: 800,
+      margin: 0.06,
+      minScale: 0.4,
+      maxScale: 1.4,
+    });
+  </script>
+</body>
+</html>
