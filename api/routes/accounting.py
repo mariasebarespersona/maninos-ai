@@ -2617,82 +2617,18 @@ async def reset_homes_account_balances(request: Request):
                 .execute()
             reset_count += 1
 
-        # 2. Clear statement movements & bank_statement transactions
-        # Clear ALL FK references on statement_movements that point to transactions
-        sb.table("statement_movements") \
-            .update({"transaction_id": None, "matched_transaction_id": None}) \
-            .neq("status", "pending") \
-            .execute()
-
-        # Reset posted movements back to confirmed (so they can be re-integrated)
-        sb.table("statement_movements") \
-            .update({"status": "confirmed"}) \
-            .eq("status", "posted") \
-            .execute()
-
-        # Reset bank_statements stats
-        sb.table("bank_statements") \
-            .update({"posted_movements": 0, "status": "review"}) \
-            .in_("status", ["completed", "partial"]) \
-            .execute()
-
-        # 3. Void ALL transactions (scoped or all) — loop to handle Supabase row limits
-        deleted_count = 0
-        if scope == "all":
-            # Void everything in batches until nothing remains
-            for _ in range(20):  # safety limit
-                remaining = sb.table("accounting_transactions") \
-                    .select("id", count="exact") \
-                    .neq("status", "voided").execute()
-                if not remaining.data:
-                    break
-                voided = sb.table("accounting_transactions") \
-                    .update({"status": "voided", "amount": 0}) \
-                    .neq("status", "voided") \
-                    .execute()
-                batch = len(voided.data or [])
-                deleted_count += batch
-                if batch == 0:
-                    break
-        else:
-            scope_types = {
-                "profit_loss": PL_TYPES,
-                "balance_sheet": BS_TYPES,
-            }
-            target_types = scope_types.get(scope, set())
-            scope_account_ids = [a["id"] for a in accounts if a.get("account_type") in target_types]
-            if scope_account_ids:
-                # Loop to handle Supabase row limits
-                for _ in range(20):
-                    voided = sb.table("accounting_transactions") \
-                        .update({"status": "voided", "amount": 0}) \
-                        .in_("account_id", scope_account_ids) \
-                        .neq("status", "voided") \
-                        .execute()
-                    batch = len(voided.data or [])
-                    deleted_count += batch
-                    if batch == 0:
-                        break
-
-        # Also void orphaned transactions (no account_id)
-        for _ in range(5):
-            orphaned = sb.table("accounting_transactions") \
-                .update({"status": "voided", "amount": 0}) \
-                .is_("account_id", "null") \
-                .neq("status", "voided") \
-                .execute()
-            batch = len(orphaned.data or [])
-            deleted_count += batch
-            if batch == 0:
-                break
+        # Vaciar Cifras ONLY resets manual current_balance on accounts.
+        # Financial statements are computed dynamically from transactions,
+        # so this is sufficient to "clear" the reports.
+        # Transactions, statement movements, and bank statements are NOT touched —
+        # they are the source of truth and should never be destroyed by this action.
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
             "ok": True,
             "reset_count": reset_count,
-            "deleted_transactions": deleted_count,
             "scope": scope,
-            "message": f"Cifras vaciadas: {deleted_count} transacciones eliminadas, {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
+            "message": f"Cifras manuales vaciadas: {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
         }
 
     except Exception as e:
