@@ -3177,6 +3177,11 @@ async def classify_statement_movements(statement_id: str):
     except Exception as e:
         logger.warning(f"Could not load correction history: {e}")
 
+    # Pre-load properties for property_id detection
+    props_raw = sb.table("properties").select("id, property_code, address, serial_number").execute()
+    properties_list = props_raw.data or []
+    prop_by_code = {p["property_code"].upper(): p["id"] for p in properties_list if p.get("property_code")}
+
     # Classify in small batches to avoid token limits
     classified = 0
     batch_size = 5
@@ -3203,6 +3208,20 @@ async def classify_statement_movements(statement_id: str):
                 acct_match = sb.table("accounting_accounts").select("id").eq("code", suggestion["account_code"]).execute()
                 if acct_match.data:
                     update_data["suggested_account_id"] = acct_match.data[0]["id"]
+
+            # Detect property_id from AI suggestion or movement description
+            prop_code = suggestion.get("property_code", "")
+            if prop_code:
+                prop_id = prop_by_code.get(prop_code.upper())
+                if prop_id:
+                    update_data["property_id"] = prop_id
+            if "property_id" not in update_data:
+                # Fallback: try to detect property code from description
+                desc = (mv.get("description") or "").upper()
+                for code, pid in prop_by_code.items():
+                    if code in desc:
+                        update_data["property_id"] = pid
+                        break
 
             sb.table("statement_movements").update(update_data).eq("id", mv["id"]).execute()
             classified += 1
@@ -3372,6 +3391,7 @@ async def post_confirmed_movements(statement_id: str):
                 "payment_reference": mv.get("reference"),
                 "counterparty_name": mv.get("counterparty"),
                 "description": mv.get("description", "")[:500],
+                "property_id": mv.get("property_id"),
                 "source": "bank_statement",
             }
             common_fields = {k: v for k, v in common_fields.items() if v is not None}
@@ -3876,8 +3896,10 @@ CHART OF ACCOUNTS (QuickBooks — source of truth):
 {f"HUMAN CORRECTIONS (these override the chart when there is a conflict — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}BANK MOVEMENTS TO CLASSIFY:
 {movements_text}
 
+PROPERTY TRACKING: If a movement clearly relates to a specific property (house purchase, renovation materials, move, sale), include a "property_code" field with the house code (e.g., "H1", "B5", "DFW3"). Look for property codes, addresses, or serial numbers in the description. If unsure, omit the field.
+
 Return a JSON array with EXACTLY {len(movements)} objects (one per movement, in same order):
-[{{"account_code":"exact code from chart","account_name":"account name","transaction_type":"descriptive_type","confidence":0.9,"reasoning":"one line explaining why"}}]
+[{{"account_code":"exact code from chart","account_name":"account name","transaction_type":"descriptive_type","confidence":0.9,"reasoning":"one line explaining why","property_code":"H1 or omit if unknown"}}]
 
 Remember: ONLY use account codes from the chart above. If you cannot find a perfect match, use the closest one."""
 
