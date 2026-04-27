@@ -3107,6 +3107,16 @@ async def confirm_reconciliation(statement_id: str, data: dict):
 @router.post("/bank-statements/{statement_id}/classify")
 async def classify_statement_movements(statement_id: str):
     """Use AI to suggest accounting accounts for each movement."""
+    try:
+        return await _do_classify(statement_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[classify] Unhandled error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Classification error: {str(e)[:200]}")
+
+
+async def _do_classify(statement_id: str):
     # Get statement + movements
     stmt = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
     if not stmt.data:
@@ -3196,8 +3206,11 @@ async def classify_statement_movements(statement_id: str):
         logger.warning(f"Could not load correction history: {e}")
 
     # Pre-load properties for property_id detection
-    props_raw = sb.table("properties").select("id, property_code, address, serial_number").execute()
-    properties_list = props_raw.data or []
+    try:
+        props_raw = sb.table("properties").select("id, property_code, address").execute()
+        properties_list = props_raw.data or []
+    except Exception:
+        properties_list = []
     prop_by_code = {p["property_code"].upper(): p["id"] for p in properties_list if p.get("property_code")}
 
     # Classify in small batches to avoid token limits
