@@ -29,6 +29,38 @@ from pydantic import BaseModel
 
 from tools.supabase_client import sb
 
+# ── Canonical account type sets (used everywhere for consistent sign logic) ──
+INCOME_TYPES = {"Income", "Other Income", "income"}
+EXPENSE_TYPES = {"Expenses", "Other Expense", "Cost of Goods Sold", "expense", "cogs"}
+BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets",
+            "Other Assets", "Accounts payable (A/P)", "Other Current Liabilities",
+            "Long Term Liabilities", "Equity", "asset", "liability", "equity"}
+PL_TYPES = INCOME_TYPES | EXPENSE_TYPES
+
+
+def _signed_balance(amt: float, account_type: str, is_income: bool) -> float:
+    """Single source of truth for transaction sign logic across all reports.
+
+    Double-entry rules:
+    - Income accounts: credits (is_income=True) increase, debits decrease
+    - Expense/COGS accounts: debits (is_income=False) increase, credits decrease (contra-expense)
+    - BS accounts (Bank/Assets/Liabilities/Equity): credits increase, debits decrease
+    """
+    if account_type in EXPENSE_TYPES:
+        return amt if not is_income else -amt   # debit increases expense
+    else:
+        return amt if is_income else -amt       # credit increases income/asset
+
+
+def _net_income_sign(amt: float, account_type: str, is_income: bool) -> float:
+    """Compute contribution to Net Income from a single transaction.
+    Income credits add, expense debits subtract."""
+    if account_type in INCOME_TYPES:
+        return amt if is_income else -amt       # credit = +income
+    elif account_type in EXPENSE_TYPES:
+        return -amt if not is_income else amt   # debit = -expense (reduces NI), credit = +contra
+    return 0.0  # BS accounts don't affect NI directly
+
 
 def _fetch_all_accounts(active_only: bool = True) -> list:
     """Fetch all accounting_accounts, paginating past Supabase's 1000-row limit."""
@@ -703,20 +735,33 @@ async def split_transaction(transaction_id: str, data: dict):
     if abs(parts_total - abs(parent_amount)) > 0.01:
         raise HTTPException(status_code=400, detail=f"Parts total ({parts_total:.2f}) != transaction ({abs(parent_amount):.2f})")
 
-    # Void original
+    # Void original P&L transaction
     sb.table("accounting_transactions").update({"status": "voided"}).eq("id", transaction_id).execute()
+    # Also void linked bank-side transaction (double-entry pair)
+    if p.get("linked_transaction_id"):
+        sb.table("accounting_transactions").update({"status": "voided"}).eq("id", p["linked_transaction_id"]).execute()
     _log_audit("accounting_transactions", transaction_id, "split", description=f"Split into {len(parts)} parts")
+
+    # Look up bank accounting account for double-entry on children
+    bank_accounting_id = None
+    if p.get("bank_account_id"):
+        ba = sb.table("bank_accounts").select("accounting_account_id").eq("id", p["bank_account_id"]).execute()
+        if ba.data and ba.data[0].get("accounting_account_id"):
+            bank_accounting_id = ba.data[0]["accounting_account_id"]
 
     created = []
     for pt in parts:
         child = {
+            "transaction_number": _generate_transaction_number(),
             "transaction_date": p["transaction_date"],
             "transaction_type": p["transaction_type"],
             "amount": float(pt["amount"]),
             "is_income": p["is_income"],
+            "account_id": pt.get("account_id") or p.get("account_id"),
             "description": pt.get("description", p.get("description", ""))[:500],
             "counterparty_name": p.get("counterparty_name"),
-            "property_id": p.get("property_id"),
+            "bank_account_id": p.get("bank_account_id"),
+            "property_id": pt.get("property_id") or p.get("property_id"),
             "entity_type": p.get("entity_type"),
             "entity_id": p.get("entity_id"),
             "payment_method": p.get("payment_method"),
@@ -726,7 +771,28 @@ async def split_transaction(transaction_id: str, data: dict):
         try:
             r = sb.table("accounting_transactions").insert(child).execute()
             if r.data:
+                pnl_id = r.data[0]["id"]
                 created.append(r.data[0])
+                # Double-entry: create bank-side counterpart
+                if bank_accounting_id:
+                    bank_child = {
+                        "transaction_number": _generate_transaction_number(),
+                        "transaction_date": p["transaction_date"],
+                        "transaction_type": p["transaction_type"],
+                        "amount": float(pt["amount"]),
+                        "is_income": p["is_income"],
+                        "account_id": bank_accounting_id,
+                        "linked_transaction_id": pnl_id,
+                        "description": pt.get("description", p.get("description", ""))[:500],
+                        "bank_account_id": p.get("bank_account_id"),
+                        "notes": f"Contrapartida bancaria (split)",
+                        "status": "confirmed",
+                    }
+                    bank_r = sb.table("accounting_transactions").insert(bank_child).execute()
+                    if bank_r.data:
+                        sb.table("accounting_transactions").update(
+                            {"linked_transaction_id": bank_r.data[0]["id"]}
+                        ).eq("id", pnl_id).execute()
         except Exception as e:
             logger.error(f"[accounting] Split child error: {e}")
 
@@ -789,30 +855,14 @@ async def get_accounts_tree(
         if end_date:
             filters["lte_date"] = end_date
         txns = _fetch_all_transactions(filters)
-        # Build account type lookup for sign logic
-        _INCOME_T = {"Income", "Other Income", "income"}
-        _EXPENSE_T = {"Cost of Goods Sold", "Expenses", "Other Expense", "expense", "cogs"}
-        _BS_T = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets",
-                 "Other Assets", "Accounts payable (A/P)", "Other Current Liabilities",
-                 "Long Term Liabilities", "Equity", "asset", "liability", "equity"}
         _atype_map = {a["id"]: a.get("account_type", "") for a in accounts}
-
         for t in txns:
             aid = t.get("account_id")
             if aid:
-                amt = float(t["amount"])
-                if aid not in balances:
-                    balances[aid] = 0
                 atype = _atype_map.get(aid, "")
-                if atype in _BS_T:
-                    # BS accounts: credits increase, debits decrease
-                    balances[aid] += amt if t.get("is_income") else -amt
-                elif atype in _EXPENSE_T:
-                    # Expense accounts: debits increase, credits (contra-expense) decrease
-                    balances[aid] += amt if not t.get("is_income") else -amt
-                else:
-                    # Income accounts: credits increase, debits (refunds) decrease
-                    balances[aid] += amt if t.get("is_income") else -amt
+                balances[aid] = balances.get(aid, 0) + _signed_balance(
+                    float(t["amount"]), atype, t.get("is_income", False)
+                )
     except Exception as e:
         logger.warning(f"[accounts/tree] Could not compute balances: {e}")
 
@@ -1468,11 +1518,7 @@ async def get_income_statement(
 
     accounts = _fetch_all_accounts()
 
-    # Compute balances from transactions in period
-    # Only include P&L accounts — exclude bank/asset entries to avoid double-counting
-    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
-    INCOME_TYPES = {"Income", "Other Income", "income"}
-    EXPENSE_TYPES_PL = {"Cost of Goods Sold", "Expenses", "Other Expense", "expense", "cogs"}
+    # Compute balances from transactions in period — P&L accounts only
     pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
     acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
     balances = {}
@@ -1484,25 +1530,10 @@ async def get_income_statement(
         for t in txns:
             aid = t.get("account_id")
             if aid and aid in pl_account_ids:
-                amt = float(t["amount"])
                 atype = acct_type_by_id.get(aid, "")
-                is_expense_acct = atype in EXPENSE_TYPES_PL
-                is_income_acct = atype in INCOME_TYPES
-                # Apply correct double-entry sign:
-                # Credits (is_income=True) increase income accounts, decrease expense accounts
-                # Debits (is_income=False) increase expense accounts, decrease income accounts
-                if t.get("is_income"):
-                    # Credit entry
-                    if is_expense_acct:
-                        balances[aid] = balances.get(aid, 0) - amt  # contra-expense (reduces expenses)
-                    else:
-                        balances[aid] = balances.get(aid, 0) + amt  # normal income
-                else:
-                    # Debit entry
-                    if is_income_acct:
-                        balances[aid] = balances.get(aid, 0) - amt  # contra-income (refund/return)
-                    else:
-                        balances[aid] = balances.get(aid, 0) + amt  # normal expense
+                balances[aid] = balances.get(aid, 0) + _signed_balance(
+                    float(t["amount"]), atype, t.get("is_income", False)
+                )
     except Exception as e:
         logger.warning(f"[income-statement] Error fetching transactions: {e}")
 
@@ -1551,17 +1582,8 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     accounts = _fetch_all_accounts()
 
     # Compute cumulative balances — separate BS and P&L accounts to avoid double-counting
-    BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed Assets", "Other Assets",
-                "Accounts payable (A/P)", "Other Current Liabilities", "Long Term Liabilities", "Equity",
-                "asset", "liability", "equity"}
-    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
-    INCOME_TYPES = {"Income", "Other Income", "income"}
-    EXPENSE_TYPES = {"Expenses", "Other Expense", "Cost of Goods Sold", "expense", "cogs"}
-
+    acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
     bs_account_ids = set(a["id"] for a in accounts if a.get("account_type") in BS_TYPES)
-    pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
-    income_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in INCOME_TYPES)
-    expense_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in EXPENSE_TYPES)
 
     balances = {}
     net_income = 0
@@ -1575,21 +1597,13 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             if not aid:
                 continue
             amt = float(t["amount"])
-            # For BS accounts: credits (is_income=true) increase, debits decrease
+            atype = acct_type_by_id.get(aid, "")
+            is_inc = t.get("is_income", False)
+            # BS accounts: add to balances
             if aid in bs_account_ids:
-                signed_amt = amt if t.get("is_income") else -amt
-                balances[aid] = balances.get(aid, 0) + signed_amt
-            # Compute net income from P&L accounts using correct double-entry signs
-            if aid in income_acct_ids:
-                if t.get("is_income"):
-                    net_income += amt   # normal income (credit to income account)
-                else:
-                    net_income -= amt   # contra-income / refund (debit to income account)
-            elif aid in expense_acct_ids:
-                if t.get("is_income"):
-                    net_income += amt   # contra-expense like House Lease Income (credit to expense account)
-                else:
-                    net_income -= amt   # normal expense (debit to expense account)
+                balances[aid] = balances.get(aid, 0) + _signed_balance(amt, atype, is_inc)
+            # P&L accounts: contribute to net income
+            net_income += _net_income_sign(amt, atype, is_inc)
     except Exception as e:
         logger.warning(f"[balance-sheet] Error fetching transactions: {e}")
 
@@ -2039,47 +2053,51 @@ async def get_cash_flow_statement(
     sd = start_date or date(now.year, 1, 1).isoformat()
     ed = end_date or now.isoformat()
 
-    all_txns = (sb.table("accounting_transactions")
-            .select("*, accounting_accounts(account_type, category)")
-            .gte("transaction_date", sd).lte("transaction_date", ed)
-            .neq("status", "voided").execute()).data or []
-    # Only P&L accounts for cash flow — exclude bank-side double-entry
-    PL_TYPES = {"Income", "Other Income", "Cost of Goods Sold", "Expenses", "Other Expense", "income", "expense", "cogs"}
-    txns = [t for t in all_txns if (t.get("accounting_accounts") or {}).get("account_type") in PL_TYPES]
+    # Use bank-side transactions (type Bank) for cash flow — they represent actual cash movements
+    accounts = _fetch_all_accounts()
+    acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
+    bank_acct_ids = set(a["id"] for a in accounts if a.get("account_type") in ("Bank", "asset"))
 
-    sales = (sb.table("sales")
-             .select("sale_price, sale_type, status, created_at")
-             .gte("created_at", sd).lte("created_at", ed + "T23:59:59").execute()).data or []
-    props = (sb.table("properties")
-             .select("purchase_price, created_at")
-             .gte("created_at", sd).lte("created_at", ed + "T23:59:59").execute()).data or []
+    txns = _fetch_all_transactions({"gte_date": sd, "lte_date": ed})
 
-    # OPERATING
-    operating_in = sum(float(s.get("sale_price") or 0) for s in sales
-                       if s.get("status") in ("paid", "completed", "rto_approved", "rto_active"))
-    operating_in += sum(float(t["amount"]) for t in txns
-                        if t["is_income"] and t.get("transaction_type") not in ("bank_transfer",))
-    operating_out = sum(float(t["amount"]) for t in txns
-                        if not t["is_income"] and t.get("transaction_type") not in
-                        ("purchase_house", "bank_transfer"))
+    # Separate P&L transactions by type for categorization
+    operating_in = 0.0
+    operating_out = 0.0
+    investing = 0.0
+    financing = 0.0
+
+    for t in txns:
+        aid = t.get("account_id")
+        if not aid or aid in bank_acct_ids:
+            continue  # Skip bank-side entries (we use P&L side for categorization)
+        amt = float(t["amount"])
+        atype = acct_type_by_id.get(aid, "")
+        if atype not in PL_TYPES:
+            continue
+        txn_type = t.get("transaction_type", "")
+        is_inc = t.get("is_income", False)
+
+        if txn_type == "bank_transfer":
+            financing += amt if is_inc else -amt
+        elif txn_type == "purchase_house":
+            investing -= amt  # house purchases are investing outflows
+        else:
+            # Operating activities — use correct sign
+            contribution = _net_income_sign(amt, atype, is_inc)
+            if contribution > 0:
+                operating_in += abs(contribution)
+            else:
+                operating_out += abs(contribution)
+
     operating_net = operating_in - operating_out
-
-    # INVESTING (property purchases)
-    investing_out = sum(float(p.get("purchase_price") or 0) for p in props if p.get("purchase_price"))
-    investing_net = -investing_out
-
-    # FINANCING (bank transfers, loans)
-    financing = sum(float(t["amount"]) * (1 if t["is_income"] else -1) for t in txns
-                    if t.get("transaction_type") == "bank_transfer")
-
-    net_change = operating_net + investing_net + financing
+    net_change = operating_net + investing + financing
 
     return {
         "period": {"start": sd, "end": ed},
-        "operating_activities": {"inflows": operating_in, "outflows": operating_out, "net": operating_net},
-        "investing_activities": {"property_purchases": investing_out, "net": investing_net},
-        "financing_activities": {"net": financing},
-        "net_change_in_cash": net_change,
+        "operating_activities": {"inflows": round(operating_in, 2), "outflows": round(operating_out, 2), "net": round(operating_net, 2)},
+        "investing_activities": {"property_purchases": round(abs(investing), 2), "net": round(investing, 2)},
+        "financing_activities": {"net": round(financing, 2)},
+        "net_change_in_cash": round(net_change, 2),
     }
 
 
