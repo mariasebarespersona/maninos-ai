@@ -2617,18 +2617,58 @@ async def reset_homes_account_balances(request: Request):
                 .execute()
             reset_count += 1
 
-        # Vaciar Cifras ONLY resets manual current_balance on accounts.
-        # Financial statements are computed dynamically from transactions,
-        # so this is sufficient to "clear" the reports.
-        # Transactions, statement movements, and bank statements are NOT touched —
-        # they are the source of truth and should never be destroyed by this action.
+        # Void transactions so financial statements show $0.
+        # IMPORTANT: We do NOT touch statement_movements or bank_statements —
+        # uploaded statements, reconciliation matches, and classification data survive.
+        # This allows the user to re-reconcile and re-publish without re-uploading.
+        deleted_count = 0
+        if scope == "all":
+            for _ in range(20):
+                remaining = sb.table("accounting_transactions") \
+                    .select("id", count="exact") \
+                    .neq("status", "voided").execute()
+                if not remaining.data:
+                    break
+                voided = sb.table("accounting_transactions") \
+                    .update({"status": "voided", "amount": 0}) \
+                    .neq("status", "voided") \
+                    .execute()
+                batch = len(voided.data or [])
+                deleted_count += batch
+                if batch == 0:
+                    break
+        else:
+            scope_types = {
+                "profit_loss": PL_TYPES,
+                "balance_sheet": BS_TYPES,
+            }
+            target_types = scope_types.get(scope, set())
+            scope_account_ids = [a["id"] for a in accounts if a.get("account_type") in target_types]
+            if scope_account_ids:
+                for _ in range(20):
+                    voided = sb.table("accounting_transactions") \
+                        .update({"status": "voided", "amount": 0}) \
+                        .in_("account_id", scope_account_ids) \
+                        .neq("status", "voided") \
+                        .execute()
+                    batch = len(voided.data or [])
+                    deleted_count += batch
+                    if batch == 0:
+                        break
+
+        # Reset posted movements back so they can be re-published
+        sb.table("statement_movements") \
+            .update({"status": "confirmed", "transaction_id": None}) \
+            .eq("status", "posted") \
+            .execute()
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
             "ok": True,
             "reset_count": reset_count,
+            "deleted_transactions": deleted_count,
             "scope": scope,
-            "message": f"Cifras manuales vaciadas: {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
+            "message": f"Cifras vaciadas: {deleted_count} transacciones eliminadas, {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
         }
 
     except Exception as e:
