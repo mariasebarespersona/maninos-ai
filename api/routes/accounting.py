@@ -3894,12 +3894,18 @@ CRITICAL: The Chart of Accounts below is the ONLY source of truth. You MUST use 
 
 BUSINESS CONTEXT (use this to pick the right account):
 - We buy mobile homes cheap, renovate them, and resell them.
-- Renovation materials (lumber, plumbing, paint, flooring, drywall, electrical supplies from Home Depot, Lowes, Sherwin Williams, Menards, Harbor Freight, etc.) are COST OF GOODS SOLD — they are direct costs of the product we sell. Look for COGS accounts like "Cost of goods sold", "Supplies & materials" under COGS, "Remodeling", etc.
-- House sale proceeds, down payments (enganche), and deposits from buyers are INCOME — use "House Sales" or similar income accounts.
-- Rent/lease payments received go wherever the chart places them (check the chart — they may be under Income, Other Income, or even Expenses depending on how QuickBooks has them set up). Trust the chart structure.
-- Inter-company transfers (to/from "Capital LLC", "Maninos Capital", between our own bank accounts) are NOT income or expenses — they are balance sheet movements. Use "Loans to others", "Loans to officers", or other asset/liability accounts from the chart.
-- Commission payments to salespeople are operating expenses.
-- Bank fees, insurance, phone, internet, fuel, office supplies are operating expenses — find the matching account in the chart.
+- We have TWO companies: Maninos Homes LLC (operations) and Maninos Capital LLC (financing/investors).
+- We sell houses in two ways:
+  1. CONTADO (cash sale) — buyer pays Homes directly. Classify as House Sales (Income).
+  2. RTO (Rent-to-Own) — buyer makes a down payment (enganche) + monthly payments. Maninos Capital finances the deal and pays Homes the remaining balance. "RTO" always means Rent-to-Own.
+- "ENGANCHE" means down payment from a buyer. It is INCOME (House Sales).
+- "PAGO TOTAL" means full cash payment for a house. It is INCOME (House Sales).
+- "INTERNAL TRANSFER - MANINOS CAPITAL - RTO" = Capital paying Homes for an RTO sale. This is INCOME for Homes (House Sales or similar), NOT a balance sheet transfer. Capital is paying Homes the sale price minus the enganche.
+- Renovation materials (lumber, plumbing, paint, flooring, drywall, electrical supplies from Home Depot, Lowes, Sherwin Williams, Menards, Harbor Freight, etc.) are COST OF GOODS SOLD — direct costs of the product we sell.
+- "WIRE OUT - VANDERBILT", "WIRE OUT - 21ST MORTGAGE", "PURCHASE WIRE" = buying a mobile home from a seller/lender. These are COST OF GOODS SOLD (house purchases).
+- "COMISION" = commission payment to a salesperson. Operating expense (Commissions & fees).
+- Bank fees, insurance, phone, internet, fuel, office supplies are operating expenses.
+- "PURCHASE HOUSE - ZELLE" with small amounts ($10) = minor transaction fees, classify as operating expense or bank fees.
 
 CHART OF ACCOUNTS (QuickBooks — source of truth):
 {accounts_reference}
