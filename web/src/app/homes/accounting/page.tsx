@@ -2432,6 +2432,7 @@ interface ReconcileMatch {
 }
 
 function EstadoCuentaTab() {
+  const toast = useToast()
   const [expandedDrawer, setExpandedDrawer] = useState<string | null>(null)
   const [statements, setStatements] = useState<Record<string, BankStatement[]>>({})
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
@@ -2614,16 +2615,29 @@ function EstadoCuentaTab() {
     setClassifying(true)
     try {
       // Call Railway directly — Vercel Hobby has 60s limit but AI classify takes 2+ min
-      const directApi = 'https://maninos-ai-production.up.railway.app'
-      const res = await fetch(`${directApi}/api/accounting/bank-statements/${stmtId}/classify`, { method: 'POST' })
+      const directApi = process.env.NEXT_PUBLIC_DIRECT_API_URL || 'https://maninos-ai-production.up.railway.app'
+      const res = await fetch(`${directApi}/api/accounting/bank-statements/${stmtId}/classify`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(300000), // 5 min timeout
+      })
       if (res.ok) {
+        const data = await res.json()
+        toast.success(`${data.classified || 0} movimientos clasificados`)
         await reloadMovements(stmtId)
         fetchStatements()
       } else {
         const err = await res.json().catch(() => ({}))
-        alert(`Error: ${err.detail || 'Error al clasificar'}`)
+        toast.error(`Error: ${err.detail || 'Error al clasificar'}`)
       }
-    } catch (e) { alert('Error de conexión — la clasificación puede tardar hasta 2 min. Reintenta.') }
+    } catch (e: any) {
+      if (e?.name === 'TimeoutError') {
+        toast.error('La clasificación tardó demasiado (>5 min). Reintenta.')
+      } else {
+        toast.error('Error de conexión al clasificar. Reintenta.')
+      }
+      // Reload anyway — some batches may have classified before the error
+      await reloadMovements(stmtId)
+    }
     finally { setClassifying(false) }
   }
 
