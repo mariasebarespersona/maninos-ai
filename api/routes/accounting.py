@@ -3228,20 +3228,24 @@ async def classify_statement_movements(statement_id: str):
                     update_data["suggested_account_id"] = acct_match.data[0]["id"]
 
             # Detect property_id from AI suggestion or movement description
+            detected_property_id = None
             prop_code = suggestion.get("property_code", "")
             if prop_code:
-                prop_id = prop_by_code.get(prop_code.upper())
-                if prop_id:
-                    update_data["property_id"] = prop_id
-            if "property_id" not in update_data:
-                # Fallback: try to detect property code from description
+                detected_property_id = prop_by_code.get(prop_code.upper())
+            if not detected_property_id:
                 desc = (mv.get("description") or "").upper()
                 for code, pid in prop_by_code.items():
                     if code in desc:
-                        update_data["property_id"] = pid
+                        detected_property_id = pid
                         break
 
             sb.table("statement_movements").update(update_data).eq("id", mv["id"]).execute()
+            # Try to set property_id separately (column may not exist yet)
+            if detected_property_id:
+                try:
+                    sb.table("statement_movements").update({"property_id": detected_property_id}).eq("id", mv["id"]).execute()
+                except Exception:
+                    pass  # Column doesn't exist yet — migration 087 pending
             classified += 1
 
     # Update statement status
