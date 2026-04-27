@@ -40,6 +40,79 @@ router = APIRouter()
 MARGIN_FIXED = 9500  # Fixed margin per business rule
 COMMISSION_MAX = 1500  # Max commission (contado = $1500, RTO = $1000)
 
+# Inventory parent account ID from QuickBooks chart of accounts
+INVENTORY_PARENT_ID = "8f1096b1-7c74-4a31-a27d-5bf7cce66e6a"
+
+
+def _create_inventory_account_for_property(prop: dict):
+    """Create inventory sub-accounts in Chart of Accounts for a new property.
+    Creates a header account (HOME #CODE SERIAL) with sub-accounts for
+    purchase, renovation, and move costs."""
+    code = prop.get("property_code", "")
+    serial = prop.get("serial_number", "") or prop.get("hud_number", "") or ""
+    address = prop.get("address", "")
+    prop_id = prop["id"]
+
+    # Build account name: HOME #H1 TEX0484825 or HOME #H1
+    label = f"HOME #{code}"
+    if serial:
+        label += f" {serial}"
+
+    # Check if account already exists (by property_id in description or code match)
+    existing = sb.table("accounting_accounts").select("id").eq("code", label).execute()
+    if existing.data:
+        logger.info(f"[inventory] Account '{label}' already exists, skipping")
+        return existing.data[0]["id"]
+
+    # Get next display_order under Inventory
+    max_order = sb.table("accounting_accounts").select("display_order") \
+        .eq("parent_account_id", INVENTORY_PARENT_ID) \
+        .order("display_order", desc=True).limit(1).execute()
+    next_order = (max_order.data[0]["display_order"] + 1) if max_order.data else 1000
+
+    # Create header account for this property
+    header = sb.table("accounting_accounts").insert({
+        "code": label,
+        "name": label,
+        "account_type": "Other Current Assets",
+        "category": "Inventory",
+        "parent_account_id": INVENTORY_PARENT_ID,
+        "is_header": True,
+        "is_active": True,
+        "display_order": next_order,
+        "description": f"property_id:{prop_id}",
+    }).execute()
+
+    if not header.data:
+        logger.error(f"[inventory] Failed to create header account for {label}")
+        return None
+
+    header_id = header.data[0]["id"]
+    logger.info(f"[inventory] Created inventory account '{label}' (id={header_id})")
+
+    # Create sub-accounts: Purchase, Renovation, Move
+    sub_accounts = [
+        {"name": f"Compra {code}", "code": f"Compra {code}"},
+        {"name": f"Renovación {code}", "code": f"Renovación {code}"},
+        {"name": f"Movida {code}", "code": f"Movida {code}"},
+    ]
+
+    for i, sub in enumerate(sub_accounts):
+        sb.table("accounting_accounts").insert({
+            "code": sub["code"],
+            "name": sub["name"],
+            "account_type": "Other Current Assets",
+            "category": "Inventory",
+            "parent_account_id": header_id,
+            "is_header": False,
+            "is_active": True,
+            "display_order": next_order * 10 + i + 1,
+            "description": f"property_id:{prop_id}",
+        }).execute()
+
+    logger.info(f"[inventory] Created 3 sub-accounts for {label}")
+    return header_id
+
 
 def _calculate_post_renovation_price(property_id: str, purchase_price: float, property_overrides: dict = None) -> dict:
     """
@@ -568,8 +641,15 @@ async def create_property(data: PropertyCreate):
     
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create property")
-    
-    return _format_property(result.data[0])
+
+    # Auto-create inventory sub-account in Chart of Accounts
+    prop = result.data[0]
+    try:
+        _create_inventory_account_for_property(prop)
+    except Exception as e:
+        logger.warning(f"[properties] Could not create inventory account for {prop['id']}: {e}")
+
+    return _format_property(prop)
 
 
 @router.patch("/{property_id}", response_model=PropertyResponse)
