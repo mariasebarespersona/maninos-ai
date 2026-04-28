@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
-  <title>Maninos OS — Documento descriptivo de la plataforma</title>
+  <title>Maninos OS — Descriptive product document</title>
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reset.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.0.4/dist/reveal.css" />
@@ -36,9 +36,7 @@
     }
 
     .reveal .slides { text-align: left; }
-    .reveal .slides section {
-      padding: 56px 72px;
-    }
+    .reveal .slides section { padding: 56px 72px; }
 
     .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
       font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
@@ -71,15 +69,8 @@
     .reveal p { margin: 0 0 0.9em 0; }
     .reveal strong { color: var(--ink); font-weight: 600; }
 
-    /* Subtle thin rule */
-    .rule {
-      height: 1px;
-      background: var(--line);
-      margin: 1.8em 0;
-      border: 0;
-    }
+    .rule { height: 1px; background: var(--line); margin: 1.8em 0; border: 0; }
 
-    /* Eyebrow */
     .eyebrow {
       font-size: 0.72rem;
       font-weight: 600;
@@ -90,7 +81,6 @@
       display: block;
     }
 
-    /* Lead paragraph */
     .lead {
       font-family: 'Fraunces', serif;
       font-size: 1.35rem;
@@ -102,7 +92,6 @@
       margin-bottom: 1.4em;
     }
 
-    /* Title slide */
     .title-section {
       display: flex !important;
       flex-direction: column;
@@ -164,7 +153,6 @@
       color: var(--ink-4);
     }
 
-    /* Section index */
     .section-index {
       background: var(--bg-2);
       display: flex !important;
@@ -196,31 +184,11 @@
       line-height: 1.5;
     }
 
-    /* Two column */
-    .two-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 56px;
-      align-items: start;
-    }
-    .two-col-narrow {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 48px;
-      align-items: start;
-    }
-    .three-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 32px;
-    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+    .two-col-narrow { display: grid; grid-template-columns: 280px 1fr; gap: 48px; align-items: start; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; }
 
-    /* Block */
-    .block {
-      border-top: 1px solid var(--line);
-      padding-top: 1.2em;
-      margin-bottom: 1.8em;
-    }
+    .block { border-top: 1px solid var(--line); padding-top: 1.2em; margin-bottom: 1.8em; }
     .block .block-label {
       font-size: 0.7rem;
       letter-spacing: 0.18em;
@@ -229,12 +197,8 @@
       margin-bottom: 0.6em;
       font-weight: 600;
     }
-    .block h3 {
-      font-size: 1.3rem;
-      margin: 0 0 0.4em;
-    }
+    .block h3 { font-size: 1.3rem; margin: 0 0 0.4em; }
 
-    /* Sidebar (left column label) */
     .sidebar-label {
       font-family: 'Fraunces', serif;
       font-size: 0.95rem;
@@ -252,7 +216,6 @@
       font-weight: 400;
     }
 
-    /* Tables */
     .reveal table {
       font-size: 0.85rem;
       border-collapse: collapse;
@@ -281,7 +244,6 @@
     .reveal table.compact td { padding: 7px 14px 7px 0; font-size: 0.82rem; }
     .reveal table.compact th { padding: 7px 14px 7px 0; }
 
-    /* Inline code */
     code, .mono {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
       font-size: 0.82em;
@@ -291,12 +253,7 @@
       border-radius: 3px;
     }
 
-    /* Lists */
-    .reveal ul.clean {
-      list-style: none;
-      padding: 0;
-      margin: 0.4em 0;
-    }
+    .reveal ul.clean { list-style: none; padding: 0; margin: 0.4em 0; }
     .reveal ul.clean li {
       padding: 5px 0 5px 18px;
       position: relative;
@@ -310,7 +267,6 @@
       font-weight: 500;
     }
 
-    /* Quote / pull */
     .pull {
       font-family: 'Fraunces', serif;
       font-size: 1.5rem;
@@ -324,7 +280,6 @@
       font-style: italic;
     }
 
-    /* Schema-style list */
     .schema {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.78rem;
@@ -338,7 +293,6 @@
     .schema .key { color: var(--gold-soft); }
     .schema .comment { color: var(--ink-4); }
 
-    /* KPI */
     .kpi-row {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -348,10 +302,7 @@
       padding: 18px 0;
       margin: 1em 0 1.5em 0;
     }
-    .kpi-row .kpi {
-      padding: 0 24px 0 0;
-      border-right: 1px solid var(--line-soft);
-    }
+    .kpi-row .kpi { padding: 0 24px 0 0; border-right: 1px solid var(--line-soft); }
     .kpi-row .kpi:last-child { border-right: none; }
     .kpi-row .kpi-num {
       font-family: 'Fraunces', serif;
@@ -377,25 +328,16 @@
       font-weight: 500;
     }
 
-    /* Pillar cards (subdued) */
-    .pillar {
-      border-top: 1px solid var(--line);
-      padding-top: 1em;
-    }
+    .pillar { border-top: 1px solid var(--line); padding-top: 1em; }
     .pillar h4 {
       color: var(--gold);
       font-size: 0.72rem;
       letter-spacing: 0.16em;
       margin-bottom: 0.6em;
     }
-    .pillar h3 {
-      font-size: 1.15rem;
-      margin-bottom: 0.4em;
-      color: var(--ink);
-    }
+    .pillar h3 { font-size: 1.15rem; margin-bottom: 0.4em; color: var(--ink); }
     .pillar p { font-size: 0.88rem; color: var(--ink-2); margin: 0; }
 
-    /* Workflow / pipeline */
     .pipeline {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -404,10 +346,7 @@
       border-bottom: 1px solid var(--line);
       margin: 1em 0;
     }
-    .pipeline .stage {
-      padding: 18px 22px 18px 0;
-      border-right: 1px solid var(--line-soft);
-    }
+    .pipeline .stage { padding: 18px 22px 18px 0; border-right: 1px solid var(--line-soft); }
     .pipeline .stage:last-child { border-right: none; padding-right: 0; }
     .pipeline .stage-num {
       font-family: 'JetBrains Mono', monospace;
@@ -416,17 +355,9 @@
       letter-spacing: 0.15em;
       margin-bottom: 6px;
     }
-    .pipeline .stage h3 {
-      font-size: 1.05rem;
-      margin: 0 0 0.4em;
-    }
-    .pipeline .stage p {
-      font-size: 0.8rem;
-      color: var(--ink-3);
-      margin: 0;
-    }
+    .pipeline .stage h3 { font-size: 1.05rem; margin: 0 0 0.4em; }
+    .pipeline .stage p { font-size: 0.8rem; color: var(--ink-3); margin: 0; }
 
-    /* Slide footer */
     .slide-footer {
       position: absolute;
       bottom: 32px;
@@ -452,7 +383,6 @@
     .text-gold { color: var(--gold); }
     .small { font-size: 0.85rem; }
 
-    /* Section header inside slide */
     .slide-title-row {
       display: flex;
       justify-content: space-between;
@@ -461,10 +391,7 @@
       border-bottom: 1px solid var(--line);
       padding-bottom: 1em;
     }
-    .slide-title-row h2 {
-      margin: 0;
-      font-size: 2.1rem;
-    }
+    .slide-title-row h2 { margin: 0; font-size: 2.1rem; }
     .slide-title-row .label {
       font-size: 0.72rem;
       letter-spacing: 0.18em;
@@ -482,11 +409,11 @@
       <section class="title-section">
         <div class="meta">
           <span>Maninos&nbsp;OS</span>
-          <span>Documento descriptivo</span>
-          <span>Versión 2026.04</span>
+          <span>Descriptive document</span>
+          <span>Version 2026.04</span>
         </div>
-        <h1>Una plataforma operativa<br/>para vender mobile homes,<br/><em>de extremo a extremo.</em></h1>
-        <p class="subtitle">Cómo está construida, qué resuelve, y por qué su arquitectura admite otros activos físicos con el mismo patrón de negocio.</p>
+        <h1>An operating platform<br/>for selling mobile homes,<br/><em>end to end.</em></h1>
+        <p class="subtitle">How it's built, what it solves, and why its architecture supports other physical assets that follow the same business pattern.</p>
         <div class="footer-meta">
           <span>Maninos Homes LLC · Maninos Capital LLC</span>
           <span>Texas — 2026</span>
@@ -495,563 +422,533 @@
 
       <!-- 2. WHAT IT IS -->
       <section>
-        <span class="eyebrow">Definición</span>
-        <h2>Qué es Maninos&nbsp;OS</h2>
-        <p class="lead">Es la plataforma de software propietaria que opera Maninos Homes LLC y Maninos Capital LLC. Cubre el ciclo completo de un activo: localización en el mercado, compra, renovación, listado, venta, financiamiento propio (RTO o contado), gestión de pagos recurrentes, transferencia de título y reporte a inversores.</p>
+        <span class="eyebrow">Definition</span>
+        <h2>What Maninos&nbsp;OS is</h2>
+        <p class="lead">It is the proprietary software platform operated by Maninos Homes LLC and Maninos Capital LLC. It covers the full lifecycle of an asset: market discovery, purchase, renovation, listing, sale, in-house financing (RTO or cash), recurring payment management, title transfer, and investor reporting.</p>
         <hr class="rule"/>
         <div class="two-col">
           <div>
-            <h4>Lo que reemplaza</h4>
+            <h4>What it replaces</h4>
             <ul class="clean">
-              <li>Hojas de cálculo y grupos de WhatsApp para inventario y renovación</li>
-              <li>Un CRM genérico para clientes y leads</li>
-              <li>Un sistema de contabilidad externo</li>
-              <li>Un proceso manual de transferencia de título estatal</li>
-              <li>Una hoja paralela para tracking de inversores y mora</li>
+              <li>Spreadsheets and WhatsApp threads for inventory and renovation</li>
+              <li>A generic CRM for clients and leads</li>
+              <li>An external accounting system</li>
+              <li>A manual state title transfer process</li>
+              <li>A side spreadsheet for investor and delinquency tracking</li>
             </ul>
           </div>
           <div>
-            <h4>Lo que añade que no existe en otra parte</h4>
+            <h4>What it adds that doesn't exist elsewhere</h4>
             <ul class="clean">
-              <li>Seis agentes de IA especializados, integrados en los flujos de trabajo</li>
-              <li>Un módulo de financiamiento propio (RTO) con su propia contabilidad</li>
-              <li>Un portal público para el cliente final con simulador, KYC, firma y autoservicio de pagos</li>
-              <li>Un módulo separado para gestión de capital de inversores privados</li>
+              <li>Six specialized AI agents embedded in the daily workflow</li>
+              <li>An in-house financing module (RTO) with its own accounting</li>
+              <li>A public customer portal with simulator, KYC, e-signature, and self-service payment reporting</li>
+              <li>A separate module for managing private investor capital</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>01 · Definición</span><span>Maninos OS</span>
+          <span>01 · Definition</span><span>Maninos OS</span>
         </div>
       </section>
 
       <!-- 3. SHAPE -->
       <section>
         <div class="slide-title-row">
-          <h2>La forma del sistema</h2>
-          <span class="label">Arquitectura</span>
+          <h2>The shape of the system</h2>
+          <span class="label">Architecture</span>
         </div>
-        <p class="lead">Tres portales que comparten una sola base de datos Postgres. No hay sincronización ni jobs de réplica entre ellos: lo que ocurre en operaciones se ve al instante en finanzas y en la cuenta del cliente.</p>
+        <p class="lead">Three portals sharing a single Postgres database. There is no sync layer or replication job between them: anything that happens in operations is immediately visible in finance and in the customer's account.</p>
 
         <div class="three-col" style="margin-top:1.5em;">
           <div class="pillar">
             <h4>Portal 01</h4>
             <h3>Homes</h3>
-            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Operaciones internas</p>
-            <p>Para el equipo de Maninos. Inventario, renovación, fotos, contabilidad, comisiones, títulos, dashboards. Acceso por rol: <code>treasury</code>, <code>operations</code>, <code>yard_manager</code>, <code>admin</code>, comprador, vendedor.</p>
+            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Internal operations</p>
+            <p>For the Maninos team. Inventory, renovation, photos, accounting, commissions, titles, dashboards. Role-based access: <code>treasury</code>, <code>operations</code>, <code>yard_manager</code>, <code>admin</code>, buyer, seller.</p>
           </div>
           <div class="pillar">
             <h4>Portal 02</h4>
             <h3>Capital</h3>
-            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Financiamiento e inversores</p>
-            <p>Para underwriters y partners financieros. Solicitudes RTO, contratos de arrendamiento con opción a compra, pagos mensuales, mora, KYC, capital de inversores, promissory notes, reportes mensuales.</p>
+            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Financing and investors</p>
+            <p>For underwriters and finance partners. RTO applications, lease-with-purchase-option contracts, monthly payments, delinquency, KYC, investor capital, promissory notes, monthly reports.</p>
           </div>
           <div class="pillar">
             <h4>Portal 03</h4>
-            <h3>Clientes</h3>
-            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Cara pública y autoservicio</p>
-            <p>Para el comprador. Catálogo público, simulador de RTO, solicitud de crédito, KYC con subida de documentos, firma electrónica del contrato, estado de cuenta y reporte de pagos.</p>
+            <h3>Customers</h3>
+            <p class="text-mute" style="font-size:0.78rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6em;">Public-facing and self-service</p>
+            <p>For the buyer. Public catalog, RTO simulator, credit application, KYC with document upload, e-signature of the contract, account statement and payment reporting.</p>
           </div>
         </div>
 
         <hr class="rule"/>
         <div class="kpi-row">
-          <div class="kpi">
-            <div class="kpi-num">18</div>
-            <div class="kpi-desc">páginas en Homes</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">19</div>
-            <div class="kpi-desc">páginas en Capital</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">16</div>
-            <div class="kpi-desc">páginas en Clientes</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">58</div>
-            <div class="kpi-desc">tablas en Postgres</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">91</div>
-            <div class="kpi-desc">migraciones SQL</div>
-          </div>
+          <div class="kpi"><div class="kpi-num">18</div><div class="kpi-desc">pages in Homes</div></div>
+          <div class="kpi"><div class="kpi-num">19</div><div class="kpi-desc">pages in Capital</div></div>
+          <div class="kpi"><div class="kpi-num">16</div><div class="kpi-desc">pages in Customers</div></div>
+          <div class="kpi"><div class="kpi-num">58</div><div class="kpi-desc">tables in Postgres</div></div>
+          <div class="kpi"><div class="kpi-num">91</div><div class="kpi-desc">SQL migrations</div></div>
         </div>
-        <p class="text-mute small">Cifras tomadas directamente del repositorio de Maninos a fecha de hoy.</p>
+        <p class="text-mute small">Numbers taken directly from the Maninos repository, as of today.</p>
 
         <div class="slide-footer">
-          <span>02 · Arquitectura</span><span>Tres portales · Una base de datos</span>
+          <span>02 · Architecture</span><span>Three portals · One database</span>
         </div>
       </section>
 
       <!-- 4. SECTION INDEX I -->
       <section class="section-index">
-        <div class="section-num">— Parte I —</div>
-        <h2>El sistema, módulo por módulo</h2>
-        <p class="section-desc">Recorrido descriptivo por cada portal: qué incluye, cómo lo usa cada usuario, qué datos guarda y cómo se conecta al resto.</p>
+        <div class="section-num">— Part I —</div>
+        <h2>The system, module by module</h2>
+        <p class="section-desc">A descriptive walkthrough of each portal: what it includes, how each user works with it, what data it stores, and how it connects to the rest.</p>
       </section>
 
       <!-- 5. HOMES PORTAL -->
       <section>
         <div class="slide-title-row">
-          <h2>Portal Homes</h2>
-          <span class="label">Operaciones internas</span>
+          <h2>Homes Portal</h2>
+          <span class="label">Internal operations</span>
         </div>
         <div class="two-col-narrow">
           <div>
-            <span class="sidebar-label"><span class="num">/HOMES</span>El día a día del staff</span>
+            <span class="sidebar-label"><span class="num">/HOMES</span>The staff's daily workspace</span>
           </div>
           <div>
-            <p>El staff de Maninos pasa la jornada en este portal. Accede por <code>/homes/*</code> tras autenticarse en Supabase con su rol asignado. La barra lateral muestra solo las secciones a las que tiene acceso, con un badge de pendientes (transferencias de título, órdenes de pago, aprobaciones de renovación).</p>
+            <p>The Maninos staff spends the workday in this portal. Access is at <code>/homes/*</code> after authenticating in Supabase with their assigned role. The sidebar only shows the sections they have access to, with a badge for pending items (title transfers, payment orders, renovation approvals).</p>
 
             <table class="compact">
               <thead>
-                <tr><th style="width:22%;">Sección</th><th>Función</th></tr>
+                <tr><th style="width:22%;">Section</th><th>Function</th></tr>
               </thead>
               <tbody>
-                <tr><td>Dashboard</td><td>KPIs, mapa de Texas, gráfico de actividad de los últimos 6 meses, pipeline por estado de propiedad.</td></tr>
-                <tr><td>Properties</td><td>Listado con filtros por estado (purchased, published, reserved, renovating, sold), búsqueda por dirección/código. Subrutas para edición, fotos, checklist "Revisar Casa" y wizard de renovación.</td></tr>
-                <tr><td>Transfers</td><td>Títulos en curso. Widget del scheduler diario contra TDHCA + modal para subida manual de títulos legacy. Cada serial es un link directo a la base TDHCA.</td></tr>
-                <tr><td>Sales</td><td>Ventas activas, pagos parciales, comisiones (<em>finder</em> + <em>closer</em>), generación de Bill of Sale en PDF, redirección a Capital cuando es RTO.</td></tr>
-                <tr><td>Clients</td><td>CRM interno solo para clientes contado.</td></tr>
-                <tr><td>Accounting</td><td>11 pestañas: overview, transactions, invoices, statements, chart of accounts, properties, banks, budget, recurring, audit, estado de cuenta. Filtro por período y por yard.</td></tr>
-                <tr><td>Commissions</td><td>Comisiones por empleado. Treasury y Admin ven todas; otros roles ven solo las propias.</td></tr>
-                <tr><td>Market</td><td>Listings externos scrapeados de fuentes públicas.</td></tr>
+                <tr><td>Dashboard</td><td>KPIs, Texas map, six-month activity chart, pipeline by property status.</td></tr>
+                <tr><td>Properties</td><td>Listing with status filters (purchased, published, reserved, renovating, sold), search by address/code. Subroutes for editing, photos, the "Revisar Casa" checklist, and the renovation wizard.</td></tr>
+                <tr><td>Transfers</td><td>Titles in flight. Daily TDHCA scheduler widget plus a modal for manual upload of legacy titles. Each serial is a direct link to the TDHCA database.</td></tr>
+                <tr><td>Sales</td><td>Active sales, partial payments, commissions (finder + closer), Bill of Sale PDF generation, redirect to Capital when the sale is RTO.</td></tr>
+                <tr><td>Clients</td><td>Internal CRM, cash buyers only.</td></tr>
+                <tr><td>Accounting</td><td>11 tabs: overview, transactions, invoices, statements, chart of accounts, properties, banks, budget, recurring, audit, account statement. Filter by period and by yard.</td></tr>
+                <tr><td>Commissions</td><td>Per-employee commissions. Treasury and Admin see all; other roles see only their own.</td></tr>
+                <tr><td>Market</td><td>External listings scraped from public sources.</td></tr>
               </tbody>
             </table>
           </div>
         </div>
         <div class="slide-footer">
-          <span>03 · Portal Homes</span><span>18 páginas · acceso por rol</span>
+          <span>03 · Homes Portal</span><span>18 pages · Role-based access</span>
         </div>
       </section>
 
       <!-- 6. CAPITAL PORTAL -->
       <section>
         <div class="slide-title-row">
-          <h2>Portal Capital</h2>
-          <span class="label">Financiamiento propio + Inversores</span>
+          <h2>Capital Portal</h2>
+          <span class="label">In-house financing + Investors</span>
         </div>
         <div class="two-col-narrow">
           <div>
-            <span class="sidebar-label"><span class="num">/CAPITAL</span>El dealer como banco</span>
+            <span class="sidebar-label"><span class="num">/CAPITAL</span>The dealer as a bank</span>
           </div>
           <div>
-            <p>Cuando los bancos no financian — y para mobile homes pre-owned casi nunca lo hacen — el dealer se convierte en el prestamista. Capital es el portal donde se administra esa función. El acceso está restringido a un grupo reducido de personas autorizadas.</p>
+            <p>When banks won't finance — and for pre-owned mobile homes they almost never do — the dealer becomes the lender. Capital is the portal where that role is administered. Access is restricted to a small group of authorized people.</p>
 
             <table class="compact">
               <thead>
-                <tr><th style="width:22%;">Sección</th><th>Función</th></tr>
+                <tr><th style="width:22%;">Section</th><th>Function</th></tr>
               </thead>
               <tbody>
-                <tr><td>Dashboard</td><td>Resumen de cartera, salud financiera, actividad reciente, KPIs.</td></tr>
-                <tr><td>Applications</td><td>Solicitudes RTO en cada estado: pending, under review, approved, rejected, needs_info. Underwriting + scoring.</td></tr>
-                <tr><td>KYC</td><td>Verificación manual de identidad del cliente. Documentos subidos por el cliente al bucket de Supabase, revisados aquí. Sin servicio externo.</td></tr>
-                <tr><td>Contracts</td><td>Contratos RTO con sus 33 cláusulas, tabla de amortización, tracking de down payment por cuotas, generación de PDF.</td></tr>
-                <tr><td>Payments</td><td>Pagos mensuales, confirmación de transferencias reportadas por el cliente, mora summary, comisiones, alertas de seguro vencido.</td></tr>
-                <tr><td>Investors</td><td>Inversores activos, capital comprometido, capital desplegado, retornos.</td></tr>
-                <tr><td>Promissory notes</td><td>Pagarés de inversores con alertas de maturity a 90, 60 y 30 días.</td></tr>
-                <tr><td>Accounting</td><td>Contabilidad propia de la entidad Capital: chart of accounts, asientos, estados bancarios con reconciliación, reportes (P&amp;L, balance, flujo de caja), presupuestos.</td></tr>
-                <tr><td>Reports</td><td>Estados mensuales en PDF para cada inversor + resúmenes unificados de cartera.</td></tr>
-                <tr><td>Mora</td><td>Cartera vencida por aging bucket (0-30, 31-60, 61-90, 90+).</td></tr>
+                <tr><td>Dashboard</td><td>Portfolio summary, financial health, recent activity, KPIs.</td></tr>
+                <tr><td>Applications</td><td>RTO applications in each state: pending, under review, approved, rejected, needs_info. Underwriting + scoring.</td></tr>
+                <tr><td>KYC</td><td>Manual customer identity verification. Documents uploaded by the client to the Supabase bucket and reviewed here. No external service.</td></tr>
+                <tr><td>Contracts</td><td>RTO contracts with their 33 clauses, amortization table, down-payment installment tracking, PDF generation.</td></tr>
+                <tr><td>Payments</td><td>Monthly payments, confirmation of client-reported transfers, delinquency summary, commissions, insurance expiration alerts.</td></tr>
+                <tr><td>Investors</td><td>Active investors, committed capital, deployed capital, returns.</td></tr>
+                <tr><td>Promissory notes</td><td>Investor notes with maturity alerts at 90, 60, and 30 days.</td></tr>
+                <tr><td>Accounting</td><td>Capital's own accounting: chart of accounts, journal entries, bank statements with reconciliation, reports (P&amp;L, balance sheet, cash flow), budgets.</td></tr>
+                <tr><td>Reports</td><td>Monthly PDF statements for each investor plus unified portfolio summaries.</td></tr>
+                <tr><td>Delinquency</td><td>Past-due portfolio by aging bucket (0-30, 31-60, 61-90, 90+).</td></tr>
               </tbody>
             </table>
           </div>
         </div>
         <div class="slide-footer">
-          <span>04 · Portal Capital</span><span>19 páginas · 13 archivos de rutas backend</span>
+          <span>04 · Capital Portal</span><span>19 pages · 13 backend route files</span>
         </div>
       </section>
 
-      <!-- 7. CLIENTES PORTAL -->
+      <!-- 7. CUSTOMERS PORTAL -->
       <section>
         <div class="slide-title-row">
-          <h2>Portal Clientes</h2>
-          <span class="label">Cara pública y autoservicio</span>
+          <h2>Customers Portal</h2>
+          <span class="label">Public-facing and self-service</span>
         </div>
         <div class="two-col-narrow">
           <div>
-            <span class="sidebar-label"><span class="num">/CLIENTES</span>Del primer click al pago 36</span>
+            <span class="sidebar-label"><span class="num">/CLIENTES</span>From first click to payment&nbsp;36</span>
           </div>
           <div>
-            <p>Es el único portal accesible sin sesión. Un visitante puede llegar al catálogo desde Facebook o desde un link directo. La autenticación aparece solo al avanzar en el embudo de compra.</p>
+            <p>This is the only portal accessible without a session. A visitor can land on the catalog from Facebook or from a direct link. Authentication only appears as the buyer advances through the funnel.</p>
 
-            <h4 style="margin-top:1.5em;">Camino del visitante</h4>
+            <h4 style="margin-top:1.5em;">Visitor's path</h4>
             <div class="pipeline">
               <div class="stage">
                 <div class="stage-num">— 01 —</div>
-                <h3>Catálogo</h3>
-                <p>Listado público con filtros por ciudad y precio. Auto-refresh cada 2 minutos para detectar listings nuevos.</p>
+                <h3>Catalog</h3>
+                <p>Public listing with city and price filters. Auto-refreshes every 2 minutes to surface new inventory.</p>
               </div>
               <div class="stage">
                 <div class="stage-num">— 02 —</div>
-                <h3>Propiedad</h3>
-                <p>Detalle con galería, especificaciones y simulador RTO interactivo (down payment 30–100%, plazo 12–60 meses).</p>
+                <h3>Property</h3>
+                <p>Detail page with gallery, specs, and an interactive RTO simulator (down payment 30–100%, term 12–60 months).</p>
               </div>
               <div class="stage">
                 <div class="stage-num">— 03 —</div>
-                <h3>Compra</h3>
-                <p>Captura contacto, crea cliente o reusa existente, elige método: contado (transferencia reportada) o RTO (solicitud de crédito).</p>
+                <h3>Purchase</h3>
+                <p>Captures contact info, creates a client or reuses an existing one, picks a method: cash (reported transfer) or RTO (credit application).</p>
               </div>
               <div class="stage">
                 <div class="stage-num">— 04 —</div>
-                <h3>Cuenta</h3>
-                <p>Acceso autenticado a estado de cuenta, KYC, firma de contrato, documentos, reportar pagos mensuales.</p>
+                <h3>Account</h3>
+                <p>Authenticated access to account statement, KYC, contract signing, documents, and monthly payment reporting.</p>
               </div>
             </div>
 
-            <h4 style="margin-top:1.5em;">Lo que el cliente puede hacer en su cuenta</h4>
+            <h4 style="margin-top:1.5em;">What the customer can do in their account</h4>
             <ul class="clean">
-              <li>Subir su licencia, pasaporte o ID estatal para KYC (formatos JPG/PNG/WebP/HEIC, máximo 10 MB)</li>
-              <li>Firmar electrónicamente su contrato RTO con sello de tiempo, IP y user-agent registrados</li>
-              <li>Completar la solicitud de crédito en secciones (empleo, historial de vivienda, activos, deudas, referencias)</li>
-              <li>Reportar el pago mensual del mes en curso y ver el historial completo de pagos</li>
-              <li>Descargar contratos firmados y documentos de transferencia de título</li>
+              <li>Upload their driver's license, passport, or state ID for KYC (JPG/PNG/WebP/HEIC, up to 10 MB)</li>
+              <li>Electronically sign their RTO contract with timestamp, IP, and user-agent recorded</li>
+              <li>Complete the credit application in sections (employment, housing history, assets, debts, references)</li>
+              <li>Report the current month's payment and review the full payment history</li>
+              <li>Download signed contracts and title transfer documents</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>05 · Portal Clientes</span><span>16 páginas · público + autenticado</span>
+          <span>05 · Customers Portal</span><span>16 pages · Public + Authenticated</span>
         </div>
       </section>
 
       <!-- 8. SECTION INDEX II -->
       <section class="section-index">
-        <div class="section-num">— Parte II —</div>
-        <h2>El loop de negocio</h2>
-        <p class="section-desc">Cómo se mueve un activo desde que aparece en una fuente externa hasta que termina su contrato RTO 36 meses después.</p>
+        <div class="section-num">— Part II —</div>
+        <h2>The business loop</h2>
+        <p class="section-desc">How an asset moves from the moment it surfaces in an external source until its 36-month RTO contract closes out.</p>
       </section>
 
       <!-- 9. THE LOOP -->
       <section>
         <div class="slide-title-row">
-          <h2>Comprar · Renovar · Vender · Cobrar</h2>
-          <span class="label">El loop completo</span>
+          <h2>Buy · Renovate · Sell · Collect</h2>
+          <span class="label">The full loop</span>
         </div>
-        <p>Cada etapa tiene su tabla, su(s) agente(s) de IA y su superficie de UI. Un mismo registro avanza por las cinco etapas sin salir del sistema y sin re-tipear datos.</p>
+        <p>Each stage has its tables, its AI agent(s), and its UI surface. The same record advances through five stages without leaving the system and without anyone retyping data.</p>
 
         <div style="margin-top:1.2em;">
           <table>
             <thead>
               <tr>
-                <th style="width:14%;">Etapa</th>
-                <th style="width:30%;">Qué ocurre</th>
-                <th style="width:25%;">Agentes / Servicios</th>
-                <th>Datos que produce</th>
+                <th style="width:14%;">Stage</th>
+                <th style="width:30%;">What happens</th>
+                <th style="width:25%;">Agents / Services</th>
+                <th>Data produced</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><strong>1. Detectar</strong></td>
-                <td>BuscadorAgent recorre fuentes externas, aplica reglas de Maninos, propone candidatos.</td>
-                <td>BuscadorAgent (Playwright + scrapers MHVillage, MobileHome.net, Zillow, Facebook Marketplace).</td>
+                <td><strong>1. Detect</strong></td>
+                <td>BuscadorAgent crawls external sources, applies Maninos's rules, proposes candidates.</td>
+                <td>BuscadorAgent (Playwright + scrapers for MHVillage, MobileHome.net, Zillow, Facebook Marketplace).</td>
                 <td><code>market_listings</code></td>
               </tr>
               <tr>
-                <td><strong>2. Comprar</strong></td>
-                <td>Wizard "Revisar Casa": fotos, checklist, datos del seller, oferta.</td>
-                <td>FotosAgent (clasifica imágenes), VozAgent (notas dictadas en el yard).</td>
+                <td><strong>2. Buy</strong></td>
+                <td>"Revisar Casa" wizard: photos, checklist, seller details, offer.</td>
+                <td>FotosAgent (image classification), VozAgent (notes dictated on the yard).</td>
                 <td><code>properties</code>, <code>title_transfers</code> (purchase)</td>
               </tr>
               <tr>
-                <td><strong>3. Renovar</strong></td>
-                <td>Plan de renovación: materiales, mano de obra, contingencia.</td>
-                <td>RenovacionAgent (orquestador), CostosAgent (precios desde DB).</td>
-                <td><code>renovations</code> con materials JSONB, <code>accounting_transactions</code></td>
+                <td><strong>3. Renovate</strong></td>
+                <td>Renovation plan: materials, labor, contingency.</td>
+                <td>RenovacionAgent (orchestrator), CostosAgent (prices read from DB).</td>
+                <td><code>renovations</code> with materials JSONB, <code>accounting_transactions</code></td>
               </tr>
               <tr>
-                <td><strong>4. Listar y vender</strong></td>
-                <td>Precio sugerido. Publicación. Cliente compra contado o solicita RTO.</td>
-                <td>PrecioAgent (techo 80% del valor de mercado).</td>
+                <td><strong>4. List and sell</strong></td>
+                <td>Suggested price. Publishing. Customer buys cash or applies for RTO.</td>
+                <td>PrecioAgent (80% market-value ceiling).</td>
                 <td><code>sales</code>, <code>sale_payments</code>, <code>rto_applications</code></td>
               </tr>
               <tr>
-                <td><strong>5. Cobrar y cerrar</strong></td>
-                <td>Pagos mensuales, late fees, mora, transferencia final de título cuando termina el contrato.</td>
-                <td>Scheduler title_monitor diario contra TDHCA. Email service para recordatorios.</td>
+                <td><strong>5. Collect and close</strong></td>
+                <td>Monthly payments, late fees, delinquency, final title transfer at contract end.</td>
+                <td>Daily title_monitor scheduler against TDHCA. Email service for reminders.</td>
                 <td><code>rto_payments</code>, <code>title_transfers</code> (sale), <code>commission_payments</code></td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="slide-footer">
-          <span>06 · El loop</span><span>5 etapas · 6 agentes · una sola fuente de verdad</span>
+          <span>06 · The loop</span><span>5 stages · 6 agents · One source of truth</span>
         </div>
       </section>
 
       <!-- 10. AI AGENTS -->
       <section>
         <div class="slide-title-row">
-          <h2>Los seis agentes especializados</h2>
-          <span class="label">Capa de IA</span>
+          <h2>The six specialized agents</h2>
+          <span class="label">AI layer</span>
         </div>
-        <p>Cada agente vive en <code>api/agents/</code>, hereda de <code>BaseAgent</code>, opera de forma asíncrona y devuelve JSON estructurado validado por Pydantic. No tienen memoria entre llamadas: el contexto necesario se pasa explícitamente en cada request.</p>
+        <p>Each agent lives under <code>api/agents/</code>, inherits from <code>BaseAgent</code>, runs asynchronously, and returns structured JSON validated by Pydantic. They have no memory between calls: the context required is passed explicitly with every request.</p>
 
         <table class="compact" style="margin-top:1.2em;">
           <thead>
             <tr>
-              <th style="width:14%;">Agente</th>
-              <th style="width:32%;">Función</th>
-              <th>Detalle relevante</th>
+              <th style="width:14%;">Agent</th>
+              <th style="width:32%;">Function</th>
+              <th>Implementation note</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>Buscador</strong></td>
-              <td>Encuentra mobile homes en el mercado que cumplen las reglas de Maninos.</td>
-              <td>Scrapea MHVillage, MobileHome.net, MHBay, Zillow, Facebook Marketplace. Filtra por las reglas de febrero 2026: 60% del valor de mercado, $5K–$80K, 200mi de Houston o Dallas, sin filtro de año.</td>
+              <td>Finds mobile homes on the market that satisfy Maninos's rules.</td>
+              <td>Scrapes MHVillage, MobileHome.net, MHBay, Zillow, Facebook Marketplace. Filters using the Feb 2026 rules: 60% of market value, $5K–$80K, 200mi from Houston or Dallas, no year filter.</td>
             </tr>
             <tr>
               <td><strong>Costos</strong></td>
-              <td>Estima el costo de la renovación.</td>
-              <td>Lee el catálogo de materiales desde la base de datos. Devuelve lista de materiales + mano de obra (30–50% del material) + contingencia (5–15%) + costo por sqft + factores de riesgo.</td>
+              <td>Estimates the renovation cost.</td>
+              <td>Reads the materials catalog from the database. Returns a materials list + labor (30–50% of materials) + contingency (5–15%) + cost per sqft + risk factors.</td>
             </tr>
             <tr>
               <td><strong>Precio</strong></td>
-              <td>Propone precio de venta.</td>
-              <td>Devuelve cuatro estrategias: mínimo (break-even), target (margen objetivo), mercado (comparables), agresivo. Aplica un techo automático del 80% del valor de mercado mezclado.</td>
+              <td>Proposes a sale price.</td>
+              <td>Returns four strategies: minimum (break-even), target (margin-driven), market (comparables), aggressive. Applies an automatic ceiling of 80% of blended market value.</td>
             </tr>
             <tr>
               <td><strong>Fotos</strong></td>
-              <td>Clasifica fotografías por estado de renovación.</td>
-              <td>Vision real (no keywords). Distingue before / after / exterior / interior. Ordena la galería pública: after primero, después exterior, interior, before.</td>
+              <td>Classifies photos by renovation state.</td>
+              <td>True vision (no keyword tricks). Distinguishes before / after / exterior / interior. Sorts the public gallery: after first, then exterior, interior, before.</td>
             </tr>
             <tr>
               <td><strong>Voz</strong></td>
-              <td>Transcribe audio del staff en el yard y extrae intención.</td>
-              <td>Whisper en español. Detecta si es una nota de inspección, una lista de materiales, una observación general. Funciona con Spanglish.</td>
+              <td>Transcribes audio dictated by staff on the yard and extracts intent.</td>
+              <td>Whisper in Spanish. Detects whether it's an inspection note, a materials list, or a general observation. Works with Spanglish.</td>
             </tr>
             <tr>
               <td><strong>Renovación</strong></td>
-              <td>Conversación guiada para planificar la renovación.</td>
-              <td>Tiene los precios de los materiales embebidos en el prompt (decisión de latencia). Si no hay sqft, no estima — falla loud.</td>
+              <td>Guided conversation to plan the renovation.</td>
+              <td>Material prices are embedded in the prompt itself (a latency choice). If the property has no sqft, it refuses to estimate — fails loud.</td>
             </tr>
           </tbody>
         </table>
 
         <hr class="rule"/>
-        <p><strong>Aparte:</strong> el chat flotante <code>AIChatWidget</code> que aparece en el portal Homes <em>no</em> usa estos agentes. Llama a <code>/api/ai/chat</code>, que utiliza <code>gpt-5-mini</code> con un patrón de tool-calling sobre <strong>19 herramientas</strong> de consulta a la base de datos. Es un asistente de business intelligence: <em>"¿Cuántas casas vendí en abril?"</em> dispara una consulta SQL real a través de las herramientas <code>query_sales</code> y devuelve datos verificados.</p>
+        <p><strong>Aside:</strong> the floating <code>AIChatWidget</code> chat in the Homes portal does <em>not</em> use these agents. It calls <code>/api/ai/chat</code>, which uses <code>gpt-5-mini</code> with a tool-calling pattern over <strong>19 database query tools</strong>. It is a business-intelligence assistant: <em>"How many houses did I sell in April?"</em> triggers a real SQL query through the <code>query_sales</code> tool and returns verified data.</p>
         <div class="slide-footer">
-          <span>07 · Agentes</span><span>6 especializados + 1 asistente conversacional</span>
+          <span>07 · Agents</span><span>6 specialized + 1 conversational assistant</span>
         </div>
       </section>
 
       <!-- 11. SCHEDULER -->
       <section>
         <div class="slide-title-row">
-          <h2>El scheduler</h2>
-          <span class="label">Automatización en background</span>
+          <h2>The scheduler</h2>
+          <span class="label">Background automation</span>
         </div>
-        <p>APScheduler corriendo en zona horaria <strong>US Central</strong>. Diez jobs en producción. Cada ejecución, exitosa o fallida, deja registro en la tabla <code>scheduler_runs</code> — el widget en <code>/homes/transfers</code> lee de ahí, no de la memoria del scheduler.</p>
+        <p>APScheduler runs on the <strong>US Central</strong> timezone. Ten jobs in production. Every run, successful or failed, leaves a record in the <code>scheduler_runs</code> table — the widget at <code>/homes/transfers</code> reads from that table, not from the scheduler's in-memory state.</p>
 
         <table class="compact" style="margin-top:1em;">
           <thead>
             <tr>
               <th style="width:34%;">Job</th>
-              <th style="width:24%;">Cadencia</th>
-              <th>Función</th>
+              <th style="width:24%;">Cadence</th>
+              <th>Function</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>process_scheduled_emails</code></td><td>Cada 30 min</td><td>Envía emails programados pendientes.</td></tr>
-            <tr><td><code>rto_reminders</code></td><td>Diario · 8:00 CT</td><td>Recordatorios de pago RTO al cliente (3d antes, día del pago, 1d después).</td></tr>
-            <tr><td><code>rto_overdue_alerts</code></td><td>Diario · 9:00 CT</td><td>Alertas internas para pagos RTO vencidos.</td></tr>
-            <tr><td><code>promissory_maturity_alerts</code></td><td>Diario · 9:30 CT</td><td>Avisa al equipo financiero de pagarés a vencer (90 / 60 / 30 días).</td></tr>
-            <tr><td><code>title_monitor</code></td><td>Diario · 10:00 CT</td><td>Consulta TDHCA por cada serial pendiente, fuzzy-match del nombre del propietario.</td></tr>
-            <tr><td><code>investor_followup_emails</code></td><td>Día 1 · 10:30 CT</td><td>Estado mensual a cada inversor con su PDF.</td></tr>
-            <tr><td><code>portal_sync</code></td><td>Cada 2 horas</td><td>Consistencia cruzada Homes ↔ Capital.</td></tr>
-            <tr><td><code>refresh_partner_listings</code></td><td>Cada 6 horas</td><td>Refresca listings de VMF Homes y 21st Mortgage (APIs JSON).</td></tr>
-            <tr><td><code>facebook_auto_scrape</code></td><td>Lun y Jue · 7:00 CT</td><td>Scraping de Facebook Marketplace vía Apify.</td></tr>
-            <tr><td><code>expire_old_listings</code></td><td>Diario · 6:00 CT</td><td>Marca como expirados listings con más de 14 días.</td></tr>
+            <tr><td><code>process_scheduled_emails</code></td><td>Every 30 min</td><td>Sends pending scheduled emails.</td></tr>
+            <tr><td><code>rto_reminders</code></td><td>Daily · 8:00 CT</td><td>RTO payment reminders to the customer (3d before, day-of, 1d after).</td></tr>
+            <tr><td><code>rto_overdue_alerts</code></td><td>Daily · 9:00 CT</td><td>Internal alerts for overdue RTO payments.</td></tr>
+            <tr><td><code>promissory_maturity_alerts</code></td><td>Daily · 9:30 CT</td><td>Notifies the finance team of upcoming note maturities (90 / 60 / 30 days).</td></tr>
+            <tr><td><code>title_monitor</code></td><td>Daily · 10:00 CT</td><td>Queries TDHCA for each pending serial, fuzzy-matches the owner name.</td></tr>
+            <tr><td><code>investor_followup_emails</code></td><td>1st of month · 10:30 CT</td><td>Monthly statement to each investor with attached PDF.</td></tr>
+            <tr><td><code>portal_sync</code></td><td>Every 2 hours</td><td>Cross-consistency between Homes ↔ Capital.</td></tr>
+            <tr><td><code>refresh_partner_listings</code></td><td>Every 6 hours</td><td>Refreshes VMF Homes and 21st Mortgage listings (JSON APIs).</td></tr>
+            <tr><td><code>facebook_auto_scrape</code></td><td>Mon and Thu · 7:00 CT</td><td>Facebook Marketplace scraping via Apify.</td></tr>
+            <tr><td><code>expire_old_listings</code></td><td>Daily · 6:00 CT</td><td>Marks listings older than 14 days as expired.</td></tr>
           </tbody>
         </table>
         <div class="slide-footer">
-          <span>08 · Scheduler</span><span>10 jobs · US Central · scheduler_runs como audit log</span>
+          <span>08 · Scheduler</span><span>10 jobs · US Central · scheduler_runs as audit log</span>
         </div>
       </section>
 
       <!-- 12. TITLE FLOW -->
       <section>
         <div class="slide-title-row">
-          <h2>El flujo del título estatal</h2>
-          <span class="label">TDHCA y herencia</span>
+          <h2>The state title flow</h2>
+          <span class="label">TDHCA and legacy</span>
         </div>
-        <p>En Texas, la transferencia de propiedad de un mobile home se registra en TDHCA (Texas Department of Housing and Community Affairs) mediante el <em>Statement of Ownership</em>. Maninos OS automatiza el seguimiento.</p>
+        <p>In Texas, transfer of ownership for a mobile home is recorded with TDHCA (Texas Department of Housing and Community Affairs) via the <em>Statement of Ownership</em>. Maninos OS automates the follow-up.</p>
 
         <div class="two-col" style="margin-top:1.5em;">
           <div>
-            <h4>Flujo automático</h4>
+            <h4>Automatic flow</h4>
             <ol style="padding-left:1.2em;">
-              <li>Cuando se sube el documento de aplicación de título, el agente extrae el HUD label / serial.</li>
-              <li>Si la aplicación de título no tiene el dato, el sistema cae en fallback al Bill of Sale (campo <code>bos_purchase.hud_label_number</code>).</li>
-              <li>El job diario de las 10:00 CT consulta el portal de TDHCA por cada serial pendiente.</li>
-              <li>Compara el nombre que devuelve TDHCA contra <code>to_name</code> con un fuzzy-match.</li>
-              <li>Si coinciden, marca <code>title_name_updated = TRUE</code>, registra el nombre devuelto en <code>tdhca_owner_name</code>, mueve la transferencia a <em>completed</em>.</li>
+              <li>When the title application document is uploaded, the agent extracts the HUD label / serial.</li>
+              <li>If the title application doesn't carry the value, the system falls back to the Bill of Sale (the <code>bos_purchase.hud_label_number</code> field).</li>
+              <li>The 10:00 CT daily job queries the TDHCA portal for each pending serial.</li>
+              <li>It fuzzy-matches the name TDHCA returns against <code>to_name</code>.</li>
+              <li>If they match, it sets <code>title_name_updated = TRUE</code>, records the returned name in <code>tdhca_owner_name</code>, and moves the transfer to <em>completed</em>.</li>
             </ol>
           </div>
           <div>
-            <h4>Casas legacy</h4>
-            <p>Las casas vendidas antes de la plataforma no están en el sistema y su transferencia ya se hizo fuera. Para incorporarlas, el portal Homes ofrece la subida manual:</p>
+            <h4>Legacy houses</h4>
+            <p>Houses sold before the platform existed are not in the system, and their transfer was already done outside it. To bring them in, the Homes portal exposes a manual upload flow:</p>
             <ul class="clean">
-              <li>Permite crear la propiedad y la transferencia desde cero o desde una propiedad existente.</li>
-              <li>Si la casa está vendida, pide el comprador y crea la transferencia de venta correspondiente.</li>
-              <li>Marca <code>is_manual_upload = TRUE</code> y <code>title_name_updated = TRUE</code> para que el job diario las ignore.</li>
-              <li>El serial mostrado en el listado es un link directo a la ficha pública de TDHCA.</li>
+              <li>Lets you create the property and the transfer from scratch, or against an existing property.</li>
+              <li>If the house is already sold, it asks for the buyer and creates the matching sale transfer.</li>
+              <li>Sets <code>is_manual_upload = TRUE</code> and <code>title_name_updated = TRUE</code> so the daily job ignores them.</li>
+              <li>The serial shown in the listing is a direct link to the public TDHCA record.</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>09 · Títulos</span><span>TDHCA + manual · audit cada noche</span>
+          <span>09 · Titles</span><span>TDHCA + manual · audit each night</span>
         </div>
       </section>
 
       <!-- 13. RTO MODULE -->
       <section>
         <div class="slide-title-row">
-          <h2>El módulo de financiamiento propio</h2>
-          <span class="label">RTO en detalle</span>
+          <h2>The in-house financing module</h2>
+          <span class="label">RTO in detail</span>
         </div>
-        <p>El contrato base es el Texas Residential Lease With Purchase Option (33 cláusulas). Los defaults numéricos están escritos en el código y son configurables por contrato.</p>
+        <p>The base contract is the Texas Residential Lease With Purchase Option (33 clauses). The numeric defaults live in code and are configurable per contract.</p>
 
         <div class="kpi-row">
-          <div class="kpi">
-            <div class="kpi-num">$15<small>/día</small></div>
-            <div class="kpi-desc">Late fee</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">5<small> días</small></div>
-            <div class="kpi-desc">Período de gracia</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">15</div>
-            <div class="kpi-desc">Día del mes de vencimiento</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">$250</div>
-            <div class="kpi-desc">NSF fee</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">$695<small>/mes</small></div>
-            <div class="kpi-desc">Holdover</div>
-          </div>
+          <div class="kpi"><div class="kpi-num">$15<small>/day</small></div><div class="kpi-desc">Late fee</div></div>
+          <div class="kpi"><div class="kpi-num">5<small> days</small></div><div class="kpi-desc">Grace period</div></div>
+          <div class="kpi"><div class="kpi-num">15</div><div class="kpi-desc">Due day of month</div></div>
+          <div class="kpi"><div class="kpi-num">$250</div><div class="kpi-desc">NSF fee</div></div>
+          <div class="kpi"><div class="kpi-num">$695<small>/month</small></div><div class="kpi-desc">Holdover</div></div>
         </div>
-        <p class="text-mute small">Defaults aplicados por la migración 012_maninos_capital.sql. Cada contrato puede sobrescribirlos.</p>
+        <p class="text-mute small">Defaults applied by migration 012_maninos_capital.sql. Each contract can override them.</p>
 
         <hr class="rule"/>
 
         <div class="two-col">
           <div>
-            <h4>Lo que el dealer ve cada día</h4>
+            <h4>What the dealer sees every day</h4>
             <ul class="clean">
-              <li>Solicitudes RTO entrantes con su scoring de underwriting</li>
-              <li>Pagos del mes con su confirmación pendiente o aplicada</li>
-              <li>Cartera vencida segmentada por aging bucket (0–30, 31–60, 61–90, 90+)</li>
-              <li>Comisiones por venta dividas finder vs closer, pendientes vs pagadas</li>
-              <li>Alertas de seguros del cliente próximos a vencer</li>
+              <li>Incoming RTO applications with their underwriting score</li>
+              <li>The month's payments with their pending or applied confirmation</li>
+              <li>Past-due portfolio segmented by aging bucket (0-30, 31-60, 61-90, 90+)</li>
+              <li>Per-sale commissions split into finder vs closer, pending vs paid</li>
+              <li>Alerts for customer insurance about to lapse</li>
             </ul>
           </div>
           <div>
-            <h4>Lo que el cliente ve en su cuenta</h4>
+            <h4>What the customer sees in their account</h4>
             <ul class="clean">
-              <li>Su tabla de amortización con los meses pasados, presente y futuros</li>
-              <li>Total pagado y saldo restante</li>
-              <li>Botón para reportar el pago del mes con método y referencia</li>
-              <li>Estado de su KYC y su contrato</li>
-              <li>Notificaciones de pagos próximos y vencidos</li>
+              <li>Their amortization table with past, current, and future months</li>
+              <li>Total paid and remaining balance</li>
+              <li>A button to report this month's payment with method and reference</li>
+              <li>The status of their KYC and their contract</li>
+              <li>Notifications for upcoming and overdue payments</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>10 · RTO</span><span>33 cláusulas · doble vista (operador + cliente)</span>
+          <span>10 · RTO</span><span>33 clauses · dual view (operator + customer)</span>
         </div>
       </section>
 
       <!-- 14. ACCOUNTING -->
       <section>
         <div class="slide-title-row">
-          <h2>La capa contable</h2>
-          <span class="label">GL completo, dos entidades</span>
+          <h2>The accounting layer</h2>
+          <span class="label">Full GL, two entities</span>
         </div>
-        <p>Maninos OS no se apoya en QuickBooks externo: implementa su propio General Ledger con una estructura inspirada en el chart of accounts de QuickBooks. Hay dos contabilidades separadas — una para Homes, otra para Capital — porque son dos LLCs distintas con reportes independientes.</p>
+        <p>Maninos OS doesn't lean on an external QuickBooks: it implements its own General Ledger with a structure inspired by QuickBooks' chart of accounts. There are two separate sets of books — one for Homes, one for Capital — because they are two distinct LLCs with independent reporting.</p>
 
         <div class="two-col" style="margin-top:1.5em;">
           <div>
-            <h4>Tablas implicadas</h4>
+            <h4>Tables involved</h4>
             <div class="schema">
-<span class="key">accounting_accounts</span>             <span class="comment">// chart of accounts Homes</span>
-<span class="key">accounting_transactions</span>          <span class="comment">// asientos contables</span>
-<span class="key">bank_accounts</span>                    <span class="comment">// cuentas bancarias</span>
-<span class="key">recurring_expenses</span>               <span class="comment">// reglas recurrentes</span>
-<span class="key">accounting_budgets</span>               <span class="comment">// presupuestos</span>
-<span class="key">accounting_audit_log</span>             <span class="comment">// auditoría</span>
-<span class="key">capital_accounts</span>                 <span class="comment">// chart of accounts Capital</span>
-<span class="key">capital_transactions</span>             <span class="comment">// asientos Capital</span>
-<span class="key">capital_bank_statements</span>          <span class="comment">// extractos bancarios</span>
-<span class="key">capital_statement_movements</span>      <span class="comment">// líneas de extracto</span>
-<span class="key">capital_budgets</span>                  <span class="comment">// presupuestos Capital</span>
+<span class="key">accounting_accounts</span>             <span class="comment">// chart of accounts (Homes)</span>
+<span class="key">accounting_transactions</span>          <span class="comment">// journal entries</span>
+<span class="key">bank_accounts</span>                    <span class="comment">// bank accounts</span>
+<span class="key">recurring_expenses</span>               <span class="comment">// recurring rules</span>
+<span class="key">accounting_budgets</span>               <span class="comment">// budgets</span>
+<span class="key">accounting_audit_log</span>             <span class="comment">// audit trail</span>
+<span class="key">capital_accounts</span>                 <span class="comment">// chart of accounts (Capital)</span>
+<span class="key">capital_transactions</span>             <span class="comment">// Capital journal entries</span>
+<span class="key">capital_bank_statements</span>          <span class="comment">// bank statements</span>
+<span class="key">capital_statement_movements</span>      <span class="comment">// statement lines</span>
+<span class="key">capital_budgets</span>                  <span class="comment">// Capital budgets</span>
             </div>
           </div>
           <div>
-            <h4>Categorías que cubre</h4>
+            <h4>What it covers</h4>
             <ul class="clean">
-              <li>Ingresos: ventas contado, ventas RTO (Capital), pagos RTO mensuales</li>
-              <li>Gastos: compra de casas, renovaciones, transporte / movida, comisiones, gastos operativos</li>
-              <li>Activos: inventario por casa (cada propiedad genera su propia jerarquía de cuentas inventario)</li>
-              <li>Reportes: P&amp;L, balance, flujo de caja, presupuesto vs real, P&amp;L por propiedad y por yard</li>
-              <li>Reconciliación bancaria con import de extractos y matching contra asientos</li>
-              <li>Audit log para cumplimiento y trazabilidad</li>
+              <li>Revenue: cash sales, RTO sales (Capital), monthly RTO payments</li>
+              <li>Expenses: house purchases, renovations, transport / move, commissions, operating expenses</li>
+              <li>Assets: per-house inventory (each property generates its own inventory account hierarchy)</li>
+              <li>Reports: P&amp;L, balance sheet, cash flow, budget vs. actual, P&amp;L per property and per yard</li>
+              <li>Bank reconciliation with statement import and matching against journal entries</li>
+              <li>Audit log for compliance and traceability</li>
             </ul>
             <hr class="rule"/>
-            <p class="small">Los pagos RTO disparan automáticamente el asiento contable correspondiente (<code>_accounting_hooks.py</code>). El equipo no rehace contabilidad.</p>
+            <p class="small">RTO payments automatically trigger their matching journal entry (<code>_accounting_hooks.py</code>). The team doesn't double-key bookkeeping.</p>
           </div>
         </div>
         <div class="slide-footer">
-          <span>11 · Contabilidad</span><span>Dos LLCs · GL propio · audit log</span>
+          <span>11 · Accounting</span><span>Two LLCs · own GL · audit log</span>
         </div>
       </section>
 
       <!-- 15. TECH STACK -->
       <section>
         <div class="slide-title-row">
-          <h2>El stack técnico</h2>
-          <span class="label">Sin sorpresas, todo estándar</span>
+          <h2>The tech stack</h2>
+          <span class="label">No surprises, all standard</span>
         </div>
         <table>
           <thead>
-            <tr><th style="width:18%;">Capa</th><th>Componentes</th></tr>
+            <tr><th style="width:18%;">Layer</th><th>Components</th></tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>Backend</strong></td>
-              <td>Python 3.12 con FastAPI. 22 archivos de rutas en Homes, 13 en Capital, 5 públicos. 9 servicios (email, pdf, scheduler, scrapers, title monitor, notification, document, esign, property).</td>
+              <td>Python 3.12 with FastAPI. 22 route files for Homes, 13 for Capital, 5 public. 9 services (email, pdf, scheduler, scrapers, title monitor, notification, document, esign, property).</td>
             </tr>
             <tr>
-              <td><strong>Datos</strong></td>
-              <td>Supabase: Postgres + Auth + Storage. 58 tablas, 91 migraciones SQL. Acceso vía SDK directo, sin ORM. Service-role key en backend, RLS en buckets públicos.</td>
+              <td><strong>Data</strong></td>
+              <td>Supabase: Postgres + Auth + Storage. 58 tables, 91 SQL migrations. Direct SDK access, no ORM. Service-role key on the backend, RLS on public buckets.</td>
             </tr>
             <tr>
               <td><strong>Frontend</strong></td>
-              <td>Next.js 14 con App Router. Tailwind con sistema de diseño propio (paleta navy / oro). Mobile-first responsive. Sin librería de estado externa: hooks de React.</td>
+              <td>Next.js 14 with the App Router. Tailwind on top of an in-house design system (navy / gold palette). Mobile-first responsive. No external state library: just React hooks.</td>
             </tr>
             <tr>
-              <td><strong>IA</strong></td>
-              <td>OpenAI: <code>gpt-5</code> en agentes, <code>gpt-5-mini</code> en chat con tool-calling, <code>whisper-1</code> para transcripción (forzado a español).</td>
+              <td><strong>AI</strong></td>
+              <td>OpenAI: <code>gpt-5</code> in agents, <code>gpt-5-mini</code> in chat with tool-calling, <code>whisper-1</code> for transcription (locked to Spanish).</td>
             </tr>
             <tr>
               <td><strong>Email</strong></td>
-              <td>Resend con templates propios y attachments PDF. Procesamiento de cola de emails programados cada 30 min.</td>
+              <td>Resend with custom templates and PDF attachments. The scheduled-email queue is processed every 30 min.</td>
             </tr>
             <tr>
               <td><strong>Scraping</strong></td>
-              <td>Playwright para automatización de browser. Apify para Facebook Marketplace.</td>
+              <td>Playwright for browser automation. Apify for Facebook Marketplace.</td>
             </tr>
             <tr>
-              <td><strong>Despliegue</strong></td>
-              <td>Backend en Railway (Docker). Frontend en Vercel. Deploy automático en cada push a main.</td>
+              <td><strong>Deployment</strong></td>
+              <td>Backend on Railway (Docker). Frontend on Vercel. Auto-deploy on every push to main.</td>
             </tr>
             <tr>
-              <td><strong>Observabilidad</strong></td>
-              <td>structlog para logging estructurado. Logfire opcional para telemetría.</td>
+              <td><strong>Observability</strong></td>
+              <td>structlog for structured logging. Logfire optional for telemetry.</td>
             </tr>
           </tbody>
         </table>
@@ -1063,208 +960,193 @@
       <!-- 16. BUSINESS RULES -->
       <section>
         <div class="slide-title-row">
-          <h2>Las reglas del negocio</h2>
+          <h2>The business rules</h2>
           <span class="label">Texas, Maninos, 2026</span>
         </div>
-        <p>Las reglas viven en el código y se aplican automáticamente. No son recomendaciones del agente: son guardarraíles que las APIs y los agentes respetan.</p>
+        <p>The rules live in code and are applied automatically. They aren't agent suggestions: they are guardrails that the APIs and the agents respect.</p>
 
         <div class="two-col" style="margin-top:1.5em;">
           <div>
-            <h4>Adquisición</h4>
+            <h4>Acquisition</h4>
             <ul class="clean">
-              <li><strong>Geografía:</strong> radio de 200 millas desde Houston o Dallas, solo Texas</li>
-              <li><strong>Precio de compra:</strong> hasta el 60% del valor de mercado (renovación no incluida)</li>
-              <li><strong>Rango aceptado:</strong> entre $5,000 y $80,000 por propiedad</li>
-              <li><strong>Año:</strong> sin filtro</li>
-              <li><strong>Tipos:</strong> single wide y double wide</li>
+              <li><strong>Geography:</strong> 200-mile radius from Houston or Dallas, Texas only</li>
+              <li><strong>Purchase price:</strong> up to 60% of market value (renovation excluded)</li>
+              <li><strong>Accepted range:</strong> $5,000 to $80,000 per property</li>
+              <li><strong>Year:</strong> no filter</li>
+              <li><strong>Types:</strong> single wide and double wide</li>
             </ul>
           </div>
           <div>
-            <h4>Renovación y venta</h4>
+            <h4>Renovation and sale</h4>
             <ul class="clean">
-              <li><strong>Presupuesto de renovación:</strong> entre $5,000 y $15,000</li>
-              <li><strong>Precio de venta:</strong> hasta el 80% del valor de mercado mezclado (techo enforced por PrecioAgent)</li>
-              <li><strong>Comisiones:</strong> $1,500 en venta contado · $1,000 en venta RTO</li>
-              <li><strong>Reparto de comisión:</strong> 50% para el finder, 50% para el closer</li>
-              <li><strong>Modalidades de venta:</strong> contado o RTO</li>
+              <li><strong>Renovation budget:</strong> $5,000 to $15,000</li>
+              <li><strong>Sale price:</strong> up to 80% of blended market value (ceiling enforced by PrecioAgent)</li>
+              <li><strong>Commissions:</strong> $1,500 on a cash sale · $1,000 on an RTO sale</li>
+              <li><strong>Commission split:</strong> 50% to the finder, 50% to the closer</li>
+              <li><strong>Sale modes:</strong> cash or RTO</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>13 · Reglas</span><span>Aplicadas en código · febrero 2026</span>
+          <span>13 · Rules</span><span>Enforced in code · February 2026</span>
         </div>
       </section>
 
       <!-- 17. SECTION INDEX III -->
       <section class="section-index">
-        <div class="section-num">— Parte III —</div>
-        <h2>El patrón es portable</h2>
-        <p class="section-desc">El sistema fue construido para mobile homes en Texas, pero su modelo de datos y sus flujos describen una clase más amplia de negocios. Esto es lo que se queda y lo que se adapta.</p>
+        <div class="section-num">— Part III —</div>
+        <h2>The pattern is portable</h2>
+        <p class="section-desc">The system was built for mobile homes in Texas, but its data model and its workflows describe a broader class of businesses. Here's what stays and what adapts.</p>
       </section>
 
       <!-- 18. PORTABILITY -->
       <section>
         <div class="slide-title-row">
-          <h2>Lo que es genérico, lo que es Texas-MH</h2>
-          <span class="label">Análisis de portabilidad</span>
+          <h2>What is generic, what is Texas-MH</h2>
+          <span class="label">Portability analysis</span>
         </div>
-        <p>El núcleo del sistema describe un patrón universal: <em>"un dealer adquiere un activo físico de alto valor con título registrable, lo reacondiciona, lo vende a crédito propio, y cobra en el tiempo".</em> Cualquier negocio que cumpla ese patrón puede correr sobre Maninos OS con configuración localizada.</p>
+        <p>The core of the system describes a universal pattern: <em>"a dealer acquires a high-value physical asset that carries a registrable title, refurbishes it, sells it on its own credit, and collects over time."</em> Any business that fits that pattern can run on Maninos OS with localized configuration.</p>
 
         <hr class="rule"/>
         <div class="two-col" style="margin-top:1em;">
           <div>
-            <h4>Genérico — el motor</h4>
+            <h4>Generic — the engine</h4>
             <ul class="clean">
-              <li>Pipeline de adquisición: detectar, calificar, comprar</li>
-              <li>Workflow de reacondicionamiento con materiales, mano de obra y costos</li>
-              <li>Galería de fotos clasificada (vision agnóstico al activo)</li>
-              <li>Motor RTO/BHPH: contrato, amortización, late fee, NSF, holdover, mora</li>
-              <li>Portal del cliente: KYC, firma electrónica, reporte de pagos, estado de cuenta</li>
-              <li>Capital de inversores con promissory notes y reportes mensuales</li>
-              <li>General Ledger con reconciliación bancaria</li>
-              <li>Asistente conversacional sobre la base de datos</li>
+              <li>Acquisition pipeline: detect, qualify, buy</li>
+              <li>Refurbishment workflow with materials, labor, and costs</li>
+              <li>Classified photo gallery (vision is asset-agnostic)</li>
+              <li>RTO/BHPH engine: contract, amortization, late fee, NSF, holdover, delinquency</li>
+              <li>Customer portal: KYC, e-signature, payment reporting, account statement</li>
+              <li>Investor capital with promissory notes and monthly reports</li>
+              <li>General Ledger with bank reconciliation</li>
+              <li>Conversational assistant over the database</li>
             </ul>
           </div>
           <div>
-            <h4>Localizable — la "Asset Pack"</h4>
+            <h4>Localizable — the "Asset Pack"</h4>
             <ul class="clean">
-              <li><strong>Schema del activo:</strong> sqft + HUD label en MH; HIN + número de motor en boats; VIN + odómetro en autos.</li>
-              <li><strong>Reglas de adquisición:</strong> el 60% / $5K-$80K / 200mi es de Maninos; otro dealer tendría las suyas.</li>
-              <li><strong>Workflow de título:</strong> TDHCA en Texas, otra agencia en cada estado, USCG opcional para boats grandes.</li>
-              <li><strong>Plantilla de contrato:</strong> Lease with Purchase Option en MH; contrato BHPH en autos; cada uno con sus cláusulas y defaults.</li>
-              <li><strong>Fuentes de scraping:</strong> MHVillage para MH, Manheim para autos, BoatTrader para boats.</li>
-              <li><strong>Prompts de los agentes:</strong> el agente de costos entiende pintura y tablaroca para casa; gelcoat y bottom paint para boats.</li>
+              <li><strong>Asset schema:</strong> sqft + HUD label for MH; HIN + engine number for boats; VIN + odometer for cars.</li>
+              <li><strong>Acquisition rules:</strong> the 60% / $5K-$80K / 200mi numbers belong to Maninos; another dealer would have its own.</li>
+              <li><strong>Title workflow:</strong> TDHCA in Texas, a different agency in each state, USCG optional for large boats.</li>
+              <li><strong>Contract template:</strong> Lease with Purchase Option for MH; BHPH contract for cars; each with its own clauses and defaults.</li>
+              <li><strong>Scraping sources:</strong> MHVillage for MH, Manheim for cars, BoatTrader for boats.</li>
+              <li><strong>Agent prompts:</strong> the cost agent knows about paint and drywall for houses; gelcoat and bottom paint for boats.</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>14 · Portabilidad</span><span>Núcleo + Asset Pack</span>
+          <span>14 · Portability</span><span>Core + Asset Pack</span>
         </div>
       </section>
 
       <!-- 19. ADJACENT VERTICALS -->
       <section>
         <div class="slide-title-row">
-          <h2>Verticales donde el patrón calza</h2>
-          <span class="label">Lectura cualitativa</span>
+          <h2>Verticals where the pattern fits</h2>
+          <span class="label">Qualitative read</span>
         </div>
-        <p>No se incluyen tamaños de mercado en este documento porque son estimaciones de terceros que no he verificado. Lo que sigue es una lectura cualitativa basada en cuán literal es la analogía con el caso Maninos.</p>
+        <p>Market sizes are intentionally absent from this document, because the third-party numbers I'd quote haven't been verified. What follows is a qualitative read based on how literally each vertical maps onto the Maninos case.</p>
 
         <table style="margin-top:1.2em;">
           <thead>
             <tr>
               <th style="width:22%;">Vertical</th>
-              <th style="width:34%;">Cómo encaja con el motor actual</th>
-              <th>Qué hay que adaptar</th>
+              <th style="width:34%;">How it fits the current engine</th>
+              <th>What needs to be adapted</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>BHPH used cars</strong></td>
-              <td>El loop comprar → reacondicionar → financiar → cobrar es idéntico. La cartera vencida y el tracking de pagos mensuales son la analogía más directa.</td>
-              <td>Workflow de título por estado vía DMV. Integraciones con starter-interrupt / GPS (PassTime, Spireon). Auctions como fuente de adquisición.</td>
+              <td>The buy → recondition → finance → collect loop is identical. Past-due portfolio and monthly payment tracking are the most direct analogue.</td>
+              <td>State-by-state title workflow via DMV. Starter-interrupt / GPS integrations (PassTime, Spireon). Auctions as a sourcing channel.</td>
             </tr>
             <tr>
               <td><strong>RV / travel trailers</strong></td>
-              <td>El concepto de "Revisar Casa" se mapea casi sin cambios al PDI (Pre-Delivery Inspection). El ciclo de compra-reacondicionamiento-venta es el mismo.</td>
-              <td>Schema del activo (motorhome vs towable). Plantilla de inspección PDI.</td>
+              <td>The "Revisar Casa" concept maps almost unchanged onto the PDI (Pre-Delivery Inspection). Buy-recondition-sell cycle is the same.</td>
+              <td>Asset schema (motorhome vs. towable). PDI inspection template.</td>
             </tr>
             <tr>
               <td><strong>Boats (used)</strong></td>
-              <td>Reacondicionamiento previo a la venta es estándar (gelcoat, motor, tapizado). Título estatal análogo. Financiamiento propio es donde menos se hace y donde más vacío hay.</td>
-              <td>HIN + datos de motor / trailer en el schema. Estacionalidad. Documentación USCG para vessels &gt; 5 net tons.</td>
+              <td>Pre-sale reconditioning is standard (gelcoat, engine, upholstery). Title is state-issued and analogous. In-house financing is the area least served — and where the gap is most obvious.</td>
+              <td>HIN + engine / trailer data in the schema. Seasonality. USCG documentation for vessels &gt; 5 net tons.</td>
             </tr>
             <tr>
               <td><strong>Tiny homes / park models / ADU</strong></td>
-              <td>Casi 1:1 con MH. Mismo título en muchos estados.</td>
-              <td>Volumen pequeño; tiene más sentido como módulo dentro de un dealer MH que como vertical independiente.</td>
+              <td>Almost 1:1 with MH. Same title flow in many states.</td>
+              <td>Volume is small; better as a module inside an MH dealer than a standalone vertical.</td>
             </tr>
             <tr>
-              <td><strong>Maquinaria pesada / tractores</strong></td>
-              <td>La adquisición y el reacondicionamiento encajan. El financiamiento propio es raro porque la captiva del fabricante domina.</td>
-              <td>UCC-1 en lugar de título. Lock-in de OEM hace el GTM más difícil.</td>
+              <td><strong>Heavy equipment / tractors</strong></td>
+              <td>Acquisition and reconditioning fit. In-house financing is rare because manufacturer captives dominate.</td>
+              <td>UCC-1 instead of title. OEM lock-in makes go-to-market harder.</td>
             </tr>
           </tbody>
         </table>
         <div class="slide-footer">
-          <span>15 · Verticales</span><span>Lectura cualitativa · sin cifras de terceros</span>
+          <span>15 · Verticals</span><span>Qualitative read · No third-party figures</span>
         </div>
       </section>
 
       <!-- 20. STATUS TODAY -->
       <section>
         <div class="slide-title-row">
-          <h2>Dónde está hoy Maninos&nbsp;OS</h2>
-          <span class="label">Estado verificable</span>
+          <h2>Where Maninos&nbsp;OS stands today</h2>
+          <span class="label">Verifiable status</span>
         </div>
-        <p>Lo siguiente es lo que hay en el repositorio y en producción ahora mismo, contado contra el código actual.</p>
+        <p>What follows is what's in the repository and in production right now, counted against the current code.</p>
 
         <div class="kpi-row">
-          <div class="kpi">
-            <div class="kpi-num">3</div>
-            <div class="kpi-desc">portales en producción</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">53</div>
-            <div class="kpi-desc">páginas frontend (18+19+16)</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">40</div>
-            <div class="kpi-desc">archivos de rutas backend</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">6</div>
-            <div class="kpi-desc">agentes especializados</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-num">10</div>
-            <div class="kpi-desc">jobs en scheduler</div>
-          </div>
+          <div class="kpi"><div class="kpi-num">3</div><div class="kpi-desc">portals in production</div></div>
+          <div class="kpi"><div class="kpi-num">53</div><div class="kpi-desc">frontend pages (18+19+16)</div></div>
+          <div class="kpi"><div class="kpi-num">40</div><div class="kpi-desc">backend route files</div></div>
+          <div class="kpi"><div class="kpi-num">6</div><div class="kpi-desc">specialized agents</div></div>
+          <div class="kpi"><div class="kpi-num">10</div><div class="kpi-desc">scheduler jobs</div></div>
         </div>
 
         <hr class="rule"/>
         <div class="two-col">
           <div>
-            <h4>En producción</h4>
+            <h4>In production</h4>
             <ul class="clean">
-              <li>Operación real diaria del staff de Maninos en el portal Homes</li>
-              <li>Inversores activos consultando sus reportes en Capital</li>
-              <li>Clientes reportando pagos mensuales desde su cuenta en Clientes</li>
-              <li>Scheduler diario contra TDHCA dejando audit en <code>scheduler_runs</code></li>
-              <li>Agentes de IA en los flujos de "Revisar Casa" y planificación de renovación</li>
+              <li>Daily real-world operations of the Maninos staff in the Homes portal</li>
+              <li>Active investors reading their reports in Capital</li>
+              <li>Customers reporting monthly payments from their accounts in Customers</li>
+              <li>The daily TDHCA scheduler leaving an audit trail in <code>scheduler_runs</code></li>
+              <li>AI agents inside the "Revisar Casa" and renovation-planning flows</li>
             </ul>
           </div>
           <div>
-            <h4>Áreas que aún tienen deuda</h4>
+            <h4>Areas that still carry debt</h4>
             <ul class="clean">
-              <li>Multi-tenant: hoy el sistema corre como instancia única para Maninos. Falta separación de tenants para servir a otros dealers.</li>
-              <li>White-label de marca y dominio.</li>
-              <li>Stripe está como label en dropdowns pero no integrado de verdad. El procesamiento real de pagos online aún no existe — todo es transferencia bancaria con confirmación.</li>
-              <li>Asset Pack como abstracción explícita: hoy las reglas de mobile home están dispersas en código; portarlas requiere refactor.</li>
+              <li>Multi-tenant: today the system runs as a single instance for Maninos. True tenant separation is missing if the goal is to serve other dealers.</li>
+              <li>White-label brand and domain.</li>
+              <li>Stripe is wired as a label in dropdowns but not actually integrated. There is no real online payments processing yet — everything is bank transfer with confirmation.</li>
+              <li>Asset Pack as an explicit abstraction: today the mobile-home rules are scattered across the code; lifting them into a pack requires refactoring.</li>
             </ul>
           </div>
         </div>
         <div class="slide-footer">
-          <span>16 · Estado actual</span><span>Producción real · deuda explícita</span>
+          <span>16 · Today</span><span>Real production · Explicit debt</span>
         </div>
       </section>
 
       <!-- 21. CLOSING -->
       <section>
         <div class="slide-title-row">
-          <h2>En una frase</h2>
-          <span class="label">Cierre</span>
+          <h2>In one sentence</h2>
+          <span class="label">Closing</span>
         </div>
 
-        <p class="pull">"Maninos&nbsp;OS es la disciplina operativa de un dealer especializado de mobile homes en Texas — convertida en código. Lo que era spreadsheet, WhatsApp, QuickBooks y procedimientos no escritos, ahora es un sistema con seis agentes de IA, GL propio, módulo de financiamiento, portal del cliente y audit log."</p>
+        <p class="pull">"Maninos&nbsp;OS is the operational discipline of a specialized mobile-home dealer in Texas — turned into code. What used to be spreadsheets, WhatsApp, QuickBooks, and unwritten procedure is now a system with six AI agents, its own GL, an in-house financing module, a customer portal, and an audit log."</p>
 
         <hr class="rule"/>
-        <p>El siguiente paso natural es separar el motor de las reglas específicas de Maninos, formalizar el concepto de Asset Pack, y permitir que otros dealers — primero de mobile homes en otros estados, después de RV o BHPH — corran sobre la misma infraestructura.</p>
+        <p>The natural next step is to separate the engine from Maninos's specific rules, formalize the Asset Pack abstraction, and let other dealers — first mobile homes in other states, then RV or BHPH — run on the same infrastructure.</p>
 
         <div style="margin-top:3em; padding-top:1.6em; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-end;">
           <div>
             <p style="font-family:'Fraunces',serif; font-size:1.2rem; color:var(--ink); margin:0;">Maninos&nbsp;OS</p>
-            <p class="text-mute small" style="margin:0;">Documento descriptivo · 2026</p>
+            <p class="text-mute small" style="margin:0;">Descriptive document · 2026</p>
           </div>
           <div class="text-mute small" style="text-align:right;">
             <p style="margin:0;">Maninos Homes LLC</p>
@@ -1272,7 +1154,7 @@
           </div>
         </div>
         <div class="slide-footer">
-          <span>17 · Cierre</span><span>Fin del documento</span>
+          <span>17 · Closing</span><span>End of document</span>
         </div>
       </section>
 

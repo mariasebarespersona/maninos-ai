@@ -1,5 +1,5 @@
 """
-Build Maninos OS pitch deck as PPTX, mirroring the HTML deck.
+Build Maninos OS pitch deck as PPTX (English version), mirroring the HTML deck.
 Editorial tone, navy/gold palette, only verified numbers from the repo.
 """
 from pptx import Presentation
@@ -7,9 +7,6 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.oxml.ns import qn
-from copy import deepcopy
-from lxml import etree
 import os
 
 # Palette
@@ -47,7 +44,6 @@ def _set_bg(slide, color=BG):
     bg.fill.solid()
     bg.fill.fore_color.rgb = color
     bg.shadow.inherit = False
-    # send to back
     spTree = bg._element.getparent()
     spTree.remove(bg._element)
     spTree.insert(2, bg._element)
@@ -68,46 +64,23 @@ def add_text(slide, x, y, w, h, text, *, font=SANS, size=14, color=INK,
     if isinstance(text, str):
         runs = [(text, {})]
     else:
-        runs = text  # list of (str, dict)
+        runs = text
     p = tf.paragraphs[0]
     p.alignment = align
     p.line_spacing = line_spacing
     for i, (chunk, opts) in enumerate(runs):
         r = p.add_run() if i > 0 else p.runs[0] if p.runs else p.add_run()
-        # workaround: ensure exactly one run
         r.text = chunk
         r.font.name = opts.get("font", font)
         r.font.size = Pt(opts.get("size", size))
         r.font.bold = opts.get("bold", bold)
         r.font.italic = opts.get("italic", italic)
         r.font.color.rgb = opts.get("color", color)
-        # letter spacing
         ls = opts.get("letter_spacing", letter_spacing)
         if ls:
             rPr = r._r.get_or_add_rPr()
             rPr.set("spc", str(int(ls * 100)))
     return tb
-
-
-def add_paragraph(tf, text, *, font=SANS, size=14, color=INK,
-                  bold=False, italic=False, align=PP_ALIGN.LEFT,
-                  line_spacing=1.3, letter_spacing=0, space_after=0):
-    p = tf.add_paragraph()
-    p.alignment = align
-    p.line_spacing = line_spacing
-    if space_after:
-        p.space_after = Pt(space_after)
-    r = p.add_run()
-    r.text = text
-    r.font.name = font
-    r.font.size = Pt(size)
-    r.font.bold = bold
-    r.font.italic = italic
-    r.font.color.rgb = color
-    if letter_spacing:
-        rPr = r._r.get_or_add_rPr()
-        rPr.set("spc", str(int(letter_spacing * 100)))
-    return p
 
 
 def add_eyebrow(slide, x, y, text, w=Inches(8)):
@@ -138,7 +111,7 @@ def add_footer(slide, left_text, right_text):
 
 
 def slide_blank(prs):
-    layout = prs.slide_layouts[6]  # blank
+    layout = prs.slide_layouts[6]
     s = prs.slides.add_slide(layout)
     _set_bg(s)
     return s
@@ -150,22 +123,21 @@ def slide_title(prs):
     s = slide_blank(prs)
 
     add_text(s, MARGIN_X, Inches(0.6), CONTENT_W, Inches(0.3),
-             "MANINOS OS    ·    DOCUMENTO DESCRIPTIVO    ·    VERSIÓN 2026.04",
+             "MANINOS OS    ·    DESCRIPTIVE DOCUMENT    ·    VERSION 2026.04",
              size=9, color=INK3, letter_spacing=3, bold=True)
 
     add_text(s, MARGIN_X, Inches(2.0), CONTENT_W, Inches(2.5),
-             "Una plataforma operativa\npara vender mobile homes,",
+             "An operating platform\nfor selling mobile homes,",
              font=SERIF, size=54, color=INK, line_spacing=1.05)
 
     add_text(s, MARGIN_X, Inches(3.7), CONTENT_W, Inches(1.0),
-             "de extremo a extremo.",
+             "end to end.",
              font=SERIF, size=54, color=GOLD, italic=True, line_spacing=1.05)
 
     add_text(s, MARGIN_X, Inches(5.0), Inches(8), Inches(1),
-             "Cómo está construida, qué resuelve, y por qué su arquitectura admite\notros activos físicos con el mismo patrón de negocio.",
+             "How it's built, what it solves, and why its architecture supports\nother physical assets that follow the same business pattern.",
              font=SERIF, size=18, color=INK2, line_spacing=1.4)
 
-    # bottom meta
     add_text(s, MARGIN_X, SLIDE_H - Inches(0.7), Inches(8), Inches(0.3),
              "MANINOS HOMES LLC  ·  MANINOS CAPITAL LLC",
              size=8, color=INK4, letter_spacing=2.5, bold=True)
@@ -174,39 +146,37 @@ def slide_title(prs):
              size=8, color=INK4, letter_spacing=2.5, bold=True, align=PP_ALIGN.RIGHT)
 
 
-def slide_definicion(prs):
+def slide_definition(prs):
     s = slide_blank(prs)
-    add_eyebrow(s, MARGIN_X, MARGIN_Y, "DEFINICIÓN")
+    add_eyebrow(s, MARGIN_X, MARGIN_Y, "DEFINITION")
     add_text(s, MARGIN_X, MARGIN_Y + Inches(0.3), CONTENT_W, Inches(0.9),
-             "Qué es Maninos OS",
+             "What Maninos OS is",
              font=SERIF, size=36, color=INK)
 
     lead = (
-        "Es la plataforma de software propietaria que opera Maninos Homes LLC y "
-        "Maninos Capital LLC. Cubre el ciclo completo de un activo: localización en "
-        "el mercado, compra, renovación, listado, venta, financiamiento propio "
-        "(RTO o contado), gestión de pagos recurrentes, transferencia de título y "
-        "reporte a inversores."
+        "It is the proprietary software platform operated by Maninos Homes LLC and "
+        "Maninos Capital LLC. It covers the full lifecycle of an asset: market discovery, "
+        "purchase, renovation, listing, sale, in-house financing (RTO or cash), recurring "
+        "payment management, title transfer, and investor reporting."
     )
     add_text(s, MARGIN_X, Inches(2.0), Inches(11.5), Inches(2),
              lead, font=SERIF, size=17, color=INK, line_spacing=1.4)
 
     add_rule(s, MARGIN_X, Inches(4.1), CONTENT_W)
 
-    # two col
     col_w = (CONTENT_W - Inches(0.6)) / 2
     col1_x = MARGIN_X
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(4.4), col_w, Inches(0.3),
-             "LO QUE REEMPLAZA", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "WHAT IT REPLACES", size=8, color=GOLD, bold=True, letter_spacing=2)
 
     items_left = [
-        "Hojas de cálculo y grupos de WhatsApp para inventario y renovación",
-        "Un CRM genérico para clientes y leads",
-        "Un sistema de contabilidad externo",
-        "Un proceso manual de transferencia de título estatal",
-        "Una hoja paralela para tracking de inversores y mora",
+        "Spreadsheets and WhatsApp threads for inventory and renovation",
+        "A generic CRM for clients and leads",
+        "An external accounting system",
+        "A manual state title transfer process",
+        "A side spreadsheet for investor and delinquency tracking",
     ]
     add_text(s, col1_x, Inches(4.75), col_w, Inches(0.3),
              "—  " + items_left[0], size=11, color=INK2, line_spacing=1.5)
@@ -217,13 +187,13 @@ def slide_definicion(prs):
         y += Inches(0.32)
 
     add_text(s, col2_x, Inches(4.4), col_w, Inches(0.3),
-             "LO QUE AÑADE QUE NO EXISTE EN OTRA PARTE",
+             "WHAT IT ADDS THAT DOESN'T EXIST ELSEWHERE",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     items_right = [
-        "Seis agentes de IA especializados, integrados en los flujos de trabajo",
-        "Un módulo de financiamiento propio (RTO) con su propia contabilidad",
-        "Un portal público para el cliente final con simulador, KYC, firma y autoservicio de pagos",
-        "Un módulo separado para gestión de capital de inversores privados",
+        "Six specialized AI agents embedded in the daily workflow",
+        "An in-house financing module (RTO) with its own accounting",
+        "A public customer portal with simulator, KYC, e-signature, and self-service payment reporting",
+        "A separate module for managing private investor capital",
     ]
     y = Inches(4.75)
     for itm in items_right:
@@ -231,35 +201,33 @@ def slide_definicion(prs):
                  "—  " + itm, size=11, color=INK2, line_spacing=1.5)
         y += Inches(0.4)
 
-    add_footer(s, "01  ·  DEFINICIÓN", "MANINOS OS")
+    add_footer(s, "01  ·  DEFINITION", "MANINOS OS")
 
 
-def slide_arquitectura(prs):
+def slide_architecture(prs):
     s = slide_blank(prs)
 
-    # title row
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "La forma del sistema", font=SERIF, size=32, color=INK)
+             "The shape of the system", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "ARQUITECTURA", size=8, color=INK3, bold=True, letter_spacing=2.5,
+             "ARCHITECTURE", size=8, color=INK3, bold=True, letter_spacing=2.5,
              align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.45), Inches(11.5), Inches(0.9),
-             "Tres portales que comparten una sola base de datos Postgres. No hay sincronización ni jobs de réplica entre ellos: lo que ocurre en operaciones se ve al instante en finanzas y en la cuenta del cliente.",
+             "Three portals sharing a single Postgres database. There is no sync layer or replication job between them: anything that happens in operations is immediately visible in finance and in the customer's account.",
              font=SERIF, size=15, color=INK, line_spacing=1.4)
 
-    # 3 columns
     cw = (CONTENT_W - Inches(0.8)) / 3
     base_y = Inches(2.9)
 
     portals = [
-        ("PORTAL 01", "Homes", "OPERACIONES INTERNAS",
-         "Para el equipo de Maninos. Inventario, renovación, fotos, contabilidad, comisiones, títulos, dashboards. Acceso por rol: treasury, operations, yard_manager, admin, comprador, vendedor."),
-        ("PORTAL 02", "Capital", "FINANCIAMIENTO E INVERSORES",
-         "Para underwriters y partners financieros. Solicitudes RTO, contratos de arrendamiento con opción a compra, pagos mensuales, mora, KYC, capital de inversores, promissory notes, reportes mensuales."),
-        ("PORTAL 03", "Clientes", "CARA PÚBLICA Y AUTOSERVICIO",
-         "Para el comprador. Catálogo público, simulador de RTO, solicitud de crédito, KYC con subida de documentos, firma electrónica del contrato, estado de cuenta y reporte de pagos."),
+        ("PORTAL 01", "Homes", "INTERNAL OPERATIONS",
+         "For the Maninos team. Inventory, renovation, photos, accounting, commissions, titles, dashboards. Role-based access: treasury, operations, yard_manager, admin, buyer, seller."),
+        ("PORTAL 02", "Capital", "FINANCING AND INVESTORS",
+         "For underwriters and finance partners. RTO applications, lease-with-purchase-option contracts, monthly payments, delinquency, KYC, investor capital, promissory notes, monthly reports."),
+        ("PORTAL 03", "Customers", "PUBLIC-FACING AND SELF-SERVICE",
+         "For the buyer. Public catalog, RTO simulator, credit application, KYC with document upload, e-signature of the contract, account statement and payment reporting."),
     ]
     for i, (eb, title, sub, body) in enumerate(portals):
         x = MARGIN_X + i * (cw + Inches(0.4))
@@ -273,15 +241,14 @@ def slide_arquitectura(prs):
         add_text(s, x, base_y + Inches(1.4), cw, Inches(2),
                  body, size=10.5, color=INK2, line_spacing=1.5)
 
-    # KPI row
     add_rule(s, MARGIN_X, Inches(5.95), CONTENT_W)
     add_rule(s, MARGIN_X, Inches(6.65), CONTENT_W)
     kpis = [
-        ("18", "PÁGINAS EN HOMES"),
-        ("19", "PÁGINAS EN CAPITAL"),
-        ("16", "PÁGINAS EN CLIENTES"),
-        ("58", "TABLAS EN POSTGRES"),
-        ("91", "MIGRACIONES SQL"),
+        ("18", "PAGES IN HOMES"),
+        ("19", "PAGES IN CAPITAL"),
+        ("16", "PAGES IN CUSTOMERS"),
+        ("58", "TABLES IN POSTGRES"),
+        ("91", "SQL MIGRATIONS"),
     ]
     kw = CONTENT_W / 5
     for i, (num, lbl) in enumerate(kpis):
@@ -294,10 +261,10 @@ def slide_arquitectura(prs):
             add_vrule(s, x + kw, Inches(6.0), Inches(0.65))
 
     add_text(s, MARGIN_X, Inches(6.85), CONTENT_W, Inches(0.3),
-             "Cifras tomadas directamente del repositorio de Maninos a fecha de hoy.",
+             "Numbers taken directly from the Maninos repository, as of today.",
              size=9, color=INK3, italic=True)
 
-    add_footer(s, "02  ·  ARQUITECTURA", "TRES PORTALES  ·  UNA BASE DE DATOS")
+    add_footer(s, "02  ·  ARCHITECTURE", "THREE PORTALS  ·  ONE DATABASE")
 
 
 def slide_section_index(prs, num, title, desc):
@@ -314,45 +281,41 @@ def slide_section_index(prs, num, title, desc):
 def slide_homes_portal(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "Portal Homes", font=SERIF, size=32, color=INK)
+             "Homes Portal", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "OPERACIONES INTERNAS", size=8, color=INK3, bold=True,
+             "INTERNAL OPERATIONS", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
-    # left sidebar label
     add_text(s, MARGIN_X, Inches(1.6), Inches(2.5), Inches(0.3),
              "/HOMES", font=MONO, size=8, color=INK4, letter_spacing=1.5, bold=True)
     add_text(s, MARGIN_X, Inches(1.95), Inches(2.5), Inches(1),
-             "El día a día del staff",
+             "The staff's daily workspace",
              font=SERIF, size=15, color=GOLD, italic=True, line_spacing=1.3)
 
-    # right column
     rx = MARGIN_X + Inches(2.9)
     rw = CONTENT_W - Inches(2.9)
     add_text(s, rx, Inches(1.6), rw, Inches(1),
-             "El staff de Maninos pasa la jornada en este portal. Accede por /homes/* tras autenticarse en Supabase con su rol asignado. La barra lateral muestra solo las secciones a las que tiene acceso, con un badge de pendientes (transferencias de título, órdenes de pago, aprobaciones de renovación).",
+             "The Maninos staff spends the workday in this portal. Access is at /homes/* after authenticating in Supabase with their assigned role. The sidebar only shows the sections they have access to, with a badge for pending items (title transfers, payment orders, renovation approvals).",
              size=11, color=INK2, line_spacing=1.5)
 
-    # table
     rows = [
-        ("Dashboard", "KPIs, mapa de Texas, gráfico de actividad de los últimos 6 meses, pipeline por estado de propiedad."),
-        ("Properties", "Listado con filtros por estado (purchased, published, reserved, renovating, sold), búsqueda por dirección/código. Subrutas para edición, fotos, checklist “Revisar Casa” y wizard de renovación."),
-        ("Transfers", "Títulos en curso. Widget del scheduler diario contra TDHCA + modal para subida manual de títulos legacy. Cada serial es un link directo a la base TDHCA."),
-        ("Sales", "Ventas activas, pagos parciales, comisiones (finder + closer), generación de Bill of Sale en PDF, redirección a Capital cuando es RTO."),
-        ("Clients", "CRM interno solo para clientes contado."),
-        ("Accounting", "11 pestañas: overview, transactions, invoices, statements, chart of accounts, properties, banks, budget, recurring, audit, estado de cuenta."),
-        ("Commissions", "Comisiones por empleado. Treasury y Admin ven todas; otros roles solo las propias."),
-        ("Market", "Listings externos scrapeados de fuentes públicas."),
+        ("Dashboard", "KPIs, Texas map, six-month activity chart, pipeline by property status."),
+        ("Properties", "Listing with status filters (purchased, published, reserved, renovating, sold), search by address/code. Subroutes for editing, photos, the “Revisar Casa” checklist, and the renovation wizard."),
+        ("Transfers", "Titles in flight. Daily TDHCA scheduler widget plus a modal for manual upload of legacy titles. Each serial is a direct link to the TDHCA database."),
+        ("Sales", "Active sales, partial payments, commissions (finder + closer), Bill of Sale PDF generation, redirect to Capital when the sale is RTO."),
+        ("Clients", "Internal CRM, cash buyers only."),
+        ("Accounting", "11 tabs: overview, transactions, invoices, statements, chart of accounts, properties, banks, budget, recurring, audit, account statement."),
+        ("Commissions", "Per-employee commissions. Treasury and Admin see all; other roles see only their own."),
+        ("Market", "External listings scraped from public sources."),
     ]
     table_y = Inches(2.65)
     col1_w = Inches(1.8)
     col2_w = rw - col1_w - Inches(0.2)
-    # header
     add_text(s, rx, table_y, col1_w, Inches(0.25),
-             "SECCIÓN", size=7, color=INK3, bold=True, letter_spacing=1.8)
+             "SECTION", size=7, color=INK3, bold=True, letter_spacing=1.8)
     add_text(s, rx + col1_w, table_y, col2_w, Inches(0.25),
-             "FUNCIÓN", size=7, color=INK3, bold=True, letter_spacing=1.8)
+             "FUNCTION", size=7, color=INK3, bold=True, letter_spacing=1.8)
     add_rule(s, rx, table_y + Inches(0.28), rw)
     y = table_y + Inches(0.4)
     for name, desc in rows:
@@ -363,49 +326,49 @@ def slide_homes_portal(prs):
         y += Inches(0.45)
         add_rule(s, rx, y - Inches(0.05), rw, color=LINE_SOFT, thickness=Pt(0.5))
 
-    add_footer(s, "03  ·  PORTAL HOMES", "18 PÁGINAS  ·  ACCESO POR ROL")
+    add_footer(s, "03  ·  HOMES PORTAL", "18 PAGES  ·  ROLE-BASED ACCESS")
 
 
 def slide_capital_portal(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "Portal Capital", font=SERIF, size=32, color=INK)
+             "Capital Portal", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "FINANCIAMIENTO PROPIO + INVERSORES", size=8, color=INK3, bold=True,
+             "IN-HOUSE FINANCING + INVESTORS", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.6), Inches(2.5), Inches(0.3),
              "/CAPITAL", font=MONO, size=8, color=INK4, letter_spacing=1.5, bold=True)
     add_text(s, MARGIN_X, Inches(1.95), Inches(2.5), Inches(1),
-             "El dealer como banco",
+             "The dealer as a bank",
              font=SERIF, size=15, color=GOLD, italic=True, line_spacing=1.3)
 
     rx = MARGIN_X + Inches(2.9)
     rw = CONTENT_W - Inches(2.9)
     add_text(s, rx, Inches(1.6), rw, Inches(1),
-             "Cuando los bancos no financian — y para mobile homes pre-owned casi nunca lo hacen — el dealer se convierte en el prestamista. Capital es el portal donde se administra esa función. El acceso está restringido a un grupo reducido de personas autorizadas.",
+             "When banks won't finance — and for pre-owned mobile homes they almost never do — the dealer becomes the lender. Capital is the portal where that role is administered. Access is restricted to a small group of authorized people.",
              size=11, color=INK2, line_spacing=1.5)
 
     rows = [
-        ("Dashboard", "Resumen de cartera, salud financiera, actividad reciente, KPIs."),
-        ("Applications", "Solicitudes RTO en cada estado: pending, under review, approved, rejected, needs_info. Underwriting + scoring."),
-        ("KYC", "Verificación manual de identidad. Documentos subidos por el cliente al bucket de Supabase, revisados aquí. Sin servicio externo."),
-        ("Contracts", "Contratos RTO con sus 33 cláusulas, tabla de amortización, tracking de down payment por cuotas, generación de PDF."),
-        ("Payments", "Pagos mensuales, confirmación de transferencias reportadas por el cliente, mora summary, comisiones, alertas de seguro vencido."),
-        ("Investors", "Inversores activos, capital comprometido, capital desplegado, retornos."),
-        ("Promissory notes", "Pagarés de inversores con alertas de maturity a 90, 60 y 30 días."),
-        ("Accounting", "Contabilidad propia de Capital: chart of accounts, asientos, estados bancarios con reconciliación, reportes (P&L, balance, flujo de caja)."),
-        ("Reports", "Estados mensuales en PDF para cada inversor + resúmenes unificados de cartera."),
-        ("Mora", "Cartera vencida por aging bucket (0–30, 31–60, 61–90, 90+)."),
+        ("Dashboard", "Portfolio summary, financial health, recent activity, KPIs."),
+        ("Applications", "RTO applications in each state: pending, under review, approved, rejected, needs_info. Underwriting + scoring."),
+        ("KYC", "Manual customer identity verification. Documents uploaded by the client to the Supabase bucket and reviewed here. No external service."),
+        ("Contracts", "RTO contracts with their 33 clauses, amortization table, down-payment installment tracking, PDF generation."),
+        ("Payments", "Monthly payments, confirmation of client-reported transfers, delinquency summary, commissions, insurance expiration alerts."),
+        ("Investors", "Active investors, committed capital, deployed capital, returns."),
+        ("Promissory notes", "Investor notes with maturity alerts at 90, 60, and 30 days."),
+        ("Accounting", "Capital's own accounting: chart of accounts, journal entries, bank statements with reconciliation, reports (P&L, balance sheet, cash flow)."),
+        ("Reports", "Monthly PDF statements for each investor plus unified portfolio summaries."),
+        ("Delinquency", "Past-due portfolio by aging bucket (0–30, 31–60, 61–90, 90+)."),
     ]
     table_y = Inches(2.65)
     col1_w = Inches(1.8)
     col2_w = rw - col1_w - Inches(0.2)
     add_text(s, rx, table_y, col1_w, Inches(0.25),
-             "SECCIÓN", size=7, color=INK3, bold=True, letter_spacing=1.8)
+             "SECTION", size=7, color=INK3, bold=True, letter_spacing=1.8)
     add_text(s, rx + col1_w, table_y, col2_w, Inches(0.25),
-             "FUNCIÓN", size=7, color=INK3, bold=True, letter_spacing=1.8)
+             "FUNCTION", size=7, color=INK3, bold=True, letter_spacing=1.8)
     add_rule(s, rx, table_y + Inches(0.28), rw)
     y = table_y + Inches(0.4)
     for name, desc in rows:
@@ -416,41 +379,40 @@ def slide_capital_portal(prs):
         y += Inches(0.36)
         add_rule(s, rx, y - Inches(0.04), rw, color=LINE_SOFT, thickness=Pt(0.5))
 
-    add_footer(s, "04  ·  PORTAL CAPITAL", "19 PÁGINAS  ·  13 ARCHIVOS DE RUTAS BACKEND")
+    add_footer(s, "04  ·  CAPITAL PORTAL", "19 PAGES  ·  13 BACKEND ROUTE FILES")
 
 
-def slide_clientes_portal(prs):
+def slide_customers_portal(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "Portal Clientes", font=SERIF, size=32, color=INK)
+             "Customers Portal", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "CARA PÚBLICA Y AUTOSERVICIO", size=8, color=INK3, bold=True,
+             "PUBLIC-FACING AND SELF-SERVICE", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.6), Inches(2.5), Inches(0.3),
              "/CLIENTES", font=MONO, size=8, color=INK4, letter_spacing=1.5, bold=True)
     add_text(s, MARGIN_X, Inches(1.95), Inches(2.5), Inches(1.2),
-             "Del primer click al pago 36",
+             "From first click to payment 36",
              font=SERIF, size=15, color=GOLD, italic=True, line_spacing=1.3)
 
     rx = MARGIN_X + Inches(2.9)
     rw = CONTENT_W - Inches(2.9)
     add_text(s, rx, Inches(1.6), rw, Inches(0.9),
-             "Es el único portal accesible sin sesión. Un visitante puede llegar al catálogo desde Facebook o desde un link directo. La autenticación aparece solo al avanzar en el embudo de compra.",
+             "This is the only portal accessible without a session. A visitor can land on the catalog from Facebook or from a direct link. Authentication only appears as the buyer advances through the funnel.",
              size=11, color=INK2, line_spacing=1.5)
 
-    # pipeline (4 stages)
     add_text(s, rx, Inches(2.7), rw, Inches(0.3),
-             "CAMINO DEL VISITANTE", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "VISITOR'S PATH", size=8, color=GOLD, bold=True, letter_spacing=2)
     py = Inches(3.05)
     add_rule(s, rx, py, rw)
     add_rule(s, rx, py + Inches(1.4), rw)
     stages = [
-        ("— 01 —", "Catálogo", "Listado público con filtros por ciudad y precio. Auto-refresh cada 2 min."),
-        ("— 02 —", "Propiedad", "Detalle con galería, especificaciones y simulador RTO interactivo (down 30–100%, plazo 12–60 meses)."),
-        ("— 03 —", "Compra", "Captura contacto, crea cliente o reusa existente, elige método: contado o RTO."),
-        ("— 04 —", "Cuenta", "Estado de cuenta, KYC, firma de contrato, documentos, reportar pagos mensuales."),
+        ("— 01 —", "Catalog", "Public listing with city and price filters. Auto-refreshes every 2 min to surface new inventory."),
+        ("— 02 —", "Property", "Detail page with gallery, specs, and an interactive RTO simulator (down 30–100%, term 12–60 months)."),
+        ("— 03 —", "Purchase", "Captures contact, creates client or reuses existing one, picks method: cash or RTO."),
+        ("— 04 —", "Account", "Account statement, KYC, contract signing, documents, monthly payment reporting."),
     ]
     sw = rw / 4
     for i, (num, h, body) in enumerate(stages):
@@ -464,16 +426,15 @@ def slide_clientes_portal(prs):
         if i < 3:
             add_vrule(s, x + sw, py, Inches(1.4))
 
-    # bullet list below
     add_text(s, rx, Inches(4.7), rw, Inches(0.3),
-             "LO QUE EL CLIENTE PUEDE HACER EN SU CUENTA",
+             "WHAT THE CUSTOMER CAN DO IN THEIR ACCOUNT",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     items = [
-        "Subir su licencia, pasaporte o ID estatal para KYC (JPG/PNG/WebP/HEIC, máx 10 MB)",
-        "Firmar electrónicamente su contrato RTO con sello de tiempo, IP y user-agent registrados",
-        "Completar la solicitud de crédito en secciones (empleo, vivienda, activos, deudas, referencias)",
-        "Reportar el pago mensual del mes en curso y ver el historial completo de pagos",
-        "Descargar contratos firmados y documentos de transferencia de título",
+        "Upload their driver's license, passport, or state ID for KYC (JPG/PNG/WebP/HEIC, up to 10 MB)",
+        "Electronically sign their RTO contract with timestamp, IP, and user-agent recorded",
+        "Complete the credit application in sections (employment, housing, assets, debts, references)",
+        "Report the current month's payment and review the full payment history",
+        "Download signed contracts and title transfer documents",
     ]
     y = Inches(5.1)
     for itm in items:
@@ -481,43 +442,42 @@ def slide_clientes_portal(prs):
                  "—  " + itm, size=10, color=INK2, line_spacing=1.5)
         y += Inches(0.32)
 
-    add_footer(s, "05  ·  PORTAL CLIENTES", "16 PÁGINAS  ·  PÚBLICO + AUTENTICADO")
+    add_footer(s, "05  ·  CUSTOMERS PORTAL", "16 PAGES  ·  PUBLIC + AUTHENTICATED")
 
 
 def slide_loop(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "Comprar · Renovar · Vender · Cobrar", font=SERIF, size=30, color=INK)
+             "Buy · Renovate · Sell · Collect", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "EL LOOP COMPLETO", size=8, color=INK3, bold=True,
+             "THE FULL LOOP", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.6),
-             "Cada etapa tiene su tabla, su(s) agente(s) de IA y su superficie de UI. Un mismo registro avanza por las cinco etapas sin salir del sistema y sin re-tipear datos.",
+             "Each stage has its tables, its AI agent(s), and its UI surface. The same record advances through five stages without leaving the system and without anyone retyping data.",
              size=11, color=INK2, line_spacing=1.5)
 
-    # table
     rows = [
-        ("1. Detectar", "BuscadorAgent recorre fuentes externas, aplica reglas de Maninos, propone candidatos.",
-         "BuscadorAgent (Playwright + scrapers MHVillage, MobileHome.net, Zillow, FB Marketplace).",
+        ("1. Detect", "BuscadorAgent crawls external sources, applies Maninos's rules, proposes candidates.",
+         "BuscadorAgent (Playwright + scrapers for MHVillage, MobileHome.net, Zillow, FB Marketplace).",
          "market_listings"),
-        ("2. Comprar", "Wizard “Revisar Casa”: fotos, checklist, datos del seller, oferta.",
-         "FotosAgent (clasifica imágenes), VozAgent (notas dictadas en el yard).",
+        ("2. Buy", "“Revisar Casa” wizard: photos, checklist, seller details, offer.",
+         "FotosAgent (image classification), VozAgent (notes dictated on the yard).",
          "properties, title_transfers (purchase)"),
-        ("3. Renovar", "Plan de renovación: materiales, mano de obra, contingencia.",
-         "RenovacionAgent (orquestador), CostosAgent (precios desde DB).",
+        ("3. Renovate", "Renovation plan: materials, labor, contingency.",
+         "RenovacionAgent (orchestrator), CostosAgent (prices read from DB).",
          "renovations · accounting_transactions"),
-        ("4. Listar y vender", "Precio sugerido. Publicación. Cliente compra contado o solicita RTO.",
-         "PrecioAgent (techo 80% del valor de mercado).",
+        ("4. List and sell", "Suggested price. Publishing. Customer buys cash or applies for RTO.",
+         "PrecioAgent (80% market-value ceiling).",
          "sales, sale_payments, rto_applications"),
-        ("5. Cobrar y cerrar", "Pagos mensuales, late fees, mora, transferencia final de título.",
-         "Scheduler title_monitor diario contra TDHCA. Email service para recordatorios.",
+        ("5. Collect and close", "Monthly payments, late fees, delinquency, final title transfer.",
+         "Daily title_monitor scheduler against TDHCA. Email service for reminders.",
          "rto_payments, title_transfers (sale), commission_payments"),
     ]
     ty = Inches(2.4)
     cols = [Inches(1.6), Inches(3.6), Inches(3.5), Inches(3.4)]
-    headers = ["ETAPA", "QUÉ OCURRE", "AGENTES / SERVICIOS", "DATOS QUE PRODUCE"]
+    headers = ["STAGE", "WHAT HAPPENS", "AGENTS / SERVICES", "DATA PRODUCED"]
     cx = MARGIN_X
     for i, (col, hdr) in enumerate(zip(cols, headers)):
         add_text(s, cx, ty, col, Inches(0.25), hdr, size=7, color=INK3,
@@ -541,39 +501,39 @@ def slide_loop(prs):
         add_rule(s, MARGIN_X, y - Inches(0.05), CONTENT_W,
                  color=LINE_SOFT, thickness=Pt(0.5))
 
-    add_footer(s, "06  ·  EL LOOP", "5 ETAPAS  ·  6 AGENTES  ·  UNA FUENTE DE VERDAD")
+    add_footer(s, "06  ·  THE LOOP", "5 STAGES  ·  6 AGENTS  ·  ONE SOURCE OF TRUTH")
 
 
 def slide_agents(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "Los seis agentes especializados", font=SERIF, size=30, color=INK)
+             "The six specialized agents", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "CAPA DE IA", size=8, color=INK3, bold=True,
+             "AI LAYER", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.45), CONTENT_W, Inches(0.7),
-             "Cada agente vive en api/agents/, hereda de BaseAgent, opera de forma asíncrona y devuelve JSON estructurado validado por Pydantic. No tienen memoria entre llamadas: el contexto necesario se pasa explícitamente en cada request.",
+             "Each agent lives under api/agents/, inherits from BaseAgent, runs asynchronously, and returns structured JSON validated by Pydantic. They have no memory between calls: the context required is passed explicitly with every request.",
              size=11, color=INK2, line_spacing=1.5)
 
     rows = [
-        ("Buscador", "Encuentra mobile homes en el mercado que cumplen las reglas de Maninos.",
-         "Scrapea MHVillage, MobileHome.net, MHBay, Zillow, Facebook Marketplace. Filtra por reglas Feb 2026: 60% del valor de mercado, $5K–$80K, 200mi de Houston o Dallas, sin filtro de año."),
-        ("Costos", "Estima el costo de la renovación.",
-         "Lee el catálogo de materiales desde la base de datos. Devuelve materiales + mano de obra (30–50% material) + contingencia (5–15%) + costo por sqft + factores de riesgo."),
-        ("Precio", "Propone precio de venta.",
-         "Devuelve cuatro estrategias: mínimo, target, mercado, agresivo. Aplica techo automático del 80% del valor de mercado."),
-        ("Fotos", "Clasifica fotografías por estado de renovación.",
-         "Vision real (no keywords). Distingue before / after / exterior / interior. Ordena la galería pública: after primero, después exterior, interior, before."),
-        ("Voz", "Transcribe audio del staff y extrae intención.",
-         "Whisper en español. Detecta si es una nota de inspección, una lista de materiales o una observación. Funciona con Spanglish."),
-        ("Renovación", "Conversación guiada para planificar la renovación.",
-         "Tiene los precios de los materiales embebidos en el prompt (decisión de latencia). Si no hay sqft, no estima — falla loud."),
+        ("Buscador", "Finds mobile homes on the market that satisfy Maninos's rules.",
+         "Scrapes MHVillage, MobileHome.net, MHBay, Zillow, Facebook Marketplace. Filters using the Feb 2026 rules: 60% of market value, $5K–$80K, 200mi from Houston or Dallas, no year filter."),
+        ("Costos", "Estimates the renovation cost.",
+         "Reads the materials catalog from the database. Returns materials + labor (30–50% of materials) + contingency (5–15%) + cost per sqft + risk factors."),
+        ("Precio", "Proposes a sale price.",
+         "Returns four strategies: minimum, target, market, aggressive. Applies an automatic ceiling of 80% of blended market value."),
+        ("Fotos", "Classifies photos by renovation state.",
+         "True vision (no keyword tricks). Distinguishes before / after / exterior / interior. Sorts the public gallery: after first, then exterior, interior, before."),
+        ("Voz", "Transcribes audio dictated by staff and extracts intent.",
+         "Whisper in Spanish. Detects whether it's an inspection note, a materials list, or a general observation. Works with Spanglish."),
+        ("Renovación", "Guided conversation to plan the renovation.",
+         "Material prices are embedded in the prompt itself (a latency choice). If the property has no sqft, it refuses to estimate — fails loud."),
     ]
     ty = Inches(2.45)
     cols = [Inches(1.4), Inches(3.5), Inches(7.2)]
-    headers = ["AGENTE", "FUNCIÓN", "DETALLE RELEVANTE"]
+    headers = ["AGENT", "FUNCTION", "IMPLEMENTATION NOTE"]
     cx = MARGIN_X
     for col, hdr in zip(cols, headers):
         add_text(s, cx, ty, col, Inches(0.25), hdr, size=7, color=INK3,
@@ -595,43 +555,42 @@ def slide_agents(prs):
         add_rule(s, MARGIN_X, y - Inches(0.04), CONTENT_W,
                  color=LINE_SOFT, thickness=Pt(0.5))
 
-    # divider
     add_rule(s, MARGIN_X, Inches(6.4), CONTENT_W)
     add_text(s, MARGIN_X, Inches(6.55), CONTENT_W, Inches(0.7),
-             "Aparte: el chat flotante AIChatWidget que aparece en el portal Homes no usa estos agentes. Llama a /api/ai/chat (gpt-5-mini) con un patrón de tool-calling sobre 19 herramientas de consulta a la base de datos.",
+             "Aside: the floating AIChatWidget chat in the Homes portal does not use these agents. It calls /api/ai/chat (gpt-5-mini) with a tool-calling pattern over 19 database query tools.",
              size=10, color=INK2, italic=True, line_spacing=1.5)
 
-    add_footer(s, "07  ·  AGENTES", "6 ESPECIALIZADOS  +  1 ASISTENTE CONVERSACIONAL")
+    add_footer(s, "07  ·  AGENTS", "6 SPECIALIZED  +  1 CONVERSATIONAL ASSISTANT")
 
 
 def slide_scheduler(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "El scheduler", font=SERIF, size=32, color=INK)
+             "The scheduler", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "AUTOMATIZACIÓN EN BACKGROUND", size=8, color=INK3, bold=True,
+             "BACKGROUND AUTOMATION", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "APScheduler corriendo en zona horaria US Central. Diez jobs en producción. Cada ejecución, exitosa o fallida, deja registro en la tabla scheduler_runs — el widget en /homes/transfers lee de ahí, no de la memoria del scheduler.",
+             "APScheduler runs on the US Central timezone. Ten jobs in production. Every run, successful or failed, leaves a record in the scheduler_runs table — the widget at /homes/transfers reads from that table, not from the scheduler's in-memory state.",
              size=11, color=INK2, line_spacing=1.5)
 
     rows = [
-        ("process_scheduled_emails", "Cada 30 min", "Envía emails programados pendientes."),
-        ("rto_reminders", "Diario · 8:00 CT", "Recordatorios de pago RTO al cliente (3d antes, día del pago, 1d después)."),
-        ("rto_overdue_alerts", "Diario · 9:00 CT", "Alertas internas para pagos RTO vencidos."),
-        ("promissory_maturity_alerts", "Diario · 9:30 CT", "Avisa al equipo de pagarés a vencer (90 / 60 / 30 días)."),
-        ("title_monitor", "Diario · 10:00 CT", "Consulta TDHCA por cada serial pendiente, fuzzy-match del nombre."),
-        ("investor_followup_emails", "Día 1 · 10:30 CT", "Estado mensual a cada inversor con su PDF."),
-        ("portal_sync", "Cada 2 horas", "Consistencia cruzada Homes ↔ Capital."),
-        ("refresh_partner_listings", "Cada 6 horas", "Refresca listings de VMF Homes y 21st Mortgage."),
-        ("facebook_auto_scrape", "Lun y Jue · 7:00 CT", "Scraping de Facebook Marketplace vía Apify."),
-        ("expire_old_listings", "Diario · 6:00 CT", "Marca como expirados listings con más de 14 días."),
+        ("process_scheduled_emails", "Every 30 min", "Sends pending scheduled emails."),
+        ("rto_reminders", "Daily · 8:00 CT", "RTO payment reminders to the customer (3d before, day-of, 1d after)."),
+        ("rto_overdue_alerts", "Daily · 9:00 CT", "Internal alerts for overdue RTO payments."),
+        ("promissory_maturity_alerts", "Daily · 9:30 CT", "Notifies the team of upcoming note maturities (90 / 60 / 30 days)."),
+        ("title_monitor", "Daily · 10:00 CT", "Queries TDHCA for each pending serial, fuzzy-matches the owner name."),
+        ("investor_followup_emails", "1st of month · 10:30 CT", "Monthly statement to each investor with attached PDF."),
+        ("portal_sync", "Every 2 hours", "Cross-consistency between Homes ↔ Capital."),
+        ("refresh_partner_listings", "Every 6 hours", "Refreshes VMF Homes and 21st Mortgage listings."),
+        ("facebook_auto_scrape", "Mon and Thu · 7:00 CT", "Facebook Marketplace scraping via Apify."),
+        ("expire_old_listings", "Daily · 6:00 CT", "Marks listings older than 14 days as expired."),
     ]
     ty = Inches(2.45)
     cols = [Inches(3.7), Inches(2.3), Inches(6.1)]
-    headers = ["JOB", "CADENCIA", "FUNCIÓN"]
+    headers = ["JOB", "CADENCE", "FUNCTION"]
     cx = MARGIN_X
     for col, hdr in zip(cols, headers):
         add_text(s, cx, ty, col, Inches(0.25), hdr, size=7, color=INK3,
@@ -654,20 +613,20 @@ def slide_scheduler(prs):
         add_rule(s, MARGIN_X, y - Inches(0.03), CONTENT_W,
                  color=LINE_SOFT, thickness=Pt(0.5))
 
-    add_footer(s, "08  ·  SCHEDULER", "10 JOBS  ·  US CENTRAL  ·  AUDIT EN scheduler_runs")
+    add_footer(s, "08  ·  SCHEDULER", "10 JOBS  ·  US CENTRAL  ·  AUDIT IN scheduler_runs")
 
 
 def slide_titles(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "El flujo del título estatal", font=SERIF, size=30, color=INK)
+             "The state title flow", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "TDHCA Y HERENCIA", size=8, color=INK3, bold=True,
+             "TDHCA AND LEGACY", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "En Texas, la transferencia de propiedad de un mobile home se registra en TDHCA mediante el Statement of Ownership. Maninos OS automatiza el seguimiento.",
+             "In Texas, transfer of ownership for a mobile home is recorded with TDHCA via the Statement of Ownership. Maninos OS automates the follow-up.",
              size=11, color=INK2, line_spacing=1.5)
 
     col_w = (CONTENT_W - Inches(0.6)) / 2
@@ -675,13 +634,13 @@ def slide_titles(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(2.5), col_w, Inches(0.3),
-             "FLUJO AUTOMÁTICO", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "AUTOMATIC FLOW", size=8, color=GOLD, bold=True, letter_spacing=2)
     auto_steps = [
-        "1.  Al subir el documento de aplicación de título, el agente extrae el HUD label / serial.",
-        "2.  Si la aplicación de título no tiene el dato, fallback al Bill of Sale (bos_purchase.hud_label_number).",
-        "3.  El job diario de las 10:00 CT consulta el portal TDHCA por cada serial pendiente.",
-        "4.  Compara el nombre que devuelve TDHCA contra to_name con un fuzzy-match.",
-        "5.  Si coinciden, marca title_name_updated = TRUE, registra el nombre en tdhca_owner_name, mueve la transferencia a completed.",
+        "1.  When the title application document is uploaded, the agent extracts the HUD label / serial.",
+        "2.  If the title application doesn't carry the value, falls back to the Bill of Sale (bos_purchase.hud_label_number).",
+        "3.  The 10:00 CT daily job queries the TDHCA portal for each pending serial.",
+        "4.  Fuzzy-matches the name TDHCA returns against to_name.",
+        "5.  If they match, sets title_name_updated = TRUE, records the name in tdhca_owner_name, moves the transfer to completed.",
     ]
     y = Inches(2.85)
     for stp in auto_steps:
@@ -690,15 +649,15 @@ def slide_titles(prs):
         y += Inches(0.55)
 
     add_text(s, col2_x, Inches(2.5), col_w, Inches(0.3),
-             "CASAS LEGACY", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "LEGACY HOUSES", size=8, color=GOLD, bold=True, letter_spacing=2)
     add_text(s, col2_x, Inches(2.85), col_w, Inches(0.7),
-             "Las casas vendidas antes de la plataforma no están en el sistema y su transferencia ya se hizo fuera. Para incorporarlas, el portal Homes ofrece la subida manual:",
+             "Houses sold before the platform existed are not in the system, and their transfer was already done outside it. To bring them in, the Homes portal exposes a manual upload flow:",
              size=10, color=INK2, line_spacing=1.5)
     legacy_items = [
-        "Permite crear la propiedad y la transferencia desde cero o desde una propiedad existente.",
-        "Si la casa está vendida, pide el comprador y crea la transferencia de venta correspondiente.",
-        "Marca is_manual_upload = TRUE y title_name_updated = TRUE para que el job diario las ignore.",
-        "El serial mostrado en el listado es un link directo a la ficha pública de TDHCA.",
+        "Lets you create the property and the transfer from scratch, or against an existing property.",
+        "If the house is already sold, asks for the buyer and creates the matching sale transfer.",
+        "Sets is_manual_upload = TRUE and title_name_updated = TRUE so the daily job ignores them.",
+        "The serial shown in the listing is a direct link to the public TDHCA record.",
     ]
     y = Inches(3.85)
     for itm in legacy_items:
@@ -706,31 +665,30 @@ def slide_titles(prs):
                  "—  " + itm, size=10, color=INK2, line_spacing=1.5)
         y += Inches(0.45)
 
-    add_footer(s, "09  ·  TÍTULOS", "TDHCA + MANUAL  ·  AUDIT CADA NOCHE")
+    add_footer(s, "09  ·  TITLES", "TDHCA + MANUAL  ·  AUDIT EACH NIGHT")
 
 
 def slide_rto(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "El módulo de financiamiento propio", font=SERIF, size=30, color=INK)
+             "The in-house financing module", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "RTO EN DETALLE", size=8, color=INK3, bold=True,
+             "RTO IN DETAIL", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "El contrato base es el Texas Residential Lease With Purchase Option (33 cláusulas). Los defaults numéricos están escritos en el código y son configurables por contrato.",
+             "The base contract is the Texas Residential Lease With Purchase Option (33 clauses). The numeric defaults live in code and are configurable per contract.",
              size=11, color=INK2, line_spacing=1.5)
 
-    # KPI row
     add_rule(s, MARGIN_X, Inches(2.5), CONTENT_W)
     add_rule(s, MARGIN_X, Inches(3.4), CONTENT_W)
     kpis = [
-        ("$15", "/día", "LATE FEE"),
-        ("5", " días", "PERÍODO DE GRACIA"),
-        ("15", "", "DÍA DEL MES DE VENCIMIENTO"),
+        ("$15", "/day", "LATE FEE"),
+        ("5", " days", "GRACE PERIOD"),
+        ("15", "", "DUE DAY OF MONTH"),
         ("$250", "", "NSF FEE"),
-        ("$695", "/mes", "HOLDOVER"),
+        ("$695", "/month", "HOLDOVER"),
     ]
     kw = CONTENT_W / 5
     for i, (num, suffix, lbl) in enumerate(kpis):
@@ -745,7 +703,7 @@ def slide_rto(prs):
             add_vrule(s, x + kw, Inches(2.55), Inches(0.85))
 
     add_text(s, MARGIN_X, Inches(3.55), CONTENT_W, Inches(0.3),
-             "Defaults aplicados por la migración 012_maninos_capital.sql. Cada contrato puede sobrescribirlos.",
+             "Defaults applied by migration 012_maninos_capital.sql. Each contract can override them.",
              size=9, color=INK3, italic=True)
 
     add_rule(s, MARGIN_X, Inches(4.05), CONTENT_W)
@@ -755,14 +713,14 @@ def slide_rto(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(4.25), col_w, Inches(0.3),
-             "LO QUE EL DEALER VE CADA DÍA",
+             "WHAT THE DEALER SEES EVERY DAY",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     dealer_items = [
-        "Solicitudes RTO entrantes con su scoring de underwriting",
-        "Pagos del mes con su confirmación pendiente o aplicada",
-        "Cartera vencida segmentada por aging (0–30, 31–60, 61–90, 90+)",
-        "Comisiones por venta dividas finder vs closer, pendientes vs pagadas",
-        "Alertas de seguros del cliente próximos a vencer",
+        "Incoming RTO applications with their underwriting score",
+        "The month's payments with confirmation pending or applied",
+        "Past-due portfolio segmented by aging (0–30, 31–60, 61–90, 90+)",
+        "Per-sale commissions split into finder vs closer, pending vs paid",
+        "Alerts for customer insurance about to lapse",
     ]
     y = Inches(4.6)
     for itm in dealer_items:
@@ -771,14 +729,14 @@ def slide_rto(prs):
         y += Inches(0.35)
 
     add_text(s, col2_x, Inches(4.25), col_w, Inches(0.3),
-             "LO QUE EL CLIENTE VE EN SU CUENTA",
+             "WHAT THE CUSTOMER SEES IN THEIR ACCOUNT",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     client_items = [
-        "Su tabla de amortización con meses pasados, presente y futuros",
-        "Total pagado y saldo restante",
-        "Botón para reportar el pago del mes con método y referencia",
-        "Estado de su KYC y su contrato",
-        "Notificaciones de pagos próximos y vencidos",
+        "Their amortization table with past, current, and future months",
+        "Total paid and remaining balance",
+        "A button to report this month's payment with method and reference",
+        "The status of their KYC and contract",
+        "Notifications for upcoming and overdue payments",
     ]
     y = Inches(4.6)
     for itm in client_items:
@@ -786,20 +744,20 @@ def slide_rto(prs):
                  "—  " + itm, size=10, color=INK2, line_spacing=1.5)
         y += Inches(0.35)
 
-    add_footer(s, "10  ·  RTO", "33 CLÁUSULAS  ·  DOBLE VISTA (OPERADOR + CLIENTE)")
+    add_footer(s, "10  ·  RTO", "33 CLAUSES  ·  DUAL VIEW (OPERATOR + CUSTOMER)")
 
 
 def slide_accounting(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "La capa contable", font=SERIF, size=32, color=INK)
+             "The accounting layer", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "GL COMPLETO, DOS ENTIDADES", size=8, color=INK3, bold=True,
+             "FULL GL, TWO ENTITIES", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.9),
-             "Maninos OS no se apoya en QuickBooks externo: implementa su propio General Ledger con una estructura inspirada en el chart of accounts de QuickBooks. Hay dos contabilidades separadas — una para Homes, otra para Capital — porque son dos LLCs distintas con reportes independientes.",
+             "Maninos OS doesn't lean on an external QuickBooks: it implements its own General Ledger with a structure inspired by QuickBooks' chart of accounts. There are two separate sets of books — one for Homes, one for Capital — because they are two distinct LLCs with independent reporting.",
              size=11, color=INK2, line_spacing=1.5)
 
     col_w = (CONTENT_W - Inches(0.6)) / 2
@@ -807,21 +765,20 @@ def slide_accounting(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(2.7), col_w, Inches(0.3),
-             "TABLAS IMPLICADAS", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "TABLES INVOLVED", size=8, color=GOLD, bold=True, letter_spacing=2)
     schema_lines = [
-        ("accounting_accounts",       "// chart of accounts Homes"),
-        ("accounting_transactions",   "// asientos contables"),
-        ("bank_accounts",             "// cuentas bancarias"),
-        ("recurring_expenses",        "// reglas recurrentes"),
-        ("accounting_budgets",        "// presupuestos"),
-        ("accounting_audit_log",      "// auditoría"),
-        ("capital_accounts",          "// chart of accounts Capital"),
-        ("capital_transactions",      "// asientos Capital"),
-        ("capital_bank_statements",   "// extractos bancarios"),
-        ("capital_statement_movements","// líneas de extracto"),
-        ("capital_budgets",           "// presupuestos Capital"),
+        ("accounting_accounts",       "// chart of accounts (Homes)"),
+        ("accounting_transactions",   "// journal entries"),
+        ("bank_accounts",             "// bank accounts"),
+        ("recurring_expenses",        "// recurring rules"),
+        ("accounting_budgets",        "// budgets"),
+        ("accounting_audit_log",      "// audit trail"),
+        ("capital_accounts",          "// chart of accounts (Capital)"),
+        ("capital_transactions",      "// Capital journal entries"),
+        ("capital_bank_statements",   "// bank statements"),
+        ("capital_statement_movements","// statement lines"),
+        ("capital_budgets",           "// Capital budgets"),
     ]
-    # bg block for schema
     bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, col1_x, Inches(3.05), col_w, Inches(3.5))
     bg.fill.solid(); bg.fill.fore_color.rgb = SURFACE
     bg.line.color.rgb = LINE
@@ -837,15 +794,15 @@ def slide_accounting(prs):
         y += Inches(0.3)
 
     add_text(s, col2_x, Inches(2.7), col_w, Inches(0.3),
-             "CATEGORÍAS QUE CUBRE",
+             "WHAT IT COVERS",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     cat_items = [
-        "Ingresos: ventas contado, ventas RTO, pagos mensuales",
-        "Gastos: compra, renovación, transporte, comisiones, operativos",
-        "Activos: inventario por casa (cada propiedad genera su jerarquía)",
-        "Reportes: P&L, balance, flujo de caja, presupuesto vs real, P&L por propiedad y por yard",
-        "Reconciliación bancaria con import de extractos y matching",
-        "Audit log para cumplimiento y trazabilidad",
+        "Revenue: cash sales, RTO sales, monthly RTO payments",
+        "Expenses: house purchases, renovations, transport, commissions, operating",
+        "Assets: per-house inventory (each property generates its own hierarchy)",
+        "Reports: P&L, balance sheet, cash flow, budget vs actual, P&L per property and per yard",
+        "Bank reconciliation with statement import and matching against entries",
+        "Audit log for compliance and traceability",
     ]
     y = Inches(3.05)
     for itm in cat_items:
@@ -854,34 +811,34 @@ def slide_accounting(prs):
         y += Inches(0.4)
 
     add_text(s, col2_x, Inches(5.95), col_w, Inches(0.5),
-             "Los pagos RTO disparan automáticamente el asiento contable correspondiente (_accounting_hooks.py). El equipo no rehace contabilidad.",
+             "RTO payments automatically trigger their matching journal entry (_accounting_hooks.py). The team doesn't double-key bookkeeping.",
              size=10, color=INK2, italic=True, line_spacing=1.5)
 
-    add_footer(s, "11  ·  CONTABILIDAD", "DOS LLCs  ·  GL PROPIO  ·  AUDIT LOG")
+    add_footer(s, "11  ·  ACCOUNTING", "TWO LLCs  ·  OWN GL  ·  AUDIT LOG")
 
 
 def slide_stack(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "El stack técnico", font=SERIF, size=32, color=INK)
+             "The tech stack", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "SIN SORPRESAS, TODO ESTÁNDAR", size=8, color=INK3, bold=True,
+             "NO SURPRISES, ALL STANDARD", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     rows = [
-        ("Backend", "Python 3.12 con FastAPI. 22 archivos de rutas en Homes, 13 en Capital, 5 públicos. 9 servicios (email, pdf, scheduler, scrapers, title monitor, notification, document, esign, property)."),
-        ("Datos", "Supabase: Postgres + Auth + Storage. 58 tablas, 91 migraciones SQL. Acceso vía SDK directo, sin ORM. Service-role key en backend, RLS en buckets públicos."),
-        ("Frontend", "Next.js 14 con App Router. Tailwind con sistema de diseño propio (paleta navy / oro). Mobile-first responsive. Sin librería de estado externa: hooks de React."),
-        ("IA", "OpenAI: gpt-5 en agentes, gpt-5-mini en chat con tool-calling, whisper-1 para transcripción (forzado a español)."),
-        ("Email", "Resend con templates propios y attachments PDF. Procesamiento de cola de emails programados cada 30 min."),
-        ("Scraping", "Playwright para automatización de browser. Apify para Facebook Marketplace."),
-        ("Despliegue", "Backend en Railway (Docker). Frontend en Vercel. Deploy automático en cada push a main."),
-        ("Observabilidad", "structlog para logging estructurado. Logfire opcional para telemetría."),
+        ("Backend", "Python 3.12 with FastAPI. 22 route files for Homes, 13 for Capital, 5 public. 9 services (email, pdf, scheduler, scrapers, title monitor, notification, document, esign, property)."),
+        ("Data", "Supabase: Postgres + Auth + Storage. 58 tables, 91 SQL migrations. Direct SDK access, no ORM. Service-role key on the backend, RLS on public buckets."),
+        ("Frontend", "Next.js 14 with the App Router. Tailwind on top of an in-house design system (navy / gold palette). Mobile-first responsive. No external state library: just React hooks."),
+        ("AI", "OpenAI: gpt-5 in agents, gpt-5-mini in chat with tool-calling, whisper-1 for transcription (locked to Spanish)."),
+        ("Email", "Resend with custom templates and PDF attachments. The scheduled-email queue is processed every 30 min."),
+        ("Scraping", "Playwright for browser automation. Apify for Facebook Marketplace."),
+        ("Deployment", "Backend on Railway (Docker). Frontend on Vercel. Auto-deploy on every push to main."),
+        ("Observability", "structlog for structured logging. Logfire optional for telemetry."),
     ]
     ty = Inches(1.6)
     cols = [Inches(2.0), Inches(10.0)]
-    headers = ["CAPA", "COMPONENTES"]
+    headers = ["LAYER", "COMPONENTS"]
     cx = MARGIN_X
     for col, hdr in zip(cols, headers):
         add_text(s, cx, ty, col, Inches(0.25), hdr, size=7, color=INK3,
@@ -889,9 +846,9 @@ def slide_stack(prs):
         cx += col
     add_rule(s, MARGIN_X, ty + Inches(0.3), CONTENT_W)
     y = ty + Inches(0.4)
-    for capa, comp in rows:
+    for layer, comp in rows:
         add_text(s, MARGIN_X, y, cols[0] - Inches(0.15), Inches(0.55),
-                 capa, size=11, color=INK, bold=True)
+                 layer, size=11, color=INK, bold=True)
         add_text(s, MARGIN_X + cols[0], y, cols[1] - Inches(0.15), Inches(0.7),
                  comp, size=10, color=INK2, line_spacing=1.45)
         y += Inches(0.6)
@@ -904,14 +861,14 @@ def slide_stack(prs):
 def slide_rules(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "Las reglas del negocio", font=SERIF, size=32, color=INK)
+             "The business rules", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
              "TEXAS, MANINOS, 2026", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "Las reglas viven en el código y se aplican automáticamente. No son recomendaciones del agente: son guardarraíles que las APIs y los agentes respetan.",
+             "The rules live in code and are applied automatically. They aren't agent suggestions: they are guardrails that the APIs and the agents respect.",
              size=11, color=INK2, line_spacing=1.5)
 
     col_w = (CONTENT_W - Inches(0.6)) / 2
@@ -919,13 +876,13 @@ def slide_rules(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(2.7), col_w, Inches(0.3),
-             "ADQUISICIÓN", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "ACQUISITION", size=8, color=GOLD, bold=True, letter_spacing=2)
     adq_rules = [
-        ("Geografía:", "radio de 200 millas desde Houston o Dallas, solo Texas"),
-        ("Precio de compra:", "hasta el 60% del valor de mercado (renovación no incluida)"),
-        ("Rango aceptado:", "entre $5,000 y $80,000 por propiedad"),
-        ("Año:", "sin filtro"),
-        ("Tipos:", "single wide y double wide"),
+        ("Geography:", "200-mile radius from Houston or Dallas, Texas only"),
+        ("Purchase price:", "up to 60% of market value (renovation excluded)"),
+        ("Accepted range:", "$5,000 to $80,000 per property"),
+        ("Year:", "no filter"),
+        ("Types:", "single wide and double wide"),
     ]
     y = Inches(3.05)
     for k, v in adq_rules:
@@ -937,13 +894,13 @@ def slide_rules(prs):
         y += Inches(0.45)
 
     add_text(s, col2_x, Inches(2.7), col_w, Inches(0.3),
-             "RENOVACIÓN Y VENTA", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "RENOVATION AND SALE", size=8, color=GOLD, bold=True, letter_spacing=2)
     sell_rules = [
-        ("Presupuesto de renovación:", "entre $5,000 y $15,000"),
-        ("Precio de venta:", "hasta el 80% del valor de mercado mezclado (techo enforced por PrecioAgent)"),
-        ("Comisiones:", "$1,500 en venta contado · $1,000 en venta RTO"),
-        ("Reparto de comisión:", "50% para el finder, 50% para el closer"),
-        ("Modalidades de venta:", "contado o RTO"),
+        ("Renovation budget:", "$5,000 to $15,000"),
+        ("Sale price:", "up to 80% of blended market value (ceiling enforced by PrecioAgent)"),
+        ("Commissions:", "$1,500 on cash sale · $1,000 on RTO sale"),
+        ("Commission split:", "50% finder, 50% closer"),
+        ("Sale modes:", "cash or RTO"),
     ]
     y = Inches(3.05)
     for k, v in sell_rules:
@@ -954,20 +911,20 @@ def slide_rules(prs):
                  line_spacing=1.5)
         y += Inches(0.45)
 
-    add_footer(s, "13  ·  REGLAS", "APLICADAS EN CÓDIGO  ·  FEBRERO 2026")
+    add_footer(s, "13  ·  RULES", "ENFORCED IN CODE  ·  FEBRUARY 2026")
 
 
 def slide_portability(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(11), Inches(0.6),
-             "Lo que es genérico, lo que es Texas-MH", font=SERIF, size=28, color=INK)
+             "What is generic, what is Texas-MH", font=SERIF, size=28, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "ANÁLISIS DE PORTABILIDAD", size=8, color=INK3, bold=True,
+             "PORTABILITY ANALYSIS", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.9),
-             "El núcleo del sistema describe un patrón universal: un dealer adquiere un activo físico de alto valor con título registrable, lo reacondiciona, lo vende a crédito propio, y cobra en el tiempo. Cualquier negocio que cumpla ese patrón puede correr sobre Maninos OS con configuración localizada.",
+             "The core of the system describes a universal pattern: a dealer acquires a high-value physical asset that carries a registrable title, refurbishes it, sells it on its own credit, and collects over time. Any business that fits that pattern can run on Maninos OS with localized configuration.",
              size=11, color=INK2, italic=True, line_spacing=1.5)
 
     col_w = (CONTENT_W - Inches(0.6)) / 2
@@ -975,16 +932,16 @@ def slide_portability(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(2.95), col_w, Inches(0.3),
-             "GENÉRICO — EL MOTOR", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "GENERIC — THE ENGINE", size=8, color=GOLD, bold=True, letter_spacing=2)
     gen_items = [
-        "Pipeline de adquisición: detectar, calificar, comprar",
-        "Workflow de reacondicionamiento con materiales, mano de obra y costos",
-        "Galería de fotos clasificada (vision agnóstico al activo)",
-        "Motor RTO/BHPH: contrato, amortización, late fee, NSF, holdover, mora",
-        "Portal del cliente: KYC, firma electrónica, reporte de pagos, estado de cuenta",
-        "Capital de inversores con promissory notes y reportes mensuales",
-        "General Ledger con reconciliación bancaria",
-        "Asistente conversacional sobre la base de datos",
+        "Acquisition pipeline: detect, qualify, buy",
+        "Refurbishment workflow with materials, labor, and costs",
+        "Classified photo gallery (vision is asset-agnostic)",
+        "RTO/BHPH engine: contract, amortization, late fee, NSF, holdover, delinquency",
+        "Customer portal: KYC, e-signature, payment reporting, account statement",
+        "Investor capital with promissory notes and monthly reports",
+        "General Ledger with bank reconciliation",
+        "Conversational assistant over the database",
     ]
     y = Inches(3.3)
     for itm in gen_items:
@@ -993,14 +950,14 @@ def slide_portability(prs):
         y += Inches(0.38)
 
     add_text(s, col2_x, Inches(2.95), col_w, Inches(0.3),
-             "LOCALIZABLE — LA «ASSET PACK»", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "LOCALIZABLE — THE “ASSET PACK”", size=8, color=GOLD, bold=True, letter_spacing=2)
     loc_items = [
-        ("Schema del activo:", "sqft + HUD label en MH; HIN + nº motor en boats; VIN + odómetro en autos."),
-        ("Reglas de adquisición:", "el 60% / $5K-$80K / 200mi es de Maninos; otro dealer las suyas."),
-        ("Workflow de título:", "TDHCA en Texas, otra agencia en cada estado, USCG opcional para boats grandes."),
-        ("Plantilla de contrato:", "Lease with Purchase Option en MH; contrato BHPH en autos."),
-        ("Fuentes de scraping:", "MHVillage para MH, Manheim para autos, BoatTrader para boats."),
-        ("Prompts de los agentes:", "agente de costos entiende pintura y tablaroca; gelcoat y bottom paint en boats."),
+        ("Asset schema:", "sqft + HUD label for MH; HIN + engine number for boats; VIN + odometer for cars."),
+        ("Acquisition rules:", "the 60% / $5K-$80K / 200mi belongs to Maninos; another dealer would have its own."),
+        ("Title workflow:", "TDHCA in Texas, a different agency in each state, USCG optional for large boats."),
+        ("Contract template:", "Lease with Purchase Option for MH; BHPH contract for cars."),
+        ("Scraping sources:", "MHVillage for MH, Manheim for cars, BoatTrader for boats."),
+        ("Agent prompts:", "the cost agent knows about paint and drywall for houses; gelcoat and bottom paint for boats."),
     ]
     y = Inches(3.3)
     for k, v in loc_items:
@@ -1011,42 +968,42 @@ def slide_portability(prs):
                  line_spacing=1.5)
         y += Inches(0.42)
 
-    add_footer(s, "14  ·  PORTABILIDAD", "NÚCLEO + ASSET PACK")
+    add_footer(s, "14  ·  PORTABILITY", "CORE + ASSET PACK")
 
 
 def slide_verticals(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(11), Inches(0.6),
-             "Verticales donde el patrón calza", font=SERIF, size=30, color=INK)
+             "Verticals where the pattern fits", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "LECTURA CUALITATIVA", size=8, color=INK3, bold=True,
+             "QUALITATIVE READ", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "No se incluyen tamaños de mercado en este documento porque son estimaciones de terceros que no he verificado. Lo que sigue es una lectura cualitativa basada en cuán literal es la analogía con el caso Maninos.",
+             "Market sizes are intentionally absent from this document, because the third-party numbers I'd quote haven't been verified. What follows is a qualitative read based on how literally each vertical maps onto the Maninos case.",
              size=10, color=INK3, italic=True, line_spacing=1.5)
 
     rows = [
         ("BHPH used cars",
-         "El loop comprar → reacondicionar → financiar → cobrar es idéntico. La cartera vencida y el tracking de pagos mensuales son la analogía más directa.",
-         "Workflow de título por estado vía DMV. Integraciones starter-interrupt / GPS. Auctions como fuente."),
+         "The buy → recondition → finance → collect loop is identical. Past-due portfolio and monthly payment tracking are the most direct analogue.",
+         "State-by-state title workflow via DMV. Starter-interrupt / GPS integrations. Auctions as sourcing channel."),
         ("RV / travel trailers",
-         "El concepto de “Revisar Casa” se mapea casi sin cambios al PDI (Pre-Delivery Inspection). El ciclo es el mismo.",
-         "Schema del activo (motorhome vs towable). Plantilla de inspección PDI."),
+         "The “Revisar Casa” concept maps almost unchanged onto the PDI (Pre-Delivery Inspection). Buy-recondition-sell cycle is the same.",
+         "Asset schema (motorhome vs towable). PDI inspection template."),
         ("Boats (used)",
-         "Reacondicionamiento estándar (gelcoat, motor, tapizado). Título estatal análogo. Financiamiento propio es el vacío más grande.",
-         "HIN + datos de motor / trailer en el schema. Estacionalidad. USCG para vessels > 5 net tons."),
+         "Pre-sale reconditioning is standard (gelcoat, engine, upholstery). Title is state-issued and analogous. In-house financing is the area least served.",
+         "HIN + engine / trailer data in the schema. Seasonality. USCG documentation for vessels > 5 net tons."),
         ("Tiny homes / park models / ADU",
-         "Casi 1:1 con MH. Mismo título en muchos estados.",
-         "Volumen pequeño; tiene más sentido como módulo dentro de un dealer MH que como vertical independiente."),
-        ("Maquinaria pesada / tractores",
-         "Adquisición y reacondicionamiento encajan. El financiamiento propio es raro porque la captiva del fabricante domina.",
-         "UCC-1 en lugar de título. Lock-in de OEM hace el GTM más difícil."),
+         "Almost 1:1 with MH. Same title flow in many states.",
+         "Volume is small; better as a module inside an MH dealer than a standalone vertical."),
+        ("Heavy equipment / tractors",
+         "Acquisition and reconditioning fit. In-house financing is rare because manufacturer captives dominate.",
+         "UCC-1 instead of title. OEM lock-in makes go-to-market harder."),
     ]
     ty = Inches(2.65)
     cols = [Inches(2.6), Inches(5.0), Inches(4.5)]
-    headers = ["VERTICAL", "CÓMO ENCAJA CON EL MOTOR ACTUAL", "QUÉ HAY QUE ADAPTAR"]
+    headers = ["VERTICAL", "HOW IT FITS THE CURRENT ENGINE", "WHAT NEEDS TO BE ADAPTED"]
     cx = MARGIN_X
     for col, hdr in zip(cols, headers):
         add_text(s, cx, ty, col, Inches(0.25), hdr, size=7, color=INK3,
@@ -1068,30 +1025,30 @@ def slide_verticals(prs):
         add_rule(s, MARGIN_X, y - Inches(0.04), CONTENT_W,
                  color=LINE_SOFT, thickness=Pt(0.5))
 
-    add_footer(s, "15  ·  VERTICALES", "LECTURA CUALITATIVA  ·  SIN CIFRAS DE TERCEROS")
+    add_footer(s, "15  ·  VERTICALS", "QUALITATIVE READ  ·  NO THIRD-PARTY FIGURES")
 
 
 def slide_status(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(10), Inches(0.6),
-             "Dónde está hoy Maninos OS", font=SERIF, size=30, color=INK)
+             "Where Maninos OS stands today", font=SERIF, size=30, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "ESTADO VERIFICABLE", size=8, color=INK3, bold=True,
+             "VERIFIABLE STATUS", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(1.5), CONTENT_W, Inches(0.7),
-             "Lo siguiente es lo que hay en el repositorio y en producción ahora mismo, contado contra el código actual.",
+             "What follows is what's in the repository and in production right now, counted against the current code.",
              size=11, color=INK2, line_spacing=1.5)
 
     add_rule(s, MARGIN_X, Inches(2.4), CONTENT_W)
     add_rule(s, MARGIN_X, Inches(3.3), CONTENT_W)
     kpis = [
-        ("3", "PORTALES EN PRODUCCIÓN"),
-        ("53", "PÁGINAS FRONTEND (18+19+16)"),
-        ("40", "ARCHIVOS DE RUTAS BACKEND"),
-        ("6", "AGENTES ESPECIALIZADOS"),
-        ("10", "JOBS EN SCHEDULER"),
+        ("3", "PORTALS IN PRODUCTION"),
+        ("53", "FRONTEND PAGES (18+19+16)"),
+        ("40", "BACKEND ROUTE FILES"),
+        ("6", "SPECIALIZED AGENTS"),
+        ("10", "SCHEDULER JOBS"),
     ]
     kw = CONTENT_W / 5
     for i, (num, lbl) in enumerate(kpis):
@@ -1110,13 +1067,13 @@ def slide_status(prs):
     col2_x = MARGIN_X + col_w + Inches(0.6)
 
     add_text(s, col1_x, Inches(3.95), col_w, Inches(0.3),
-             "EN PRODUCCIÓN", size=8, color=GOLD, bold=True, letter_spacing=2)
+             "IN PRODUCTION", size=8, color=GOLD, bold=True, letter_spacing=2)
     prod_items = [
-        "Operación real diaria del staff de Maninos en el portal Homes",
-        "Inversores activos consultando sus reportes en Capital",
-        "Clientes reportando pagos mensuales desde su cuenta en Clientes",
-        "Scheduler diario contra TDHCA dejando audit en scheduler_runs",
-        "Agentes de IA en flujos de “Revisar Casa” y planificación de renovación",
+        "Daily real-world operations of the Maninos staff in the Homes portal",
+        "Active investors reading their reports in Capital",
+        "Customers reporting monthly payments from their accounts in Customers",
+        "Daily scheduler against TDHCA leaving an audit trail in scheduler_runs",
+        "AI agents inside the “Revisar Casa” and renovation-planning flows",
     ]
     y = Inches(4.3)
     for itm in prod_items:
@@ -1125,13 +1082,13 @@ def slide_status(prs):
         y += Inches(0.4)
 
     add_text(s, col2_x, Inches(3.95), col_w, Inches(0.3),
-             "ÁREAS QUE AÚN TIENEN DEUDA",
+             "AREAS THAT STILL CARRY DEBT",
              size=8, color=GOLD, bold=True, letter_spacing=2)
     debt_items = [
-        "Multi-tenant: hoy es instancia única para Maninos. Falta separación de tenants.",
-        "White-label de marca y dominio.",
-        "Stripe está como label en dropdowns pero no integrado de verdad. Pagos online aún no existen — todo es transferencia con confirmación.",
-        "Asset Pack como abstracción explícita: hoy las reglas MH están dispersas en código; portarlas requiere refactor.",
+        "Multi-tenant: today the system runs as a single instance for Maninos. Tenant separation is missing.",
+        "White-label of brand and domain.",
+        "Stripe is wired as a label in dropdowns but not actually integrated. Real online payments don't exist yet — everything is bank transfer with confirmation.",
+        "Asset Pack as an explicit abstraction: today the MH rules are scattered across the code; lifting them into a pack requires refactoring.",
     ]
     y = Inches(4.3)
     for itm in debt_items:
@@ -1139,39 +1096,37 @@ def slide_status(prs):
                  "—  " + itm, size=10, color=INK2, line_spacing=1.5)
         y += Inches(0.5)
 
-    add_footer(s, "16  ·  ESTADO ACTUAL", "PRODUCCIÓN REAL  ·  DEUDA EXPLÍCITA")
+    add_footer(s, "16  ·  TODAY", "REAL PRODUCTION  ·  EXPLICIT DEBT")
 
 
 def slide_closing(prs):
     s = slide_blank(prs)
     add_text(s, MARGIN_X, MARGIN_Y, Inches(8), Inches(0.6),
-             "En una frase", font=SERIF, size=32, color=INK)
+             "In one sentence", font=SERIF, size=32, color=INK)
     add_text(s, MARGIN_X, MARGIN_Y, CONTENT_W, Inches(0.6),
-             "CIERRE", size=8, color=INK3, bold=True,
+             "CLOSING", size=8, color=INK3, bold=True,
              letter_spacing=2.5, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
     add_rule(s, MARGIN_X, MARGIN_Y + Inches(0.7), CONTENT_W)
 
-    # vertical gold rule + pulled quote
     quote_x = MARGIN_X + Inches(0.4)
     quote_y = Inches(2.0)
     quote_w = CONTENT_W - Inches(0.4)
     add_vrule(s, quote_x - Inches(0.1), quote_y, Inches(2.6), color=GOLD, thickness=Pt(2.5))
     add_text(s, quote_x + Inches(0.2), quote_y, quote_w - Inches(0.2), Inches(2.6),
-             "“Maninos OS es la disciplina operativa de un dealer especializado de mobile homes en Texas — convertida en código. Lo que era spreadsheet, WhatsApp, QuickBooks y procedimientos no escritos, ahora es un sistema con seis agentes de IA, GL propio, módulo de financiamiento, portal del cliente y audit log.”",
+             "“Maninos OS is the operational discipline of a specialized mobile-home dealer in Texas — turned into code. What used to be spreadsheets, WhatsApp, QuickBooks, and unwritten procedure is now a system with six AI agents, its own GL, an in-house financing module, a customer portal, and an audit log.”",
              font=SERIF, size=21, color=INK, italic=True, line_spacing=1.4)
 
     add_rule(s, MARGIN_X, Inches(4.95), CONTENT_W)
 
     add_text(s, MARGIN_X, Inches(5.2), CONTENT_W, Inches(0.9),
-             "El siguiente paso natural es separar el motor de las reglas específicas de Maninos, formalizar el concepto de Asset Pack, y permitir que otros dealers — primero de mobile homes en otros estados, después de RV o BHPH — corran sobre la misma infraestructura.",
+             "The natural next step is to separate the engine from Maninos's specific rules, formalize the Asset Pack abstraction, and let other dealers — first mobile homes in other states, then RV or BHPH — run on the same infrastructure.",
              font=SERIF, size=15, color=INK2, line_spacing=1.5)
 
-    # bottom
     add_rule(s, MARGIN_X, Inches(6.6), CONTENT_W)
     add_text(s, MARGIN_X, Inches(6.8), Inches(8), Inches(0.4),
              "Maninos OS", font=SERIF, size=16, color=INK)
     add_text(s, MARGIN_X, Inches(7.05), Inches(8), Inches(0.3),
-             "Documento descriptivo · 2026", size=9, color=INK3, italic=True)
+             "Descriptive document · 2026", size=9, color=INK3, italic=True)
     add_text(s, MARGIN_X, Inches(6.8), CONTENT_W, Inches(0.3),
              "Maninos Homes LLC", size=9, color=INK3,
              align=PP_ALIGN.RIGHT)
@@ -1179,7 +1134,7 @@ def slide_closing(prs):
              "Maninos Capital LLC", size=9, color=INK3,
              align=PP_ALIGN.RIGHT)
 
-    add_footer(s, "17  ·  CIERRE", "FIN DEL DOCUMENTO")
+    add_footer(s, "17  ·  CLOSING", "END OF DOCUMENT")
 
 
 def main():
@@ -1188,15 +1143,15 @@ def main():
     prs.slide_height = SLIDE_H
 
     slide_title(prs)
-    slide_definicion(prs)
-    slide_arquitectura(prs)
-    slide_section_index(prs, "— PARTE I —", "El sistema, módulo por módulo",
-                        "Recorrido descriptivo por cada portal: qué incluye, cómo lo usa cada usuario, qué datos guarda y cómo se conecta al resto.")
+    slide_definition(prs)
+    slide_architecture(prs)
+    slide_section_index(prs, "— PART I —", "The system, module by module",
+                        "A descriptive walkthrough of each portal: what it includes, how each user works with it, what data it stores, and how it connects to the rest.")
     slide_homes_portal(prs)
     slide_capital_portal(prs)
-    slide_clientes_portal(prs)
-    slide_section_index(prs, "— PARTE II —", "El loop de negocio",
-                        "Cómo se mueve un activo desde que aparece en una fuente externa hasta que termina su contrato RTO 36 meses después.")
+    slide_customers_portal(prs)
+    slide_section_index(prs, "— PART II —", "The business loop",
+                        "How an asset moves from the moment it surfaces in an external source until its 36-month RTO contract closes out.")
     slide_loop(prs)
     slide_agents(prs)
     slide_scheduler(prs)
@@ -1205,8 +1160,8 @@ def main():
     slide_accounting(prs)
     slide_stack(prs)
     slide_rules(prs)
-    slide_section_index(prs, "— PARTE III —", "El patrón es portable",
-                        "El sistema fue construido para mobile homes en Texas, pero su modelo de datos y sus flujos describen una clase más amplia de negocios.")
+    slide_section_index(prs, "— PART III —", "The pattern is portable",
+                        "The system was built for mobile homes in Texas, but its data model and its workflows describe a broader class of businesses.")
     slide_portability(prs)
     slide_verticals(prs)
     slide_status(prs)
