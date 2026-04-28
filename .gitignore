@@ -85,3 +85,6 @@ web/src/app/legacy/
 eStmt*.pdf
 streak-no-insta.html
 test-photos/
+
+# Office lock files
+~$*
