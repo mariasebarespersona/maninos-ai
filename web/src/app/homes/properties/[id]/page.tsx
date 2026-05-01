@@ -1669,12 +1669,11 @@ ${price}
               </div>
             </div>
 
-            {/* Manual Title Notes — only shown for properties created via "Subir Título Manual" */}
+            {/* Manual Title Notes — always shown for manual-upload properties */}
             {property.document_data?.title_app_purchase?._manual_upload && (
               (() => {
                 const titleNotes: string = property.document_data.title_app_purchase._manual_notes || ''
                 const propNotes: string = property.notes || ''
-                if (!titleNotes && !propNotes) return null
                 return (
                   <div className="card-luxury p-4 sm:p-6 border-l-4 border-amber-400">
                     <h3 className="font-medium text-navy-900 mb-3 flex items-center gap-2">
@@ -1693,6 +1692,11 @@ ${price}
                       {propNotes && (
                         <p className="text-xs text-slate leading-relaxed whitespace-pre-wrap">
                           {propNotes}
+                        </p>
+                      )}
+                      {!titleNotes && !propNotes && (
+                        <p className="text-xs text-slate italic">
+                          Sin notas. Edita el título desde la sección Títulos para añadir.
                         </p>
                       )}
                     </div>
