@@ -64,6 +64,9 @@ export default function NotificacionesPage() {
   const isAdmin = userRole === 'admin'
   const isTreasury = userRole === 'treasury' || userRole === 'admin'
 
+  const isAbigail = teamUser?.email === 'abigail@maninoshomes.com'
+  const canSeePending = isAdmin || isAbigail
+
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'completed' | 'received'>('pending')
@@ -355,8 +358,8 @@ export default function NotificacionesPage() {
 
       {/* Actividad Reciente removed per user request — all actions go through the 4 tabs below */}
 
-      {/* ── ADMIN: Renovation quotes pending approval ─────────────────── */}
-      {isAdmin && pendingRenovations.length > 0 && (
+      {/* ── ADMIN / Abigail: Renovation quotes pending approval ───────── */}
+      {canSeePending && pendingRenovations.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
@@ -434,8 +437,8 @@ export default function NotificacionesPage() {
         </div>
       )}
 
-      {/* ── ADMIN: Unapproved transfers to approve ─────────────────────── */}
-      {isAdmin && unapprovedTransfers.length > 0 && (
+      {/* ── ADMIN / Abigail: Unapproved transfers to approve ──────────── */}
+      {canSeePending && unapprovedTransfers.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
@@ -539,8 +542,8 @@ export default function NotificacionesPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1" style={{ borderColor: 'var(--sand)' }}>
-        {/* Admin sees "Pending" (to approve), Treasury sees "Approved" (to execute) */}
-        {isAdmin && (
+        {/* Admin + Abigail see "Pending" (to approve), Treasury sees "Approved" (to execute) */}
+        {canSeePending && (
           <button
             onClick={() => setActiveTab('pending')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
@@ -816,8 +819,8 @@ export default function NotificacionesPage() {
 
                 {/* Actions based on role */}
                 <div className="flex flex-col gap-2 flex-shrink-0">
-                  {/* Admin: approve pending orders */}
-                  {isAdmin && order.status === 'pending' && (
+                  {/* Admin / Abigail: approve pending orders */}
+                  {canSeePending && order.status === 'pending' && (
                     <button
                       onClick={() => handleApproveOrder(order.id)}
                       disabled={approvingId === order.id}
