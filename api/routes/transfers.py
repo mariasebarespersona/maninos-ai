@@ -819,6 +819,7 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
         "is_new":              False,
         "is_used":             True,
         "_manual_upload":      True,
+        "_manual_notes":       data.notes or "",
     }
 
     # Determine whether this manual upload represents a SALE (Maninos → buyer)
@@ -984,6 +985,7 @@ async def update_manual_title_upload(transfer_id: str, data: ManualTitleUpdateRe
             "buyer_name":        data.buyer_name or "MANINOS HOMES",
             "buyer_date":        data.date_of_title or "",
             "_manual_upload":    True,
+            "_manual_notes":     data.notes or "",
         }
         doc_data["title_app_purchase"] = {**(doc_data.get("title_app_purchase") or {}), **title_fields}
         if is_sale:

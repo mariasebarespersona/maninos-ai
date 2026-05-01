@@ -71,6 +71,7 @@ interface Property {
   checklist_completed: boolean
   checklist_data: Record<string, boolean>
   document_data: Record<string, any>
+  notes?: string | null
   // evaluation_report_id is stored on evaluation_reports.property_id, not here
   created_at: string
   updated_at: string
@@ -1667,6 +1668,38 @@ ${price}
                 </div>
               </div>
             </div>
+
+            {/* Manual Title Notes — only shown for properties created via "Subir Título Manual" */}
+            {property.document_data?.title_app_purchase?._manual_upload && (
+              (() => {
+                const titleNotes: string = property.document_data.title_app_purchase._manual_notes || ''
+                const propNotes: string = property.notes || ''
+                if (!titleNotes && !propNotes) return null
+                return (
+                  <div className="card-luxury p-4 sm:p-6 border-l-4 border-amber-400">
+                    <h3 className="font-medium text-navy-900 mb-3 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-amber-500" />
+                      Notas — Título Manual
+                    </h3>
+                    <div className="space-y-2">
+                      {titleNotes && (
+                        <p className="text-sm text-navy-700 leading-relaxed whitespace-pre-wrap">
+                          {titleNotes}
+                        </p>
+                      )}
+                      {propNotes && titleNotes && (
+                        <hr className="border-sand my-2" />
+                      )}
+                      {propNotes && (
+                        <p className="text-xs text-slate leading-relaxed whitespace-pre-wrap">
+                          {propNotes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()
+            )}
           </div>
         </div>
 
