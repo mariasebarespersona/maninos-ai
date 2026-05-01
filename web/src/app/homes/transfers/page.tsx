@@ -16,9 +16,10 @@ import {
   Eye,
   ExternalLink,
   Upload,
+  Pencil,
 } from 'lucide-react'
 import TitleTransferCard from '@/components/TitleTransferCard'
-import ManualTitleUploadModal from '@/components/ManualTitleUploadModal'
+import ManualTitleUploadModal, { type EditTransferData } from '@/components/ManualTitleUploadModal'
 import SchedulerRunsWidget from '@/components/SchedulerRunsWidget'
 import { useToast } from '@/components/ui/Toast'
 
@@ -31,6 +32,7 @@ interface Transfer {
   to_name: string
   documents_checklist: Record<string, boolean>
   property_address: string
+  property_code?: string | null
   created_at: string
   tdhca_serial?: string | null
   tdhca_label?: string | null
@@ -38,6 +40,8 @@ interface Transfer {
   title_name_updated?: boolean
   last_tdhca_check?: string | null
   tdhca_check_count?: number
+  is_manual_upload?: boolean
+  manual_upload_notes?: string | null
 }
 
 interface Stats {
@@ -83,6 +87,8 @@ export default function TransfersPage() {
   const [monitorLoading, setMonitorLoading] = useState(false)
   const [recheckingId, setRecheckingId] = useState<string | null>(null)
   const [showManualUpload, setShowManualUpload] = useState(false)
+  const [editTransfer, setEditTransfer] = useState<EditTransferData | null>(null)
+  const [loadingEditId, setLoadingEditId] = useState<string | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -128,6 +134,44 @@ export default function TransfersPage() {
       console.error('Error loading title monitor:', error)
     } finally {
       setMonitorLoading(false)
+    }
+  }
+
+  const handleEditClick = async (t: Transfer) => {
+    setLoadingEditId(t.id)
+    try {
+      // Fetch property to get document_data.title_app_purchase for pre-populating the form
+      const res = await fetch(`/api/properties/${t.property_id}`)
+      const prop = res.ok ? await res.json() : {}
+      const tap = prop?.document_data?.title_app_purchase || {}
+      const et: EditTransferData = {
+        id: t.id,
+        property_id: t.property_id,
+        property_address: t.property_address,
+        property_code: t.property_code,
+        transfer_type: t.transfer_type,
+        tdhca_serial: t.tdhca_serial,
+        tdhca_label: t.tdhca_label,
+        tdhca_owner_name: t.tdhca_owner_name,
+        from_name: t.from_name,
+        to_name: t.to_name,
+        manual_upload_notes: t.manual_upload_notes,
+        manufacturer: tap.manufacturer || '',
+        model: tap.model || '',
+        year: tap.model_year || tap.date_manufactured || '',
+        county: tap.county || '',
+        bedrooms: tap.bedrooms || '',
+        baths: tap.baths || '',
+        sqft: tap.dimensions ? tap.dimensions.replace(/\s*sqft/i, '') : '',
+        seller_name: tap.seller_name || '',
+        buyer_name: tap.buyer_name || '',
+        date_of_title: tap.buyer_date || '',
+      }
+      setEditTransfer(et)
+    } catch {
+      toast.error('Error cargando datos del título')
+    } finally {
+      setLoadingEditId(null)
     }
   }
 
@@ -219,8 +263,9 @@ export default function TransfersPage() {
       </div>
 
       <ManualTitleUploadModal
-        open={showManualUpload}
-        onClose={() => setShowManualUpload(false)}
+        open={showManualUpload || editTransfer !== null}
+        onClose={() => { setShowManualUpload(false); setEditTransfer(null) }}
+        editTransfer={editTransfer}
         onCreated={() => {
           fetchData()
           fetchMonitor()
@@ -384,20 +429,37 @@ export default function TransfersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {(t.tdhca_serial || t.tdhca_label) && !t.title_name_updated && (
-                            <button
-                              onClick={() => handleRecheck(t.id)}
-                              disabled={recheckingId === t.id}
-                              className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
-                            >
-                              {recheckingId === t.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin inline mr-1" />
-                              ) : (
-                                <RefreshCw className="w-3 h-3 inline mr-1" />
-                              )}
-                              Verificar
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {(t.tdhca_serial || t.tdhca_label) && !t.title_name_updated && (
+                              <button
+                                onClick={() => handleRecheck(t.id)}
+                                disabled={recheckingId === t.id}
+                                className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                              >
+                                {recheckingId === t.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin inline mr-1" />
+                                ) : (
+                                  <RefreshCw className="w-3 h-3 inline mr-1" />
+                                )}
+                                Verificar
+                              </button>
+                            )}
+                            {t.is_manual_upload && (
+                              <button
+                                onClick={() => handleEditClick(t)}
+                                disabled={loadingEditId === t.id}
+                                title="Editar datos del título manual"
+                                className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+                              >
+                                {loadingEditId === t.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Pencil className="w-3 h-3" />
+                                )}
+                                Editar
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

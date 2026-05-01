@@ -911,6 +911,94 @@ async def create_manual_title_upload(data: ManualTitleUploadRequest):
     }
 
 
+class ManualTitleUpdateRequest(BaseModel):
+    tdhca_serial: Optional[str] = None
+    tdhca_label: Optional[str] = None
+    tdhca_owner_name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[str] = None
+    county: Optional[str] = None
+    bedrooms: Optional[str] = None
+    baths: Optional[str] = None
+    sqft: Optional[str] = None
+    seller_name: Optional[str] = None
+    buyer_name: Optional[str] = None
+    sold_to_name: Optional[str] = None
+    date_of_title: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.patch("/manual-upload/{transfer_id}")
+async def update_manual_title_upload(transfer_id: str, data: ManualTitleUpdateRequest):
+    """Edit the title fields of a previously created manual-upload transfer.
+    Only works on rows where is_manual_upload=TRUE. Updates both the
+    title_transfers row and the mirrored properties.document_data fields."""
+    check = sb.table("title_transfers").select(
+        "id, property_id, transfer_type, is_manual_upload"
+    ).eq("id", transfer_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+    transfer = check.data[0]
+    if not transfer.get("is_manual_upload"):
+        raise HTTPException(status_code=400, detail="Only manual-upload transfers can be edited this way")
+
+    property_id = transfer["property_id"]
+    is_sale = transfer["transfer_type"] == "sale"
+
+    from_name = data.seller_name or ("Maninos Homes LLC" if is_sale else "Previous Owner")
+    to_name = data.sold_to_name or data.buyer_name or ("Buyer" if is_sale else "Maninos Homes LLC")
+    tdhca_owner = data.tdhca_owner_name or to_name
+
+    transfer_notes = ("Título subido manualmente" + (f" — {data.notes}" if data.notes else ""))
+    transfer_update = {
+        "tdhca_serial":        data.tdhca_serial,
+        "tdhca_label":         data.tdhca_label,
+        "tdhca_owner_name":    tdhca_owner,
+        "from_name":           from_name,
+        "to_name":             to_name,
+        "manual_upload_notes": data.notes,
+        "notes":               transfer_notes,
+    }
+    transfer_update = {k: v for k, v in transfer_update.items() if v is not None}
+    sb.table("title_transfers").update(transfer_update).eq("id", transfer_id).execute()
+
+    prop_res = sb.table("properties").select("document_data").eq("id", property_id).execute()
+    if prop_res.data:
+        doc_data = prop_res.data[0].get("document_data") or {}
+        title_fields = {
+            "serial_number":     data.tdhca_serial or "",
+            "section1_serial":   data.tdhca_serial or "",
+            "page2_serial":      data.tdhca_serial or "",
+            "label_seal_number": data.tdhca_label or "",
+            "section1_label":    data.tdhca_label or "",
+            "page2_label":       data.tdhca_label or "",
+            "manufacturer":      data.manufacturer or "",
+            "model":             data.model or "",
+            "model_year":        data.year or "",
+            "county":            data.county or "",
+            "bedrooms":          data.bedrooms or "",
+            "baths":             data.baths or "",
+            "dimensions":        f"{data.sqft} sqft" if data.sqft else "",
+            "seller_name":       data.seller_name or "",
+            "buyer_name":        data.buyer_name or "MANINOS HOMES",
+            "buyer_date":        data.date_of_title or "",
+            "_manual_upload":    True,
+        }
+        doc_data["title_app_purchase"] = {**(doc_data.get("title_app_purchase") or {}), **title_fields}
+        if is_sale:
+            doc_data["title_app_sale"] = {
+                **(doc_data.get("title_app_sale") or {}),
+                **title_fields,
+                "seller_name": "MANINOS HOMES",
+                "buyer_name":  data.sold_to_name or to_name,
+            }
+        sb.table("properties").update({"document_data": doc_data}).eq("id", property_id).execute()
+
+    updated = sb.table("title_transfers").select("*").eq("id", transfer_id).execute()
+    return {"ok": True, "transfer": updated.data[0] if updated.data else {}}
+
+
 @router.post("/manual-upload/{transfer_id}/pdf")
 async def upload_manual_title_pdf(transfer_id: str, file: UploadFile = File(...)):
     """Upload the physical title PDF for a manual-upload transfer.
