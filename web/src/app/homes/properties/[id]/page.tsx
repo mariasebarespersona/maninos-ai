@@ -1514,29 +1514,117 @@ ${price}
                 Detalles
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <DetailItem label="Año" value={property.year?.toString()} />
-                <DetailItem label="Habitaciones" value={property.bedrooms?.toString()} />
-                <DetailItem label="Baños" value={property.bathrooms?.toString()} />
-                <div>
-                  <p className="text-sm text-navy-500">Medida</p>
-                  <p className="font-medium text-navy-900">
-                    {property.length_ft && property.width_ft ? (
-                      <>
-                        {property.length_ft} × {property.width_ft}
-                        <span className="text-sm font-normal text-navy-400 ml-1">
-                          ({(property.length_ft * property.width_ft).toLocaleString()} ft²)
-                        </span>
-                      </>
-                    ) : property.square_feet ? (
-                      <>{property.square_feet.toLocaleString()} ft²</>
-                    ) : (
-                      '—'
-                    )}
-                  </p>
-                </div>
-                <DetailItem label="HUD" value={property.hud_number} />
-                <DetailItem label="Código Postal" value={property.zip_code} />
-                <DetailItem label="ID" value={property.property_code} />
+                {(() => {
+                  const EditableDetailField = ({ label, value, field, suffix }: { label: string; value?: number | null; field: string; suffix?: string }) => {
+                    const [editing, setEditing] = React.useState(false);
+                    const [val, setVal] = React.useState(String(value ?? ''));
+
+                    const save = async () => {
+                      setEditing(false);
+                      const num = val === '' ? null : Number(val);
+                      if (num === value) return;
+                      try {
+                        await fetch(`/api/properties/${property.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ [field]: num }),
+                        });
+                        await fetchProperty();
+                        toast.success(`${label} actualizado`);
+                      } catch { toast.error('Error guardando'); }
+                    };
+
+                    return (
+                      <div className="group">
+                        <p className="text-sm text-navy-500">{label}</p>
+                        {editing ? (
+                          <input
+                            type="number"
+                            className="w-full px-2 py-0.5 border border-blue-300 rounded text-sm bg-blue-50 font-medium"
+                            value={val}
+                            onChange={e => setVal(e.target.value)}
+                            onBlur={save}
+                            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setVal(String(value ?? '')); setEditing(false); } }}
+                            autoFocus
+                          />
+                        ) : (
+                          <p
+                            className="font-medium text-navy-900 cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 -mx-1 rounded transition-colors flex items-center gap-1"
+                            onClick={() => { setVal(String(value ?? '')); setEditing(true); }}
+                            title="Click para editar"
+                          >
+                            {value != null ? `${value}${suffix ?? ''}` : '—'}
+                            <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-50 flex-shrink-0" />
+                          </p>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  const EditableSqftField = () => {
+                    const currentVal = property.square_feet ?? (property.length_ft && property.width_ft ? property.length_ft * property.width_ft : null);
+                    const [editing, setEditing] = React.useState(false);
+                    const [val, setVal] = React.useState(String(currentVal ?? ''));
+
+                    const save = async () => {
+                      setEditing(false);
+                      const num = val === '' ? null : Number(val);
+                      if (num === currentVal) return;
+                      try {
+                        await fetch(`/api/properties/${property.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ square_feet: num }),
+                        });
+                        await fetchProperty();
+                        toast.success('Medida actualizada');
+                      } catch { toast.error('Error guardando'); }
+                    };
+
+                    return (
+                      <div className="group">
+                        <p className="text-sm text-navy-500">Medida</p>
+                        {editing ? (
+                          <input
+                            type="number"
+                            className="w-full px-2 py-0.5 border border-blue-300 rounded text-sm bg-blue-50 font-medium"
+                            value={val}
+                            placeholder="ft²"
+                            onChange={e => setVal(e.target.value)}
+                            onBlur={save}
+                            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setVal(String(currentVal ?? '')); setEditing(false); } }}
+                            autoFocus
+                          />
+                        ) : (
+                          <p
+                            className="font-medium text-navy-900 cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 -mx-1 rounded transition-colors flex items-center gap-1"
+                            onClick={() => { setVal(String(currentVal ?? '')); setEditing(true); }}
+                            title="Click para editar"
+                          >
+                            {property.length_ft && property.width_ft ? (
+                              <>{property.length_ft} × {property.width_ft} <span className="text-sm font-normal text-navy-400">({(property.length_ft * property.width_ft).toLocaleString()} ft²)</span></>
+                            ) : currentVal ? (
+                              <>{currentVal.toLocaleString()} ft²</>
+                            ) : '—'}
+                            <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-50 flex-shrink-0" />
+                          </p>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <>
+                      <EditableDetailField label="Año" value={property.year} field="year" />
+                      <EditableDetailField label="Habitaciones" value={property.bedrooms} field="bedrooms" />
+                      <EditableDetailField label="Baños" value={property.bathrooms} field="bathrooms" />
+                      <EditableSqftField />
+                      <DetailItem label="HUD" value={property.hud_number} />
+                      <DetailItem label="Código Postal" value={property.zip_code} />
+                      <DetailItem label="ID" value={property.property_code} />
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
