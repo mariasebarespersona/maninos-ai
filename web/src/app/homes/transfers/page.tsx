@@ -386,15 +386,25 @@ export default function TransfersPage() {
                         </td>
                         <td className="px-4 py-3 font-mono text-xs">
                           {(t.tdhca_serial || t.tdhca_label) ? (
-                            <a
-                              href={`https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp?${t.tdhca_serial ? `serialNum=${encodeURIComponent(t.tdhca_serial)}` : `labelNum=${encodeURIComponent(t.tdhca_label || '')}`}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                            <button
+                              onClick={() => {
+                                const fieldName = t.tdhca_serial ? 'serial' : 'label'
+                                const fieldValue = t.tdhca_serial || t.tdhca_label || ''
+                                const w = window.open('', '_blank')
+                                if (w) {
+                                  w.document.write(
+                                    `<form method="POST" action="https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp">` +
+                                    `<input name="${fieldName}" value="${fieldValue.replace(/"/g, '&quot;')}" />` +
+                                    `</form><script>document.forms[0].submit();<\/script>`
+                                  )
+                                  w.document.close()
+                                }
+                              }}
+                              className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 cursor-pointer"
                             >
                               {t.tdhca_serial || t.tdhca_label}
                               <ExternalLink className="w-3 h-3" />
-                            </a>
+                            </button>
                           ) : (
                             <span className="text-amber-600 italic">Sin serial/label</span>
                           )}
