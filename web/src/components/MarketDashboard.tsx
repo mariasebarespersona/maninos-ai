@@ -827,8 +827,8 @@ export default function MarketDashboard() {
   const isTitleComplete = !!tdhcaResult;
   // Title application is complete if template was filled or a file was uploaded (OPTIONAL)
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication);
-  // Bill of Sale + Title are compulsory; Title Application is optional
-  const allDocsReady = isBosComplete && isTitleComplete;
+  // All documents are optional — user can proceed even without uploading anything
+  const allDocsReady = true;
 
   const isEvalComplete = !!evalReport;
 
@@ -3193,12 +3193,10 @@ export default function MarketDashboard() {
                   </div>
                 </div>
                 
-                {!allDocsReady && (
-                  <p className="text-sm text-amber-600 mt-4 flex items-center gap-2">
+                {(!isBosComplete || !isTitleComplete) && (
+                  <p className="text-sm text-slate-500 mt-4 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
-                    {!isBosComplete ? 'Completa el Bill of Sale (template o sube archivo)' : 
-                     !isTitleComplete ? 'Busca el título en TDHCA con Label/Seal o Serial Number' :
-                     'Completa los documentos obligatorios para continuar'}
+                    Bill of Sale y Título son opcionales — puedes continuar sin subirlos
                   </p>
                 )}
               </div>

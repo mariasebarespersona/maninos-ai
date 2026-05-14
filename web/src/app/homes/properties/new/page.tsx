@@ -517,8 +517,8 @@ export default function NewPropertyPage() {
   const isBosComplete = !!(billOfSaleData || documents.billOfSale)
   const isTitleComplete = !!tdhcaResult
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication)
-  // Bill of Sale + Title are compulsory; Title Application is optional
-  const allDocsReady = isBosComplete && isTitleComplete
+  // All documents are optional — user can proceed even without uploading anything
+  const allDocsReady = true
   const isPropertyInfoValid = !!form.address.trim()
 
   // Payment validation
@@ -1570,12 +1570,10 @@ export default function NewPropertyPage() {
                 La dirección es obligatoria para continuar
               </p>
             )}
-            {isPropertyInfoValid && !allDocsReady && (
-              <p className="text-sm text-amber-600 flex items-center gap-2">
+            {isPropertyInfoValid && (!isBosComplete || !isTitleComplete) && (
+              <p className="text-sm text-slate-500 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
-                {!isBosComplete ? 'Completa el Bill of Sale (template o sube archivo)' : 
-                 !isTitleComplete ? 'Busca el título en TDHCA con Label/Seal o Serial Number' : 
-                 'Completa los documentos obligatorios para continuar'}
+                Bill of Sale y Título son opcionales — puedes continuar sin subirlos
               </p>
             )}
           </div>
