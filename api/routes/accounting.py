@@ -2825,13 +2825,46 @@ async def upload_bank_statement(
             except Exception as e:
                 logger.warning(f"[BankStmt] Failed to insert movement {i}: {e}")
 
-        # Update statement status
-        sb.table("bank_statements").update({
+        # Extract period + balance metadata from first movement (set there by the AI parser)
+        meta = movements[0] if movements else {}
+        period_start = meta.get("period_start") or None
+        period_end = meta.get("period_end") or None
+        beginning_balance = meta.get("beginning_balance")
+        ending_balance = meta.get("ending_balance")
+
+        stmt_update = {
             "status": "parsed",
             "total_movements": len(movements),
-            "bank_name": movements[0].get("bank_name") if movements else None,
-            "account_number_last4": movements[0].get("account_last4") if movements else None,
-        }).eq("id", statement_id).execute()
+            "bank_name": meta.get("bank_name") or None,
+            "account_number_last4": meta.get("account_last4") or None,
+            "statement_period_start": period_start,
+            "statement_period_end": period_end,
+            "beginning_balance": float(beginning_balance) if beginning_balance is not None else None,
+            "ending_balance": float(ending_balance) if ending_balance is not None else None,
+        }
+        stmt_update = {k: v for k, v in stmt_update.items() if v is not None}
+        sb.table("bank_statements").update(stmt_update).eq("id", statement_id).execute()
+
+        # Auto-sync bank_accounts.current_balance with the most-recent statement's
+        # ending_balance for the linked account. Only overwrite if this statement
+        # is the newest one (by statement_period_end) — older uploads do not
+        # clobber newer balances.
+        if bank_account_id and ending_balance is not None:
+            try:
+                newest = (sb.table("bank_statements")
+                          .select("id, ending_balance, statement_period_end")
+                          .eq("bank_account_id", bank_account_id)
+                          .not_.is_("ending_balance", "null")
+                          .not_.is_("statement_period_end", "null")
+                          .order("statement_period_end", desc=True)
+                          .limit(1).execute()).data or []
+                if newest and newest[0]["id"] == statement_id:
+                    sb.table("bank_accounts").update(
+                        {"current_balance": float(ending_balance)}
+                    ).eq("id", bank_account_id).execute()
+                    logger.info(f"[BankStmt] Auto-synced bank_account {bank_account_id} balance → ${ending_balance}")
+            except Exception as sync_err:
+                logger.warning(f"[BankStmt] Auto-sync balance failed: {sync_err}")
 
         # Refresh statement from DB (no auto-classify — user drives the 3-step wizard)
         stmt_refresh = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
