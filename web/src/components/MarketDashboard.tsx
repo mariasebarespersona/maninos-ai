@@ -2627,7 +2627,7 @@ export default function MarketDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <FileText className="w-4 h-4 inline mr-2" />
-                      Bill of Sale (Factura de Compra-Venta) *
+                      Bill of Sale (Factura de Compra-Venta) <span className="text-xs font-normal text-slate-400">(opcional)</span>
                     </label>
                     
                     {/* Bill of Sale — Interactive Template OR Upload */}
@@ -2780,7 +2780,7 @@ export default function MarketDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <FileText className="w-4 h-4 inline mr-2" />
-                      Título de la Casa (TDHCA) *
+                      Título de la Casa (TDHCA) <span className="text-xs font-normal text-slate-400">(opcional)</span>
                     </label>
                     
                     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-3">
