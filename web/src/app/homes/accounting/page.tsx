@@ -370,7 +370,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           </div>
           <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
             <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
-            <span className="text-lg font-bold text-emerald-600">{fmt(s.total_income)}</span>
+            <span className="text-lg font-bold text-emerald-600">{fmtFull(s.total_income)}</span>
           </div>
         </div>
         <div className="card-luxury p-6">
@@ -385,7 +385,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           </div>
           <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
             <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
-            <span className="text-lg font-bold text-red-600">{fmt(s.total_expenses)}</span>
+            <span className="text-lg font-bold text-red-600">{fmtFull(s.total_expenses)}</span>
           </div>
         </div>
       </div>
@@ -2111,7 +2111,7 @@ function BreakdownRow({ label, amount, total, color }: { label: string; amount: 
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm" style={{ color: 'var(--charcoal)' }}>{label}</span>
-        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fmt(amount)}</span>
+        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fmtFull(amount)}</span>
       </div>
       <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--sand)' }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }} />

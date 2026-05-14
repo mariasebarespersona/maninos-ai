@@ -420,7 +420,29 @@ async def get_accounting_dashboard(
             st = sale.get("sale_type", "contado")
             sales_by_type[st] = sales_by_type.get(st, 0) + amount
 
-    total_purchases = sum(float(p.get("purchase_price") or 0) for p in properties if p.get("purchase_price"))
+    # Exclude properties whose purchase_house transaction is voided (and has no
+    # active replacement). Properties with no purchase txn at all (legacy data)
+    # are still counted.
+    try:
+        voided_pids = {t["property_id"] for t in (sb.table("accounting_transactions")
+            .select("property_id")
+            .eq("transaction_type", "purchase_house")
+            .eq("status", "voided")
+            .execute()).data or [] if t.get("property_id")}
+        active_pids = {t["property_id"] for t in (sb.table("accounting_transactions")
+            .select("property_id")
+            .eq("transaction_type", "purchase_house")
+            .neq("status", "voided")
+            .execute()).data or [] if t.get("property_id")}
+        excluded_pids = voided_pids - active_pids
+    except Exception as e:
+        logger.warning(f"[accounting] Could not filter voided purchase txns: {e}")
+        excluded_pids = set()
+
+    total_purchases = sum(
+        float(p.get("purchase_price") or 0) for p in properties
+        if p.get("purchase_price") and p["id"] not in excluded_pids
+    )
     total_renovations = sum(float(r.get("total_cost") or 0) for r in renovations)
     total_commissions = sum(float(s.get("commission_amount") or 0) for s in sales)
 
