@@ -603,7 +603,7 @@ async def list_transactions(
     status: Optional[str] = None,
 ):
     q = sb.table("accounting_transactions") \
-        .select("*, accounting_accounts(code, name, account_type, category), bank_accounts(name, bank_name)") \
+        .select("*, accounting_accounts(code, name, account_type, category), bank_accounts(name, bank_name), properties(property_code, address)") \
         .order("transaction_date", desc=True) \
         .order("created_at", desc=True)
     if transaction_type:
