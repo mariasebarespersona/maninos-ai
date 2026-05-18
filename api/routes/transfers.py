@@ -1042,3 +1042,174 @@ async def upload_manual_title_pdf(transfer_id: str, file: UploadFile = File(...)
 
     return {"ok": True, "file_url": file_url, "filename": file.filename}
 
+
+
+# ============================================================================
+# Parse uploaded title file → extract structured fields (mirrors tdhca-lookup)
+# ============================================================================
+@router.post("/parse-title-file")
+async def parse_title_file(file: UploadFile = File(...)):
+    """
+    Extract structured title fields from an uploaded title PDF/image.
+
+    Returns the same shape as /tdhca-lookup so the frontend's existing
+    auto-fill logic (useEffect on tdhcaResult) works unchanged.
+    """
+    import base64
+    import io
+    import json
+    import re
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    ext = (file.filename or "").lower().rsplit(".", 1)[-1]
+
+    # For PDFs: try text extraction first; if it's a scanned PDF with no text,
+    # we render page 1 to an image and send that to vision.
+    pdf_text = ""
+    image_b64: Optional[str] = None
+    image_mime = "image/png"
+
+    if ext == "pdf":
+        try:
+            try:
+                from pypdf import PdfReader
+            except ImportError:
+                from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            pages_text = []
+            for page in reader.pages[:3]:
+                t = page.extract_text() or ""
+                if t.strip():
+                    pages_text.append(t)
+            pdf_text = "\n\n".join(pages_text).strip()
+        except Exception as e:
+            logger.warning(f"[ParseTitle] PDF text extraction failed: {e}")
+
+        if len(pdf_text) < 80:
+            # Scanned PDF → render first page to PNG via pdf2image (if available)
+            # Fallback: send raw PDF bytes via base64 as an image (won't work well — log clearly)
+            try:
+                from pdf2image import convert_from_bytes  # type: ignore
+                images = convert_from_bytes(content, first_page=1, last_page=1, dpi=200)
+                if images:
+                    buf = io.BytesIO()
+                    images[0].save(buf, format="PNG")
+                    image_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            except Exception as e:
+                logger.warning(f"[ParseTitle] pdf2image unavailable or failed: {e}")
+    elif ext in ("png", "jpg", "jpeg"):
+        image_b64 = base64.b64encode(content).decode("utf-8")
+        image_mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
+
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=120.0)
+
+    instruction = (
+        "You are reading a Texas (TDHCA) manufactured-home title document. "
+        "Extract these fields and return ONLY a JSON object (no markdown fences):\n"
+        '{\n'
+        '  "serial_number": "",\n'
+        '  "label_seal": "",\n'
+        '  "certificate_number": "",\n'
+        '  "manufacturer": "",\n'
+        '  "manufacturer_address": "",\n'
+        '  "manufacturer_city_state_zip": "",\n'
+        '  "model": "",\n'
+        '  "year": "",\n'
+        '  "date_of_manufacture": "",\n'
+        '  "square_feet": "",\n'
+        '  "wind_zone": "",\n'
+        '  "width": "",\n'
+        '  "length": "",\n'
+        '  "buyer": "",\n'
+        '  "seller": "",\n'
+        '  "county": "",\n'
+        '  "transfer_date": "",\n'
+        '  "lien_info": "",\n'
+        '  "tax_lien_status": ""\n'
+        '}\n'
+        "Rules:\n"
+        "- Return empty string for any field not clearly present.\n"
+        "- Serial and label are usually 8-15 alphanumerics; do not invent.\n"
+        "- Year is 4 digits.\n"
+        "- Wind zone is roman numeral or arabic (I, II, III, 1, 2, 3).\n"
+        "- Width and length are numeric (feet).\n"
+    )
+
+    try:
+        if image_b64:
+            response = await client.chat.completions.create(
+                model="gpt-5",
+                messages=[
+                    {"role": "system", "content": "You are an expert OCR + data-extraction system for Texas manufactured-home title documents."},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": instruction},
+                            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}", "detail": "high"}},
+                        ],
+                    },
+                ],
+                max_completion_tokens=2048,
+            )
+        else:
+            response = await client.chat.completions.create(
+                model="gpt-5",
+                messages=[
+                    {"role": "system", "content": "You are an expert data-extraction system for Texas manufactured-home title documents."},
+                    {"role": "user", "content": f"{instruction}\n\nDOCUMENT TEXT:\n{pdf_text}"},
+                ],
+                max_completion_tokens=2048,
+            )
+
+        raw_response = (response.choices[0].message.content or "{}").strip()
+    except Exception as e:
+        logger.error(f"[ParseTitle] OpenAI error: {e}")
+        raise HTTPException(status_code=500, detail=f"AI extraction failed: {e}")
+
+    if raw_response.startswith("```"):
+        raw_response = re.sub(r"^```(?:json)?\s*", "", raw_response)
+        raw_response = re.sub(r"\s*```$", "", raw_response)
+
+    try:
+        data = json.loads(raw_response)
+        if not isinstance(data, dict):
+            raise ValueError("not an object")
+    except Exception as e:
+        logger.warning(f"[ParseTitle] Could not parse JSON: {e}; raw={raw_response[:200]}")
+        data = {}
+
+    raw_fields = {
+        "Serial #": data.get("serial_number", ""),
+        "Label/Seal#": data.get("label_seal", ""),
+        "Manufacturer": data.get("manufacturer", ""),
+        "Model": data.get("model", ""),
+        "Year": data.get("year", ""),
+        "Date of Manufacture": data.get("date_of_manufacture", ""),
+        "Square Ftg": data.get("square_feet", ""),
+        "Wind Zone": data.get("wind_zone", ""),
+        "Width": data.get("width", ""),
+        "Length": data.get("length", ""),
+        "Buyer/Transferee": data.get("buyer", ""),
+        "Seller/Transferor": data.get("seller", ""),
+        "County": data.get("county", ""),
+    }
+
+    return {
+        "success": True,
+        "message": "Datos extraídos del archivo de título",
+        "data": {
+            **data,
+            "raw_fields": {k: v for k, v in raw_fields.items() if v},
+            "source": "manual_file_upload",
+        },
+    }

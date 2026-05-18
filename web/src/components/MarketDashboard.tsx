@@ -896,6 +896,31 @@ export default function MarketDashboard() {
   // Handle file upload
   const handleFileUpload = (type: 'billOfSale' | 'title' | 'titleApplication', file: File | null) => {
     setDocuments(prev => ({ ...prev, [type]: file }));
+    if (type === 'title' && file) {
+      parseTitleFile(file);
+    }
+  };
+
+  // Parse uploaded title file → fills tdhcaResult, which auto-fills Title App data
+  const parseTitleFile = async (file: File) => {
+    setTdhcaLoading(true);
+    setTdhcaError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/transfers/parse-title-file', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (res.ok && json?.data) {
+        setTdhcaResult(json.data);
+      } else {
+        setTdhcaError(json?.detail || 'No se pudieron extraer datos');
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTdhcaError(`Error parseando: ${msg}`);
+    } finally {
+      setTdhcaLoading(false);
+    }
   };
   
   // Send document for e-signature

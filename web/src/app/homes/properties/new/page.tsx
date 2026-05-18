@@ -279,6 +279,32 @@ export default function NewPropertyPage() {
   // Document handling
   const handleFileUpload = (type: 'billOfSale' | 'title' | 'titleApplication', file: File | null) => {
     setDocuments(prev => ({ ...prev, [type]: file }))
+    if (type === 'title' && file) {
+      parseTitleFile(file)
+    }
+  }
+
+  // Parse uploaded title file → fills tdhcaResult, which auto-fills Title App data
+  const parseTitleFile = async (file: File) => {
+    setTdhcaLoading(true)
+    setTdhcaError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/transfers/parse-title-file', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (res.ok && json?.data) {
+        setTdhcaResult(json.data)
+        toast.success('Datos del título extraídos del archivo')
+      } else {
+        const detail = json?.detail || 'No se pudieron extraer datos'
+        setTdhcaError(detail)
+      }
+    } catch (e: any) {
+      setTdhcaError(`Error parseando: ${e?.message || e}`)
+    } finally {
+      setTdhcaLoading(false)
+    }
   }
 
   // TDHCA Title lookup
