@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const res = await fetch(`${API_URL}/api/transfers/`, {
+    const res = await fetch(`${API_URL}/api/transfers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
