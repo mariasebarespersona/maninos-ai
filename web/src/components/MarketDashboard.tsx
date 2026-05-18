@@ -1330,8 +1330,11 @@ export default function MarketDashboard() {
           purchase_price: selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
             ? selectedListing.estimated_full_price
             : selectedListing.listing_price,
-          year_built: tdhcaResult?.year ? parseInt(tdhcaResult.year) : selectedListing.year_built,
-          sqft: tdhcaResult?.square_feet ? parseInt(tdhcaResult.square_feet) : selectedListing.sqft,
+          // Property defaults — prefer TDHCA values when available, fall back to the listing
+          year: tdhcaResult?.year ? parseInt(tdhcaResult.year) : selectedListing.year_built,
+          square_feet: tdhcaResult?.square_feet ? parseInt(tdhcaResult.square_feet) : selectedListing.sqft,
+          length_ft: tdhcaResult?.length ? parseInt(String(tdhcaResult.length)) : undefined,
+          width_ft: tdhcaResult?.width ? parseInt(String(tdhcaResult.width)) : undefined,
           bedrooms: selectedListing.bedrooms,
           bathrooms: selectedListing.bathrooms,
           // Consignment: the house is physically ours; only the payment is deferred.

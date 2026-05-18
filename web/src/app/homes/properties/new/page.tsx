@@ -537,6 +537,18 @@ export default function NewPropertyPage() {
       page2_serial: serial,
       election_inventory: true,
     } as any)
+
+    // Auto-fill the property details form from TDHCA when the user
+    // hasn't typed those fields yet — so dimensions / year / sqft are
+    // persisted on the property's "Detalles" section after purchase.
+    setForm(prev => ({
+      ...prev,
+      year: prev.year || (year ? String(year).substring(0, 4) : prev.year),
+      length_ft: prev.length_ft || (dims.length ? String(dims.length) : prev.length_ft),
+      width_ft: prev.width_ft || (dims.width ? String(dims.width) : prev.width_ft),
+      // square_feet field isn't on the visible form (computedSqFt is derived), so we
+      // only set length/width — square_feet falls out from computedSqFt or sqft on submit
+    }))
   }, [tdhcaResult]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Document completeness checks
@@ -606,7 +618,9 @@ export default function NewPropertyPage() {
     setError('')
 
     try {
-      const sqFt = computedSqFt || undefined
+      // Square feet: prefer computed (length × width), fall back to TDHCA's value
+      const tdhcaSqft = tdhcaResult?.square_feet ? parseInt(String(tdhcaResult.square_feet)) : undefined
+      const sqFt = computedSqFt || tdhcaSqft || undefined
 
       // Build document_data from filled-in templates
       const docData: Record<string, any> = {}
