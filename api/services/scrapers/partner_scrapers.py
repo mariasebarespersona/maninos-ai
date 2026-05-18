@@ -124,29 +124,63 @@ class VMFHomesScraper:
                         wait_until="domcontentloaded",
                         timeout=45000,
                     )
-                    # Small wait for any WAF challenge JS to settle
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)  # WAF challenge JS settle
 
-                    # 2) Now fire the same API from within the page (cookies attached)
-                    data = await page.evaluate(
-                        """async () => {
-                            const r = await fetch('/api/searchByState?state=TX', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                            })
-                            if (!r.ok) return { __error: r.status, __body: (await r.text()).substring(0, 200) }
-                            return await r.json()
-                        }"""
+                    # 2) Capture the data Next.js has already loaded. Two strategies:
+                    #    a) Read __NEXT_DATA__ JSON (Next.js dumps initial props there)
+                    #    b) Listen for the internal /api/searchByState fetch & intercept response
+                    #
+                    # We try (b) by triggering a search and capturing the response.
+                    listings_response = {"data": None}
+
+                    async def on_response(resp):
+                        if "searchByState" in resp.url or "searchByDistance" in resp.url:
+                            try:
+                                if resp.ok:
+                                    listings_response["data"] = await resp.json()
+                            except Exception:
+                                pass
+
+                    page.on("response", on_response)
+
+                    # Apply state=TX filter via URL navigation (triggers the API call from within the SPA)
+                    await page.goto(
+                        f"{VMFHomesScraper.BASE_URL}/homesearch?state=TX",
+                        wait_until="networkidle",
+                        timeout=60000,
                     )
+                    await asyncio.sleep(5)  # let any deferred fetches complete
+
+                    if not listings_response["data"]:
+                        # Fallback: pull from __NEXT_DATA__
+                        next_data = await page.evaluate(
+                            """() => {
+                                const el = document.getElementById('__NEXT_DATA__')
+                                if (!el) return null
+                                try { return JSON.parse(el.textContent) } catch { return null }
+                            }"""
+                        )
+                        if next_data:
+                            # Walk the tree looking for an array of home objects
+                            def _find_homes(node):
+                                if isinstance(node, list) and node and isinstance(node[0], dict) and (
+                                    "listingId" in node[0] or "price" in node[0] and "bedrooms" in node[0]
+                                ):
+                                    return node
+                                if isinstance(node, dict):
+                                    for v in node.values():
+                                        found = _find_homes(v)
+                                        if found is not None:
+                                            return found
+                                return None
+                            listings_response["data"] = _find_homes(next_data)
+
+                    data = listings_response["data"]
                 finally:
                     await browser.close()
 
-            if isinstance(data, dict) and data.get("__error"):
-                logger.warning(f"[VMF] API still blocked ({data.get('__error')}): {data.get('__body')}")
-                return []
-
             if not isinstance(data, list):
-                logger.warning(f"[VMF] Unexpected response type: {type(data)}")
+                logger.warning(f"[VMF] No usable listing data returned (type={type(data).__name__})")
                 return []
 
             logger.info(f"[VMF] Total TX inventory: {len(data)} homes")
