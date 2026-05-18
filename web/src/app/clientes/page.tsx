@@ -24,6 +24,10 @@ interface FeaturedProperty {
   photos: string[]
   bedrooms: number
   bathrooms: number
+  property_code?: string | null
+  is_partner?: boolean
+  partner_name?: string
+  source_url?: string
 }
 
 export default function ClientPortalHome() {
@@ -36,10 +40,18 @@ export default function ClientPortalHome() {
       .then(data => { if (data.ok) setStats(data) })
       .catch(() => {})
 
-    fetch('/api/public/properties?limit=6')
-      .then(r => r.json())
-      .then(data => { if (data.ok) setFeatured(data.properties?.slice(0, 6) || []) })
-      .catch(() => {})
+    // Fetch Maninos own + partner listings (Vanderbilt + 21st Mortgage) for the
+    // featured carousel, mix them by price and show the first 6.
+    Promise.all([
+      fetch('/api/public/properties?limit=20').then(r => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/public/properties/partners?limit=20').then(r => r.json()).catch(() => ({ ok: false })),
+    ]).then(([own, partners]) => {
+      const all: FeaturedProperty[] = []
+      if (own?.ok) all.push(...(own.properties || []))
+      if (partners?.ok) all.push(...(partners.properties || []))
+      all.sort((a, b) => (a.sale_price || 0) - (b.sale_price || 0))
+      setFeatured(all.slice(0, 6))
+    })
   }, [])
 
   return (
@@ -200,10 +212,16 @@ function FeaturedSection({ properties }: { properties: FeaturedProperty[] }) {
         </div>
 
         <div ref={ref} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((p, i) => (
+          {properties.map((p, i) => {
+            const href = p.is_partner && p.source_url ? p.source_url : `/clientes/casas/${p.id}`
+            const linkProps = p.is_partner && p.source_url
+              ? { target: '_blank' as const, rel: 'noopener noreferrer' }
+              : {}
+            return (
             <Link
               key={p.id}
-              href={`/clientes/casas/${p.id}`}
+              href={href}
+              {...linkProps}
               className="group block"
               style={{
                 opacity: isInView ? 1 : 0,
@@ -212,7 +230,7 @@ function FeaturedSection({ properties }: { properties: FeaturedProperty[] }) {
               }}
             >
               {/* Photo */}
-              <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-3">
+              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-3">
                 {p.photos?.[0] ? (
                   <img
                     src={p.photos[0]}
@@ -223,6 +241,18 @@ function FeaturedSection({ properties }: { properties: FeaturedProperty[] }) {
                   <div className="w-full h-full flex items-center justify-center">
                     <Home className="w-10 h-10 text-gray-300" />
                   </div>
+                )}
+                {/* Source badge */}
+                <span className={`absolute top-3 left-3 backdrop-blur-sm text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm ${
+                  p.is_partner ? 'bg-[#004274]/90 text-white' : 'bg-white/90 text-[#004274]'
+                }`}>
+                  {p.is_partner && p.partner_name ? p.partner_name : 'Maninos'}
+                </span>
+                {/* Property ID badge (Maninos only) */}
+                {!p.is_partner && p.property_code && (
+                  <span className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    ID {p.property_code}
+                  </span>
                 )}
               </div>
               {/* Info */}
@@ -245,7 +275,8 @@ function FeaturedSection({ properties }: { properties: FeaturedProperty[] }) {
                 </p>
               </div>
             </Link>
-          ))}
+            )
+          })}
         </div>
 
         <div className="mt-8 text-center sm:hidden">
