@@ -547,8 +547,12 @@ export default function NewPropertyPage() {
   const allDocsReady = true
   const isPropertyInfoValid = !!form.address.trim()
 
-  // Payment validation
-  const isPaymentComplete = payee.isPayeeValid
+  // Consignment: if true, skip payment-order creation at purchase time.
+  // Employee will trigger it later from the property detail page.
+  const [isConsignment, setIsConsignment] = useState(false)
+
+  // Payment validation: consignment skips the payee requirement
+  const isPaymentComplete = isConsignment || payee.isPayeeValid
 
   // Navigation
   const goToNextStep = async () => {
@@ -637,6 +641,7 @@ export default function NewPropertyPage() {
         width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
         document_data: Object.keys(docData).length > 0 ? docData : undefined,
         status: 'pending_payment',
+        is_consignment: isConsignment || undefined,
       }
 
       // 1. Create property
@@ -767,8 +772,9 @@ export default function NewPropertyPage() {
       }
 
       // 3.2. Create pending payment order if payee info was provided
+      // Consignment: skip — employee will trigger the order later from the property page.
       const orderAmount = purchasePrice || payment.amount
-      if (payee.isPayeeValid) {
+      if (!isConsignment && payee.isPayeeValid) {
         try {
           const orderRes = await fetch('/api/payment-orders', {
             method: 'POST',
@@ -1645,12 +1651,36 @@ export default function NewPropertyPage() {
 
         {/* ========== STEP 3: PAYMENT — Bank Transfer Only ========== */}
         {purchaseStep === 'payment' && (
-          <div className="p-4 sm:p-6">
-            <BankTransferStep
-              payment={payment}
-              onPaymentChange={setPayment}
-              payee={payee}
-            />
+          <div className="p-4 sm:p-6 space-y-4">
+            <label className="flex items-start gap-3 p-4 rounded-lg border-2 border-amber-200 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
+              <input
+                type="checkbox"
+                checked={isConsignment}
+                onChange={(e) => setIsConsignment(e.target.checked)}
+                className="mt-0.5 w-5 h-5 accent-amber-600"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900">Casa en consignación</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Marca esto si la casa se compra en consignación. NO se enviará la requisición de pago ahora —
+                  podrás crearla después desde la página de la propiedad cuando se haga el pago real.
+                </p>
+              </div>
+            </label>
+
+            {!isConsignment && (
+              <BankTransferStep
+                payment={payment}
+                onPaymentChange={setPayment}
+                payee={payee}
+              />
+            )}
+            {isConsignment && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <p className="font-medium">⏸️ Pago diferido.</p>
+                <p className="text-xs text-blue-700 mt-1">Continúa al siguiente paso. La propiedad quedará marcada como consignación pendiente.</p>
+              </div>
+            )}
           </div>
         )}
 

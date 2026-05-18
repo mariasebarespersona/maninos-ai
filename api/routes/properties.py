@@ -1378,6 +1378,8 @@ def _format_property(data: dict) -> PropertyResponse:
         photos=data.get("photos") or [],
         checklist_completed=data.get("checklist_completed") or False,
         checklist_data=data.get("checklist_data") or {},
+        is_consignment=data.get("is_consignment") or False,
+        consignment_paid_at=data.get("consignment_paid_at"),
         created_at=data["created_at"],
         updated_at=data["updated_at"],
     )

@@ -83,6 +83,7 @@ class PropertyCreate(PropertyBase):
     checklist_completed: Optional[bool] = None
     checklist_data: Optional[dict] = None
     notes: Optional[str] = None
+    is_consignment: Optional[bool] = None  # If true, no payment_order created at purchase
 
 
 class PropertyUpdate(BaseModel):
@@ -110,6 +111,8 @@ class PropertyUpdate(BaseModel):
     photos: Optional[list[str]] = None
     checklist_completed: Optional[bool] = None
     checklist_data: Optional[dict] = None
+    is_consignment: Optional[bool] = None
+    consignment_paid_at: Optional[datetime] = None
 
 
 class PropertyResponse(PropertyBase):
@@ -121,6 +124,8 @@ class PropertyResponse(PropertyBase):
     checklist_completed: bool
     checklist_data: dict = {}
     document_data: dict = {}
+    is_consignment: bool = False
+    consignment_paid_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     

@@ -72,6 +72,8 @@ interface Property {
   checklist_data: Record<string, boolean>
   document_data: Record<string, any>
   notes?: string | null
+  is_consignment?: boolean
+  consignment_paid_at?: string | null
   // evaluation_report_id is stored on evaluation_reports.property_id, not here
   created_at: string
   updated_at: string
@@ -140,6 +142,19 @@ export default function PropertyDetailPage() {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [showRenovationPriceModal, setShowRenovationPriceModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showConsignmentModal, setShowConsignmentModal] = useState(false)
+  const [consignmentPayee, setConsignmentPayee] = useState({
+    payee_name: '',
+    bank_name: '',
+    routing_number: '',
+    account_number: '',
+    account_type: 'checking' as 'checking' | 'savings',
+    payee_address: '',
+    bank_address: '',
+    amount: '',
+    method: 'wire_transfer' as 'wire_transfer' | 'ach' | 'zelle' | 'check',
+  })
+  const [consignmentSubmitting, setConsignmentSubmitting] = useState(false)
   const [showBosTemplate, setShowBosTemplate] = useState<'purchase' | 'sale' | null>(null)
   const [showTitleAppTemplate, setShowTitleAppTemplate] = useState<'purchase' | 'sale' | null>(null)
 
@@ -1385,6 +1400,21 @@ ${price}
                     <ClipboardCheck className="w-5 h-5" />
                     Checklist Compra
                   </Link>
+                )}
+                {property.is_consignment && !property.consignment_paid_at && (
+                  <button
+                    onClick={() => {
+                      setConsignmentPayee(prev => ({
+                        ...prev,
+                        amount: property.purchase_price ? String(property.purchase_price) : prev.amount,
+                      }))
+                      setShowConsignmentModal(true)
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg font-medium hover:bg-amber-100 transition-colors"
+                  >
+                    <DollarSign className="w-5 h-5" />
+                    Pagar Consignación
+                  </button>
                 )}
                 <button
                   onClick={() => openMoveModal('purchase')}
@@ -2681,6 +2711,164 @@ ${price}
         }
         confirmText="Publicar"
       />
+
+      {/* Modal: Pagar Consignación */}
+      {showConsignmentModal && property && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => !consignmentSubmitting && setShowConsignmentModal(false)}>
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-navy-900">Pagar consignación</h2>
+              <button onClick={() => setShowConsignmentModal(false)} disabled={consignmentSubmitting} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Confirma los datos del pago. Se creará una requisición que aparecerá en Notificaciones en "Por Aprobar".
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Beneficiario *</label>
+                  <input
+                    type="text"
+                    value={consignmentPayee.payee_name}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, payee_name: e.target.value }))}
+                    placeholder="Nombre del vendedor"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Monto (USD) *</label>
+                  <input
+                    type="number"
+                    value={consignmentPayee.amount}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, amount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Método *</label>
+                  <select
+                    value={consignmentPayee.method}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, method: e.target.value as typeof p.method }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="wire_transfer">Wire Transfer</option>
+                    <option value="ach">ACH</option>
+                    <option value="zelle">Zelle</option>
+                    <option value="check">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Banco</label>
+                  <input
+                    type="text"
+                    value={consignmentPayee.bank_name}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, bank_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Routing #</label>
+                  <input
+                    type="text"
+                    value={consignmentPayee.routing_number}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, routing_number: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Cuenta #</label>
+                  <input
+                    type="text"
+                    value={consignmentPayee.account_number}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, account_number: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Tipo de cuenta</label>
+                  <select
+                    value={consignmentPayee.account_type}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, account_type: e.target.value as 'checking' | 'savings' }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="checking">Checking</option>
+                    <option value="savings">Savings</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-gray-700">Dirección beneficiario</label>
+                  <input
+                    type="text"
+                    value={consignmentPayee.payee_address}
+                    onChange={e => setConsignmentPayee(p => ({ ...p, payee_address: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowConsignmentModal(false)}
+                disabled={consignmentSubmitting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  if (!consignmentPayee.payee_name.trim() || !consignmentPayee.amount) {
+                    toast.error('Beneficiario y monto son obligatorios')
+                    return
+                  }
+                  setConsignmentSubmitting(true)
+                  try {
+                    const orderRes = await fetch('/api/payment-orders', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        property_id: property.id,
+                        property_address: property.address,
+                        payee_name: consignmentPayee.payee_name,
+                        bank_name: consignmentPayee.bank_name || undefined,
+                        routing_number: consignmentPayee.routing_number || undefined,
+                        account_number: consignmentPayee.account_number || undefined,
+                        account_type: consignmentPayee.account_type,
+                        payee_address: consignmentPayee.payee_address || undefined,
+                        amount: parseFloat(consignmentPayee.amount),
+                        method: consignmentPayee.method,
+                        notes: 'Pago de consignación (diferido desde compra)',
+                      }),
+                    })
+                    if (!orderRes.ok) {
+                      const e = await orderRes.json().catch(() => ({}))
+                      throw new Error(e.detail || 'Error creando la requisición')
+                    }
+                    await fetch(`/api/properties/${property.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ consignment_paid_at: new Date().toISOString() }),
+                    })
+                    toast.success('Requisición de pago creada — ahora aparece en Notificaciones / Por Aprobar')
+                    setShowConsignmentModal(false)
+                    await fetchProperty()
+                  } catch (err: any) {
+                    toast.error(err.message || 'Error creando la requisición')
+                  } finally {
+                    setConsignmentSubmitting(false)
+                  }
+                }}
+                disabled={consignmentSubmitting}
+                className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {consignmentSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
+                Crear requisición
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Confirmar Eliminar */}
       <ConfirmModal
