@@ -262,6 +262,13 @@ async def refresh_partner_listings():
                     "thumbnail_url": listing.thumbnail_url,
                     "scraped_at": listing.scraped_at or datetime.now().isoformat(),
                     "status": "available",
+                    # Partner sources are whitelisted — mark them qualified so the
+                    # public catalog filter (.eq("is_qualified", True)) picks them up.
+                    # The DB trigger combines these into is_qualified=true.
+                    "passes_70_rule": True,
+                    "passes_age_rule": True,
+                    "passes_location_rule": True,
+                    "is_qualified": True,
                 }
                 
                 # Don't overwrite purchased/rejected listings
