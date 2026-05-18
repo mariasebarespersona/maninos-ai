@@ -23,6 +23,7 @@ async def list_published_properties(
     min_price: Optional[float] = Query(None, description="Minimum sale price"),
     max_price: Optional[float] = Query(None, description="Maximum sale price"),
     bedrooms: Optional[int] = Query(None, description="Number of bedrooms"),
+    code: Optional[str] = Query(None, description="Filter by property_code (case-insensitive contains)"),
     limit: int = Query(200, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -32,10 +33,10 @@ async def list_published_properties(
     """
     try:
         query = sb.table("properties") \
-            .select("id, address, city, state, zip_code, sale_price, bedrooms, bathrooms, square_feet, year, photos, is_renovated, created_at") \
+            .select("id, address, city, state, zip_code, sale_price, bedrooms, bathrooms, square_feet, year, photos, is_renovated, property_code, created_at") \
             .eq("status", "published") \
             .order("created_at", desc=True)
-        
+
         if city:
             query = query.ilike("city", f"%{city}%")
         if min_price:
@@ -44,7 +45,9 @@ async def list_published_properties(
             query = query.lte("sale_price", max_price)
         if bedrooms:
             query = query.eq("bedrooms", bedrooms)
-        
+        if code:
+            query = query.ilike("property_code", f"%{code.strip()}%")
+
         query = query.range(offset, offset + limit - 1)
         result = query.execute()
         

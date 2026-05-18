@@ -21,10 +21,14 @@ interface Property {
   year: number
   photos: string[]
   is_renovated: boolean
+  property_code?: string | null
   is_partner?: boolean
   partner_name?: string
+  source?: string
   source_url?: string
 }
+
+type SourceFilter = '' | 'maninos' | 'vmf_homes' | '21st_mortgage'
 
 export default function HouseCatalog() {
   const [properties, setProperties] = useState<Property[]>([])
@@ -33,7 +37,9 @@ export default function HouseCatalog() {
   const [filters, setFilters] = useState({
     city: '',
     minPrice: '',
-    maxPrice: ''
+    maxPrice: '',
+    code: '',                          // search by property_code (e.g. "A1", "H46")
+    source: '' as SourceFilter,        // '', 'maninos', 'vmf_homes', '21st_mortgage'
   })
   const [showFilters, setShowFilters] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -66,16 +72,32 @@ export default function HouseCatalog() {
     if (filters.minPrice) params.set('min_price', filters.minPrice)
     if (filters.maxPrice) params.set('max_price', filters.maxPrice)
 
-    const [ownRes, partnerRes] = await Promise.all([
-      fetch(`/api/public/properties?${params}`),
-      fetch(`/api/public/properties/partners?${params}`),
-    ])
-    const ownData = await ownRes.json()
-    const partnerData = await partnerRes.json()
+    // Decide which endpoints to call based on source filter and ID search.
+    // ID search only applies to Maninos (partners don't have property_code).
+    const wantsManinos = !filters.source || filters.source === 'maninos'
+    const wantsPartners = !filters.source || filters.source === 'vmf_homes' || filters.source === '21st_mortgage'
+    const idSearching = !!filters.code.trim()
 
+    const ownParams = new URLSearchParams(params)
+    if (idSearching) ownParams.set('code', filters.code.trim())
+
+    const partnerParams = new URLSearchParams(params)
+    if (filters.source === 'vmf_homes' || filters.source === '21st_mortgage') {
+      partnerParams.set('source', filters.source)
+    }
+
+    const fetches: Promise<Response>[] = []
+    if (wantsManinos) fetches.push(fetch(`/api/public/properties?${ownParams}`))
+    if (wantsPartners && !idSearching) fetches.push(fetch(`/api/public/properties/partners?${partnerParams}`))
+
+    const responses = await Promise.all(fetches)
     const all: Property[] = []
-    if (ownData.ok) all.push(...(ownData.properties || []))
-    if (partnerData.ok) all.push(...(partnerData.properties || []))
+    for (const res of responses) {
+      try {
+        const d = await res.json()
+        if (d.ok) all.push(...(d.properties || []))
+      } catch {}
+    }
     all.sort((a, b) => (a.sale_price || 0) - (b.sale_price || 0))
     return all
   }, [filters])
@@ -120,8 +142,8 @@ export default function HouseCatalog() {
     finally { setTimeout(() => setIsRefreshing(false), 600) }
   }
 
-  const clearFilters = () => setFilters({ city: '', minPrice: '', maxPrice: '' })
-  const hasActiveFilters = filters.city || filters.minPrice || filters.maxPrice
+  const clearFilters = () => setFilters({ city: '', minPrice: '', maxPrice: '', code: '', source: '' })
+  const hasActiveFilters = filters.city || filters.minPrice || filters.maxPrice || filters.code || filters.source
 
   const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated) : null
 
@@ -205,7 +227,32 @@ export default function HouseCatalog() {
 
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-up pb-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Buscar por ID</label>
+                  <input
+                    type="text" placeholder="Ej: A1, H46"
+                    value={filters.code}
+                    onChange={e => setFilters({ ...filters, code: e.target.value.toUpperCase() })}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Vendedor</label>
+                  <div className="relative">
+                    <select
+                      value={filters.source}
+                      onChange={e => setFilters({ ...filters, source: e.target.value as SourceFilter })}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-[14px] appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-[#222] focus:border-transparent"
+                    >
+                      <option value="">Todos</option>
+                      <option value="maninos">Maninos Homes</option>
+                      <option value="vmf_homes">Vanderbilt</option>
+                      <option value="21st_mortgage">21st Mortgage</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
                 <div>
                   <label className="block text-[12px] font-semibold text-[#717171] mb-1.5 uppercase tracking-wide">Ciudad</label>
                   <div className="relative">
@@ -373,6 +420,13 @@ function PropertyCard({ property }: { property: Property }) {
         }`}>
           {property.is_partner && property.partner_name ? property.partner_name : 'Maninos'}
         </span>
+
+        {/* Property ID badge (Maninos only) */}
+        {!property.is_partner && property.property_code && (
+          <span className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            ID {property.property_code}
+          </span>
+        )}
 
         {/* Renovated badge */}
         {!property.is_partner && property.is_renovated && (

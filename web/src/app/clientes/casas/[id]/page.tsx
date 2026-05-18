@@ -77,14 +77,35 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
         <p className="text-[12px] text-[#b0b0b0] mt-0.5">por {termMonths} meses</p>
       </div>
 
-      {/* Down payment slider */}
+      {/* Down payment — slider + exact-amount input (kept in sync) */}
       <div>
-        <div className="flex justify-between text-[14px] mb-2">
+        <div className="flex justify-between items-center text-[14px] mb-2">
           <span className="text-[#484848]">Enganche</span>
-          <span className="font-semibold text-[#222]" style={{ fontVariantNumeric: 'tabular-nums' }}>${downPaymentAmount.toLocaleString()} ({downPaymentPct}%)</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[14px] text-[#717171]">$</span>
+            <input
+              type="number"
+              min={Math.round(salePrice * 0.3)}
+              max={salePrice}
+              step={50}
+              value={downPaymentAmount}
+              onChange={(e) => {
+                const raw = Number(e.target.value)
+                if (Number.isNaN(raw)) return
+                const minAmt = Math.round(salePrice * 0.3)
+                const clamped = Math.max(minAmt, Math.min(salePrice, raw))
+                // Convert back to percentage with 1-decimal precision so the slider stays in sync
+                const pct = salePrice > 0 ? Math.round((clamped / salePrice) * 1000) / 10 : 30
+                setDownPaymentPct(pct)
+              }}
+              className="w-28 px-2 py-1 rounded-md border border-gray-300 bg-white text-[14px] text-right font-semibold focus:outline-none focus:ring-2 focus:ring-[#222]"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            />
+            <span className="text-[12px] text-[#717171] tabular-nums">({downPaymentPct.toFixed(1)}%)</span>
+          </div>
         </div>
         <input
-          type="range" min={30} max={100} step={1}
+          type="range" min={30} max={100} step={0.1}
           value={downPaymentPct}
           onChange={(e) => setDownPaymentPct(Number(e.target.value))}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200"
