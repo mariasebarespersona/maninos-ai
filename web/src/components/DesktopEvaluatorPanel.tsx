@@ -49,6 +49,7 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
   const [editNote, setEditNote] = useState('')
   const [photos, setPhotos] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
+  const [photoTags, setPhotoTags] = useState<string[]>([])  // parallel to photos[]
   const [showChecklist, setShowChecklist] = useState(true)
   const [showPhotos, setShowPhotos] = useState(true)
   const [showPhotoGuide, setShowPhotoGuide] = useState(true)
@@ -129,11 +130,27 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
     }
   }
 
+  // ─── Photo categories the user can tag each photo with ───
+  const PHOTO_CATEGORIES: { value: string; label: string }[] = [
+    { value: 'otro', label: 'Sin clasificar' },
+    { value: 'exterior', label: 'Exterior / fachada' },
+    { value: 'marco', label: 'Marco / faldón' },
+    { value: 'techo', label: 'Techo (vista desde fuera)' },
+    { value: 'interior', label: 'Interior (sala / cuarto)' },
+    { value: 'bano', label: 'Baño' },
+    { value: 'cocina', label: 'Cocina' },
+    { value: 'electricidad', label: 'Electricidad / panel' },
+    { value: 'plomeria', label: 'Plomería' },
+    { value: 'ac', label: 'A/C' },
+    { value: 'gas', label: 'Gas / calentador' },
+  ]
+
   // ─── Handle file selection ───
   const handleFiles = (files: FileList | null) => {
     if (!files) return
     const newFiles = Array.from(files)
     setPhotos(prev => [...prev, ...newFiles])
+    setPhotoTags(prev => [...prev, ...newFiles.map(() => 'otro')])
     newFiles.forEach(file => {
       const reader = new FileReader()
       reader.onload = (e) => setPreviews(prev => [...prev, e.target?.result as string])
@@ -180,7 +197,10 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
       // Compress all photos before upload (mobile photos can be 5-10MB each)
       const compressed = await Promise.all(photos.map(p => compressImage(p)))
       const formData = new FormData()
-      compressed.forEach(p => formData.append('files', p))
+      compressed.forEach((p, idx) => {
+        formData.append('files', p)
+        formData.append('categories', photoTags[idx] || 'otro')
+      })
       const res = await fetch(`/api/evaluations/${evaluationId}/analyze-photos`, {
         method: 'POST',
         body: formData,
@@ -652,19 +672,44 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
             {showPhotos && (
               <div className="p-4 space-y-3">
                 {previews.length > 0 && (
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {previews.map((p, i) => (
-                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden group">
-                        <img src={p} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
-                        <button
-                          onClick={() => { setPhotos(prev => prev.filter((_, j) => j !== i)); setPreviews(prev => prev.filter((_, j) => j !== i)) }}
-                          className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      <div key={i} className="relative rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm">
+                        <div className="relative aspect-square group">
+                          <img src={p} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => {
+                              setPhotos(prev => prev.filter((_, j) => j !== i))
+                              setPreviews(prev => prev.filter((_, j) => j !== i))
+                              setPhotoTags(prev => prev.filter((_, j) => j !== i))
+                            }}
+                            className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/60 text-white text-[10px] font-medium rounded">#{i + 1}</div>
+                        </div>
+                        <select
+                          value={photoTags[i] || 'otro'}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setPhotoTags(prev => prev.map((t, j) => j === i ? v : t))
+                          }}
+                          className="w-full px-2 py-1.5 text-xs border-t border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          title="Categoría de esta foto (ayuda a la IA a evaluar mejor)"
                         >
-                          <X className="w-3 h-3" />
-                        </button>
+                          {PHOTO_CATEGORIES.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
                       </div>
                     ))}
                   </div>
+                )}
+                {previews.length > 0 && (
+                  <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                    💡 <span>Etiqueta cada foto con su tipo para que la IA sepa exactamente qué evaluar en ella.</span>
+                  </p>
                 )}
                 <div className="flex items-center gap-3">
                   <button
@@ -773,8 +818,24 @@ export default function DesktopEvaluatorPanel({ propertyId, listingId, onReportG
                                   <div className="flex items-start gap-3">
                                     <div className="mt-0.5 flex-shrink-0">{getStatusIcon(item.status)}</div>
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <p className="text-sm font-medium text-navy-800 flex-1">{item.label}</p>
+                                        {item.confidence === 'low' && ['pass', 'fail', 'warning'].includes(item.status) && (
+                                          <span
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-100 text-amber-700 border border-amber-300"
+                                            title="La IA tiene baja confianza en esta evaluación. Verifica manualmente."
+                                          >
+                                            ⚠️ verificar
+                                          </span>
+                                        )}
+                                        {item.confidence === 'medium' && ['pass', 'fail', 'warning'].includes(item.status) && (
+                                          <span
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                            title="Confianza media — revisa si la foto es clara."
+                                          >
+                                            confianza media
+                                          </span>
+                                        )}
                                         <button
                                           onClick={() => { setEditingItem(editingItem === item.id ? null : item.id); setEditNote(item.note || '') }}
                                           className="p-1.5 rounded-lg hover:bg-white/50 transition-colors"

@@ -230,12 +230,33 @@ async def update_evaluation(evaluation_id: str, data: UpdateEvaluationRequest):
     return result.data[0]
 
 
+PHOTO_CATEGORIES = {
+    "exterior": "Foto exterior (fachada, paredes desde fuera). Útil para: paredes_ventanas, techo_techumbre (vista desde fuera), ac (si está visible), gas (tanque exterior).",
+    "marco":    "Foto del faldón / parte inferior exterior donde se ve el chasis metálico. Útil para: marco_acero.",
+    "techo":    "Foto del techo desde arriba o cerca (drone, escalera, casa contigua). Útil para: techo_techumbre.",
+    "interior": "Foto de interior general (sala, cuarto, pasillo). Útil para: suelos_subfloor, paredes_ventanas (interior), techo_techumbre (interior), electricidad (enchufes).",
+    "bano":     "Foto de baño. Útil para: regaderas_tinas, suelos_subfloor (baño), plomeria (debajo lavabo), paredes_ventanas (humedad/moho).",
+    "cocina":   "Foto de cocina. Útil para: plomeria (fregadero), suelos_subfloor, gas (estufa), electricidad.",
+    "electricidad": "Foto del panel eléctrico, breakers o enchufes. Útil para: electricidad.",
+    "plomeria": "Foto debajo de lavabos, fregadero o calentador. Útil para: plomeria, gas (calentador).",
+    "ac":       "Foto de la unidad A/C exterior o interior. Útil para: ac.",
+    "gas":      "Foto del tanque de propano o calentador de agua a gas. Útil para: gas.",
+    "otro":     "Foto general sin categoría específica.",
+}
+
+
 @router.post("/{evaluation_id}/analyze-photos")
 async def analyze_photos(
     evaluation_id: str,
     files: list[UploadFile] = File(...),
+    categories: list[str] = Form([]),
 ):
-    """Upload photos and have AI analyze them to fill checklist items."""
+    """Upload photos and have AI analyze them to fill checklist items.
+
+    `categories` is a parallel array matching `files` (one tag per photo).
+    Valid tags: exterior, marco, techo, interior, bano, cocina, electricidad,
+    plomeria, ac, gas, otro. The AI prompt uses the tag to focus its analysis.
+    """
     # Get current evaluation
     eval_result = sb.table("evaluation_reports").select("*").eq("id", evaluation_id).execute()
     if not eval_result.data:
@@ -254,18 +275,30 @@ async def analyze_photos(
             raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
         logger.info(f"[evaluation] Using OpenAI key: {api_key[:12]}...{api_key[-4:]}")
-        client = openai.AsyncOpenAI(api_key=api_key, timeout=90.0)
+        client = openai.AsyncOpenAI(api_key=api_key, timeout=120.0)
 
-        image_contents = []
+        # Build content: alternate text labels and image_url blocks so the AI
+        # knows which photo is which category. Categories come in via Form data
+        # as a parallel array; pad with "otro" if shorter than files.
+        user_content: list = []
         saved_photo_urls = []
-        for file in files[:10]:
+        photo_tags_in_use: list[str] = []
+        for idx, file in enumerate(files[:10]):
             raw = await file.read()
             if len(raw) == 0:
                 continue
             b64 = base64.b64encode(raw).decode("utf-8")
             ext = (file.filename or "photo.jpeg").rsplit(".", 1)[-1].lower()
             mime = f"image/{ext}" if ext in ("jpeg", "jpg", "png", "gif", "webp") else "image/jpeg"
-            image_contents.append({
+            tag = (categories[idx] if idx < len(categories) else "otro").strip().lower()
+            if tag not in PHOTO_CATEGORIES:
+                tag = "otro"
+            photo_tags_in_use.append(tag)
+            user_content.append({
+                "type": "text",
+                "text": f"📷 Foto {idx + 1} [categoría: {tag}] — {PHOTO_CATEGORIES[tag]}",
+            })
+            user_content.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"},
             })
@@ -293,113 +326,110 @@ async def analyze_photos(
             except Exception as db_err:
                 logger.warning(f"[evaluations] Could not save photo URLs to DB: {db_err}")
 
-        if not image_contents:
+        if not user_content:
             raise HTTPException(status_code=400, detail="No valid images received")
 
-        # Build checklist text for the prompt
+        # Build checklist text — each item shows what to look for (the photo_hint)
         checklist_text_lines = []
         for item in CHECKLIST_ITEMS:
-            evaluable = "EVALUAR POR FOTO" if item["id"] in PHOTO_EVALUABLE_IDS else "DOCUMENTO/ADMIN (marcar not_evaluable)"
-            # Show current status if employee already set it
             current_item = next((c for c in current_checklist if c["id"] == item["id"]), None)
             current_status = current_item.get("status", "pending") if current_item else "pending"
             override_note = ""
             if current_status not in ("pending", "needs_photo"):
-                override_note = f" [EMPLEADO YA MARCÓ: {current_status}]"
+                override_note = f"  [EMPLEADO YA MARCÓ: {current_status} — RESPETAR]"
             checklist_text_lines.append(
-                f'id="{item["id"]}" | {item["category"]} | {item["label"]} | {evaluable}{override_note}'
+                f'• {item["id"]} ({item["category"]} — {item["label"]})\n'
+                f'   Qué buscar: {item["photo_hint"]}{override_note}'
             )
         checklist_text = "\n".join(checklist_text_lines)
 
-        prompt = f"""Eres un inspector profesional de casas móviles (manufactured homes / mobile homes). Evalúa las fotos que recibes y marca cada punto del checklist.
+        prompt = f"""Eres un inspector profesional de casas móviles (manufactured / mobile homes) en Texas. Tu trabajo es evaluar fotos REALES con HONESTIDAD.
 
-REGLA FUNDAMENTAL: Cada foto puede ser relevante para VARIOS puntos del checklist a la vez. Una foto de un cuarto muestra pisos, paredes, ventanas, y techo interior — evalúa TODOS esos puntos con esa foto. NO marques "needs_photo" si hay CUALQUIER foto donde se pueda ver algo relevante para ese punto.
+REGLA #1 — HONESTIDAD ANTE TODO:
+Si NO puedes ver claramente lo que necesitas evaluar para un punto, marca "needs_photo". NO inventes. Un reporte parcial honesto es 10x más valioso que un reporte completo inventado. El empleado puede subir más fotos después.
+
+REGLA #2 — USA LAS CATEGORÍAS DE LAS FOTOS:
+Cada foto viene con una categoría (ej. [categoría: bano]) que indica para qué ítems es más útil. Pero NO te limites: si la foto del baño también muestra plomería, evalúa plomería con esa foto.
 
 CÓMO DECIDIR EL STATUS:
-- "pass" → Se ve y está en buena condición
-- "warning" → Se ve un problema menor/cosmético (pintura descascarada, carpet manchado, ventana con sello viejo)
-- "fail" → Se ve un problema grave (vidrio roto, piso hundido, mancha grande de agua/moho, cables expuestos)
-- "needs_photo" → NO se ve en NINGUNA de las fotos. SOLO usar si realmente no hay forma de evaluar.
+- "pass" → Se ve CLARAMENTE y está en buena condición. Describe lo que viste.
+- "warning" → Se ve un problema menor/cosmético (pintura descascarada, sellos viejos, carpet manchado).
+- "fail" → Se ve un problema grave (vidrio roto, piso hundido, moho extenso, cables expuestos, fuga activa).
+- "needs_photo" → No hay foto que cubra este punto, o las fotos no son suficientemente claras.
 
-EJEMPLOS DE EVALUACIÓN CORRECTA:
+CÓMO DECIDIR LA CONFIANZA (campo "confidence"):
+- "high" → La foto muestra el área completa y con claridad; estás muy seguro de tu evaluación.
+- "medium" → Ves parcialmente o con poca claridad; tu evaluación es razonable pero podría cambiar con mejor foto.
+- "low" → Apenas se distingue; mejor pedir foto adicional. Considera marcar needs_photo.
 
-Ejemplo 1 — Foto de interior de sala con ventana rota visible:
-  marco_acero: needs_photo (no se ve el marco inferior) note: ""
-  suelos_subfloor: warning, note: "Carpet visible con desgaste moderado, sin hundimientos aparentes"
-  techo_techumbre: pass, note: "Techo interior sin manchas de humedad ni pandeo"
-  paredes_ventanas: fail, note: "Ventana de sala con vidrio roto, marco de aluminio intacto"
-  regaderas_tinas: needs_photo, note: ""
-  electricidad: pass, note: "Enchufes e interruptores visibles en buen estado"
-  plomeria: needs_photo, note: ""
-  ac: needs_photo, note: ""
-  gas: needs_photo, note: ""
-
-Ejemplo 2 — Foto exterior mostrando fachada completa:
-  marco_acero: needs_photo (faldón cubierto, no se ve el marco) note: ""
-  suelos_subfloor: needs_photo, note: ""
-  techo_techumbre: warning, note: "Techo de metal con parche visible de ~50cm en sección central"
-  paredes_ventanas: warning, note: "Siding de vinyl con sección desprendida lado izquierdo, 3 ventanas visibles sin daños"
-  regaderas_tinas: needs_photo, note: ""
-  electricidad: needs_photo, note: ""
-  plomeria: needs_photo, note: ""
-  ac: pass, note: "Unidad A/C exterior visible, modelo reciente, sin óxido"
-  gas: pass, note: "Tanque de propano presente junto a la unidad"
-
-Ejemplo 3 — Foto de baño:
-  marco_acero: needs_photo, note: ""
-  suelos_subfloor: fail, note: "Piso de vinyl levantado alrededor del inodoro, posible daño por agua"
-  techo_techumbre: pass, note: "Techo de baño sin manchas"
-  paredes_ventanas: pass, note: "Paredes de baño sin moho ni grietas"
-  regaderas_tinas: warning, note: "Calafateo de tina deteriorado, necesita reemplazo. No se ven fugas activas"
-  electricidad: pass, note: "Interruptor de luz funcional visible"
-  plomeria: warning, note: "Tuberías visibles debajo del lavabo con corrosión leve"
-  ac: needs_photo, note: ""
-  gas: needs_photo, note: ""
-
-IMPORTANTE:
-- Si ves una ventana rota → paredes_ventanas = "fail"
-- Si ves pisos manchados → suelos_subfloor = "warning" o "fail"
-- Si ves moho en paredes → paredes_ventanas = "fail"
-- Si ves un panel eléctrico → electricidad = "pass" o "fail"
-- Si ves una regadera/tina → regaderas_tinas = evalúa
-- CADA foto muestra algo — analízala a fondo para TODOS los puntos visibles
-- En "note": describe SOLO lo que ves. Si status es "needs_photo", note debe ser "" (vacío).
-- Si el EMPLEADO ya marcó un ítem ([EMPLEADO YA MARCÓ]), respétalo.
-
-CHECKLIST ({len(CHECKLIST_ITEMS)} puntos):
+CHECKLIST ({len(CHECKLIST_ITEMS)} puntos — para CADA UNO sigue exactamente la guía "Qué buscar"):
 {checklist_text}
 
-Responde SOLO en JSON válido:
-{{
-  "checklist": [
-    {{"id": "marco_acero", "category": "Estructura", "label": "Marco de acero", "status": "pass|fail|warning|needs_photo", "confidence": "high|medium|low", "note": "descripción de lo observado o vacío"}},
-    ...los {len(CHECKLIST_ITEMS)} items...
-  ],
-  "property_type": "single_wide" o "double_wide" o "N/A",
-  "estimated_year": "YYYY" o "N/A",
-  "estimated_bedrooms": número o 0,
-  "photos_coverage": "Áreas cubiertas: ... Faltan: ..."
-}}"""
+ESPECIALMENTE IMPORTANTE:
+- marco_acero: SOLO evaluable con foto que muestre la parte INFERIOR exterior (faldón removido o sin faldón). Foto interior NUNCA sirve — marca needs_photo.
+- techo_techumbre: necesita foto exterior del techo. Una sola foto de techo interior NO es suficiente para evaluar el techo entero.
+- ac, gas: necesitan foto exterior de la unidad / tanque.
+- Si el empleado ya marcó un ítem [EMPLEADO YA MARCÓ], respétalo, no lo cambies.
+
+Resumen del campo "photos_coverage": describe qué áreas están BIEN cubiertas y QUÉ FOTOS faltarían para completar el reporte. Sé específico (ej. "Falta foto del techo desde fuera y del panel eléctrico").
+"""
+
+        # Build strict JSON schema for structured outputs — eliminates parsing errors
+        allowed_ids = [item["id"] for item in CHECKLIST_ITEMS]
+        item_schema = {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "enum": allowed_ids},
+                "status": {"type": "string", "enum": ["pass", "fail", "warning", "needs_photo"]},
+                "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                "note": {"type": "string"},
+            },
+            "required": ["id", "status", "confidence", "note"],
+            "additionalProperties": False,
+        }
+        json_schema = {
+            "name": "property_evaluation",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "checklist": {
+                        "type": "array",
+                        "items": item_schema,
+                        "minItems": len(allowed_ids),
+                        "maxItems": len(allowed_ids),
+                    },
+                    "property_type": {"type": "string"},
+                    "estimated_year": {"type": "string"},
+                    "estimated_bedrooms": {"type": "integer"},
+                    "photos_coverage": {"type": "string"},
+                },
+                "required": ["checklist", "property_type", "estimated_year", "estimated_bedrooms", "photos_coverage"],
+                "additionalProperties": False,
+            },
+        }
+
+        # Prepend the system+user instructions; the per-photo content blocks already include tags
+        user_message_content = [{"type": "text", "text": prompt}] + user_content
 
         response = await client.chat.completions.create(
             model="gpt-5",
             messages=[
-                {"role": "system", "content": "Eres un inspector experto de casas móviles. Responde SOLO con JSON válido."},
-                {"role": "user", "content": [{"type": "text", "text": prompt}] + image_contents},
+                {"role": "system", "content": "Eres un inspector profesional de mobile homes. Tu prioridad es la HONESTIDAD: marca needs_photo cuando no puedas evaluar con seguridad."},
+                {"role": "user", "content": user_message_content},
             ],
             max_completion_tokens=4096,
+            response_format={"type": "json_schema", "json_schema": json_schema},
         )
 
         result_text = response.choices[0].message.content or "{}"
-        import re
-        json_match = re.search(r'```json\s*(.*?)\s*```', result_text, re.DOTALL)
-        json_str = json_match.group(1).strip() if json_match else result_text.strip()
-        if not json_str.startswith('{'):
-            brace_idx = json_str.find('{')
-            if brace_idx >= 0:
-                json_str = json_str[brace_idx:]
-
-        ai_result = json.loads(json_str)
+        try:
+            ai_result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # structured outputs should guarantee valid JSON; fall back to regex
+            import re
+            m = re.search(r"\{.*\}", result_text, re.DOTALL)
+            ai_result = json.loads(m.group(0)) if m else {}
         ai_checklist = ai_result.get("checklist", [])
 
         # Merge AI results with current checklist (respect manual edits)
@@ -424,7 +454,8 @@ Responde SOLO en JSON válido:
                 merged.append(item)
 
         # Update the evaluation
-        photos_count = (evaluation.get("photos_count") or 0) + len(image_contents)
+        photos_in_batch = len([c for c in user_content if c.get("type") == "image_url"])
+        photos_count = (evaluation.get("photos_count") or 0) + photos_in_batch
         updates = {
             "checklist": merged,
             "photos_count": photos_count,
@@ -446,9 +477,11 @@ Responde SOLO en JSON válido:
             "needs_photo": statuses.count("needs_photo"),
             "not_evaluable": statuses.count("not_evaluable"),
             "pending": statuses.count("pending"),
+            "low_confidence": sum(1 for i in merged if i.get("confidence") == "low"),
         }
 
-        logger.info(f"[evaluation] AI analyzed {len(image_contents)} photos for {evaluation['report_number']}: {summary}")
+        photos_in_batch = len([c for c in user_content if c.get("type") == "image_url"])
+        logger.info(f"[evaluation] AI analyzed {photos_in_batch} photos (tags={photo_tags_in_use}) for {evaluation['report_number']}: {summary}")
 
         return {
             "checklist": merged,
