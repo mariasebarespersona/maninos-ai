@@ -30,7 +30,7 @@ interface Transfer {
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   from_name: string
   to_name: string
-  documents_checklist: Record<string, boolean>
+  documents_checklist: Record<string, boolean | { checked?: boolean; file_url?: string | null; uploaded_at?: string | null }>
   property_address: string
   property_code?: string | null
   created_at: string
@@ -408,6 +408,22 @@ export default function TransfersPage() {
                           ) : (
                             <span className="text-amber-600 italic">Sin serial/label</span>
                           )}
+                          {(() => {
+                            const titulo = (t.documents_checklist as Record<string, unknown>)?.titulo as { file_url?: string | null } | undefined
+                            const fileUrl = titulo?.file_url
+                            return fileUrl ? (
+                              <a
+                                href={fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-800 text-[10px] font-medium underline"
+                                title="Ver archivo del título"
+                              >
+                                <FileText className="w-3 h-3" />
+                                Ver archivo
+                              </a>
+                            ) : null
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-xs">
                           {t.tdhca_owner_name ? (

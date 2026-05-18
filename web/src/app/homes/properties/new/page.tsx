@@ -515,7 +515,7 @@ export default function NewPropertyPage() {
 
   // Document completeness checks
   const isBosComplete = !!(billOfSaleData || documents.billOfSale)
-  const isTitleComplete = !!tdhcaResult
+  const isTitleComplete = !!(tdhcaResult || documents.title)
   const isTitleAppComplete = !!(titleAppData || documents.titleApplication)
   // All documents are optional — user can proceed even without uploading anything
   const allDocsReady = true
@@ -1372,7 +1372,32 @@ export default function NewPropertyPage() {
                   )}
                 </div>
               )}
-              
+
+              <div className="text-center text-xs text-gray-400 font-medium my-3">— o sube el título desde tu ordenador —</div>
+              <div className={`border-2 border-dashed rounded-lg p-4 text-center ${
+                documents.title ? 'border-green-300 bg-green-50' : 'border-gray-200'
+              }`}>
+                {documents.title ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span className="text-green-700 font-medium text-sm">{documents.title.name}</span>
+                    <button onClick={() => handleFileUpload('title', null)} className="text-red-500 hover:text-red-700">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer">
+                    <Upload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+                    <p className="text-xs text-gray-500">PDF, JPG, PNG (máx. 10MB)</p>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(e) => handleFileUpload('title', e.target.files?.[0] || null)}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
             {/* ═══ Signed Documents Status ═══ */}
