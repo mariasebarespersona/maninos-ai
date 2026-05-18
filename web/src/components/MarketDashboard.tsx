@@ -1440,6 +1440,8 @@ export default function MarketDashboard() {
           bill_of_sale_url: billOfSaleUrl,
           title_url: titleUrl,
           title_application_url: titleApplicationUrl,
+          tdhca_serial: tdhcaResult?.serial_number || null,
+          tdhca_label: tdhcaResult?.label_seal || null,
         }),
       });
 

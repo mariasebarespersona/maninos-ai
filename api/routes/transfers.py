@@ -57,6 +57,9 @@ class TransferCreate(BaseModel):
     bill_of_sale_url: Optional[str] = None
     title_url: Optional[str] = None                 # TDHCA title document
     title_application_url: Optional[str] = None      # Title application form
+    # Title identifiers (from TDHCA search or manual file parsing)
+    tdhca_serial: Optional[str] = None
+    tdhca_label: Optional[str] = None
 
 
 # Default documents checklist
@@ -191,10 +194,15 @@ async def create_transfer(data: TransferCreate):
             "status": "pending",
             "documents_checklist": docs_checklist,
         }
-        
+
         if data.sale_id:
             insert_data["sale_id"] = data.sale_id
-        
+
+        if data.tdhca_serial:
+            insert_data["tdhca_serial"] = data.tdhca_serial
+        if data.tdhca_label:
+            insert_data["tdhca_label"] = data.tdhca_label
+
         # Add payment info to notes if provided
         if data.payment_method or data.payment_reference:
             notes_parts = []
@@ -207,8 +215,34 @@ async def create_transfer(data: TransferCreate):
             if data.payment_amount:
                 notes_parts.append(f"Monto: ${data.payment_amount:,.2f}")
             insert_data["notes"] = " | ".join(notes_parts)
-        
-        result = sb.table("title_transfers").insert(insert_data).execute()
+
+        # A Postgres trigger (auto_create_purchase_transfer) creates an empty
+        # purchase transfer row on properties INSERT, so for purchases we
+        # update the existing row instead of inserting a duplicate. For sales
+        # we still insert (the sale-side trigger only fires for cash sales).
+        existing = sb.table("title_transfers") \
+            .select("id, documents_checklist") \
+            .eq("property_id", data.property_id) \
+            .eq("transfer_type", data.transfer_type)
+        if data.sale_id:
+            existing = existing.eq("sale_id", data.sale_id)
+        existing_rows = existing.execute().data or []
+
+        if existing_rows and data.transfer_type == "purchase":
+            # Merge: preserve already-uploaded URLs that aren't overwritten
+            existing_docs = existing_rows[0].get("documents_checklist") or {}
+            merged_docs = dict(existing_docs)
+            for k, v in docs_checklist.items():
+                # Only overwrite if the new value has a file_url (or is the seed for an unfilled slot)
+                if isinstance(v, dict) and v.get("file_url"):
+                    merged_docs[k] = v
+                elif k not in merged_docs:
+                    merged_docs[k] = v
+            update_data = {k: v for k, v in insert_data.items() if k != "property_id"}
+            update_data["documents_checklist"] = merged_docs
+            result = sb.table("title_transfers").update(update_data).eq("id", existing_rows[0]["id"]).execute()
+        else:
+            result = sb.table("title_transfers").insert(insert_data).execute()
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create transfer")
