@@ -37,8 +37,29 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
   const router = useRouter()
   const [downPaymentPct, setDownPaymentPct] = useState(50)
   const [termMonths, setTermMonths] = useState(36)
+  // Free-form amount input — decoupled from the slider so the user can type
+  // any exact value. The slider mirrors this input (clamped to its 30-100% range).
+  const initialAmount = Math.round(salePrice * 0.5)
+  const [downPaymentAmountInput, setDownPaymentAmountInput] = useState<string>(String(initialAmount))
 
-  const downPaymentAmount = useMemo(() => Math.round(salePrice * (downPaymentPct / 100)), [salePrice, downPaymentPct])
+  const downPaymentAmount = useMemo(() => {
+    const parsed = Number(downPaymentAmountInput)
+    if (Number.isNaN(parsed) || parsed < 0) return 0
+    return Math.round(parsed)
+  }, [downPaymentAmountInput])
+
+  // Slider ⇄ Input sync — single source of truth is downPaymentAmount.
+  // When the slider moves, update the input. When the input changes, update pct.
+  useEffect(() => {
+    if (salePrice <= 0) return
+    const pct = (downPaymentAmount / salePrice) * 100
+    // clamp slider visually to its range, but the input keeps the real value
+    const clampedPct = Math.max(30, Math.min(100, pct))
+    if (Math.abs(clampedPct - downPaymentPct) > 0.05) {
+      setDownPaymentPct(Math.round(clampedPct * 10) / 10)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downPaymentAmount, salePrice])
 
   const rto = useMemo(() => calculateRTOMonthly({
     salePrice,
@@ -77,7 +98,7 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
         <p className="text-[12px] text-[#b0b0b0] mt-0.5">por {termMonths} meses</p>
       </div>
 
-      {/* Down payment — slider + exact-amount input (kept in sync) */}
+      {/* Down payment — exact-amount input drives everything; slider mirrors it */}
       <div>
         <div className="flex justify-between items-center text-[14px] mb-2">
           <span className="text-[#484848]">Enganche</span>
@@ -85,29 +106,33 @@ function RTOSimulator({ salePrice, propertyId }: { salePrice: number; propertyId
             <span className="text-[14px] text-[#717171]">$</span>
             <input
               type="number"
-              min={Math.round(salePrice * 0.3)}
+              min={0}
               max={salePrice}
-              step={50}
-              value={downPaymentAmount}
-              onChange={(e) => {
-                const raw = Number(e.target.value)
-                if (Number.isNaN(raw)) return
-                const minAmt = Math.round(salePrice * 0.3)
-                const clamped = Math.max(minAmt, Math.min(salePrice, raw))
-                // Convert back to percentage with 1-decimal precision so the slider stays in sync
-                const pct = salePrice > 0 ? Math.round((clamped / salePrice) * 1000) / 10 : 30
-                setDownPaymentPct(pct)
+              step={1}
+              value={downPaymentAmountInput}
+              onChange={(e) => setDownPaymentAmountInput(e.target.value)}
+              onBlur={() => {
+                // Clean up empty / invalid values on blur
+                const n = Number(downPaymentAmountInput)
+                if (Number.isNaN(n) || n < 0) setDownPaymentAmountInput('0')
               }}
               className="w-28 px-2 py-1 rounded-md border border-gray-300 bg-white text-[14px] text-right font-semibold focus:outline-none focus:ring-2 focus:ring-[#222]"
               style={{ fontVariantNumeric: 'tabular-nums' }}
             />
-            <span className="text-[12px] text-[#717171] tabular-nums">({downPaymentPct.toFixed(1)}%)</span>
+            <span className="text-[12px] text-[#717171] tabular-nums">
+              ({salePrice > 0 ? ((downPaymentAmount / salePrice) * 100).toFixed(1) : '0'}%)
+            </span>
           </div>
         </div>
         <input
           type="range" min={30} max={100} step={0.1}
           value={downPaymentPct}
-          onChange={(e) => setDownPaymentPct(Number(e.target.value))}
+          onChange={(e) => {
+            const newPct = Number(e.target.value)
+            setDownPaymentPct(newPct)
+            // Slider moved → push exact $ into the input field
+            setDownPaymentAmountInput(String(Math.round(salePrice * (newPct / 100))))
+          }}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200"
           style={{ accentColor: '#222' }}
         />
