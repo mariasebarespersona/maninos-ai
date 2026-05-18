@@ -387,20 +387,58 @@ export default function TransfersPage() {
                         <td className="px-4 py-3 font-mono text-xs">
                           {(t.tdhca_serial || t.tdhca_label) ? (
                             <button
-                              onClick={() => {
-                                const fieldName = t.tdhca_serial ? 'serial' : 'label'
-                                const fieldValue = t.tdhca_serial || t.tdhca_label || ''
-                                const w = window.open('', '_blank')
+                              onClick={async () => {
+                                // 1) If we already have a stored TDHCA URL on the transfer, use it directly
+                                const titulo = (t.documents_checklist as Record<string, unknown>)?.titulo as { file_url?: string | null } | undefined
+                                const stored = titulo?.file_url || ''
+                                if (stored && stored.includes('tdhca.state.tx.us')) {
+                                  window.open(stored, '_blank', 'noopener,noreferrer')
+                                  return
+                                }
+                                // 2) Otherwise resolve the detail URL on the fly via the same backend
+                                //    endpoint used by Nueva Propiedad / Casas del Mercado.
+                                const w = window.open('about:blank', '_blank')
                                 if (w) {
-                                  w.document.write(
-                                    `<form method="POST" action="https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp">` +
-                                    `<input name="${fieldName}" value="${fieldValue.replace(/"/g, '&quot;')}" />` +
-                                    `</form><script>document.forms[0].submit();<\/script>`
-                                  )
+                                  w.document.write('<html><body style="font-family:sans-serif;padding:24px"><p>Buscando título en TDHCA…</p></body></html>')
                                   w.document.close()
+                                }
+                                try {
+                                  const search_type = t.tdhca_serial ? 'serial' : 'label'
+                                  const search_value = t.tdhca_serial || t.tdhca_label || ''
+                                  const res = await fetch('/api/market-listings/tdhca-lookup', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ search_type, search_value }),
+                                  })
+                                  const data = await res.json()
+                                  const url = data?.data?.detail_url || data?.data?.print_url
+                                  if (url && w) {
+                                    w.location.href = url
+                                  } else if (w) {
+                                    // Fallback: form POST to TDHCA search (lands on results page)
+                                    w.document.open()
+                                    w.document.write(
+                                      `<form method="POST" action="https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp">` +
+                                      `<input name="${t.tdhca_serial ? 'serial' : 'label'}" value="${(t.tdhca_serial || t.tdhca_label || '').replace(/"/g, '&quot;')}" />` +
+                                      `</form><script>document.forms[0].submit();<\/script>`
+                                    )
+                                    w.document.close()
+                                  }
+                                } catch {
+                                  // Network error → fallback to form POST
+                                  if (w) {
+                                    w.document.open()
+                                    w.document.write(
+                                      `<form method="POST" action="https://mhweb.tdhca.state.tx.us/mhweb/title_view.jsp">` +
+                                      `<input name="${t.tdhca_serial ? 'serial' : 'label'}" value="${(t.tdhca_serial || t.tdhca_label || '').replace(/"/g, '&quot;')}" />` +
+                                      `</form><script>document.forms[0].submit();<\/script>`
+                                    )
+                                    w.document.close()
+                                  }
                                 }
                               }}
                               className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 cursor-pointer"
+                              title="Abrir registro específico en TDHCA"
                             >
                               {t.tdhca_serial || t.tdhca_label}
                               <ExternalLink className="w-3 h-3" />
