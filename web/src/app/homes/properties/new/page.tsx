@@ -72,10 +72,11 @@ const initialForm: PropertyForm = {
   hud_number: '',
   year: '',
   purchase_price: '',
-  bedrooms: '',
-  bathrooms: '',
-  length_ft: '',
-  width_ft: '',
+  // Sensible defaults for a typical Texas mobile home — user can override
+  bedrooms: '3',
+  bathrooms: '2',
+  length_ft: '76',
+  width_ft: '16',
 }
 
 const TDHCA_TITLE_APPLICATION_URL = 'https://www.tdhca.texas.gov/sites/default/files/mh/docs/1023-Statement-Ownership.pdf'
