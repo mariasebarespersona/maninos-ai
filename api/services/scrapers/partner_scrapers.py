@@ -96,28 +96,54 @@ class VMFHomesScraper:
         max_listings: int = 50,
     ) -> List[ScrapedListing]:
         """
-        Fetch mobile homes for sale in Texas from VMF Homes via their JSON API.
+        Fetch mobile homes for sale in Texas from VMF Homes.
 
-        NO Playwright needed — direct HTTP POST to their internal Next.js API route.
+        VMF sits behind CloudFront WAF which blocks direct HTTP POSTs (403).
+        We use Playwright: load the home-search page (which passes the WAF
+        challenge and sets cookies), then run the internal /api/searchByState
+        from within that authenticated browser context.
         """
-        import requests as sync_requests
-
-        logger.info(f"[VMF] Fetching VMF Homes inventory via API, ${min_price}-${max_price}")
+        logger.info(f"[VMF] Fetching VMF Homes inventory via Playwright (WAF bypass), ${min_price}-${max_price}")
 
         listings = []
+        data = None
 
         try:
-            loop = asyncio.get_event_loop()
-            resp = await loop.run_in_executor(
-                None,
-                lambda: sync_requests.post(
-                    f"{VMFHomesScraper.SEARCH_API}?state=TX",
-                    headers=VMFHomesScraper.HEADERS,
-                    timeout=30,
-                )
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            from playwright.async_api import async_playwright
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=True)
+                try:
+                    context = await browser.new_context(
+                        user_agent=VMFHomesScraper.HEADERS["User-Agent"],
+                        viewport={"width": 1400, "height": 900},
+                    )
+                    page = await context.new_page()
+                    # 1) Visit the home-search page so CloudFront issues the session cookies
+                    await page.goto(
+                        f"{VMFHomesScraper.BASE_URL}/homesearch",
+                        wait_until="domcontentloaded",
+                        timeout=45000,
+                    )
+                    # Small wait for any WAF challenge JS to settle
+                    await asyncio.sleep(2)
+
+                    # 2) Now fire the same API from within the page (cookies attached)
+                    data = await page.evaluate(
+                        """async () => {
+                            const r = await fetch('/api/searchByState?state=TX', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                            })
+                            if (!r.ok) return { __error: r.status, __body: (await r.text()).substring(0, 200) }
+                            return await r.json()
+                        }"""
+                    )
+                finally:
+                    await browser.close()
+
+            if isinstance(data, dict) and data.get("__error"):
+                logger.warning(f"[VMF] API still blocked ({data.get('__error')}): {data.get('__body')}")
+                return []
 
             if not isinstance(data, list):
                 logger.warning(f"[VMF] Unexpected response type: {type(data)}")
