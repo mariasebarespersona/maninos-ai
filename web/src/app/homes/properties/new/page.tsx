@@ -640,7 +640,10 @@ export default function NewPropertyPage() {
         length_ft: form.length_ft ? parseInt(form.length_ft) : undefined,
         width_ft: form.width_ft ? parseInt(form.width_ft) : undefined,
         document_data: Object.keys(docData).length > 0 ? docData : undefined,
-        status: 'pending_payment',
+        // Consignment: the house is physically ours already (we just haven't paid the
+        // seller yet) — create as 'purchased' so it shows in the properties list.
+        // Normal flow stays as 'pending_payment' until Abigail completes the payment.
+        status: isConsignment ? 'purchased' : 'pending_payment',
         is_consignment: isConsignment || undefined,
       }
 

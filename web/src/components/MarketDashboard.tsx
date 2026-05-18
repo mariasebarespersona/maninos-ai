@@ -1334,7 +1334,9 @@ export default function MarketDashboard() {
           sqft: tdhcaResult?.square_feet ? parseInt(tdhcaResult.square_feet) : selectedListing.sqft,
           bedrooms: selectedListing.bedrooms,
           bathrooms: selectedListing.bathrooms,
-          status: 'pending_payment',
+          // Consignment: the house is physically ours; only the payment is deferred.
+          // Skip 'pending_payment' so it shows up in /homes/properties immediately.
+          status: isConsignment ? 'purchased' : 'pending_payment',
           photos: selectedListing.photos || [],
           thumbnail_url: selectedListing.thumbnail_url,
           checklist_data: Object.keys(evalChecklist).length > 0 ? evalChecklist : checklist,
