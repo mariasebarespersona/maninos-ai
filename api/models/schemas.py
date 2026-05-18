@@ -112,7 +112,7 @@ class PropertyUpdate(BaseModel):
     checklist_completed: Optional[bool] = None
     checklist_data: Optional[dict] = None
     is_consignment: Optional[bool] = None
-    consignment_paid_at: Optional[datetime] = None
+    consignment_paid_at: Optional[str] = None  # ISO string, passed straight to Supabase
 
 
 class PropertyResponse(PropertyBase):
