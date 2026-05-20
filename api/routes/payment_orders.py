@@ -176,7 +176,11 @@ async def get_payment_order(order_id: str):
 
 
 @router.patch("/{order_id}/approve")
-async def approve_payment_order(order_id: str, approved_by: Optional[str] = Query(None)):
+async def approve_payment_order(
+    order_id: str,
+    approved_by: Optional[str] = Query(None),
+    bank_account_id: Optional[str] = Query(None),
+):
     """
     Approve a pending payment order (Sebastian/admin).
     Moves status from pending → approved so Treasury can execute it.
@@ -207,10 +211,11 @@ async def approve_payment_order(order_id: str, approved_by: Optional[str] = Quer
     except Exception:
         pass
 
-    # Inbound orders (enganche, pago capital): approve → goes to "Recibidos" tab
-    # Outbound orders (comisiones): approve → goes to "Aprobadas" tab, then "Realizados" on complete
+    # Inbound orders (enganche, pago capital, pago_venta): approve = "money
+    # received" → write a ledger pair RIGHT NOW into the bank that received it.
+    # Outbound orders (comisiones, compras): approve only changes status; the
+    # ledger pair is written later by /complete.
     if order.get("direction") == "inbound":
-        # Mark property as sold when enganche or capital payment is approved
         property_id = order.get("property_id")
         if property_id and order.get("concept") in ("enganche", "pago_capital"):
             try:
@@ -218,6 +223,51 @@ async def approve_payment_order(order_id: str, approved_by: Optional[str] = Quer
                 logger.info(f"[payment_orders] Property {property_id} marked SOLD after inbound {order.get('concept')} approved")
             except Exception as e:
                 logger.warning(f"[payment_orders] Could not mark property as sold: {e}")
+
+        # Write the inbound ledger pair if a bank was named on approval. If
+        # not, log loud — this is the gap that today leaves saldos stale.
+        if bank_account_id:
+            try:
+                from api.services.ledger import post_to_ledger
+                concept = (order.get("concept") or "").lower()
+                event_map = {
+                    "enganche": "sale_down_payment_received",
+                    "pago_venta": "sale_contado_received",
+                    "pago_capital": "sale_contado_received",
+                }
+                event_type = event_map.get(concept, "sale_contado_received")
+                debit_id, credit_id = post_to_ledger(
+                    event_type=event_type,
+                    amount=float(order["amount"]),
+                    bank_account_id=bank_account_id,
+                    date=date.today().isoformat(),
+                    counterparty_name=order.get("payee_name") or "Cliente",
+                    counterparty_type="client",
+                    entity_type="payment_order",
+                    entity_id=order_id,
+                    property_id=property_id,
+                    description_data={"address": order.get("property_address") or "—"},
+                    payment_method=order.get("method"),
+                    notes=f"Orden de pago #{order_id[:8]} (aprobada/recibida)",
+                    status="confirmed",
+                    created_by=approved_by,
+                )
+                sb.table("payment_orders").update({
+                    "accounting_transaction_id": debit_id,
+                    "bank_account_id": bank_account_id,
+                }).eq("id", order_id).execute()
+                logger.info(f"[payment_orders] inbound ledger pair=({debit_id},{credit_id}) for order {order_id}")
+            except ValueError as e:
+                logger.error(f"[payment_orders] Cannot post inbound ledger for {order_id}: {e}")
+                raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
+            except Exception as e:
+                logger.warning(f"[payment_orders] inbound ledger post failed for {order_id}: {e}")
+        else:
+            logger.warning(
+                f"[payment_orders] Inbound order {order_id} approved WITHOUT bank_account_id — "
+                f"no ledger pair written. Update the UI to pass bank_account_id on approve."
+            )
+
         return {"ok": True, "data": result.data[0], "message": "Pago recibido aprobado."}
 
     return {"ok": True, "data": result.data[0], "message": "Orden aprobada. Tesorería puede ejecutar el pago."}
@@ -241,34 +291,65 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
 
     now = datetime.utcnow().isoformat()
 
-    # Create accounting transaction for reconciliation
+    # Create double-entry accounting pair via the unified ledger writer.
+    # Concept on the payment_order drives the event type:
+    #   compra      → property_purchase_paid  (debit 11000 Inventory, credit bank)
+    #   renovacion  → renovation_paid         (debit 61700 Supplies, credit bank)
+    #   movida      → moving_transport_paid   (debit 61300 Contractors, credit bank)
+    #   otro / —    → manual_expense_paid     (debit 69000 Other Op. Expenses, credit bank)
     acct_txn_id = None
     try:
-        txn_data = {
-            "transaction_number": _generate_transaction_number(),
-            "transaction_date": req.payment_date,
-            "transaction_type": "purchase_house",
-            "amount": order["amount"],
-            "is_income": False,
-            "description": f"Compra propiedad: {order.get('property_address', 'N/A')} - Pago a {order['payee_name']}",
-            "payment_method": order["method"],
-            "payment_reference": req.reference,
-            "counterparty_name": order["payee_name"],
-            "counterparty_type": "vendor",
-            "property_id": order.get("property_id"),
-            "status": "confirmed",
-            "notes": f"Orden de pago #{order_id[:8]}",
-        }
-        if req.bank_account_id:
-            txn_data["bank_account_id"] = req.bank_account_id
+        from api.services.ledger import post_to_ledger
 
-        txn_data = {k: v for k, v in txn_data.items() if v is not None}
-        txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
-        if txn_result.data:
-            acct_txn_id = txn_result.data[0]["id"]
-            logger.info(f"[payment_orders] Created accounting txn {acct_txn_id} for order {order_id}")
+        concept = (order.get("concept") or "compra").lower()
+        event_map = {
+            "compra": ("property_purchase_paid", {}),
+            "renovacion": ("renovation_paid", {"concept": "Pago a contratista"}),
+            "movida": ("moving_transport_paid", {}),
+            "otro": ("manual_expense_paid", {"concept": order.get("notes") or "Pago general"}),
+        }
+        event_type, extra_desc = event_map.get(concept, event_map["otro"])
+
+        kwargs = dict(
+            event_type=event_type,
+            amount=float(order["amount"]),
+            bank_account_id=req.bank_account_id,
+            date=req.payment_date,
+            counterparty_name=order["payee_name"],
+            counterparty_type="vendor",
+            entity_type="payment_order",
+            entity_id=order_id,
+            property_id=order.get("property_id"),
+            description_data={
+                "address": order.get("property_address") or "—",
+                **extra_desc,
+            },
+            payment_method=order["method"],
+            payment_reference=req.reference,
+            notes=f"Orden de pago #{order_id[:8]}",
+            status="confirmed",
+            created_by=req.completed_by,
+        )
+        # manual_expense_paid needs an expense account code
+        if event_type == "manual_expense_paid":
+            kwargs["expense_account_code"] = "69000"  # Other Operating Expenses
+
+        debit_id, credit_id = post_to_ledger(**kwargs)
+        # The "bank leg" id is what existing reconciliation/UI code expects on
+        # payment_orders.accounting_transaction_id. For outbound events the
+        # bank leg is the credit side.
+        acct_txn_id = credit_id
+        logger.info(
+            f"[payment_orders] post_to_ledger event={event_type} pair=({debit_id},{credit_id}) for order {order_id}"
+        )
+    except ValueError as e:
+        # post_to_ledger raises ValueError for misuse — surface to caller
+        # because most cases (missing bank, unmapped bank, missing chart code)
+        # are operator errors, not transient failures.
+        logger.error(f"[payment_orders] Cannot post ledger for order {order_id}: {e}")
+        raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
     except Exception as e:
-        logger.warning(f"[payment_orders] Could not create accounting txn: {e}")
+        logger.warning(f"[payment_orders] Could not create accounting pair: {e}")
 
     # Update order to completed
     update = {

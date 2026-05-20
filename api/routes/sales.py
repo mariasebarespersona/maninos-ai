@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from api.models.schemas import (
     SaleCreate,
@@ -368,8 +369,12 @@ async def list_commission_payments(
 
 
 @router.patch("/commission-payments/{payment_id}/pay")
-async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., description="User ID of who is marking as paid")):
-    """Mark a commission payment as paid. Creates an accounting transaction."""
+async def mark_commission_paid(
+    payment_id: str,
+    paid_by: str = Query(..., description="User ID of who is marking as paid"),
+    bank_account_id: Optional[str] = Query(None, description="Bank account that paid the commission"),
+):
+    """Mark a commission payment as paid. Posts a debit-60640/credit-bank pair."""
     from datetime import date
 
     payment = sb.table("commission_payments").select("*").eq("id", payment_id).single().execute()
@@ -381,38 +386,48 @@ async def mark_commission_paid(payment_id: str, paid_by: str = Query(..., descri
 
     emp_name = _resolve_employee_name(payment.data["employee_id"]) or "Empleado"
 
-    sale = sb.table("sales").select("sale_type, properties(address)").eq("id", payment.data["sale_id"]).single().execute()
+    sale = sb.table("sales").select("sale_type, property_id, properties(address)").eq("id", payment.data["sale_id"]).single().execute()
     sale_type = sale.data.get("sale_type", "") if sale.data else ""
     prop_address = ""
-    if sale.data and sale.data.get("properties"):
-        prop_address = sale.data["properties"].get("address", "")
+    property_id = None
+    if sale.data:
+        property_id = sale.data.get("property_id")
+        if sale.data.get("properties"):
+            prop_address = sale.data["properties"].get("address", "")
 
     accounting_txn_id = None
-    try:
-        # Resolve the accounting account for commissions
-        from api.routes.accounting import _resolve_homes_account_id
-        account_id = _resolve_homes_account_id("commission")
-
-        txn_data = {
-            "transaction_date": date.today().isoformat(),
-            "transaction_type": "commission",
-            "amount": float(payment.data["amount"]),
-            "is_income": False,
-            "entity_type": "sale",
-            "entity_id": payment.data["sale_id"],
-            "counterparty_name": emp_name,
-            "counterparty_type": "employee",
-            "description": f"Comisión {sale_type} - {emp_name} ({payment.data['role']}) - {prop_address}",
-            "status": "pending",
-            "source": "commission_payment",
-        }
-        if account_id:
-            txn_data["account_id"] = account_id
-        txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
-        if txn_result.data:
-            accounting_txn_id = txn_result.data[0]["id"]
-    except Exception as e:
-        logger.error(f"[commissions] Failed to create accounting transaction: {e}")
+    if bank_account_id:
+        try:
+            from api.services.ledger import post_to_ledger
+            debit_id, credit_id = post_to_ledger(
+                event_type="commission_paid",
+                amount=float(payment.data["amount"]),
+                bank_account_id=bank_account_id,
+                date=date.today().isoformat(),
+                counterparty_name=emp_name,
+                counterparty_type="employee",
+                entity_type="sale",
+                entity_id=payment.data["sale_id"],
+                property_id=property_id,
+                description_data={
+                    "address": prop_address or "—",
+                    "counterparty": f"{emp_name} ({payment.data.get('role','')})",
+                },
+                status="confirmed",
+                created_by=paid_by,
+            )
+            # Bank leg id is what the UI reads for "this was paid out of X"
+            accounting_txn_id = credit_id
+        except ValueError as e:
+            logger.error(f"[commissions] Cannot post commission ledger: {e}")
+            raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
+        except Exception as e:
+            logger.error(f"[commissions] Failed to post commission ledger: {e}")
+    else:
+        logger.warning(
+            f"[commissions] mark_commission_paid called for {payment_id} without "
+            f"bank_account_id — no ledger pair written. Update the UI to pass it."
+        )
 
     now = datetime.utcnow().isoformat()
     update = {
@@ -966,14 +981,26 @@ async def approve_transfer(sale_id: str, approved_by: Optional[str] = Query(None
     return {"ok": True, "message": "Transferencia aprobada. Tesorería puede confirmar el pago."}
 
 
+class ConfirmTransferBody(BaseModel):
+    bank_account_id: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_date: Optional[str] = None
+
+
 @router.post("/{sale_id}/confirm-transfer")
-async def confirm_transfer(sale_id: str):
+async def confirm_transfer(sale_id: str, body: Optional[ConfirmTransferBody] = None):
     """
     Confirm a bank transfer for a contado sale.
     Abigail confirms payment received → sale goes to paid, docs generated, email sent.
 
     Transition: transfer_reported -> paid
+
+    Optional body fields:
+      bank_account_id   — required for the accounting pair to be written.
+      payment_reference — bank confirmation/wire reference.
+      payment_date      — overrides "today" for the ledger entries.
     """
+    body = body or ConfirmTransferBody()
     try:
         # 1. Verify sale exists and is in transfer_reported status
         sale_result = sb.table("sales") \
@@ -1085,57 +1112,74 @@ async def confirm_transfer(sale_id: str):
         except Exception as schedule_error:
             logger.warning(f"Failed to schedule post-sale emails: {schedule_error}")
 
-        # 9. Create accounting transaction for bank reconciliation
+        # 9. Write the sale's accounting pairs via the unified ledger writer.
+        #    Two pairs are produced when a bank is named:
+        #      a) sale_contado_received  — debit bank, credit 40000 House Sales
+        #      b) sale_contado_cogs      — debit 50020 COGS, credit 11000 Inventory
+        #         (so per-house profit comes out clean on the P&L)
         try:
             from datetime import date as date_type
-            today = date_type.today()
-            prefix = f"TXN-{today.strftime('%y%m%d')}-"
-            existing_txns = sb.table("accounting_transactions") \
-                .select("transaction_number") \
-                .like("transaction_number", f"{prefix}%") \
-                .execute()
-            txn_count = len(existing_txns.data) if existing_txns.data else 0
-            txn_number = f"{prefix}{txn_count + 1:03d}"
+            from api.services.ledger import post_to_ledger
 
-            # Resolve account_id from category "ventas_contado"
-            acct_result = sb.table("accounting_accounts") \
-                .select("id") \
-                .eq("category", "ventas_contado") \
-                .eq("is_active", True) \
-                .limit(1) \
-                .execute()
-            account_id = acct_result.data[0]["id"] if acct_result.data else None
+            ledger_date = body.payment_date or date_type.today().isoformat()
+            prop_yard = sb.table("properties").select("yard_id, purchase_price") \
+                .eq("id", sale["property_id"]).single().execute()
+            yard_id = (prop_yard.data or {}).get("yard_id")
+            purchase_price = float((prop_yard.data or {}).get("purchase_price") or 0)
 
-            # Get property yard_id for proper categorization
-            prop_yard = sb.table("properties") \
-                .select("yard_id") \
-                .eq("id", sale["property_id"]) \
-                .single() \
-                .execute()
-            yard_id = prop_yard.data.get("yard_id") if prop_yard.data else None
+            # Pull total renovation cost so COGS is purchase + renos.
+            renovation_total = 0.0
+            try:
+                reno_res = sb.table("renovations").select("total_cost") \
+                    .eq("property_id", sale["property_id"]).execute()
+                renovation_total = sum(float(r.get("total_cost") or 0) for r in (reno_res.data or []))
+            except Exception:
+                pass
+            inventory_cost = purchase_price + renovation_total
 
-            txn_insert = {
-                "transaction_number": txn_number,
-                "transaction_date": today.isoformat(),
-                "transaction_type": "sale_cash",
-                "amount": float(sale["sale_price"]),
-                "is_income": True,
-                "account_id": account_id,
-                "entity_type": "sale",
-                "entity_id": sale_id,
-                "property_id": sale["property_id"],
-                "yard_id": yard_id,
-                "payment_method": "transferencia",
-                "counterparty_name": sale["clients"]["name"],
-                "counterparty_type": "client",
-                "description": f"Venta contado - {sale['properties']['address']} - {sale['clients']['name']}",
-                "status": "confirmed",
-            }
-            txn_insert = {k: v for k, v in txn_insert.items() if v is not None}
-            sb.table("accounting_transactions").insert(txn_insert).execute()
-            logger.info(f"[sales] Accounting transaction {txn_number} created for sale {sale_id}")
+            if body.bank_account_id:
+                # (a) Cash leg
+                post_to_ledger(
+                    event_type="sale_contado_received",
+                    amount=float(sale["sale_price"]),
+                    bank_account_id=body.bank_account_id,
+                    date=ledger_date,
+                    counterparty_name=sale["clients"]["name"],
+                    counterparty_type="client",
+                    entity_type="sale",
+                    entity_id=sale_id,
+                    property_id=sale["property_id"],
+                    yard_id=yard_id,
+                    description_data={"address": sale["properties"]["address"]},
+                    payment_method="transferencia",
+                    payment_reference=body.payment_reference,
+                    status="confirmed",
+                )
+                # (b) COGS recognition — only post if we know what was invested.
+                if inventory_cost > 0:
+                    post_to_ledger(
+                        event_type="sale_contado_cogs",
+                        amount=inventory_cost,
+                        date=ledger_date,
+                        counterparty_name=sale["clients"]["name"],
+                        entity_type="sale",
+                        entity_id=sale_id,
+                        property_id=sale["property_id"],
+                        yard_id=yard_id,
+                        description_data={"address": sale["properties"]["address"]},
+                        status="confirmed",
+                    )
+                logger.info(f"[sales] Posted sale + COGS ledger pairs for sale {sale_id}")
+            else:
+                logger.warning(
+                    f"[sales] confirm-transfer for sale {sale_id} had no bank_account_id; "
+                    f"no ledger pair written. Update the UI to send the bank."
+                )
+        except ValueError as e:
+            logger.error(f"[sales] Cannot post sale ledger pair: {e}")
+            raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
         except Exception as acct_error:
-            logger.warning(f"Failed to create accounting transaction: {acct_error}")
+            logger.warning(f"Failed to create accounting pair: {acct_error}")
 
         # 10. Create notification for confirmed transfer
         try:

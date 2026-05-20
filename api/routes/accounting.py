@@ -190,6 +190,9 @@ class InvoiceCreate(BaseModel):
     line_items: Optional[list] = None
     notes: Optional[str] = None
     payment_terms: Optional[str] = None
+    # For 'payable' invoices the caller can override which expense account
+    # to debit (defaults to 69000 Other Operating Expenses if not given).
+    expense_account_code: Optional[str] = None
 
 
 class InvoicePaymentCreate(BaseModel):
@@ -199,6 +202,9 @@ class InvoicePaymentCreate(BaseModel):
     payment_method: Optional[str] = None
     payment_reference: Optional[str] = None
     notes: Optional[str] = None
+    # NEW: which bank received (receivable) or paid (payable) the money.
+    # Required for the payment to land in the ledger correctly.
+    bank_account_id: Optional[str] = None
 
 
 class BudgetCreate(BaseModel):
@@ -1148,9 +1154,53 @@ async def create_invoice(data: InvoiceCreate):
     result = sb.table("accounting_invoices").insert(insert_data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Error creating invoice")
-    _log_audit("accounting_invoices", result.data[0]["id"], "create",
+    invoice_row = result.data[0]
+    _log_audit("accounting_invoices", invoice_row["id"], "create",
                description=f"Created invoice {inv_number}")
-    return result.data[0]
+
+    # Write the AR/AP ledger pair at ISSUANCE so unpaid invoices appear in
+    # "Por Conciliar". (Today's accounting only wrote a row at payment time,
+    # which is why facturas never showed up in the conciliation queue.)
+    try:
+        from api.services.ledger import post_to_ledger
+        total = float(invoice_row.get("total_amount") or 0)
+        if total > 0:
+            if data.direction == "receivable":
+                post_to_ledger(
+                    event_type="invoice_issued_ar",
+                    amount=total,
+                    date=invoice_row.get("issue_date") or date.today().isoformat(),
+                    counterparty_name=data.counterparty_name,
+                    counterparty_type=data.counterparty_type or "client",
+                    entity_type="invoice",
+                    entity_id=invoice_row["id"],
+                    property_id=data.property_id,
+                    yard_id=data.yard_id,
+                    description_data={"invoice_number": inv_number},
+                    notes=data.notes,
+                    status="confirmed",
+                )
+            elif data.direction == "payable":
+                post_to_ledger(
+                    event_type="invoice_received_ap",
+                    amount=total,
+                    date=invoice_row.get("issue_date") or date.today().isoformat(),
+                    counterparty_name=data.counterparty_name,
+                    counterparty_type=data.counterparty_type or "vendor",
+                    entity_type="invoice",
+                    entity_id=invoice_row["id"],
+                    property_id=data.property_id,
+                    yard_id=data.yard_id,
+                    description_data={"invoice_number": inv_number},
+                    expense_account_code=data.expense_account_code or "69000",
+                    notes=data.notes,
+                    status="confirmed",
+                )
+    except Exception as e:
+        # Don't fail the invoice create if ledger posting fails — log loud.
+        logger.warning(f"[accounting] Could not post AR/AP ledger pair for invoice {inv_number}: {e}")
+
+    return invoice_row
 
 
 @router.patch("/invoices/{invoice_id}")
@@ -1199,31 +1249,51 @@ async def add_invoice_payment(invoice_id: str, data: InvoicePaymentCreate):
         "status": new_status,
     }).eq("id", invoice_id).execute()
 
-    # Also create a transaction for this payment
+    # Write the bank-side leg of the payment via the unified writer. This
+    # clears AR (receivable) or AP (payable), and lands money in the named
+    # bank. Requires bank_account_id — if missing we log loud and skip the
+    # ledger write to avoid creating unlinked rows that pollute reconciliation.
     is_income = invoice["direction"] == "receivable"
-    txn_data = {
-        "transaction_number": _generate_transaction_number(),
-        "transaction_date": data.payment_date or date.today().isoformat(),
-        "transaction_type": "sale_cash" if is_income else "other_expense",
-        "amount": data.amount,
-        "is_income": is_income,
-        "entity_type": "invoice",
-        "entity_id": invoice_id,
-        "property_id": invoice.get("property_id"),
-        "yard_id": invoice.get("yard_id"),
-        "payment_method": data.payment_method,
-        "payment_reference": data.payment_reference,
-        "counterparty_name": invoice.get("counterparty_name"),
-        "description": f"Pago {'recibido' if is_income else 'realizado'}: {invoice.get('invoice_number', '')}",
-        "status": "confirmed",
-    }
-    txn_data = {k: v for k, v in txn_data.items() if v is not None}
-    txn_result = sb.table("accounting_transactions").insert(txn_data).execute()
+    bank_txn_id = None
+    if data.bank_account_id:
+        try:
+            from api.services.ledger import post_to_ledger
+            event_type = "invoice_paid_in" if is_income else "invoice_paid_out"
+            debit_id, credit_id = post_to_ledger(
+                event_type=event_type,
+                amount=float(data.amount),
+                bank_account_id=data.bank_account_id,
+                date=data.payment_date or date.today().isoformat(),
+                counterparty_name=invoice.get("counterparty_name"),
+                counterparty_type=invoice.get("counterparty_type"),
+                entity_type="invoice",
+                entity_id=invoice_id,
+                property_id=invoice.get("property_id"),
+                yard_id=invoice.get("yard_id"),
+                description_data={"invoice_number": invoice.get("invoice_number", "")},
+                payment_method=data.payment_method,
+                payment_reference=data.payment_reference,
+                notes=data.notes,
+                status="confirmed",
+            )
+            # The bank leg id is what the invoice_payments row links to so
+            # the reconciliation wizard can match against the right side.
+            bank_txn_id = debit_id if is_income else credit_id
+        except ValueError as e:
+            logger.error(f"[accounting] Cannot post invoice payment ledger: {e}")
+            raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
+        except Exception as e:
+            logger.warning(f"[accounting] Invoice payment ledger post failed: {e}")
+    else:
+        logger.warning(
+            f"[accounting] Invoice payment for {invoice_id} registered WITHOUT "
+            f"bank_account_id — no ledger pair written. Update the UI."
+        )
 
-    # Link transaction
-    if txn_result.data and pay_result.data:
+    # Link the invoice_payment row to the ledger row (bank leg) for traceability.
+    if bank_txn_id and pay_result.data:
         sb.table("accounting_invoice_payments").update({
-            "transaction_id": txn_result.data[0]["id"]
+            "transaction_id": bank_txn_id
         }).eq("id", pay_result.data[0]["id"]).execute()
 
     _log_audit("accounting_invoices", invoice_id, "update",
