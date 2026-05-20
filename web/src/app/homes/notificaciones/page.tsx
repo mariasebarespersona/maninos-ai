@@ -203,7 +203,26 @@ export default function NotificacionesPage() {
   useEffect(() => { fetchNotifications() }, [fetchNotifications])
 
   // ── Approve (admin only) ──────────────────────────────────────────────
-  const handleApproveOrder = async (orderId: string) => {
+  // For OUTBOUND orders, approving just moves them to "Aprobadas" so
+  // Treasury can later mark them complete (which is when the bank is
+  // captured). For INBOUND orders, "Aprobar" = "money received", and we
+  // need a bank_account_id to write the ledger pair on the backend.
+  const [inboundApproveTarget, setInboundApproveTarget] = useState<PaymentOrder | null>(null)
+  const [inboundApproveBankId, setInboundApproveBankId] = useState('')
+
+  const handleApproveOrder = async (orderOrId: PaymentOrder | string) => {
+    const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId.id
+    const orderObj: PaymentOrder | undefined =
+      typeof orderOrId === 'string' ? orders.find(o => o.id === orderOrId) : orderOrId
+
+    if (orderObj && (orderObj as any).direction === 'inbound') {
+      // Open the bank-picker modal — actual approve happens on submit
+      if (bankAccounts.length === 0) fetchBankAccounts()
+      setInboundApproveBankId('')
+      setInboundApproveTarget(orderObj)
+      return
+    }
+
     setApprovingId(orderId)
     try {
       const res = await fetch(`/api/payment-orders/${orderId}/approve?approved_by=${teamUser?.id || ''}`, {
@@ -213,12 +232,41 @@ export default function NotificacionesPage() {
       if (data.ok) {
         toast.success('Orden aprobada')
         fetchOrders()
-        fetchInboundReceived() // Refresh Recibidos tab for inbound orders
+        fetchInboundReceived()
       } else {
         toast.error(data.detail || 'Error al aprobar')
       }
     } catch (e) {
       console.error('Error approving order:', e)
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  const submitInboundApprove = async () => {
+    if (!inboundApproveTarget || !inboundApproveBankId) return
+    setApprovingId(inboundApproveTarget.id)
+    try {
+      const qs = new URLSearchParams({
+        approved_by: teamUser?.id || '',
+        bank_account_id: inboundApproveBankId,
+      })
+      const res = await fetch(`/api/payment-orders/${inboundApproveTarget.id}/approve?${qs.toString()}`, {
+        method: 'PATCH',
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Pago recibido aprobado y registrado en contabilidad')
+        setInboundApproveTarget(null)
+        setInboundApproveBankId('')
+        fetchOrders()
+        fetchInboundReceived()
+      } else {
+        toast.error(data.detail || 'Error al aprobar')
+      }
+    } catch (e) {
+      console.error('Error approving inbound order:', e)
+      toast.error('Error de conexión al aprobar')
     } finally {
       setApprovingId(null)
     }
@@ -299,17 +347,31 @@ export default function NotificacionesPage() {
     }
   }
 
+  const [confirmTransferBankId, setConfirmTransferBankId] = useState('')
+  const [confirmTransferRef, setConfirmTransferRef] = useState('')
+
   const handleConfirmTransfer = async (saleId: string) => {
+    if (!confirmTransferBankId) {
+      toast.error('Selecciona la cuenta bancaria que recibió el pago')
+      return
+    }
     setConfirmingSubmitting(true)
     try {
       const res = await fetch(`/api/sales/${saleId}/confirm-transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_account_id: confirmTransferBankId,
+          payment_reference: confirmTransferRef || undefined,
+          payment_date: new Date().toISOString().split('T')[0],
+        }),
       })
       const data = await res.json()
       if (data.ok) {
         toast.success('Pago confirmado. Documentos generados y email enviado al cliente.')
         setConfirmingTransfer(null)
+        setConfirmTransferBankId('')
+        setConfirmTransferRef('')
         fetchPendingTransfers()
         fetchConfirmedTransfers()
         fetchOrders()
@@ -496,13 +558,44 @@ export default function NotificacionesPage() {
                 transfer={transfer}
                 action={
                   confirmingTransfer?.sale_id === transfer.sale_id ? (
-                    <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[240px]">
+                    <div className="bg-white border rounded-xl p-4 shadow-lg space-y-3 min-w-[300px]">
                       <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-                        ¿Confirmas que el pago ha sido recibido?
+                        Confirmar pago recibido
                       </p>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>
+                          Cuenta bancaria que recibió el pago *
+                        </label>
+                        <select
+                          value={confirmTransferBankId}
+                          onChange={e => setConfirmTransferBankId(e.target.value)}
+                          className="w-full p-2 border rounded-lg text-xs bg-white"
+                          style={{ borderColor: 'var(--stone)' }}
+                        >
+                          <option value="">Selecciona...</option>
+                          {bankAccounts.map(ba => (
+                            <option key={ba.id} value={ba.id}>
+                              {ba.name} - {ba.bank_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>
+                          Referencia (opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={confirmTransferRef}
+                          onChange={e => setConfirmTransferRef(e.target.value)}
+                          placeholder="# de confirmación"
+                          className="w-full p-2 border rounded-lg text-xs"
+                          style={{ borderColor: 'var(--stone)' }}
+                        />
+                      </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setConfirmingTransfer(null)}
+                          onClick={() => { setConfirmingTransfer(null); setConfirmTransferBankId(''); setConfirmTransferRef('') }}
                           className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-gray-50"
                           style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
                         >
@@ -510,7 +603,7 @@ export default function NotificacionesPage() {
                         </button>
                         <button
                           onClick={() => handleConfirmTransfer(transfer.sale_id)}
-                          disabled={confirmingSubmitting}
+                          disabled={confirmingSubmitting || !confirmTransferBankId}
                           className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
                           style={{ backgroundColor: '#16a34a' }}
                         >
@@ -518,13 +611,13 @@ export default function NotificacionesPage() {
                             <span className="flex items-center justify-center gap-1">
                               <Loader2 className="w-3 h-3 animate-spin" /> ...
                             </span>
-                          ) : 'Si, confirmar'}
+                          ) : 'Confirmar'}
                         </button>
                       </div>
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmingTransfer(transfer)}
+                      onClick={() => { setConfirmingTransfer(transfer); if (bankAccounts.length === 0) fetchBankAccounts() }}
                       className="flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
                       style={{ backgroundColor: '#16a34a' }}
                     >
@@ -822,7 +915,7 @@ export default function NotificacionesPage() {
                   {/* Admin / Abigail: approve pending orders */}
                   {canSeePending && order.status === 'pending' && (
                     <button
-                      onClick={() => handleApproveOrder(order.id)}
+                      onClick={() => handleApproveOrder(order)}
                       disabled={approvingId === order.id}
                       className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
                       style={{ backgroundColor: 'var(--navy-800)' }}
@@ -955,6 +1048,73 @@ export default function NotificacionesPage() {
                     <Loader2 className="w-4 h-4 animate-spin" /> Procesando...
                   </span>
                 ) : 'Confirmar Pago Realizado'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inbound approve modal — captures which bank received the money */}
+      {inboundApproveTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+              Confirmar pago recibido
+            </h3>
+            <div className="rounded-lg p-3 space-y-1 text-sm" style={{ backgroundColor: 'var(--sand-50)' }}>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--slate)' }}>Propiedad</span>
+                <span className="font-medium" style={{ color: 'var(--ink)' }}>{inboundApproveTarget.property_address || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--slate)' }}>Concepto</span>
+                <span className="font-medium" style={{ color: 'var(--ink)' }}>{(inboundApproveTarget as any).concept || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--slate)' }}>Monto</span>
+                <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(inboundApproveTarget.amount)}</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                ¿En qué cuenta bancaria entró el dinero? *
+              </label>
+              <select
+                value={inboundApproveBankId}
+                onChange={e => setInboundApproveBankId(e.target.value)}
+                className="w-full p-3 border rounded-lg text-sm bg-white"
+                style={{ borderColor: 'var(--stone)' }}
+              >
+                <option value="">Seleccionar cuenta...</option>
+                {bankAccounts.map(ba => (
+                  <option key={ba.id} value={ba.id}>
+                    {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs mt-1.5" style={{ color: 'var(--slate)' }}>
+                Esto registra automáticamente el ingreso en contabilidad y deja la transacción lista para conciliar.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setInboundApproveTarget(null); setInboundApproveBankId('') }}
+                className="flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium hover:bg-gray-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={submitInboundApprove}
+                disabled={!inboundApproveBankId || approvingId === inboundApproveTarget.id}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: 'var(--navy-800)' }}
+              >
+                {approvingId === inboundApproveTarget.id ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Procesando...
+                  </span>
+                ) : 'Aprobar y registrar'}
               </button>
             </div>
           </div>
