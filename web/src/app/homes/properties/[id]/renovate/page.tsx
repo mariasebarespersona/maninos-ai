@@ -1257,6 +1257,7 @@ export default function RenovationPage() {
                                           payee_name: item.responsable || 'Contratista',
                                           amount: item.precio,
                                           method: 'transferencia',
+                                          concept: 'renovacion',
                                           notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
                                         }),
                                       })
@@ -1506,6 +1507,7 @@ export default function RenovationPage() {
                                   payee_name: item.responsable || 'Contratista',
                                   amount: item.precio,
                                   method: 'transferencia',
+                                  concept: 'renovacion',
                                   notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
                                 }),
                               })

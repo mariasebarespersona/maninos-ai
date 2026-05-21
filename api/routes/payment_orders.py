@@ -257,6 +257,14 @@ async def approve_payment_order(
                     "bank_account_id": bank_account_id,
                 }).eq("id", order_id).execute()
                 logger.info(f"[payment_orders] inbound ledger pair=({debit_id},{credit_id}) for order {order_id}")
+
+                # If this inbound payment closes out a contado sale, recognize
+                # COGS now. We can't wait for /confirm-transfer because that
+                # endpoint isn't used by the Notificaciones approval flow.
+                try:
+                    _maybe_recognize_cogs_for_sale(property_id, bank_account_id, approved_by)
+                except Exception as cogs_err:
+                    logger.warning(f"[payment_orders] COGS check failed: {cogs_err}")
             except ValueError as e:
                 logger.error(f"[payment_orders] Cannot post inbound ledger for {order_id}: {e}")
                 raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
@@ -302,11 +310,14 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     try:
         from api.services.ledger import post_to_ledger
 
-        concept = (order.get("concept") or "compra").lower()
+        # Default unknown/empty concepts to "otro" rather than "compra" so
+        # they don't masquerade as house purchases in the ledger.
+        concept = (order.get("concept") or "otro").lower()
         event_map = {
             "compra": ("property_purchase_paid", {}),
-            "renovacion": ("renovation_paid", {"concept": "Pago a contratista"}),
+            "renovacion": ("renovation_paid", {"concept": order.get("notes") or "Pago a contratista"}),
             "movida": ("moving_transport_paid", {}),
+            "comision": ("commission_paid", {}),
             "otro": ("manual_expense_paid", {"concept": order.get("notes") or "Pago general"}),
         }
         event_type, extra_desc = event_map.get(concept, event_map["otro"])
@@ -419,3 +430,96 @@ async def cancel_payment_order(order_id: str, cancelled_by: Optional[str] = None
     }).eq("id", order_id).execute()
 
     return {"ok": True, "data": result.data[0] if result.data else None, "message": "Orden cancelada"}
+
+
+# ---------------------------------------------------------------------------
+# COGS helper (called from approve_payment_order on inbound payments)
+# ---------------------------------------------------------------------------
+
+def _maybe_recognize_cogs_for_sale(
+    property_id: Optional[str],
+    bank_account_id: Optional[str],
+    approved_by: Optional[str],
+) -> None:
+    """
+    If the most recent contado sale on `property_id` is now fully paid
+    (sum of inbound ledger rows >= sale_price) AND no COGS pair has been
+    written for that sale yet, post the sale_contado_cogs entry now.
+
+    Idempotent: re-running on subsequent payments after the sale was
+    already fully paid is a no-op because the entity_type/entity_id
+    guard prevents duplicate COGS rows.
+    """
+    if not property_id:
+        return
+
+    sale = (
+        sb.table("sales")
+        .select("id, sale_price, sale_type, property_id, clients(name), properties(address, purchase_price)")
+        .eq("property_id", property_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    ).data
+    if not sale:
+        return
+    sale = sale[0]
+    if (sale.get("sale_type") or "").lower() != "contado":
+        return  # COGS for RTO is a different conversation
+
+    # Already recognized? Guard against duplicate firing.
+    existing_cogs = (
+        sb.table("accounting_transactions")
+        .select("id")
+        .eq("entity_type", "sale")
+        .eq("entity_id", sale["id"])
+        .eq("transaction_type", "cogs")
+        .limit(1)
+        .execute()
+    ).data
+    if existing_cogs:
+        return
+
+    # Sum of confirmed inbound payments on the linked payment_orders.
+    in_orders = (
+        sb.table("payment_orders")
+        .select("amount, status")
+        .eq("property_id", property_id)
+        .eq("direction", "inbound")
+        .execute()
+    ).data or []
+    paid_total = sum(float(o.get("amount") or 0) for o in in_orders
+                     if (o.get("status") or "") in ("approved", "completed"))
+
+    sale_price = float(sale.get("sale_price") or 0)
+    if paid_total + 0.01 < sale_price:  # epsilon for float rounding
+        return
+
+    # Compute inventory cost = purchase_price + Σ renovations.total_cost
+    prop = sale.get("properties") or {}
+    purchase_price = float(prop.get("purchase_price") or 0)
+    reno_total = 0.0
+    try:
+        reno_res = sb.table("renovations").select("total_cost").eq("property_id", property_id).execute()
+        reno_total = sum(float(r.get("total_cost") or 0) for r in (reno_res.data or []))
+    except Exception:
+        pass
+    inventory_cost = round(purchase_price + reno_total, 2)
+    if inventory_cost <= 0:
+        return  # nothing to recognize
+
+    from api.services.ledger import post_to_ledger
+    from datetime import date as date_type
+    post_to_ledger(
+        event_type="sale_contado_cogs",
+        amount=inventory_cost,
+        date=date_type.today().isoformat(),
+        counterparty_name=(sale.get("clients") or {}).get("name"),
+        entity_type="sale",
+        entity_id=sale["id"],
+        property_id=property_id,
+        description_data={"address": prop.get("address") or "—"},
+        status="confirmed",
+        created_by=approved_by,
+    )
+    logger.info(f"[payment_orders] COGS recognized for sale {sale['id']} cost=${inventory_cost}")
