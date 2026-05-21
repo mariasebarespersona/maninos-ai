@@ -409,12 +409,28 @@ def post_to_ledger(
     # is_income convention (legacy): true means money INTO a bank (cash inflow).
     # We set is_income only on the bank leg; non-bank leg uses the inverse so
     # totals net to zero for any view that sums is_income=true minus =false.
+    # Convention: the debit leg is always the "positive movement" side of the
+    # pair (asset/expense increases), credit is the "negative" side. This is
+    # what the UI displays as +/-. It also keeps the totals correct: bank
+    # balance derivation filters by bank_account_id and sums signed amounts,
+    # and for cashless events the +/- signs aren't load-bearing but should
+    # not make both legs look identical to an operator scanning the queue.
     if event_type == "bank_transfer":
         debit_is_income = True   # to-bank receives
         credit_is_income = False  # from-bank pays out
+    elif spec.debit == BANK:
+        # Bank receives money (incoming sale, factura cobrada, transfer in).
+        debit_is_income = True
+        credit_is_income = False
+    elif spec.credit == BANK:
+        # Bank sends money out (purchase, commission, expense paid).
+        debit_is_income = True       # the non-bank side gains value
+        credit_is_income = False     # bank cash leaves
     else:
-        debit_is_income = spec.is_income_on_bank_side if spec.debit == BANK else (not spec.is_income_on_bank_side)
-        credit_is_income = spec.is_income_on_bank_side if spec.credit == BANK else (not spec.is_income_on_bank_side)
+        # Cashless pair (AR, AP, COGS, internal write-off). No bank leg —
+        # still use debit=+ / credit=- so the UI shows a clean pair.
+        debit_is_income = True
+        credit_is_income = False
 
     base = {
         "transaction_date": date,

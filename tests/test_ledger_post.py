@@ -291,6 +291,9 @@ def test_invoice_issued_ar_no_bank(db):
     assert credit.get("bank_account_id") is None
     assert debit["transaction_type"] == credit["transaction_type"] == "invoice_ar"
     assert "INV-001" in debit["description"]
+    # is_income signs must be opposite for the pair to display as +/- in the UI.
+    assert debit["is_income"] is True
+    assert credit["is_income"] is False
 
 
 def test_invoice_paid_in_clears_ar(db):
@@ -325,6 +328,9 @@ def test_cogs_internal_no_bank(db):
     assert debit["account_id"] == "chart-House Sales - COGS"   # COGS recognized
     assert credit["account_id"] == "chart-Inventory"  # Inventory written off
     assert debit["transaction_type"] == "cogs"
+    # Opposite is_income signs so the pair shows + and - in the UI.
+    assert debit["is_income"] is True
+    assert credit["is_income"] is False
     # No bank fields on either side
     for r in (debit, credit):
         assert r.get("bank_account_id") is None
