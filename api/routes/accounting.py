@@ -4005,6 +4005,19 @@ async def delete_bank_statement(statement_id: str):
     movs = (sb.table("statement_movements").select("*")
             .eq("statement_id", statement_id).execute()).data or []
 
+    # statement_movements has FKs to accounting_transactions
+    # (transaction_id and matched_transaction_id). Before we can delete any
+    # accounting_transactions row that those columns reference, we MUST
+    # clear the FK first or Postgres rejects with 23503.
+    if movs:
+        try:
+            sb.table("statement_movements").update({
+                "transaction_id": None,
+                "matched_transaction_id": None,
+            }).eq("statement_id", statement_id).execute()
+        except Exception as e:
+            logger.warning(f"[delete-statement] could not clear FKs on statement_movements: {e!r}")
+
     reverted_existing = 0   # matched-with-existing rows that got un-reconciled
     deleted_new_pairs = 0   # new pairs that got fully deleted
     reverted_invoices = 0   # invoices that lost an auto-collected payment
