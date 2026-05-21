@@ -810,6 +810,7 @@ export default function NewPropertyPage() {
               bank_address: payee.newPayee.bank_address || undefined,
               amount: orderAmount,
               method: payment.method,
+              concept: 'compra',
               notes: 'Compra directa desde Nueva Propiedad',
             }),
           })

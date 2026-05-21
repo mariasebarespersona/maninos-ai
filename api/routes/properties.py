@@ -1181,6 +1181,7 @@ async def request_renovation_payment(property_id: str):
         "amount": cost,
         "method": "transferencia",
         "status": "pending",
+        "concept": "renovacion",
         "notes": f"Pago renovación: {prop_address}\nCosto total: ${cost:,.2f}\nRenovación ID: {renovation['id'][:8]}",
         "created_by": "sistema_renovaciones",
     }

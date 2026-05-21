@@ -2838,6 +2838,7 @@ ${price}
                         payee_address: consignmentPayee.payee_address || undefined,
                         amount: parseFloat(consignmentPayee.amount),
                         method: consignmentPayee.method,
+                        concept: 'compra',
                         notes: 'Pago de consignación (diferido desde compra)',
                       }),
                     })
