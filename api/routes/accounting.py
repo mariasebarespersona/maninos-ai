@@ -3878,8 +3878,18 @@ async def post_confirmed_movements(statement_id: str):
             # (api.services.ledger.get_bank_balance) sums signed amounts on
             # rows where bank_account_id = X. If the P&L leg also had
             # bank_account_id set, every movement would be counted twice.
+            #
+            # SKIP this entry for RECONCILED movements: the matched
+            # transaction (pnl_txn_id) was created by post_to_ledger earlier
+            # and ALREADY has its bank leg linked via linked_transaction_id.
+            # Inserting another bank-side row here would duplicate the cash
+            # effect on the bank (the bug that drove Cuenta Dallas from the
+            # expected $61,675.60 to the observed $83,125 in the lifecycle
+            # test). For reconciled movements we just stamp reconciled_at
+            # on the existing pair below.
             bank_txn_id = None
-            if bank_accounting_account_id:
+            already_paired = (mv.get("status") == "reconciled" and mv.get("matched_transaction_id"))
+            if bank_accounting_account_id and not already_paired:
                 bank_data = {
                     **common_fields,
                     "transaction_number": _generate_transaction_number(),
