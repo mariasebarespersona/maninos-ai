@@ -2765,7 +2765,6 @@ function EstadoCuentaTab() {
       }
       fetchStatements()
       fetchBankAccounts()
-      fetchDashboard()
     } catch (e) { console.error(e); toast.error('Error al eliminar') }
   }
 
