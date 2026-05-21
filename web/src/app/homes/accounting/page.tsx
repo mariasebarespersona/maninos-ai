@@ -82,7 +82,7 @@ interface Invoice {
 }
 
 // ── Helpers ──
-const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 const fmtFull = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
 
 const TYPE_LABELS: Record<string, string> = {
@@ -3267,18 +3267,26 @@ function EstadoCuentaTab() {
                     </div>
                   )}
 
-                  {/* Next step button */}
-                  {(reconcileDone || (!reconciling && reconcileMatches.length === 0 && needsClassifyCount > 0)) && needsClassifyCount > 0 && (
-                    <div className="flex justify-end pt-2">
-                      <button
-                        onClick={() => setWizardStep(2)}
-                        className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
-                        style={{ backgroundColor: '#7c3aed' }}
-                      >
-                        Siguiente: Clasificar con IA <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
+                  {/* Next step button — ALWAYS visible while in step 1
+                      (just disabled while a reconcile call is in flight) so
+                      the wizard never gets stuck without an action. Label and
+                      destination depend on what's pending:
+                        - things to classify  → step 2 (purple "Clasificar")
+                        - nothing to classify → step 3 (green "Publicar")
+                      Both banks Dallas, Houston, Conroe (and their cash
+                      variants) end up showing one of these two buttons. */}
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={() => setWizardStep(needsClassifyCount > 0 ? 2 : 3)}
+                      disabled={reconciling}
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                      style={{ backgroundColor: needsClassifyCount > 0 ? '#7c3aed' : '#059669' }}
+                    >
+                      {needsClassifyCount > 0
+                        ? <>Siguiente: Clasificar con IA <ArrowRight className="w-4 h-4" /></>
+                        : <>Siguiente: Revisar y Publicar <ArrowRight className="w-4 h-4" /></>}
+                    </button>
+                  </div>
                 </div>
               )}
 
