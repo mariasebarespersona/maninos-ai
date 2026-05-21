@@ -3129,7 +3129,12 @@ function EstadoCuentaTab() {
                             <span className={`font-bold ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
                               {t.is_income ? '+' : '-'}${Number(t.amount).toLocaleString()}
                             </span>
-                            <span className="text-navy-600 truncate flex-1">{t.description?.substring(0, 50) || t.transaction_type}</span>
+                            {t.properties?.property_code && (
+                              <span className="text-[10px] bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-bold flex-shrink-0">
+                                {t.properties.property_code}
+                              </span>
+                            )}
+                            <span className="text-navy-600 truncate flex-1" title={t.description}>{t.description || t.transaction_type}</span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{t.transaction_type}</span>
                             <span className="text-[10px] text-gray-400">{t.transaction_date ? new Date(t.transaction_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.status === 'confirmed' ? 'bg-amber-100 text-amber-700' : t.status === 'reconciled' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>
