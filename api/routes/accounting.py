@@ -2925,6 +2925,25 @@ async def upload_bank_statement(
     try:
         raw_text, movements = await _extract_and_parse_statement(file_content, ext, account_key)
 
+        if not movements:
+            # AI couldn't find any movements. Surface a diagnostic with
+            # length of text extracted so the operator can tell whether
+            # the PDF was image-only / extraction failed vs. AI just
+            # couldn't find structure.
+            text_len = len(raw_text or "")
+            if text_len < 50:
+                raise ValueError(
+                    f"El archivo no tiene capa de texto extraíble "
+                    f"({text_len} caracteres detectados). Si es un PDF escaneado, "
+                    f"súbelo como imagen (PNG/JPG) para que el OCR lo lea."
+                )
+            raise ValueError(
+                f"No se detectaron movimientos en el texto del estado de cuenta "
+                f"(se extrajeron {text_len} caracteres pero el parser no encontró "
+                f"transacciones estructuradas). Verifica que el archivo sea un "
+                f"estado de cuenta real, no un resumen ni un comprobante suelto."
+            )
+
         # Save raw text
         sb.table("bank_statements").update({
             "raw_extracted_text": raw_text[:50000] if raw_text else None,
@@ -4061,7 +4080,9 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
             continue
 
     if not all_movements:
-        raise ValueError("Could not parse any movements from the statement")
+        # Don't raise here — return empty list so the upload endpoint can
+        # produce a more useful error message (it knows the raw_text length).
+        return []
 
     # Deduplicate by (date, amount, description[:50])
     seen = set()
