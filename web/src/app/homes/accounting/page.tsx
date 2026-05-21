@@ -2612,7 +2612,37 @@ function EstadoCuentaTab() {
       if (mvRes.ok) setActiveMovements((await mvRes.json()).movements || [])
       if (txnRes.ok) {
         const txnData = await txnRes.json()
-        setAppTransactions((txnData.transactions || txnData.data || txnData || []).filter((t: any) => t.status === 'confirmed' || t.status === 'pending'))
+        const all = (txnData.transactions || txnData.data || txnData || [])
+          .filter((t: any) => (t.status === 'confirmed' || t.status === 'pending') && t.entity_type !== 'opening_balance')
+        // Dedupe double-entry pairs: each pair shows only ONE row. Prefer
+        // the row that has a bank_account_id (the cash-flow leg) — that's
+        // the one that can actually be matched against a statement
+        // movement. For cashless pairs (AR/AP/COGS), keep just one side.
+        const seenPairs = new Set<string>()
+        const deduped: any[] = []
+        for (const t of all) {
+          const linked = t.linked_transaction_id
+          if (!linked) { deduped.push(t); continue }
+          // Pair key is the lexicographically smaller of (id, linked)
+          const key = t.id < linked ? `${t.id}::${linked}` : `${linked}::${t.id}`
+          if (seenPairs.has(key)) {
+            // Already have one row from this pair. Replace ONLY if the new
+            // row has a bank_account_id and the existing one doesn't.
+            const existingIdx = deduped.findIndex(r => {
+              const lk = r.linked_transaction_id
+              if (!lk) return false
+              const k = r.id < lk ? `${r.id}::${lk}` : `${lk}::${r.id}`
+              return k === key
+            })
+            if (existingIdx >= 0 && !deduped[existingIdx].bank_account_id && t.bank_account_id) {
+              deduped[existingIdx] = t
+            }
+            continue
+          }
+          seenPairs.add(key)
+          deduped.push(t)
+        }
+        setAppTransactions(deduped)
       }
     } catch (e) { console.error(e) }
     finally { setMovementsLoading(false) }
