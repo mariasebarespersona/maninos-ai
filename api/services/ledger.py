@@ -38,10 +38,23 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Optional
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+def _coerce_uuid_or_none(value: Optional[str]) -> Optional[str]:
+    """accounting_transactions.created_by is a UUID FK. If a non-UUID string
+    (e.g. the literal "staff" or an employee handle) gets through, Postgres
+    raises 22P02 and the whole insert fails. We drop those rather than fail
+    the ledger post — the human-readable attribution lives in counterparty
+    / description / notes anyway."""
+    if value and isinstance(value, str) and _UUID_RE.match(value):
+        return value
+    return None
 
 logger = logging.getLogger(__name__)
 
@@ -410,7 +423,7 @@ def post_to_ledger(
         "payment_reference": payment_reference,
         "notes": notes,
         "status": status,
-        "created_by": created_by,
+        "created_by": _coerce_uuid_or_none(created_by),
     }
 
     # One serial per *pair*, with -D / -C suffix so the two legs are unique
