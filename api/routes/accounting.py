@@ -3846,10 +3846,17 @@ async def post_confirmed_movements(statement_id: str):
             # _signed_balance still returns +amt for the expense.
             pnl_is_income = bank_is_income
             if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
-                # Reconciled: update existing transaction
+                # Reconciled: the movement was MATCHED to an existing
+                # transaction from a prior flow (Test 1 sale, factura
+                # issuance, etc.). That transaction already has its own
+                # correct account_id (Inventory for purchases, House Sales
+                # for sales, etc.). We do NOT overwrite it with the
+                # wizard's classification — doing that previously caused
+                # purchases to silently move to "Cost of Goods Sold-1"
+                # and renovations to "Labor Costs" in the user's reports.
+                # We only stamp source='bank_statement' so the audit
+                # trail shows this transaction now has a statement match.
                 sb.table("accounting_transactions").update({
-                    "account_id": account_id,
-                    "transaction_type": txn_type,
                     "source": "bank_statement",
                 }).eq("id", mv["matched_transaction_id"]).execute()
                 pnl_txn_id = mv["matched_transaction_id"]
