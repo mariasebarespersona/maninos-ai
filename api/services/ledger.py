@@ -46,14 +46,22 @@ from typing import Any, Callable, Optional
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
-def _coerce_uuid_or_none(value: Optional[str]) -> Optional[str]:
-    """accounting_transactions.created_by is a UUID FK. If a non-UUID string
-    (e.g. the literal "staff" or an employee handle) gets through, Postgres
-    raises 22P02 and the whole insert fails. We drop those rather than fail
-    the ledger post — the human-readable attribution lives in counterparty
-    / description / notes anyway."""
-    if value and isinstance(value, str) and _UUID_RE.match(value):
-        return value
+def _persist_created_by(db, value: Optional[str]) -> Optional[str]:
+    """accounting_transactions.created_by is a UUID FK → users(id). Two ways
+    a value can fail the INSERT:
+      1) Not a UUID at all (e.g. 'staff', 'e2e-test') → Postgres 22P02
+      2) UUID but the user doesn't exist → Postgres 23503 (FK violation)
+    Either way we drop the value rather than fail the whole ledger pair.
+    Human-readable attribution lives in counterparty_name / notes / description.
+    """
+    if not value or not isinstance(value, str) or not _UUID_RE.match(value):
+        return None
+    try:
+        res = db.table("users").select("id").eq("id", value).limit(1).execute()
+        if res.data:
+            return value
+    except Exception:
+        pass
     return None
 
 logger = logging.getLogger(__name__)
@@ -423,7 +431,7 @@ def post_to_ledger(
         "payment_reference": payment_reference,
         "notes": notes,
         "status": status,
-        "created_by": _coerce_uuid_or_none(created_by),
+        "created_by": _persist_created_by(db, created_by),
     }
 
     # One serial per *pair*, with -D / -C suffix so the two legs are unique
