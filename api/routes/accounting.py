@@ -3083,11 +3083,33 @@ async def reconcile_statement_movements(statement_id: str):
 
     matches = _match_movements_to_transactions(movements.data, unreconciled_txns)
 
-    unmatched_count = len(movements.data) - len(matches)
+    # Also look for OPEN INVOICES that could match a movement. This lets the
+    # operator auto-cobrar a factura from a bank deposit (or auto-pay an AP
+    # from a withdrawal) without manually clicking "registrar pago" on each
+    # invoice — the reconcile-confirm step will create the invoice payment
+    # and the proper double-entry pair automatically.
+    matched_movement_ids = {m["movement_id"] for m in matches}
+    remaining_movements = [m for m in movements.data if m["id"] not in matched_movement_ids]
+    invoice_matches: list = []
+    if remaining_movements:
+        try:
+            inv_res = (sb.table("accounting_invoices").select("*")
+                       .in_("status", ["draft", "sent", "partial", "overdue"])
+                       .execute())
+            open_invoices = [i for i in (inv_res.data or [])
+                             if float(i.get("balance_due") or 0) > 0]
+            if open_invoices:
+                invoice_matches = _match_movements_to_invoices(remaining_movements, open_invoices)
+        except Exception as e:
+            logger.warning(f"[reconcile] invoice match scan failed: {e}")
+
+    all_matches = matches + invoice_matches
+    unmatched_count = len(movements.data) - len(all_matches)
     return {
-        "matches": matches,
+        "matches": all_matches,
         "unmatched_count": unmatched_count,
-        "message": f"{len(matches)} coincidencias encontradas, {unmatched_count} sin match",
+        "message": f"{len(all_matches)} coincidencias ({len(matches)} con transacciones, "
+                   f"{len(invoice_matches)} con facturas), {unmatched_count} sin match",
     }
 
 
@@ -3218,10 +3240,113 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
             matches.append({
                 "movement_id": mv["id"],
                 "transaction_id": best_match["id"],
+                "target_type": "transaction",
                 "score": best_score,
                 "confidence": confidence,
                 "movement": mv,
                 "transaction": best_match,
+            })
+
+    return matches
+
+
+def _match_movements_to_invoices(movements: list, invoices: list) -> list:
+    """Match bank statement movements against open invoices (AR or AP).
+    Used by the reconcile wizard to surface auto-collect / auto-pay
+    candidates: a deposit that matches an unpaid receivable, or a
+    withdrawal that matches an unpaid payable.
+    Returns list of match dicts with `target_type='invoice'` and
+    `invoice_id` so reconcile-confirm can branch on it.
+    """
+    matches: list = []
+    used_invoice_ids: set = set()
+
+    for mv in movements:
+        mv_amount = abs(float(mv.get("amount", 0)))
+        mv_is_credit = mv.get("is_credit", False)  # True=deposit, False=withdrawal
+        mv_date_str = mv.get("movement_date", "")
+        mv_counterparty = mv.get("counterparty") or ""
+        mv_description = mv.get("description") or ""
+
+        best_match = None
+        best_score = 0
+
+        for inv in invoices:
+            if inv["id"] in used_invoice_ids:
+                continue
+
+            # Direction must agree:
+            #   deposit (is_credit=True)  → receivable (we get paid)
+            #   withdrawal (is_credit=False) → payable (we pay a bill)
+            direction = (inv.get("direction") or "").lower()
+            if mv_is_credit and direction != "receivable":
+                continue
+            if not mv_is_credit and direction != "payable":
+                continue
+
+            balance_due = float(inv.get("balance_due") or 0)
+            if balance_due <= 0:
+                continue
+
+            score = 0
+            # Amount match against balance_due (exact, 1%, 5%)
+            if mv_amount > 0 and balance_due > 0:
+                diff_pct = abs(mv_amount - balance_due) / max(mv_amount, balance_due)
+                if abs(mv_amount - balance_due) < 0.01:
+                    score += 50
+                elif diff_pct < 0.01:
+                    score += 35
+                elif diff_pct < 0.05:
+                    score += 15
+                else:
+                    continue
+
+            # Date proximity vs invoice due_date or issue_date (best of the two)
+            try:
+                mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
+                for cmp_str in (inv.get("due_date"), inv.get("issue_date")):
+                    if not cmp_str or not mv_date:
+                        continue
+                    cmp_date = datetime.strptime(cmp_str, "%Y-%m-%d").date()
+                    diff_days = abs((mv_date - cmp_date).days)
+                    if diff_days == 0:
+                        score = max(score, score + 30); break
+                    elif diff_days <= 3:
+                        score = max(score, score + 20); break
+                    elif diff_days <= 14:
+                        score = max(score, score + 10); break
+                    elif diff_days <= 30:
+                        score = max(score, score + 5); break
+            except Exception:
+                pass
+
+            # Counterparty similarity
+            inv_counterparty = inv.get("counterparty_name") or ""
+            best_name_sim = 0.0
+            for mv_name in [mv_counterparty, mv_description]:
+                if mv_name and inv_counterparty:
+                    best_name_sim = max(best_name_sim, _name_similarity(mv_name, inv_counterparty))
+                # also try matching invoice_number in movement description (e.g. "PAGO FAC-XXX")
+                inv_num = (inv.get("invoice_number") or "").lower()
+                if inv_num and mv_name and inv_num in mv_name.lower():
+                    best_name_sim = max(best_name_sim, 1.0)
+            score += int(20 * best_name_sim)
+
+            if score > best_score:
+                best_score = score
+                best_match = inv
+
+        if best_match and best_score >= 50:
+            used_invoice_ids.add(best_match["id"])
+            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
+            matches.append({
+                "movement_id": mv["id"],
+                "invoice_id": best_match["id"],
+                "target_type": "invoice",
+                "score": best_score,
+                "confidence": confidence,
+                "movement": mv,
+                "invoice": best_match,
             })
 
     return matches
@@ -3240,16 +3365,104 @@ async def confirm_reconciliation(statement_id: str, data: dict):
     reconciled = 0
     errors = []
 
+    # Pre-fetch the statement (we need bank_account_id for invoice payments)
+    stmt_row = sb.table("bank_statements").select("*").eq("id", statement_id).execute().data
+    statement = stmt_row[0] if stmt_row else {}
+
     for pair in pairs:
         mv_id = pair.get("movement_id")
         txn_id = pair.get("transaction_id")
-        logger.info(f"[reconcile-confirm] Processing pair: mv={mv_id}, txn={txn_id}")
+        invoice_id = pair.get("invoice_id")
+        target_type = pair.get("target_type") or ("invoice" if invoice_id else "transaction")
+        logger.info(f"[reconcile-confirm] Processing pair: mv={mv_id}, target={target_type}, txn={txn_id}, invoice={invoice_id}")
 
-        if not mv_id or not txn_id:
-            errors.append(f"Missing mv_id or txn_id in pair: {pair}")
+        if not mv_id:
+            errors.append(f"Missing mv_id in pair: {pair}")
             continue
 
         try:
+            if target_type == "invoice" and invoice_id:
+                # ---- AUTO-COLLECT / AUTO-PAY invoice branch ----
+                # Fetch the movement so we know the amount/date for the payment.
+                mv_row = sb.table("statement_movements").select("*").eq("id", mv_id).single().execute().data
+                if not mv_row:
+                    errors.append(f"Movement {mv_id} not found")
+                    continue
+                inv_row = sb.table("accounting_invoices").select("*").eq("id", invoice_id).single().execute().data
+                if not inv_row:
+                    errors.append(f"Invoice {invoice_id} not found")
+                    continue
+
+                amount = abs(float(mv_row.get("amount") or 0))
+                is_receivable = (inv_row.get("direction") or "").lower() == "receivable"
+
+                # Create accounting_invoice_payments row
+                pay = sb.table("accounting_invoice_payments").insert({
+                    "invoice_id": invoice_id,
+                    "payment_date": mv_row.get("movement_date"),
+                    "amount": amount,
+                    "payment_method": mv_row.get("payment_method"),
+                    "payment_reference": mv_row.get("reference"),
+                    "notes": f"Auto-cobrado del estado de cuenta {statement.get('id','')[:8]}",
+                }).execute()
+
+                # Update invoice balance + status
+                new_paid = float(inv_row.get("amount_paid") or 0) + amount
+                total = float(inv_row.get("total_amount") or 0)
+                new_status = "paid" if new_paid + 0.01 >= total else "partial"
+                sb.table("accounting_invoices").update({
+                    "amount_paid": new_paid,
+                    "status": new_status,
+                }).eq("id", invoice_id).execute()
+
+                # Post the double-entry pair via the unified writer
+                from api.services.ledger import post_to_ledger
+                debit_id, credit_id = post_to_ledger(
+                    event_type=("invoice_paid_in" if is_receivable else "invoice_paid_out"),
+                    amount=amount,
+                    bank_account_id=statement.get("bank_account_id"),
+                    date=mv_row.get("movement_date") or now_str[:10],
+                    counterparty_name=inv_row.get("counterparty_name"),
+                    counterparty_type=inv_row.get("counterparty_type"),
+                    entity_type="invoice",
+                    entity_id=invoice_id,
+                    property_id=inv_row.get("property_id"),
+                    yard_id=inv_row.get("yard_id"),
+                    description_data={"invoice_number": inv_row.get("invoice_number", "")},
+                    payment_method=mv_row.get("payment_method"),
+                    payment_reference=mv_row.get("reference"),
+                    notes=f"Auto-cobrado desde estado de cuenta",
+                    status="reconciled",  # pair is born already reconciled
+                )
+
+                # Link the invoice_payment to the bank leg of the pair
+                bank_leg_id = debit_id if is_receivable else credit_id
+                if pay.data and bank_leg_id:
+                    sb.table("accounting_invoice_payments").update({
+                        "transaction_id": bank_leg_id,
+                    }).eq("id", pay.data[0]["id"]).execute()
+
+                # Stamp reconciled_at on both legs
+                sb.table("accounting_transactions").update({
+                    "reconciled_at": now_str,
+                }).in_("id", [debit_id, credit_id]).execute()
+
+                # Mark the movement as reconciled + link it to the bank leg
+                sb.table("statement_movements").update({
+                    "status": "reconciled",
+                    "matched_transaction_id": bank_leg_id,
+                }).eq("id", mv_id).execute()
+
+                _log_audit("accounting_invoices", invoice_id, "auto_paid_from_statement",
+                           description=f"Pago auto-conciliado: ${amount:,.2f}")
+                reconciled += 1
+                continue
+
+            # ---- TRANSACTION branch (existing logic) ----
+            if not txn_id:
+                errors.append(f"Missing txn_id in pair: {pair}")
+                continue
+
             # Update movement: mark as reconciled and link to matched transaction
             mv_result = sb.table("statement_movements").update({
                 "status": "reconciled",
@@ -3258,9 +3471,6 @@ async def confirm_reconciliation(statement_id: str, data: dict):
             logger.info(f"[reconcile-confirm] Movement update result: {len(mv_result.data or [])} rows")
 
             # Mark the matched txn AND its linked counterpart leg as reconciled.
-            # Double-entry pairs are linked via linked_transaction_id (see PR 1
-            # writer). If we only flip one leg, the other half stays in "Por
-            # Conciliar" forever — that was a real bug pre-PR-3.
             txn_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
                        .eq("id", txn_id).single().execute().data or {}
             ids_to_flip = [txn_id]
@@ -3276,8 +3486,8 @@ async def confirm_reconciliation(statement_id: str, data: dict):
             _log_audit("accounting_transactions", txn_id, "reconcile")
             reconciled += 1
         except Exception as e:
-            err_msg = f"mv={mv_id}, txn={txn_id}: {e}"
-            logger.error(f"[reconcile-confirm] Error: {err_msg}")
+            err_msg = f"mv={mv_id}, target={target_type}: {e}"
+            logger.error(f"[reconcile-confirm] Error: {err_msg}", exc_info=True)
             errors.append(err_msg)
 
     logger.info(f"[reconcile-confirm] Done: {reconciled} reconciled, {len(errors)} errors")

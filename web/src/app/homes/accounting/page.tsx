@@ -2431,11 +2431,14 @@ const STMT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 interface ReconcileMatch {
   movement_id: string
-  transaction_id: string
+  transaction_id?: string | null
+  invoice_id?: string | null
+  target_type?: 'transaction' | 'invoice'
   score: number
   confidence: string
   movement: StatementMovement
-  transaction: Transaction
+  transaction?: Transaction
+  invoice?: { id: string; invoice_number?: string; counterparty_name?: string; total_amount?: number; balance_due?: number; direction?: string }
 }
 
 function EstadoCuentaTab() {
@@ -2782,7 +2785,12 @@ function EstadoCuentaTab() {
   const confirmReconciliation = async (stmtId: string) => {
     const pairs = reconcileMatches
       .filter(m => selectedMatches.has(m.movement_id))
-      .map(m => ({ movement_id: m.movement_id, transaction_id: m.transaction_id }))
+      .map(m => ({
+        movement_id: m.movement_id,
+        transaction_id: m.transaction_id || null,
+        invoice_id: m.invoice_id || null,
+        target_type: m.target_type || (m.invoice_id ? 'invoice' : 'transaction'),
+      }))
     console.log('[reconcile-confirm] Sending pairs:', JSON.stringify(pairs, null, 2))
     if (pairs.length === 0) {
       setReconcileDone(true)
@@ -3240,17 +3248,34 @@ function EstadoCuentaTab() {
                                     {match.movement.is_credit ? '+' : '-'}${Math.abs(match.movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                   </p>
                                 </div>
-                                {/* Transaction (from app) */}
-                                <div className="rounded-lg bg-blue-50 p-2.5">
-                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-1">Transacción App</p>
-                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.transaction.description}</p>
-                                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                                    {match.transaction.transaction_date} · {match.transaction.counterparty_name || '—'}
-                                  </p>
-                                  <p className={`text-sm font-bold mt-1 ${match.transaction.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                                    {match.transaction.is_income ? '+' : '-'}${Number(match.transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                  </p>
-                                </div>
+                                {/* Match target — Transacción de la app o Factura por cobrar/pagar */}
+                                {match.target_type === 'invoice' && match.invoice ? (
+                                  <div className="rounded-lg bg-violet-50 p-2.5">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500 mb-1">
+                                      Factura {match.invoice.direction === 'receivable' ? '(Por Cobrar)' : '(Por Pagar)'}
+                                    </p>
+                                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
+                                      {match.invoice.invoice_number || '—'}: {match.invoice.counterparty_name || '—'}
+                                    </p>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                                      Balance: ${Number(match.invoice.balance_due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} de ${Number(match.invoice.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-xs mt-1 text-violet-700 font-medium">
+                                      Al confirmar: se cobra/paga automáticamente
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-lg bg-blue-50 p-2.5">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-1">Transacción App</p>
+                                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.transaction?.description}</p>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
+                                      {match.transaction?.transaction_date} · {match.transaction?.counterparty_name || '—'}
+                                    </p>
+                                    <p className={`text-sm font-bold mt-1 ${match.transaction?.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                                      {match.transaction?.is_income ? '+' : '-'}${Number(match.transaction?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                               <span className={`flex-shrink-0 px-2 py-1 rounded-full text-[10px] font-bold ${
                                 match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
