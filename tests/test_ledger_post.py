@@ -175,25 +175,27 @@ def db():
     d = FakeDB()
     # Seed minimal chart of accounts (the codes the registry references)
     # Match the live DB shape: code == name (QB chart imported via app UI).
-    chart_codes = [
-        "Inventory",
-        "Accounts receivable (A/R)",
-        "Accounts Payable (A/P)",
-        "House Sales",
-        "House Sales - COGS",
-        "Bank fees & service charges",
-        "Commissions & fees",
-        "Other Contractors",
-        "Supplies & materials",
-        "Other Operating Expenses",
-        "BOA DFW 0623",
-        "HOUSTON 0636",
+    # account_type drives the is_income sign rule in post_to_ledger.
+    chart_seed = [
+        ("Inventory",                     "Other Current Assets"),
+        ("Accounts receivable (A/R)",     "Accounts receivable (A/R)"),
+        ("Accounts Payable (A/P)",        "Accounts payable (A/P)"),
+        ("House Sales",                   "Income"),
+        ("House Sales - COGS",            "Cost of Goods Sold"),
+        ("Bank fees & service charges",   "Expenses"),
+        ("Commissions & fees",            "Expenses"),
+        ("Other Contractors",             "Expenses"),
+        ("Supplies & materials",          "Expenses"),
+        ("Other Operating Expenses",      "Expenses"),
+        ("BOA DFW 0623",                  "Bank"),
+        ("HOUSTON 0636",                  "Bank"),
     ]
-    for code in chart_codes:
+    for code, atype in chart_seed:
         d.tables.setdefault("accounting_accounts", []).append({
             "id": f"chart-{code}",
             "code": code,
             "name": code,
+            "account_type": atype,
         })
 
     # Two banks, both linked to their QB chart accounts
@@ -267,8 +269,11 @@ def test_sale_contado_received_routes_to_house_sales(db):
     assert credit["account_id"] == "chart-House Sales"  # House Sales income
     assert debit["bank_account_id"] == "bank-dallas"
     assert credit.get("bank_account_id") is None
+    # Bank grew + House Sales grew → both is_income=True per the report
+    # convention (_signed_balance gives +amt to bank asset on True, and +amt
+    # to income account on True).
     assert debit["is_income"] is True
-    assert credit["is_income"] is False
+    assert credit["is_income"] is True
     assert debit["transaction_type"] == "sale_cash"
 
 
@@ -291,9 +296,10 @@ def test_invoice_issued_ar_no_bank(db):
     assert credit.get("bank_account_id") is None
     assert debit["transaction_type"] == credit["transaction_type"] == "invoice_ar"
     assert "INV-001" in debit["description"]
-    # is_income signs must be opposite for the pair to display as +/- in the UI.
+    # AR grew (asset) → True. House Sales grew (income) → True.
+    # Reports need both True so each account's natural sign is positive.
     assert debit["is_income"] is True
-    assert credit["is_income"] is False
+    assert credit["is_income"] is True
 
 
 def test_invoice_paid_in_clears_ar(db):
@@ -328,8 +334,11 @@ def test_cogs_internal_no_bank(db):
     assert debit["account_id"] == "chart-House Sales - COGS"   # COGS recognized
     assert credit["account_id"] == "chart-Inventory"  # Inventory written off
     assert debit["transaction_type"] == "cogs"
-    # Opposite is_income signs so the pair shows + and - in the UI.
-    assert debit["is_income"] is True
+    # COGS (expense) grew via debit → is_income=False (so _signed_balance
+    # for an expense type returns +amt, growing the COGS balance).
+    # Inventory (asset) shrunk via credit → is_income=False (negative for
+    # asset shrinking).
+    assert debit["is_income"] is False
     assert credit["is_income"] is False
     # No bank fields on either side
     for r in (debit, credit):

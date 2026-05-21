@@ -238,6 +238,26 @@ _account_by_code_cache: dict[str, str] = {}      # code -> id
 _bank_chart_cache: dict[str, str] = {}            # bank_account_id -> chart_account_id
 
 
+_account_type_cache: dict[str, str] = {}
+
+def _get_account_type_by_id(db, account_id: str) -> str:
+    """Return the account_type of a chart account (cached)."""
+    if not account_id:
+        return ""
+    with _lock:
+        cached = _account_type_cache.get(account_id)
+    if cached is not None:
+        return cached
+    try:
+        res = db.table("accounting_accounts").select("account_type").eq("id", account_id).limit(1).execute()
+        at = (res.data[0].get("account_type") if res.data else "") or ""
+    except Exception:
+        at = ""
+    with _lock:
+        _account_type_cache[account_id] = at
+    return at
+
+
 def _get_account_id_by_code(db, code: str) -> str:
     with _lock:
         cached = _account_by_code_cache.get(code)
@@ -409,28 +429,37 @@ def post_to_ledger(
     # is_income convention (legacy): true means money INTO a bank (cash inflow).
     # We set is_income only on the bank leg; non-bank leg uses the inverse so
     # totals net to zero for any view that sums is_income=true minus =false.
-    # Convention: the debit leg is always the "positive movement" side of the
-    # pair (asset/expense increases), credit is the "negative" side. This is
-    # what the UI displays as +/-. It also keeps the totals correct: bank
-    # balance derivation filters by bank_account_id and sums signed amounts,
-    # and for cashless events the +/- signs aren't load-bearing but should
-    # not make both legs look identical to an operator scanning the queue.
-    if event_type == "bank_transfer":
-        debit_is_income = True   # to-bank receives
-        credit_is_income = False  # from-bank pays out
-    elif spec.debit == BANK:
-        # Bank receives money (incoming sale, factura cobrada, transfer in).
-        debit_is_income = True
-        credit_is_income = False
-    elif spec.credit == BANK:
-        # Bank sends money out (purchase, commission, expense paid).
-        debit_is_income = True       # the non-bank side gains value
-        credit_is_income = False     # bank cash leaves
-    else:
-        # Cashless pair (AR, AP, COGS, internal write-off). No bank leg —
-        # still use debit=+ / credit=- so the UI shows a clean pair.
-        debit_is_income = True
-        credit_is_income = False
+    # is_income convention (the column the reports & balance derivation read):
+    #
+    # The report helper _signed_balance(amt, account_type, is_income) returns:
+    #   - +amt for EXPENSE/COGS accounts when is_income=False (debit grows)
+    #   - +amt for everything else (asset/income/liability/equity/Bank) when
+    #     is_income=True
+    #
+    # So per leg we set is_income such that _signed_balance(this row) is
+    # +amt when the account's balance NATURALLY GROWS due to this entry.
+    #
+    # Double-entry sides:
+    #   - DEBIT side grows assets+expenses, shrinks income/liability/equity
+    #   - CREDIT side grows income/liability/equity, shrinks assets+expenses
+    #
+    # Combining: for the DEBIT leg, asset accounts → is_income=True.
+    # For the CREDIT leg, every non-asset account → is_income=True.
+    # That's the rule below.
+    debit_acct_type = _get_account_type_by_id(db, debit_account_id) or ""
+    credit_acct_type = _get_account_type_by_id(db, credit_account_id) or ""
+
+    def _is_asset_like(at: str) -> bool:
+        at = (at or "").strip().lower()
+        return at in (
+            "asset", "bank", "other current assets", "fixed assets",
+            "other assets", "accounts receivable (a/r)",
+        )
+
+    # Debit leg: is_income=True for asset-like, False otherwise.
+    debit_is_income = _is_asset_like(debit_acct_type)
+    # Credit leg: is_income=False for asset-like (asset shrinks), True otherwise.
+    credit_is_income = not _is_asset_like(credit_acct_type)
 
     base = {
         "transaction_date": date,
@@ -507,6 +536,7 @@ def reset_caches() -> None:
     with _lock:
         _account_by_code_cache.clear()
         _bank_chart_cache.clear()
+        _account_type_cache.clear()
 
 
 def get_bank_balance(

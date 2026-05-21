@@ -3620,15 +3620,21 @@ async def post_confirmed_movements(statement_id: str):
 
             pnl_txn_id = None
 
-            # --- Entry 1: P&L side (no bank_account_id) ---
-            # is_income on P&L side is OPPOSITE of bank: a deposit credits
-            # bank (bank_is_income=True) and credits an income account
-            # (pnl is_income=False from the bank's perspective). A withdrawal
-            # debits bank (bank_is_income=False) and debits an expense
-            # account (pnl is_income=True). This makes the pair show up as
-            # +/- in the UI and prevents both legs from double-counting in
-            # any view that sums signed amounts.
-            pnl_is_income = not bank_is_income
+            # is_income on the P&L leg must reflect the NATURAL direction
+            # of that account so the reports (_signed_balance) give it a
+            # positive contribution:
+            #   - Deposit → income account credited → is_income=True so
+            #     House Sales etc. show +amt in the P&L.
+            #   - Withdrawal → expense account debited → is_income=False so
+            #     Office Supplies etc. show +amt (debit grows expense).
+            # In both cases this happens to equal the movement's is_credit
+            # flag — i.e., the P&L leg's is_income mirrors the bank leg's,
+            # because each leg independently asks: "is my account being
+            # grown by this entry?" and for a deposit both bank-side and
+            # income-side grow (+); for a withdrawal both bank-side and
+            # expense-side shrink/grow in opposite senses such that
+            # _signed_balance still returns +amt for the expense.
+            pnl_is_income = bank_is_income
             if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
                 # Reconciled: update existing transaction
                 sb.table("accounting_transactions").update({
