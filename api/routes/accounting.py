@@ -3603,9 +3603,12 @@ async def post_confirmed_movements(statement_id: str):
 
         try:
             abs_amount = abs(float(mv["amount"]))
+            # `common_fields` is shared between the two legs of the pair but
+            # MUST NOT include bank_account_id — that belongs ONLY to the
+            # bank leg below. Otherwise the bank balance derivation counts
+            # every movement twice (pre-fix bug: 2x effect on Cuenta Dallas).
             common_fields = {
                 "transaction_date": mv["movement_date"],
-                "bank_account_id": statement.get("bank_account_id"),
                 "payment_method": mv.get("payment_method"),
                 "payment_reference": mv.get("reference"),
                 "counterparty_name": mv.get("counterparty"),
@@ -3617,7 +3620,15 @@ async def post_confirmed_movements(statement_id: str):
 
             pnl_txn_id = None
 
-            # --- Entry 1: P&L side ---
+            # --- Entry 1: P&L side (no bank_account_id) ---
+            # is_income on P&L side is OPPOSITE of bank: a deposit credits
+            # bank (bank_is_income=True) and credits an income account
+            # (pnl is_income=False from the bank's perspective). A withdrawal
+            # debits bank (bank_is_income=False) and debits an expense
+            # account (pnl is_income=True). This makes the pair show up as
+            # +/- in the UI and prevents both legs from double-counting in
+            # any view that sums signed amounts.
+            pnl_is_income = not bank_is_income
             if mv.get("status") == "reconciled" and mv.get("matched_transaction_id"):
                 # Reconciled: update existing transaction
                 sb.table("accounting_transactions").update({
@@ -3633,7 +3644,7 @@ async def post_confirmed_movements(statement_id: str):
                     "transaction_number": _generate_transaction_number(),
                     "transaction_type": txn_type,
                     "amount": abs_amount,
-                    "is_income": mv["is_credit"],
+                    "is_income": pnl_is_income,
                     "account_id": account_id,
                     "notes": f"Importado de estado de cuenta: {stmt_label}",
                     "status": "confirmed",
@@ -3647,6 +3658,10 @@ async def post_confirmed_movements(statement_id: str):
                     continue
 
             # --- Entry 2: Bank/asset side (double-entry) ---
+            # Only this leg carries bank_account_id — the balance derivation
+            # (api.services.ledger.get_bank_balance) sums signed amounts on
+            # rows where bank_account_id = X. If the P&L leg also had
+            # bank_account_id set, every movement would be counted twice.
             bank_txn_id = None
             if bank_accounting_account_id:
                 bank_data = {
@@ -3656,6 +3671,7 @@ async def post_confirmed_movements(statement_id: str):
                     "amount": abs_amount,
                     "is_income": bank_is_income,
                     "account_id": bank_accounting_account_id,
+                    "bank_account_id": statement.get("bank_account_id"),
                     "linked_transaction_id": pnl_txn_id,
                     "notes": f"Contrapartida bancaria: {stmt_label}",
                     "status": "confirmed",
