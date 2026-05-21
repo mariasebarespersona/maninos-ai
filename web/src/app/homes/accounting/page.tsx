@@ -2748,15 +2748,25 @@ function EstadoCuentaTab() {
   }
 
   const deleteStatement = async (stmtId: string) => {
-    if (!confirm('¿Eliminar este estado de cuenta y todos sus movimientos?')) return
+    if (!confirm(
+      'Esto elimina el estado de cuenta Y revierte todas las transacciones que se publicaron desde él. ' +
+      'El saldo del banco volverá al valor que tenía antes de subir este estado. ' +
+      '¿Continuar?'
+    )) return
     try {
-      await fetch(`/api/accounting/bank-statements/${stmtId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/accounting/bank-statements/${stmtId}`, { method: 'DELETE' })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message || 'Estado de cuenta eliminado y saldo restaurado')
+      }
       if (activeStatement === stmtId) {
         setActiveStatement(null)
         setActiveMovements([])
       }
       fetchStatements()
-    } catch (e) { console.error(e) }
+      fetchBankAccounts()
+      fetchDashboard()
+    } catch (e) { console.error(e); toast.error('Error al eliminar') }
   }
 
   const reconcileMovements = async (stmtId: string) => {

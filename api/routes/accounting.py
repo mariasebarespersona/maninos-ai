@@ -3972,10 +3972,130 @@ async def post_confirmed_movements(statement_id: str):
 
 @router.delete("/bank-statements/{statement_id}")
 async def delete_bank_statement(statement_id: str):
-    """Delete a bank statement and all its movements."""
-    # Movements cascade-delete via FK
+    """
+    Delete a bank statement AND undo everything it caused, so the bank's
+    derived saldo returns to exactly what it was before this statement
+    was uploaded.
+
+    For each movement of the statement:
+      - If it matched an existing transaction (status='reconciled'), we
+        revert that transaction's status back to 'confirmed' and clear
+        reconciled_at on BOTH legs of its pair. The transaction itself
+        is NOT deleted (it was already in the ledger before this
+        statement; it just goes back to "pending reconciliation").
+      - If it created a new pair (status='posted'), we delete BOTH legs
+        of that pair. The bank-side row disappears, so the bank's
+        derived saldo automatically drops back.
+      - If it auto-collected an open invoice (target_type='invoice' on
+        confirm), we also delete the invoice_payment row, subtract from
+        invoice.amount_paid, and bump the invoice's status back from
+        'paid'/'partial' to whatever it was before.
+
+    After all that, the bank_statement and its statement_movements are
+    deleted (cascade).
+    """
+    # Fetch the statement first to know which bank it touched
+    stmt_row = sb.table("bank_statements").select("*").eq("id", statement_id).execute().data
+    if not stmt_row:
+        # Already gone — idempotent no-op
+        return {"message": "Statement not found (already deleted)", "rolled_back": 0}
+    statement = stmt_row[0]
+
+    # Pull all movements of this statement to know what to revert
+    movs = (sb.table("statement_movements").select("*")
+            .eq("statement_id", statement_id).execute()).data or []
+
+    reverted_existing = 0   # matched-with-existing rows that got un-reconciled
+    deleted_new_pairs = 0   # new pairs that got fully deleted
+    reverted_invoices = 0   # invoices that lost an auto-collected payment
+    errors: list[str] = []
+
+    for mv in movs:
+        try:
+            matched_txn_id = mv.get("matched_transaction_id")
+            posted_txn_id = mv.get("transaction_id")
+
+            # Was this an invoice auto-collect? Look for an invoice_payment
+            # whose transaction_id is the matched_transaction_id (which we
+            # set to the bank leg of the pair we created in reconcile-confirm).
+            target_txn_id_for_inv_check = matched_txn_id or posted_txn_id
+            if target_txn_id_for_inv_check:
+                inv_pay_res = (sb.table("accounting_invoice_payments")
+                               .select("*").eq("transaction_id", target_txn_id_for_inv_check)
+                               .execute()).data or []
+                for pay in inv_pay_res:
+                    # Revert the invoice
+                    inv_id = pay.get("invoice_id")
+                    if inv_id:
+                        inv_row = sb.table("accounting_invoices").select("*").eq("id", inv_id).single().execute().data
+                        if inv_row:
+                            new_paid = max(0.0, float(inv_row.get("amount_paid") or 0) - float(pay.get("amount") or 0))
+                            total = float(inv_row.get("total_amount") or 0)
+                            if new_paid <= 0.01:
+                                new_status = "sent"
+                            elif new_paid + 0.01 < total:
+                                new_status = "partial"
+                            else:
+                                new_status = "paid"
+                            sb.table("accounting_invoices").update({
+                                "amount_paid": new_paid,
+                                "status": new_status,
+                            }).eq("id", inv_id).execute()
+                            reverted_invoices += 1
+                    # Delete the payment row itself
+                    sb.table("accounting_invoice_payments").delete().eq("id", pay["id"]).execute()
+
+            # ---- Path A: movement matched an existing pre-statement txn ----
+            # Un-reconcile it (and its pair). Don't delete — the original
+            # txn (e.g. from Test 1) must stay in the ledger.
+            if matched_txn_id and not posted_txn_id:
+                pair_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
+                            .eq("id", matched_txn_id).single().execute().data or {}
+                ids_to_unflip = [matched_txn_id]
+                linked = pair_row.get("linked_transaction_id")
+                if linked:
+                    ids_to_unflip.append(linked)
+                sb.table("accounting_transactions").update({
+                    "status": "confirmed",
+                    "reconciled_at": None,
+                }).in_("id", ids_to_unflip).execute()
+                reverted_existing += 1
+                continue
+
+            # ---- Path B: movement created a new pair (or matched an
+            # auto-collected invoice payment we just deleted above) ----
+            target_txn_id = posted_txn_id or matched_txn_id
+            if target_txn_id:
+                pair_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
+                            .eq("id", target_txn_id).single().execute().data or {}
+                ids_to_delete = [target_txn_id]
+                linked = pair_row.get("linked_transaction_id")
+                if linked:
+                    ids_to_delete.append(linked)
+                sb.table("accounting_transactions").delete().in_("id", ids_to_delete).execute()
+                deleted_new_pairs += 1
+        except Exception as e:
+            errors.append(f"mv={mv.get('id')}: {type(e).__name__}: {str(e)[:120]}")
+            logger.error(f"[delete-statement] revert error mv={mv.get('id')}: {e!r}")
+
+    # Now actually delete the statement (cascade removes statement_movements)
     sb.table("bank_statements").delete().eq("id", statement_id).execute()
-    return {"message": "Statement deleted"}
+
+    _log_audit("bank_statements", statement_id, "delete_with_rollback",
+               description=(f"Reverted {reverted_existing} existing-txn reconciliations, "
+                            f"deleted {deleted_new_pairs} new pairs, "
+                            f"reverted {reverted_invoices} invoice payments"))
+
+    return {
+        "message": (f"Estado de cuenta eliminado. Saldo restaurado. "
+                    f"Reverti {reverted_existing} conciliaciones, borre {deleted_new_pairs} pares nuevos, "
+                    f"reverti {reverted_invoices} cobros de factura."),
+        "reverted_existing": reverted_existing,
+        "deleted_new_pairs": deleted_new_pairs,
+        "reverted_invoices": reverted_invoices,
+        "errors": errors[:5],
+        "bank_account_id": statement.get("bank_account_id"),
+    }
 
 
 # ============================================================================
