@@ -168,7 +168,14 @@ export default function AccountingPage() {
       if (txnFlowFilter) params.set('is_income', txnFlowFilter === 'income' ? 'true' : 'false')
       if (selectedYard) params.set('yard_id', selectedYard)
       const res = await fetch(`/api/accounting/transactions?${params}`)
-      if (res.ok) { const data = await res.json(); setTransactions(data.transactions || []) }
+      if (res.ok) {
+        const data = await res.json();
+        // Hide system-internal opening-balance journal entries — they sustain
+        // the derived saldo of each bank but they are NOT operational
+        // transactions an employee needs to see in the list.
+        const all = (data.transactions || []) as Transaction[]
+        setTransactions(all.filter(t => (t as any).entity_type !== 'opening_balance'))
+      }
     } catch (e) { /* ignore */ }
     finally { setTxnLoading(false) }
   }, [txnPage, txnSearch, txnTypeFilter, txnFlowFilter, selectedYard])
@@ -317,7 +324,7 @@ export default function AccountingPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={dashboard?.recent_transactions || []} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} />}
+      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
       {activeTab === 'statements' && <StatementsTab />}
