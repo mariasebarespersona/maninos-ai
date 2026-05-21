@@ -413,37 +413,48 @@ def post_to_ledger(
         "created_by": created_by,
     }
 
+    # One serial per *pair*, with -D / -C suffix so the two legs are unique
+    # within the pair AND visibly linked when an operator scans the ledger.
+    # Calling _generate_transaction_number twice in a row would race on the
+    # COUNT query and produce duplicates that hit the UNIQUE constraint.
+    base_serial = _generate_transaction_number(db)
     debit_row = {
         **base,
-        "transaction_number": _generate_transaction_number(db),
+        "transaction_number": f"{base_serial}-D",
         "account_id": debit_account_id,
         "bank_account_id": debit_bank_id,
         "is_income": debit_is_income,
     }
     credit_row = {
         **base,
-        "transaction_number": _generate_transaction_number(db),
+        "transaction_number": f"{base_serial}-C",
         "account_id": credit_account_id,
         "bank_account_id": credit_bank_id,
         "is_income": credit_is_income,
     }
-    # Strip Nones so we don't override DB defaults / NOT NULL handling.
     debit_row = {k: v for k, v in debit_row.items() if v is not None}
     credit_row = {k: v for k, v in credit_row.items() if v is not None}
 
-    # ---- Insert + link ------------------------------------------------------
+    # ---- Insert + link, rolling back on any failure of the second leg ----
     debit_res = db.table("accounting_transactions").insert(debit_row).execute()
     if not debit_res.data:
         raise RuntimeError("Failed to insert debit leg of ledger entry.")
     debit_id = debit_res.data[0]["id"]
 
     credit_row["linked_transaction_id"] = debit_id
-    credit_res = db.table("accounting_transactions").insert(credit_row).execute()
-    if not credit_res.data:
-        # Roll back the orphan debit so we don't leave a half-pair.
-        db.table("accounting_transactions").delete().eq("id", debit_id).execute()
-        raise RuntimeError("Failed to insert credit leg of ledger entry; debit rolled back.")
-    credit_id = credit_res.data[0]["id"]
+    try:
+        credit_res = db.table("accounting_transactions").insert(credit_row).execute()
+        if not credit_res.data:
+            raise RuntimeError("credit leg insert returned no data")
+        credit_id = credit_res.data[0]["id"]
+    except Exception as e:
+        # Roll back the orphan debit so half-pair rows never live in the
+        # ledger. Swallow rollback failures (best-effort cleanup).
+        try:
+            db.table("accounting_transactions").delete().eq("id", debit_id).execute()
+        except Exception as cleanup_err:
+            logger.error(f"post_to_ledger rollback failed for debit {debit_id}: {cleanup_err}")
+        raise RuntimeError(f"Failed to insert credit leg of ledger entry; debit rolled back. cause={e}") from e
 
     db.table("accounting_transactions").update({"linked_transaction_id": credit_id}).eq("id", debit_id).execute()
 
