@@ -250,12 +250,11 @@ export default function AccountingPage() {
           <p className="text-sm mt-1" style={{ color: 'var(--slate)' }}>Gestión financiera completa · Maninos Homes</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleSync} disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
-            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
-            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
-          </button>
+          {/* "Sincronizar" button removed: the legacy /api/accounting/sync
+              endpoint writes single-entry rows that bypass the post_to_ledger
+              pipeline and break double-entry balances. Every event now posts
+              to the ledger automatically when a payment_order or sale flow
+              completes — no manual sync needed. */}
           <button onClick={handleBackfillAccounts} disabled={syncing}
             title="Asignar cuentas contables a transacciones sin cuenta"
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
