@@ -261,7 +261,8 @@ async def approve_payment_order(
                 logger.error(f"[payment_orders] Cannot post inbound ledger for {order_id}: {e}")
                 raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
             except Exception as e:
-                logger.warning(f"[payment_orders] inbound ledger post failed for {order_id}: {e}")
+                logger.error(f"[payment_orders] inbound ledger post failed for {order_id}: {e!r}")
+                raise HTTPException(status_code=500, detail=f"Ledger post failed: {type(e).__name__}: {e}")
         else:
             logger.warning(
                 f"[payment_orders] Inbound order {order_id} approved WITHOUT bank_account_id — "
@@ -349,7 +350,8 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
         logger.error(f"[payment_orders] Cannot post ledger for order {order_id}: {e}")
         raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
     except Exception as e:
-        logger.warning(f"[payment_orders] Could not create accounting pair: {e}")
+        logger.error(f"[payment_orders] Could not create accounting pair for {order_id}: {e!r}")
+        raise HTTPException(status_code=500, detail=f"Ledger post failed: {type(e).__name__}: {e}")
 
     # Update order to completed
     update = {
