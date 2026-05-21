@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
-from api.services.ledger import post_to_ledger, reset_caches
+from api.services.ledger import post_to_ledger, reset_caches, get_bank_balance, get_all_bank_balances
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +45,20 @@ class _FakeQuery:
     def like(self, col, val):
         self._filters.append((col, "like", val))
         return self
+    def lte(self, col, val):
+        self._filters.append((col, "lte", val))
+        return self
+    def in_(self, col, vals):
+        self._filters.append((col, "in_", list(vals)))
+        return self
+    @property
+    def not_(self):
+        outer = self
+        class _Not:
+            def is_(self, col, val):
+                outer._filters.append((col, "not_is", val))
+                return outer
+        return _Not()
     def limit(self, n):
         self._limit = n
         return self
@@ -96,6 +110,21 @@ class _FakeTable:
                 pattern = val.replace("%", "")
                 if pattern not in v:
                     return False
+            elif opr == "lte":
+                v = row.get(col)
+                if v is None or v > val:
+                    return False
+            elif opr == "in_":
+                if row.get(col) not in val:
+                    return False
+            elif opr == "not_is":
+                v = row.get(col)
+                if val == "null":
+                    if v is None:
+                        return False
+                else:
+                    if v == val:
+                        return False
         return True
 
     def _execute(self, q: _FakeQuery):
@@ -390,6 +419,54 @@ def test_unknown_event_type_raises(db):
             date="2026-05-20",
             db=db,
         )
+
+
+def test_bank_balance_is_derived_from_ledger(db):
+    """post a sale + a purchase against the same bank and check the
+    derived balance reflects both — and that the second bank shows zero."""
+    post_to_ledger(
+        event_type="sale_contado_received",
+        amount=50000, bank_account_id="bank-dallas",
+        date="2026-05-20", counterparty_name="Buyer",
+        description_data={"address": "X"}, db=db,
+    )
+    post_to_ledger(
+        event_type="property_purchase_paid",
+        amount=20000, bank_account_id="bank-dallas",
+        date="2026-05-20", counterparty_name="Seller",
+        description_data={"address": "X"}, db=db,
+    )
+    # Dallas: +50k (sale) − 20k (purchase) = +30k
+    assert get_bank_balance("bank-dallas", db=db) == 30000
+    # Houston: untouched
+    assert get_bank_balance("bank-houston", db=db) == 0
+
+
+def test_get_all_bank_balances(db):
+    post_to_ledger(
+        event_type="sale_contado_received",
+        amount=10000, bank_account_id="bank-houston",
+        date="2026-05-20", counterparty_name="X",
+        description_data={"address": "X"}, db=db,
+    )
+    all_bals = get_all_bank_balances(db=db)
+    # All-balances dict keys are bank_account_id; filter Nones (non-bank legs)
+    assert all_bals.get("bank-houston") == 10000
+
+
+def test_voided_rows_excluded_from_balance(db):
+    post_to_ledger(
+        event_type="sale_contado_received",
+        amount=10000, bank_account_id="bank-dallas",
+        date="2026-05-20", counterparty_name="X",
+        description_data={"address": "X"}, db=db,
+    )
+    # void the bank-leg row
+    rows = db.tables["accounting_transactions"]
+    for r in rows:
+        if r.get("bank_account_id") == "bank-dallas":
+            r["status"] = "voided"
+    assert get_bank_balance("bank-dallas", db=db) == 0
 
 
 def test_manual_expense_requires_caller_code(db):

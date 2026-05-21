@@ -491,3 +491,69 @@ def reset_caches() -> None:
     with _lock:
         _account_by_code_cache.clear()
         _bank_chart_cache.clear()
+
+
+def get_bank_balance(
+    bank_account_id: str,
+    *,
+    as_of: Optional[str] = None,
+    db: Any = None,
+) -> float:
+    """
+    QuickBooks-style derived balance for a bank account:
+        balance = Σ(amount on rows where is_income=true)
+                − Σ(amount on rows where is_income=false)
+    over `accounting_transactions` filtered by bank_account_id.
+
+    `as_of` is an ISO date — if given, only rows with transaction_date <=
+    as_of are summed (use to reconcile against a statement's period_end).
+
+    Excludes rows with status='voided'.
+
+    This function is intentionally pure: it does NOT write to
+    bank_accounts.current_balance. The stored column is now decoupled
+    from the ledger — callers compute on read.
+    """
+    if db is None:
+        from tools.supabase_client import sb
+        db = sb
+    q = (
+        db.table("accounting_transactions")
+        .select("amount,is_income,status")
+        .eq("bank_account_id", bank_account_id)
+    )
+    if as_of:
+        q = q.lte("transaction_date", as_of)
+    rows = (q.execute().data or [])
+    bal = 0.0
+    for r in rows:
+        if (r.get("status") or "") == "voided":
+            continue
+        amt = float(r.get("amount") or 0)
+        bal += amt if r.get("is_income") else -amt
+    return round(bal, 2)
+
+
+def get_all_bank_balances(*, db: Any = None) -> dict[str, float]:
+    """Return {bank_account_id → derived balance} for every active bank.
+    One query instead of one per bank — used by the dashboard."""
+    if db is None:
+        from tools.supabase_client import sb
+        db = sb
+    rows = (
+        db.table("accounting_transactions")
+        .select("bank_account_id,amount,is_income,status")
+        .not_.is_("bank_account_id", "null")
+        .execute()
+        .data or []
+    )
+    out: dict[str, float] = {}
+    for r in rows:
+        if (r.get("status") or "") == "voided":
+            continue
+        bid = r.get("bank_account_id")
+        if not bid:
+            continue
+        amt = float(r.get("amount") or 0)
+        out[bid] = out.get(bid, 0.0) + (amt if r.get("is_income") else -amt)
+    return {k: round(v, 2) for k, v in out.items()}

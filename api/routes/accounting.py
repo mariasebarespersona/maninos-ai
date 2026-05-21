@@ -1027,8 +1027,55 @@ async def get_accounts_summary(
 
 @router.get("/bank-accounts")
 async def list_bank_accounts():
+    """
+    Returns the 6 active bank accounts with a QuickBooks-style derived
+    balance (sum of ledger transactions for that bank). The stored
+    `current_balance` column is no longer the source of truth — it is
+    kept in the row for reference but `derived_balance` is what the UI
+    should show. Also includes `latest_statement_ending` and
+    `discrepancy` so the operator can spot drift at a glance.
+    """
+    from api.services.ledger import get_all_bank_balances
+
     result = sb.table("bank_accounts").select("*").eq("is_active", True).order("is_primary", desc=True).execute()
-    return {"bank_accounts": result.data or []}
+    banks = result.data or []
+    derived = get_all_bank_balances(db=sb)
+
+    # Pull each bank's most-recent statement ending_balance for the discrepancy field.
+    latest_endings: dict[str, float] = {}
+    if banks:
+        bank_ids = [b["id"] for b in banks]
+        try:
+            stmts = (
+                sb.table("bank_statements")
+                .select("bank_account_id, ending_balance, statement_period_end")
+                .in_("bank_account_id", bank_ids)
+                .not_.is_("ending_balance", "null")
+                .not_.is_("statement_period_end", "null")
+                .order("statement_period_end", desc=True)
+                .execute()
+                .data or []
+            )
+            for s in stmts:
+                bid = s["bank_account_id"]
+                if bid not in latest_endings:
+                    latest_endings[bid] = float(s["ending_balance"] or 0)
+        except Exception:
+            pass
+
+    enriched = []
+    for b in banks:
+        bid = b["id"]
+        d = derived.get(bid, 0.0)
+        b = dict(b)
+        b["derived_balance"] = d
+        # Keep `current_balance` populated for legacy UI; mirror the derived value.
+        b["current_balance"] = d
+        latest = latest_endings.get(bid)
+        b["latest_statement_ending"] = latest
+        b["discrepancy"] = round((latest - d), 2) if latest is not None else None
+        enriched.append(b)
+    return {"bank_accounts": enriched}
 
 
 @router.post("/bank-accounts")
@@ -2915,26 +2962,30 @@ async def upload_bank_statement(
         stmt_update = {k: v for k, v in stmt_update.items() if v is not None}
         sb.table("bank_statements").update(stmt_update).eq("id", statement_id).execute()
 
-        # Auto-sync bank_accounts.current_balance with the most-recent statement's
-        # ending_balance for the linked account. Only overwrite if this statement
-        # is the newest one (by statement_period_end) — older uploads do not
-        # clobber newer balances.
+        # NOTE: we no longer overwrite bank_accounts.current_balance from the
+        # statement's ending_balance. The bank's true balance is the sum of
+        # the ledger (see api.services.ledger.get_bank_balance). The
+        # statement is now a verification artifact only: GET /bank-accounts
+        # surfaces a `discrepancy` field = statement.ending_balance −
+        # derived_ledger_balance, so an operator can see drift at a glance
+        # but the saldo itself never gets clobbered by an old/wrong
+        # statement upload.
         if bank_account_id and ending_balance is not None:
             try:
-                newest = (sb.table("bank_statements")
-                          .select("id, ending_balance, statement_period_end")
-                          .eq("bank_account_id", bank_account_id)
-                          .not_.is_("ending_balance", "null")
-                          .not_.is_("statement_period_end", "null")
-                          .order("statement_period_end", desc=True)
-                          .limit(1).execute()).data or []
-                if newest and newest[0]["id"] == statement_id:
-                    sb.table("bank_accounts").update(
-                        {"current_balance": float(ending_balance)}
-                    ).eq("id", bank_account_id).execute()
-                    logger.info(f"[BankStmt] Auto-synced bank_account {bank_account_id} balance → ${ending_balance}")
-            except Exception as sync_err:
-                logger.warning(f"[BankStmt] Auto-sync balance failed: {sync_err}")
+                from api.services.ledger import get_bank_balance
+                ledger_bal = get_bank_balance(
+                    bank_account_id,
+                    as_of=period_end,
+                    db=sb,
+                )
+                diff = float(ending_balance) - ledger_bal
+                logger.info(
+                    f"[BankStmt] {bank_account_id} period_end={period_end} "
+                    f"ledger=${ledger_bal:.2f} statement_ending=${float(ending_balance):.2f} "
+                    f"discrepancy=${diff:.2f}"
+                )
+            except Exception as audit_err:
+                logger.warning(f"[BankStmt] Discrepancy check failed: {audit_err}")
 
         # Refresh statement from DB (no auto-classify — user drives the 3-step wizard)
         stmt_refresh = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
@@ -3178,12 +3229,21 @@ async def confirm_reconciliation(statement_id: str, data: dict):
             }).eq("id", mv_id).execute()
             logger.info(f"[reconcile-confirm] Movement update result: {len(mv_result.data or [])} rows")
 
-            # Update transaction: mark as reconciled
+            # Mark the matched txn AND its linked counterpart leg as reconciled.
+            # Double-entry pairs are linked via linked_transaction_id (see PR 1
+            # writer). If we only flip one leg, the other half stays in "Por
+            # Conciliar" forever — that was a real bug pre-PR-3.
+            txn_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
+                       .eq("id", txn_id).single().execute().data or {}
+            ids_to_flip = [txn_id]
+            linked = txn_row.get("linked_transaction_id")
+            if linked:
+                ids_to_flip.append(linked)
             txn_result = sb.table("accounting_transactions").update({
                 "status": "reconciled",
                 "reconciled_at": now_str,
-            }).eq("id", txn_id).execute()
-            logger.info(f"[reconcile-confirm] Transaction update result: {len(txn_result.data or [])} rows")
+            }).in_("id", ids_to_flip).execute()
+            logger.info(f"[reconcile-confirm] Reconciled {len(txn_result.data or [])} txn rows (target + pair)")
 
             _log_audit("accounting_transactions", txn_id, "reconcile")
             reconciled += 1
@@ -3585,6 +3645,32 @@ async def post_confirmed_movements(statement_id: str):
                 "status": "posted",
                 "transaction_id": pnl_txn_id,
             }).eq("id", mv["id"]).execute()
+
+            # Flip reconciled_at on BOTH legs of the double-entry pair. This is
+            # what removes the matched txn from "Por Conciliar" — without it,
+            # the bank leg of the pair would keep showing up forever.
+            try:
+                ids_to_flip: list[str] = []
+                if pnl_txn_id:
+                    ids_to_flip.append(pnl_txn_id)
+                if bank_txn_id:
+                    ids_to_flip.append(bank_txn_id)
+                # Also pick up the writer-created pair via linked_transaction_id
+                for tid in list(ids_to_flip):
+                    row = (sb.table("accounting_transactions")
+                           .select("linked_transaction_id")
+                           .eq("id", tid).single().execute().data) or {}
+                    linked = row.get("linked_transaction_id")
+                    if linked and linked not in ids_to_flip:
+                        ids_to_flip.append(linked)
+                if ids_to_flip:
+                    sb.table("accounting_transactions").update({
+                        "status": "reconciled",
+                        "reconciled_at": datetime.utcnow().isoformat(),
+                    }).in_("id", ids_to_flip).execute()
+            except Exception as flip_err:
+                logger.warning(f"[BankStmt] Could not flip reconciled flag: {flip_err}")
+
             posted += 1
 
         except Exception as e:
