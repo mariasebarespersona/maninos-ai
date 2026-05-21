@@ -4010,6 +4010,7 @@ async def _ai_parse_movements(raw_text: str, account_key: str) -> list:
 
     all_movements = []
     is_first_chunk = True
+    _ai_parse_errors: list[str] = []
 
     for i, chunk in enumerate(chunks):
         metadata_instruction = ""
@@ -4045,6 +4046,7 @@ Return ONLY a valid JSON array. No markdown fences.
 BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
 {chunk}"""
 
+        chunk_movements: list = []
         try:
             response = await client.chat.completions.create(
                 model="gpt-5",
@@ -4055,15 +4057,26 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
                 max_completion_tokens=8192,
             )
 
-            content = response.choices[0].message.content or "[]"
-            content = content.strip()
+            content = response.choices[0].message.content or ""
+            content_stripped = content.strip()
+            finish_reason = response.choices[0].finish_reason if response.choices else "?"
+            logger.info(
+                f"[BankStmt] Chunk {i+1}/{len(chunks)} GPT response: finish={finish_reason} "
+                f"content_len={len(content_stripped)} first200={content_stripped[:200]!r}"
+            )
+
+            if not content_stripped:
+                _ai_parse_errors.append(
+                    f"chunk {i+1}: respuesta vacía del modelo (finish_reason={finish_reason})"
+                )
+                continue
 
             # Clean markdown code fences
-            if content.startswith("```"):
-                content = re.sub(r'^```(?:json)?\s*', '', content)
-                content = re.sub(r'\s*```$', '', content)
+            if content_stripped.startswith("```"):
+                content_stripped = re.sub(r'^```(?:json)?\s*', '', content_stripped)
+                content_stripped = re.sub(r'\s*```$', '', content_stripped)
 
-            chunk_movements = json.loads(content)
+            chunk_movements = json.loads(content_stripped)
             if isinstance(chunk_movements, dict):
                 chunk_movements = [chunk_movements]
             if isinstance(chunk_movements, list):
@@ -4072,16 +4085,23 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
             is_first_chunk = False
 
         except json.JSONDecodeError as e:
-            logger.warning(f"[BankStmt] Chunk {i+1} JSON error: {e}")
-            # Continue with other chunks instead of failing
+            preview = (content_stripped or "")[:300]
+            logger.warning(f"[BankStmt] Chunk {i+1} JSON error: {e} :: response was {preview!r}")
+            _ai_parse_errors.append(
+                f"chunk {i+1}: respuesta del modelo no era JSON válido ({str(e)[:80]}); empezaba con {preview[:80]!r}"
+            )
             continue
         except Exception as e:
-            logger.warning(f"[BankStmt] Chunk {i+1} error: {e}")
+            logger.warning(f"[BankStmt] Chunk {i+1} error: {e!r}")
+            _ai_parse_errors.append(f"chunk {i+1}: {type(e).__name__}: {str(e)[:160]}")
             continue
 
     if not all_movements:
-        # Don't raise here — return empty list so the upload endpoint can
-        # produce a more useful error message (it knows the raw_text length).
+        # Surface the underlying AI failure so we know whether it's an
+        # OpenAI quota issue, a finish_reason=length truncation, a JSON
+        # parse failure, etc. — instead of pretending the statement is bad.
+        if _ai_parse_errors:
+            raise RuntimeError("AI parser falló: " + " | ".join(_ai_parse_errors[:3]))
         return []
 
     # Deduplicate by (date, amount, description[:50])
