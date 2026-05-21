@@ -517,10 +517,19 @@ async def get_accounting_dashboard(
         cash_flow.append({"month": ym, "label": f"{m:02d}/{y}", "income": mi, "expense": me, "net": mi - me})
     cash_flow.reverse()
 
-    # ---- Bank balances ----
+    # ---- Bank balances (derived from the ledger, see PR 3) ----
+    # Stop trusting bank_accounts.current_balance — it's a stored mirror that
+    # only the ledger writer touches. The source of truth is the sum of
+    # accounting_transactions per bank.
     bank_accounts = []
     try:
+        from api.services.ledger import get_all_bank_balances
         bank_accounts = (sb.table("bank_accounts").select("*").eq("is_active", True).execute()).data or []
+        derived = get_all_bank_balances(db=sb)
+        for b in bank_accounts:
+            d = derived.get(b["id"], 0.0)
+            b["derived_balance"] = d
+            b["current_balance"] = d
     except Exception:
         pass
 
