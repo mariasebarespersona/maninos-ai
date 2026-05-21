@@ -145,30 +145,32 @@ def db():
     reset_caches()
     d = FakeDB()
     # Seed minimal chart of accounts (the codes the registry references)
-    chart = {
-        "11000": "Inventory",
-        "12000": "Accounts receivable",
-        "20000": "Accounts payable",
-        "40000": "House Sales",
-        "50020": "House Sales - COGS",
-        "60120": "Bank fees",
-        "60640": "Commissions & fees",
-        "61300": "Other Contractors",
-        "61700": "Supplies & materials",
-        "10101": "BOA DFW 0623",
-        "10102": "HOUSTON 0636",
-    }
-    for code, name in chart.items():
+    # Match the live DB shape: code == name (QB chart imported via app UI).
+    chart_codes = [
+        "Inventory",
+        "Accounts receivable (A/R)",
+        "Accounts Payable (A/P)",
+        "House Sales",
+        "House Sales - COGS",
+        "Bank fees & service charges",
+        "Commissions & fees",
+        "Other Contractors",
+        "Supplies & materials",
+        "Other Operating Expenses",
+        "BOA DFW 0623",
+        "HOUSTON 0636",
+    ]
+    for code in chart_codes:
         d.tables.setdefault("accounting_accounts", []).append({
             "id": f"chart-{code}",
             "code": code,
-            "name": name,
+            "name": code,
         })
 
     # Two banks, both linked to their QB chart accounts
     d.tables.setdefault("bank_accounts", []).extend([
-        {"id": "bank-dallas",  "name": "Cuenta Dallas",  "accounting_account_id": "chart-10101"},
-        {"id": "bank-houston", "name": "Cuenta Houston", "accounting_account_id": "chart-10102"},
+        {"id": "bank-dallas",  "name": "Cuenta Dallas",  "accounting_account_id": "chart-BOA DFW 0623"},
+        {"id": "bank-houston", "name": "Cuenta Houston", "accounting_account_id": "chart-HOUSTON 0636"},
         {"id": "bank-unlinked","name": "Bank No Link",   "accounting_account_id": None},
     ])
     return d
@@ -198,8 +200,8 @@ def test_property_purchase_paid(db):
     credit = next(r for r in rows if r["id"] == credit_id)
 
     # Debit is Inventory; credit is the bank
-    assert debit["account_id"] == "chart-11000"
-    assert credit["account_id"] == "chart-10101"
+    assert debit["account_id"] == "chart-Inventory"
+    assert credit["account_id"] == "chart-BOA DFW 0623"
     assert debit.get("bank_account_id") is None
     assert credit["bank_account_id"] == "bank-dallas"
 
@@ -232,8 +234,8 @@ def test_sale_contado_received_routes_to_house_sales(db):
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
     credit = next(r for r in rows if r["id"] == credit_id)
-    assert debit["account_id"] == "chart-10101"   # bank receives
-    assert credit["account_id"] == "chart-40000"  # House Sales income
+    assert debit["account_id"] == "chart-BOA DFW 0623"   # bank receives
+    assert credit["account_id"] == "chart-House Sales"  # House Sales income
     assert debit["bank_account_id"] == "bank-dallas"
     assert credit.get("bank_account_id") is None
     assert debit["is_income"] is True
@@ -253,8 +255,8 @@ def test_invoice_issued_ar_no_bank(db):
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
     credit = next(r for r in rows if r["id"] == credit_id)
-    assert debit["account_id"] == "chart-12000"   # AR
-    assert credit["account_id"] == "chart-40000"  # House Sales
+    assert debit["account_id"] == "chart-Accounts receivable (A/R)"   # AR
+    assert credit["account_id"] == "chart-House Sales"  # House Sales
     # No bank on either side
     assert debit.get("bank_account_id") is None
     assert credit.get("bank_account_id") is None
@@ -275,8 +277,8 @@ def test_invoice_paid_in_clears_ar(db):
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
     credit = next(r for r in rows if r["id"] == credit_id)
-    assert debit["account_id"] == "chart-10102"   # Houston bank
-    assert credit["account_id"] == "chart-12000"  # AR cleared
+    assert debit["account_id"] == "chart-HOUSTON 0636"   # Houston bank
+    assert credit["account_id"] == "chart-Accounts receivable (A/R)"  # AR cleared
     assert debit["bank_account_id"] == "bank-houston"
 
 
@@ -291,8 +293,8 @@ def test_cogs_internal_no_bank(db):
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
     credit = next(r for r in rows if r["id"] == credit_id)
-    assert debit["account_id"] == "chart-50020"   # COGS recognized
-    assert credit["account_id"] == "chart-11000"  # Inventory written off
+    assert debit["account_id"] == "chart-House Sales - COGS"   # COGS recognized
+    assert credit["account_id"] == "chart-Inventory"  # Inventory written off
     assert debit["transaction_type"] == "cogs"
     # No bank fields on either side
     for r in (debit, credit):
@@ -312,8 +314,8 @@ def test_bank_transfer_uses_two_banks(db):
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
     credit = next(r for r in rows if r["id"] == credit_id)
-    assert debit["account_id"] == "chart-10102"   # Houston receives
-    assert credit["account_id"] == "chart-10101"  # Dallas pays
+    assert debit["account_id"] == "chart-HOUSTON 0636"   # Houston receives
+    assert credit["account_id"] == "chart-BOA DFW 0623"  # Dallas pays
     assert debit["bank_account_id"] == "bank-houston"
     assert credit["bank_account_id"] == "bank-dallas"
     assert debit["transaction_type"] == "bank_transfer"
@@ -350,10 +352,10 @@ def test_unknown_bank_id_raises(db):
 
 
 def test_missing_chart_code_raises(db):
-    # Drop 11000 from the seeded chart
-    db.tables["accounting_accounts"] = [a for a in db.tables["accounting_accounts"] if a["code"] != "11000"]
+    # Drop "Inventory" from the seeded chart
+    db.tables["accounting_accounts"] = [a for a in db.tables["accounting_accounts"] if a["code"] != "Inventory"]
     reset_caches()
-    with pytest.raises(ValueError, match="11000"):
+    with pytest.raises(ValueError, match="Inventory"):
         post_to_ledger(
             event_type="property_purchase_paid",
             amount=1000,
@@ -408,9 +410,9 @@ def test_manual_expense_requires_caller_code(db):
         bank_account_id="bank-dallas",
         date="2026-05-20",
         description_data={"concept": "Misc"},
-        expense_account_code="61700",
+        expense_account_code="Supplies & materials",
         db=db,
     )
     rows = _pair(db)
     debit = next(r for r in rows if r["id"] == debit_id)
-    assert debit["account_id"] == "chart-61700"
+    assert debit["account_id"] == "chart-Supplies & materials"

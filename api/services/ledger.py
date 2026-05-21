@@ -76,52 +76,62 @@ class EventSpec:
     requires_bank: bool = True
 
 
+#
+# IMPORTANT: the `code` column on accounting_accounts in this production
+# database holds the QuickBooks account NAME (e.g. "Inventory",
+# "House Sales", "Accounts Payable (A/P)"), not a numeric code. That's how
+# the chart of accounts got imported via the app's "Mapear Cuentas" flow.
+# Migration 028 declares the numeric codes (11000, 40000, ...) but the
+# live DB never used those — it's the names. The registry below uses the
+# live names so post_to_ledger can resolve them. If the chart is ever
+# re-seeded with numeric codes, update this table accordingly.
+
 EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Outbound (cash leaves a bank) -----------------------------------
     "property_purchase_paid": EventSpec(
-        debit="11000",          # Inventory (the house we now own)
-        credit=BANK,             # Bank cash out
+        debit="Inventory",
+        credit=BANK,
         transaction_type="purchase_house",
         is_income_on_bank_side=False,
         description_template="Compra propiedad: {address} — Pago a {counterparty}",
     ),
     "renovation_paid": EventSpec(
-        debit="61700",          # Supplies & materials (caller can pass {category_code} to override)
+        debit="Supplies & materials",
         credit=BANK,
         transaction_type="renovation",
         is_income_on_bank_side=False,
         description_template="Renovación {address}: {concept}",
     ),
     "moving_transport_paid": EventSpec(
-        debit="61300",          # Other Contractors
+        debit="Other Contractors",
         credit=BANK,
         transaction_type="moving_transport",
         is_income_on_bank_side=False,
         description_template="Movida casa {address}: {counterparty}",
     ),
     "commission_paid": EventSpec(
-        debit="60640",          # Commissions & fees
+        debit="Commissions & fees",
         credit=BANK,
         transaction_type="commission",
         is_income_on_bank_side=False,
         description_template="Comisión venta {address}: {counterparty}",
     ),
     "invoice_paid_out": EventSpec(
-        debit="20000",          # Accounts Payable
+        debit="Accounts Payable (A/P)",
         credit=BANK,
         transaction_type="invoice_ap",
         is_income_on_bank_side=False,
         description_template="Pago factura {invoice_number}: {counterparty}",
     ),
     "bank_fee_paid": EventSpec(
-        debit="60120",          # Bank fees & service charges
+        debit="Bank fees & service charges",
         credit=BANK,
         transaction_type="bank_fee",
         is_income_on_bank_side=False,
         description_template="Cargo bancario: {concept}",
     ),
     "manual_expense_paid": EventSpec(
-        debit="__caller__",     # caller supplies expense_account_code
+        debit="__caller__",
         credit=BANK,
         transaction_type="other_expense",
         is_income_on_bank_side=False,
@@ -130,59 +140,59 @@ EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Inbound (cash enters a bank) ------------------------------------
     "sale_contado_received": EventSpec(
         debit=BANK,
-        credit="40000",         # House Sales
+        credit="House Sales",
         transaction_type="sale_cash",
         is_income_on_bank_side=True,
         description_template="Venta contado {address}: {counterparty}",
     ),
     "sale_down_payment_received": EventSpec(
         debit=BANK,
-        credit="40000",
+        credit="House Sales",
         transaction_type="sale_cash",
         is_income_on_bank_side=True,
         description_template="Enganche venta {address}: {counterparty}",
     ),
     "sale_remaining_received": EventSpec(
         debit=BANK,
-        credit="40000",
+        credit="House Sales",
         transaction_type="sale_cash",
         is_income_on_bank_side=True,
         description_template="Resto venta {address}: {counterparty}",
     ),
     "invoice_paid_in": EventSpec(
         debit=BANK,
-        credit="12000",          # Accounts Receivable
+        credit="Accounts receivable (A/R)",
         transaction_type="invoice_ar",
         is_income_on_bank_side=True,
         description_template="Cobro factura {invoice_number}: {counterparty}",
     ),
     "manual_income_received": EventSpec(
         debit=BANK,
-        credit="__caller__",     # caller supplies income_account_code
+        credit="__caller__",
         transaction_type="other_income",
         is_income_on_bank_side=True,
         description_template="Ingreso: {concept}",
     ),
     # ---- Cashless / no-bank-side -----------------------------------------
     "invoice_issued_ar": EventSpec(
-        debit="12000",           # Accounts Receivable
-        credit="40000",          # House Sales (or other income; caller can override)
+        debit="Accounts receivable (A/R)",
+        credit="House Sales",
         transaction_type="invoice_ar",
         is_income_on_bank_side=False,
         description_template="Factura emitida {invoice_number}: {counterparty}",
         requires_bank=False,
     ),
     "invoice_received_ap": EventSpec(
-        debit="__caller__",      # expense account code from caller
-        credit="20000",          # Accounts Payable
+        debit="__caller__",
+        credit="Accounts Payable (A/P)",
         transaction_type="invoice_ap",
         is_income_on_bank_side=False,
         description_template="Factura recibida {invoice_number}: {counterparty}",
         requires_bank=False,
     ),
     "sale_contado_cogs": EventSpec(
-        debit="50020",           # House Sales - COGS
-        credit="11000",          # Inventory write-off
+        debit="House Sales - COGS",
+        credit="Inventory",
         transaction_type="cogs",
         is_income_on_bank_side=False,
         description_template="COGS venta {address}",

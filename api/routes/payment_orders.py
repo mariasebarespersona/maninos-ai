@@ -332,7 +332,7 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
         )
         # manual_expense_paid needs an expense account code
         if event_type == "manual_expense_paid":
-            kwargs["expense_account_code"] = "69000"  # Other Operating Expenses
+            kwargs["expense_account_code"] = "Other Operating Expenses"
 
         debit_id, credit_id = post_to_ledger(**kwargs)
         # The "bank leg" id is what existing reconciliation/UI code expects on

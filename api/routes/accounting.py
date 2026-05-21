@@ -1192,7 +1192,7 @@ async def create_invoice(data: InvoiceCreate):
                     property_id=data.property_id,
                     yard_id=data.yard_id,
                     description_data={"invoice_number": inv_number},
-                    expense_account_code=data.expense_account_code or "69000",
+                    expense_account_code=data.expense_account_code or "Other Operating Expenses",
                     notes=data.notes,
                     status="confirmed",
                 )
