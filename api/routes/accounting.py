@@ -3052,8 +3052,15 @@ async def reconcile_statement_movements(statement_id: str):
     if not movements.data:
         return {"matches": [], "unmatched_count": 0, "message": "No hay movimientos pendientes"}
 
-    # Get unreconciled transactions (confirmed or pending, not yet reconciled)
-    # First try with bank_account_id, if no results fallback to ALL unreconciled
+    # Get unreconciled transactions to match the statement movements against.
+    # CRITICAL: only consider rows WITH bank_account_id set — those are the
+    # bank legs of double-entry pairs. The non-bank legs (e.g. the AR side
+    # of a factura issuance, the Inventory side of a purchase) are cashless
+    # by definition; a bank statement movement cannot correspond to them.
+    # Without this filter the matcher would happily pair a deposit with the
+    # AR row from an invoice issuance, blocking the auto-invoice-match
+    # feature from firing (user's Test 3 bug 2026-05-22: factura stayed
+    # unpaid because the matcher locked onto the AR-leg of the issuance).
     unreconciled_txns = []
     if bank_account_id:
         txns = (sb.table("accounting_transactions").select("*")
@@ -3061,18 +3068,6 @@ async def reconcile_statement_movements(statement_id: str):
                 .eq("bank_account_id", bank_account_id)
                 .order("transaction_date", desc=True).execute())
         unreconciled_txns = txns.data or []
-
-    # Fallback: also include transactions with NULL bank_account_id (most common case)
-    if not unreconciled_txns or bank_account_id:
-        txns_null = (sb.table("accounting_transactions").select("*")
-                     .in_("status", ["confirmed", "pending"])
-                     .is_("bank_account_id", "null")
-                     .order("transaction_date", desc=True).execute())
-        # Merge, avoiding duplicates
-        existing_ids = {t["id"] for t in unreconciled_txns}
-        for t in (txns_null.data or []):
-            if t["id"] not in existing_ids:
-                unreconciled_txns.append(t)
 
     if not unreconciled_txns:
         return {
