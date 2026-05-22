@@ -562,8 +562,100 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
     onRefresh()
   }
 
+  // Toggle for the contabilidad-101 explainer (helps the client understand
+  // why each business event produces TWO rows — debit + credit).
+  const [showJournalHelp, setShowJournalHelp] = useState(false)
   return (
     <div className="space-y-4">
+      {/* "Why two rows per operation?" expandable help */}
+      <div className="rounded-xl border" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0f9ff' }}>
+        <button
+          onClick={() => setShowJournalHelp(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-blue-50/50 transition-colors rounded-xl"
+          style={{ color: 'var(--navy-800)' }}
+        >
+          <span className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-200 text-blue-800 text-xs font-bold">i</span>
+            ¿Por qué cada operación aparece como 2 filas?
+          </span>
+          <span className="text-xs">{showJournalHelp ? '▲' : '▼'}</span>
+        </button>
+        {showJournalHelp && (
+          <div className="px-4 pb-4 text-xs space-y-3" style={{ color: 'var(--charcoal)' }}>
+            <p>
+              Este es el <strong>libro diario contable</strong> (journal). En contabilidad estándar
+              (la misma que usa QuickBooks, Xero y SAP) cada operación se registra como un par de
+              filas — una de <strong>débito</strong> y otra de <strong>crédito</strong> — para
+              poder rastrear de dónde vino el dinero y a dónde fue.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              <div className="rounded-lg p-3 bg-white border border-sand">
+                <p className="font-semibold mb-1">Ejemplo: pagas $25,000 al vendedor por una casa</p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong>+$25,000 Inventario</strong> (entra una casa a tu activo)</li>
+                  <li>• <strong>−$25,000 Cuenta Dallas</strong> (sale dinero del banco)</li>
+                </ul>
+                <p className="text-[11px] mt-2 text-blue-700">Signos mixtos: el dinero se movió de un activo a otro.</p>
+              </div>
+              <div className="rounded-lg p-3 bg-white border border-sand">
+                <p className="font-semibold mb-1">Ejemplo: el cliente te paga $20,000 de enganche</p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong>+$20,000 Cuenta Dallas</strong> (entra al banco)</li>
+                  <li>• <strong>+$20,000 House Sales</strong> (se reconoce el ingreso)</li>
+                </ul>
+                <p className="text-[11px] mt-2 text-emerald-700">Ambos positivos: entra dinero por dos lados.</p>
+              </div>
+              <div className="rounded-lg p-3 bg-white border border-sand">
+                <p className="font-semibold mb-1">Ejemplo: pagas $750 de comisión a un empleado</p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong>−$750 Commissions & fees</strong> (se contabiliza un gasto)</li>
+                  <li>• <strong>−$750 Cuenta Dallas</strong> (sale dinero del banco)</li>
+                </ul>
+                <p className="text-[11px] mt-2 text-red-700">Ambos negativos: sale dinero por dos lados (banco + gasto reconocido).</p>
+              </div>
+              <div className="rounded-lg p-3 bg-white border border-sand">
+                <p className="font-semibold mb-1">Regla rápida</p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong className="text-emerald-700">Ambos +</strong> → entra dinero a la empresa</li>
+                  <li>• <strong className="text-red-700">Ambos −</strong> → sale dinero / valor</li>
+                  <li>• <strong>+ y −</strong> → dinero se mueve internamente</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-[11px] italic" style={{ color: 'var(--slate)' }}>
+              Si solo quieres ver los movimientos del banco (una fila por operación),
+              ve a <strong>Estado de Cuenta → Conciliación</strong>. Ahí cada operación
+              aparece una sola vez (la pata bancaria).
+            </p>
+
+            <div className="border-t pt-3 mt-3" style={{ borderColor: 'var(--sand)' }}>
+              <p className="font-semibold mb-2" style={{ color: 'var(--ink)' }}>¿Qué es COGS y por qué tiene ese monto?</p>
+              <p>
+                <strong>COGS</strong> = <em>Cost of Goods Sold</em> = el COSTO TOTAL de la casa que
+                vendiste. Cuando vendes, el sistema calcula automáticamente:
+              </p>
+              <div className="rounded-lg p-3 bg-white border border-sand mt-2">
+                <code className="text-[11px]">
+                  COGS = precio de compra + total cotizado de renovación
+                </code>
+                <p className="text-[11px] mt-2">
+                  Ejemplo: compraste por $25,000 + cotizaste renovación por $28,183 →
+                  <strong> COGS = $53,183</strong>. Eso aparece en el P&L como gasto que se RESTA
+                  del ingreso de la venta para calcular tu ganancia bruta.
+                </p>
+              </div>
+              <p className="mt-2">
+                <strong>Importante:</strong> el COGS usa la cotización COMPLETA de la
+                renovación (lo presupuestado), no lo que pagaste hasta el momento. Si
+                cotizaste $28,183 pero solo pagaste $5,050, el COGS igual asume $28,183
+                — porque conceptualmente al vender la casa "completa" todos los trabajos
+                de la cotización quedaron incorporados.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--ash)' }} />
