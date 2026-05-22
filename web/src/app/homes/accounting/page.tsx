@@ -3593,9 +3593,18 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
     { amount: '', description: '' },
   ])
 
+  // Display the assigned account if confirmed; otherwise show the AI
+  // suggestion ONLY when it resolved to a real account in our chart
+  // (suggested_account_id is non-null). If the AI hallucinated a code
+  // that doesn't exist in accounting_accounts, suggested_account_id
+  // stays NULL — in that case we show nothing rather than misleading
+  // the operator with a fake account name they can't pick from the
+  // dropdown.
+  const suggestionResolved = !!mv.suggested_account_id
+  const aiHallucinated = !!mv.suggested_account_name && !mv.suggested_account_id
   const displayAccount = mv.final_account_id
     ? accounts.find((a: any) => a.id === mv.final_account_id)
-    : mv.suggested_account_name
+    : suggestionResolved
     ? { code: mv.suggested_account_code, name: mv.suggested_account_name }
     : null
 
@@ -3772,6 +3781,14 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
         {mv.status === 'suggested' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-medium">Sugerido</span>}
         {mv.status === 'pending' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-600 font-medium">Pendiente</span>}
         {mv.status === 'skipped' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-100 text-stone-500 font-medium">Omitido</span>}
+        {aiHallucinated && !mv.final_account_id && (
+          <span
+            className="ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-800 font-medium"
+            title={`La IA sugirió "${mv.suggested_account_code} — ${mv.suggested_account_name}" pero esa cuenta no existe en tu plan contable. Selecciona una real del dropdown.`}
+          >
+            ⚠ IA inventó cuenta — asigna manualmente
+          </span>
+        )}
       </td>
 
       {/* Actions */}
