@@ -4060,14 +4060,42 @@ async def delete_bank_statement(statement_id: str):
                     # Delete the payment row itself
                     sb.table("accounting_invoice_payments").delete().eq("id", pay["id"]).execute()
 
-            # ---- Path A: movement matched an existing pre-statement txn ----
-            # Un-reconcile it (and its pair). Don't delete — the original
-            # txn (e.g. from Test 1) must stay in the ledger.
-            if matched_txn_id and not posted_txn_id:
-                pair_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
-                            .eq("id", matched_txn_id).single().execute().data or {}
+            # Distinguish "matched with a pre-existing transaction"
+            # (e.g. Test 1 purchase that this movement reconciled against)
+            # from "this statement created a brand new pair" (bank fee
+            # classified manually, or invoice auto-collect that created a
+            # new payment pair). Source semantics:
+            #   - matched_transaction_id is set → was matched at reconcile
+            #     step. Could be either a pre-existing txn OR a brand-new
+            #     pair created by the invoice-auto-collect path.
+            #   - Check the matched row's `source`: if 'bank_statement'
+            #     the pair was CREATED by this statement's wizard (delete
+            #     it). Otherwise it's a pre-existing txn (un-reconcile).
+            #   - If no matched_transaction_id at all, posted_txn_id is a
+            #     brand-new pair from a classified-only movement (delete).
+            #
+            # The previous logic used `matched_txn_id and not posted_txn_id`
+            # for the un-reconcile path, but `post_confirmed_movements`
+            # always sets transaction_id = matched_transaction_id when
+            # publishing, so this check could never fire after publish.
+            # Net effect of the old bug: every matched movement was
+            # incorrectly treated as a "new pair" and DELETED on rollback.
+            target_for_classification = matched_txn_id or posted_txn_id
+            target_source = None
+            if target_for_classification:
+                target_row = sb.table("accounting_transactions") \
+                    .select("id, linked_transaction_id, source") \
+                    .eq("id", target_for_classification).single().execute().data or {}
+                target_source = target_row.get("source")
+                linked = target_row.get("linked_transaction_id")
+            else:
+                target_row = {}
+                linked = None
+
+            # Case 1: matched with a PRE-EXISTING transaction (source is
+            # not 'bank_statement'). Un-reconcile, do NOT delete.
+            if matched_txn_id and target_source != "bank_statement":
                 ids_to_unflip = [matched_txn_id]
-                linked = pair_row.get("linked_transaction_id")
                 if linked:
                     ids_to_unflip.append(linked)
                 sb.table("accounting_transactions").update({
@@ -4077,14 +4105,12 @@ async def delete_bank_statement(statement_id: str):
                 reverted_existing += 1
                 continue
 
-            # ---- Path B: movement created a new pair (or matched an
-            # auto-collected invoice payment we just deleted above) ----
+            # Case 2: pair was born from this statement (either an
+            # invoice-auto-collect new pair, or a classified-only new
+            # pair). Delete it.
             target_txn_id = posted_txn_id or matched_txn_id
             if target_txn_id:
-                pair_row = sb.table("accounting_transactions").select("id, linked_transaction_id") \
-                            .eq("id", target_txn_id).single().execute().data or {}
                 ids_to_delete = [target_txn_id]
-                linked = pair_row.get("linked_transaction_id")
                 if linked:
                     ids_to_delete.append(linked)
                 sb.table("accounting_transactions").delete().in_("id", ids_to_delete).execute()
