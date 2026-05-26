@@ -731,7 +731,21 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <tr key={t.id} data-testid="txn-row" data-leadership={getLeadership(t)} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.transaction_date}</td>
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${t.is_income ? 'text-emerald-500' : 'text-red-500'}`} /><span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{TYPE_LABELS[t.transaction_type] || t.transaction_type}</span></div></td>
-                      <td className="px-4 py-3 max-w-[250px]"><p className="truncate text-sm" style={{ color: 'var(--charcoal)' }}>{t.description || (t.properties?.property_code ? `${TYPE_LABELS[t.transaction_type] || t.transaction_type} ${t.properties.property_code}` : '—')}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_number}</p></td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-start gap-2">
+                          {t.properties?.property_code && (
+                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-navy-100 text-navy-700 whitespace-nowrap mt-0.5" title="ID de la casa">
+                              {t.properties.property_code}
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm whitespace-normal break-words" style={{ color: 'var(--charcoal)' }}>
+                              {t.description || (t.properties?.property_code ? `${TYPE_LABELS[t.transaction_type] || t.transaction_type} ${t.properties.property_code}` : '—')}
+                            </p>
+                            <p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_number}</p>
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--slate)' }}>{t.counterparty_name || '—'}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--ash)' }}>{PAYMENT_LABELS[t.payment_method || ''] || t.payment_method || '—'}</td>
                       <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>{t.is_income ? '+' : '-'}{fmtFull(t.amount)}</td>
