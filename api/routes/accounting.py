@@ -677,6 +677,15 @@ async def create_transaction(data: TransactionCreate):
         "moving_transport": "Movida",
         "commission": "Comisión",
     }
+    # When the routing kicks in, we also need to fix the sign on the row:
+    # these are asset-side sub-accounts and an operator paying for a
+    # purchase/reno/etc is DEBITING the asset (the inventory bucket
+    # grows). In this codebase's convention, an asset growth is stored
+    # as is_income=True (so _signed_balance returns +amt). The manual
+    # transaction modal sends is_income=False because the operator
+    # thinks "this is money going out" — but once we route to the asset
+    # sub-account, the sign has to flip.
+    routed_to_inventory_subaccount = False
     if not account_id and data.property_id and data.transaction_type in sub_label_by_type:
         try:
             prop = sb.table("properties").select("property_code").eq("id", data.property_id).limit(1).execute()
@@ -686,6 +695,7 @@ async def create_transaction(data: TransactionCreate):
                 acc = sb.table("accounting_accounts").select("id").eq("code", target).limit(1).execute()
                 if acc.data:
                     account_id = acc.data[0]["id"]
+                    routed_to_inventory_subaccount = True
         except Exception as e:
             logger.warning(f"[transactions] per-property routing failed: {e}")
 
@@ -701,10 +711,16 @@ async def create_transaction(data: TransactionCreate):
         if cat:
             account_id = _get_account_by_category(cat)
 
+    # Flip is_income to TRUE for routed inventory sub-account entries —
+    # asset debits store is_income=True in this codebase so
+    # _signed_balance returns +amt (the asset grows). Without this the
+    # routed row would shrink the bucket instead of capitalizing into it.
+    effective_is_income = True if routed_to_inventory_subaccount else data.is_income
+
     insert_data = {
         "transaction_number": txn_number, "transaction_date": data.transaction_date,
         "transaction_type": data.transaction_type, "amount": data.amount,
-        "is_income": data.is_income, "account_id": account_id,
+        "is_income": effective_is_income, "account_id": account_id,
         "bank_account_id": data.bank_account_id, "entity_type": data.entity_type,
         "entity_id": data.entity_id, "yard_id": data.yard_id,
         "property_id": data.property_id, "payment_method": data.payment_method,
