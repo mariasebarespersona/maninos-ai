@@ -208,11 +208,19 @@ async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
         except Exception as e:
             logger.warning(f"[payment_orders] could not enrich property fields: {e}")
 
-    result = sb.table("payment_orders").update(update).eq("id", order_id).execute()
-    if not result.data:
-        raise HTTPException(status_code=500, detail="Error al actualizar")
+    try:
+        sb.table("payment_orders").update(update).eq("id", order_id).execute()
+    except Exception as e:
+        logger.error(f"[payment_orders] Update failed for {order_id}: {e!r}")
+        raise HTTPException(status_code=500, detail=f"Error al actualizar: {e}")
+
+    # Re-read the row so we always return the current state (some PostgREST
+    # setups don't echo updated rows back from .update().execute()).
+    after = sb.table("payment_orders").select("*").eq("id", order_id).execute()
+    if not after.data:
+        raise HTTPException(status_code=404, detail="Orden no encontrada después de actualizar")
     logger.info(f"[payment_orders] Updated order {order_id}: {list(update.keys())}")
-    return {"ok": True, "data": result.data[0]}
+    return {"ok": True, "data": after.data[0]}
 
 
 @router.patch("/{order_id}/approve")
