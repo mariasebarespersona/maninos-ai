@@ -45,22 +45,23 @@ INVENTORY_PARENT_ID = "8f1096b1-7c74-4a31-a27d-5bf7cce66e6a"
 
 
 def _create_inventory_account_for_property(prop: dict):
-    """Create inventory sub-accounts under Inventory in the Chart of Accounts,
-    matching the same structure as QuickBooks (source of truth):
+    """Create inventory sub-accounts under Inventory in the Chart of Accounts:
       Inventory
-        └── HOME #CODE SERIAL  (header)
-             ├── Compra CODE
-             ├── Renovación CODE
-             └── Movida CODE
+        └── House <CODE>      (header)
+             ├── Compra <CODE>
+             ├── Renovación <CODE>
+             └── Movida <CODE>
+
+    The header label is intentionally just "House <CODE>" — short, scannable,
+    and matches how operators talk about houses in the rest of the app (the
+    property_code is the universal identifier). Children keep the operation
+    name so the cost categories are obvious when drilling in.
     """
     code = prop.get("property_code", "")
-    serial = prop.get("serial_number", "") or prop.get("hud_number", "") or ""
     prop_id = prop["id"]
 
-    # Build label matching QB format: HOME #H1 TEX0484825
-    label = f"HOME #{code}"
-    if serial:
-        label += f" {serial}"
+    # Build label using the property_code as the universal identifier.
+    label = f"House {code}" if code else f"House (no code) {prop_id[:8]}"
 
     # Check if already exists
     existing = sb.table("accounting_accounts").select("id").eq("code", label).execute()

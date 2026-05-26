@@ -258,6 +258,51 @@ def _get_account_type_by_id(db, account_id: str) -> str:
     return at
 
 
+# Inventory sub-account routing — when a transaction touches a property,
+# we prefer the per-property capitalized cost bucket over the generic
+# parent. Falls back to None if the property has no sub-accounts yet
+# (legacy data created before _create_inventory_account_for_property
+# existed) — callers must keep the existing behavior in that case.
+_PROPERTY_SUBACCOUNT_BY_EVENT: dict[str, str] = {
+    "property_purchase_paid": "Compra",
+    "renovation_paid": "Renovación",
+    "moving_transport_paid": "Movida",
+}
+
+
+def _resolve_property_subaccount(db, property_id: Optional[str], sub_label: str) -> Optional[str]:
+    """Look up the inventory sub-account id for `<sub_label> <property_code>`.
+    Returns None if the property doesn't exist, has no code, or no sub-account
+    was provisioned for it (legacy houses created before per-property
+    accounts existed)."""
+    if not property_id:
+        return None
+    try:
+        prop = (
+            db.table("properties")
+            .select("property_code")
+            .eq("id", property_id)
+            .limit(1)
+            .execute()
+        )
+        code = (prop.data[0] or {}).get("property_code") if prop.data else None
+        if not code:
+            return None
+        target = f"{sub_label} {code}"
+        res = (
+            db.table("accounting_accounts")
+            .select("id")
+            .eq("code", target)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]["id"]
+    except Exception as e:
+        logger.warning(f"_resolve_property_subaccount lookup failed: {e}")
+    return None
+
+
 def _get_account_id_by_code(db, code: str) -> str:
     with _lock:
         cached = _account_by_code_cache.get(code)
@@ -341,6 +386,8 @@ def post_to_ledger(
     description_override: Optional[str] = None,
     expense_account_code: Optional[str] = None,   # for manual_expense / invoice_received_ap
     income_account_code: Optional[str] = None,    # for manual_income
+    debit_account_id_override: Optional[str] = None,   # bypass spec.debit lookup
+    credit_account_id_override: Optional[str] = None,  # bypass spec.credit lookup
     payment_method: Optional[str] = None,
     payment_reference: Optional[str] = None,
     notes: Optional[str] = None,
@@ -409,6 +456,29 @@ def post_to_ledger(
         else:
             credit_account_id = _get_account_id_by_code(db, spec.credit)
             credit_bank_id = None
+
+        # Per-property inventory routing: for capitalized-cost events
+        # (purchase / renovation / movida), prefer the per-property
+        # sub-account (Compra/Renovación/Movida <CODE>) so each house
+        # accumulates its own cost basis in Balance Sheet → Inventory.
+        # If no sub-account exists (legacy data), fall through to the
+        # generic parent account from the EventSpec.
+        sub_label = _PROPERTY_SUBACCOUNT_BY_EVENT.get(event_type)
+        if sub_label and property_id and not debit_account_id_override:
+            sub_acct_id = _resolve_property_subaccount(db, property_id, sub_label)
+            if sub_acct_id:
+                debit_account_id = sub_acct_id
+                logger.info(
+                    f"post_to_ledger event={event_type} property={property_id} "
+                    f"routed to per-property sub-account {sub_acct_id}"
+                )
+
+    # Caller-supplied overrides win over everything else (used by the COGS
+    # zero-out helper to credit specific sub-accounts on sale).
+    if debit_account_id_override:
+        debit_account_id = debit_account_id_override
+    if credit_account_id_override:
+        credit_account_id = credit_account_id_override
 
     # ---- Build description --------------------------------------------------
     if description_override:

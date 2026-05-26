@@ -560,16 +560,81 @@ def _maybe_recognize_cogs_for_sale(
 
     from api.services.ledger import post_to_ledger
     from datetime import date as date_type
-    post_to_ledger(
-        event_type="sale_contado_cogs",
-        amount=inventory_cost,
-        date=date_type.today().isoformat(),
-        counterparty_name=(sale.get("clients") or {}).get("name"),
-        entity_type="sale",
-        entity_id=sale["id"],
-        property_id=property_id,
-        description_data={"address": prop.get("address") or "—"},
-        status="confirmed",
-        created_by=approved_by,
-    )
-    logger.info(f"[payment_orders] COGS recognized for sale {sale['id']} cost=${inventory_cost}")
+
+    # Per-property inventory zero-out: if this house has the Compra/Reno/Movida
+    # sub-accounts (created by _create_inventory_account_for_property), we
+    # credit each one for its current capitalized balance so each house's
+    # bucket returns to $0 after the sale and the matching COGS amount is the
+    # ACTUAL cost that was posted to the ledger (not just an estimate from
+    # purchase_price + reno quotes).
+    #
+    # Legacy fallback: if no sub-accounts exist (houses created before the
+    # per-property routing landed), keep the old behavior — one COGS pair
+    # against the parent Inventory for inventory_cost.
+    prop_code = prop.get("property_code")
+    sub_balances: list[tuple[str, str, float]] = []  # (sub_acct_id, label, balance)
+    if prop_code:
+        for sub_label in ("Compra", "Renovación", "Movida"):
+            code = f"{sub_label} {prop_code}"
+            try:
+                acc = sb.table("accounting_accounts").select("id").eq("code", code).limit(1).execute()
+                if not acc.data:
+                    continue
+                acc_id = acc.data[0]["id"]
+                rows = (
+                    sb.table("accounting_transactions")
+                    .select("amount,is_income,status")
+                    .eq("account_id", acc_id)
+                    .execute()
+                ).data or []
+                bal = 0.0
+                for r in rows:
+                    if (r.get("status") or "") == "voided":
+                        continue
+                    a = float(r.get("amount") or 0)
+                    bal += a if r.get("is_income") else -a
+                # Inventory sub-accounts are assets: positive balance = money
+                # currently capitalized in that bucket.
+                if bal > 0.005:
+                    sub_balances.append((acc_id, code, round(bal, 2)))
+            except Exception as e:
+                logger.warning(f"[payment_orders] could not read balance for '{code}': {e}")
+
+    if sub_balances:
+        total_posted = 0.0
+        for acc_id, label, bal in sub_balances:
+            post_to_ledger(
+                event_type="sale_contado_cogs",
+                amount=bal,
+                date=date_type.today().isoformat(),
+                counterparty_name=(sale.get("clients") or {}).get("name"),
+                entity_type="sale",
+                entity_id=sale["id"],
+                property_id=property_id,
+                description_data={"address": prop.get("address") or "—"},
+                description_override=f"COGS venta {prop.get('address') or '—'} — {label}",
+                credit_account_id_override=acc_id,
+                status="confirmed",
+                created_by=approved_by,
+            )
+            total_posted += bal
+        logger.info(
+            f"[payment_orders] COGS recognized for sale {sale['id']} via per-property sub-accounts: "
+            f"{[(l, b) for (_, l, b) in sub_balances]} total=${total_posted:.2f} "
+            f"(estimate was ${inventory_cost:.2f})"
+        )
+    else:
+        # Legacy fallback path — single COGS pair against parent Inventory.
+        post_to_ledger(
+            event_type="sale_contado_cogs",
+            amount=inventory_cost,
+            date=date_type.today().isoformat(),
+            counterparty_name=(sale.get("clients") or {}).get("name"),
+            entity_type="sale",
+            entity_id=sale["id"],
+            property_id=property_id,
+            description_data={"address": prop.get("address") or "—"},
+            status="confirmed",
+            created_by=approved_by,
+        )
+        logger.info(f"[payment_orders] COGS recognized for sale {sale['id']} cost=${inventory_cost} (legacy parent Inventory)")
