@@ -63,44 +63,49 @@ def _create_inventory_account_for_property(prop: dict):
     # Build label using the property_code as the universal identifier.
     label = f"House {code}" if code else f"House (no code) {prop_id[:8]}"
 
-    # Check if already exists
-    existing = sb.table("accounting_accounts").select("id").eq("code", label).execute()
+    # Get or create the header. We can't bail when the header already
+    # exists because the legacy chart of accounts had some HOME #<CODE>
+    # rows imported as leaf accounts (no children) — when we landed in
+    # that case the children never got created and the per-property
+    # ledger routing had nothing to point at. Now we look up the header
+    # idempotently and ensure the 3 children always exist.
+    existing = sb.table("accounting_accounts").select("id, is_header").eq("code", label).execute()
     if existing.data:
-        logger.info(f"[inventory] Account '{label}' already exists, skipping")
-        return existing.data[0]["id"]
+        header_id = existing.data[0]["id"]
+        logger.info(f"[inventory] Header '{label}' already exists ({header_id}), checking children")
+        next_order = 0  # not used in this branch
+    else:
+        # Get next display_order
+        max_order = sb.table("accounting_accounts").select("display_order") \
+            .eq("parent_account_id", INVENTORY_PARENT_ID) \
+            .order("display_order", desc=True).limit(1).execute()
+        next_order = (max_order.data[0]["display_order"] + 1) if max_order.data else 1000
 
-    # Get next display_order
-    max_order = sb.table("accounting_accounts").select("display_order") \
-        .eq("parent_account_id", INVENTORY_PARENT_ID) \
-        .order("display_order", desc=True).limit(1).execute()
-    next_order = (max_order.data[0]["display_order"] + 1) if max_order.data else 1000
+        header = sb.table("accounting_accounts").insert({
+            "code": label,
+            "name": label,
+            "account_type": "Other Current Assets",
+            "category": "Inventory",
+            "parent_account_id": INVENTORY_PARENT_ID,
+            "is_header": True,
+            "is_active": True,
+            "display_order": next_order,
+            "description": f"property_id:{prop_id}",
+        }).execute()
 
-    # Create header
-    header = sb.table("accounting_accounts").insert({
-        "code": label,
-        "name": label,
-        "account_type": "Other Current Assets",
-        "category": "Inventory",
-        "parent_account_id": INVENTORY_PARENT_ID,
-        "is_header": True,
-        "is_active": True,
-        "display_order": next_order,
-        "description": f"property_id:{prop_id}",
-    }).execute()
+        if not header.data:
+            logger.error(f"[inventory] Failed to create header for {label}")
+            return None
+        header_id = header.data[0]["id"]
 
-    if not header.data:
-        logger.error(f"[inventory] Failed to create header for {label}")
-        return None
-
-    header_id = header.data[0]["id"]
-
-    # Create sub-accounts matching QB structure
-    subs = [
-        f"Compra {code}",
-        f"Renovación {code}",
-        f"Movida {code}",
-    ]
+    # Ensure the 3 cost-bucket sub-accounts exist. Create only the ones
+    # that are missing so re-running is safe.
+    subs = [f"Compra {code}", f"Renovación {code}", f"Movida {code}"]
+    created = 0
     for i, name in enumerate(subs):
+        already = sb.table("accounting_accounts").select("id").eq("code", name).execute()
+        if already.data:
+            continue
         sb.table("accounting_accounts").insert({
             "code": name,
             "name": name,
@@ -109,11 +114,12 @@ def _create_inventory_account_for_property(prop: dict):
             "parent_account_id": header_id,
             "is_header": False,
             "is_active": True,
-            "display_order": next_order * 10 + i + 1,
+            "display_order": (next_order or 1000) * 10 + i + 1,
             "description": f"property_id:{prop_id}",
         }).execute()
+        created += 1
 
-    logger.info(f"[inventory] Created '{label}' with 3 sub-accounts")
+    logger.info(f"[inventory] Ensured '{label}' with 3 sub-accounts ({created} newly created)")
     return header_id
 
 
