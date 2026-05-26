@@ -2318,14 +2318,56 @@ function PropertiesTab({ properties }: { properties: PropertyPnl[] }) {
 //  BANKS TAB
 // ════════════════════════════════════════════════════════════════════════
 function BanksTab({ banks, onAdd }: { banks: BankAccount[]; onAdd: () => void }) {
+  const toast = useToast()
   const [summaries, setSummaries] = useState<Record<string, { income: number; expense: number; count: number }>>({})
   const [drilldown, setDrilldown] = useState<{ bankId: string; name: string } | null>(null)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferForm, setTransferForm] = useState({
+    from_bank_id: '',
+    to_bank_id: '',
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+  })
+  const [transferSubmitting, setTransferSubmitting] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleSubmitTransfer = async () => {
+    const { from_bank_id, to_bank_id, amount, date, description } = transferForm
+    if (!from_bank_id || !to_bank_id) { toast.error('Selecciona cuenta origen y destino'); return }
+    if (from_bank_id === to_bank_id) { toast.error('Origen y destino no pueden ser la misma cuenta'); return }
+    const amt = parseFloat(amount)
+    if (!isFinite(amt) || amt <= 0) { toast.error('Monto inválido'); return }
+    setTransferSubmitting(true)
+    try {
+      const res = await fetch('/api/accounting/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from_bank_id, to_bank_id, amount: amt, date, description: description || undefined }),
+      })
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        toast.success(`Transferido $${amt.toLocaleString()} de ${data.from_bank} a ${data.to_bank}`)
+        setShowTransfer(false)
+        setTransferForm({ from_bank_id: '', to_bank_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' })
+        setRefreshKey(k => k + 1)
+      } else {
+        toast.error(data.detail || 'Error al transferir')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setTransferSubmitting(false)
+    }
+  }
 
   // Pull a quick per-bank summary (income / expense / transaction count) so
   // the card itself shows the activity without forcing the user to drill in.
+  // refreshKey re-runs the fetch after a transfer so saldos stay current.
   useEffect(() => {
     if (banks.length === 0) return
     let cancelled = false
+    void refreshKey
     ;(async () => {
       const next: Record<string, { income: number; expense: number; count: number }> = {}
       await Promise.all(banks.map(async b => {
@@ -2343,15 +2385,27 @@ function BanksTab({ banks, onAdd }: { banks: BankAccount[]; onAdd: () => void })
       if (!cancelled) setSummaries(next)
     })()
     return () => { cancelled = true }
-  }, [banks])
+  }, [banks, refreshKey])
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas bancarias · clic en una tarjeta para ver su movimiento</p>
-        <button onClick={onAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg" style={{ backgroundColor: 'var(--navy-800)' }}>
-          <Plus className="w-4 h-4" /> Nueva Cuenta
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTransfer(true)}
+            disabled={banks.length < 2}
+            data-testid="open-transfer-modal"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border disabled:opacity-40 hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+            title={banks.length < 2 ? 'Necesitas al menos 2 cuentas para transferir' : 'Transferir saldo entre cuentas'}
+          >
+            <ArrowRightLeft className="w-4 h-4" /> Transferir
+          </button>
+          <button onClick={onAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg" style={{ backgroundColor: 'var(--navy-800)' }}>
+            <Plus className="w-4 h-4" /> Nueva Cuenta
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {banks.map(b => {
@@ -2413,6 +2467,112 @@ function BanksTab({ banks, onAdd }: { banks: BankAccount[]; onAdd: () => void })
           filter={{ bank_account_id: drilldown.bankId }}
           onClose={() => setDrilldown(null)}
         />
+      )}
+
+      {showTransfer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !transferSubmitting && setShowTransfer(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4" data-testid="transfer-modal">
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
+                Transferir entre cuentas
+              </h3>
+              <button onClick={() => setShowTransfer(false)} disabled={transferSubmitting} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--slate)' }}>
+              Mueve dinero de una cuenta a otra. Esto crea dos asientos contables balanceados (sale del banco origen, entra al destino). No afecta P&amp;L.
+            </p>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>De *</label>
+              <select
+                value={transferForm.from_bank_id}
+                onChange={e => setTransferForm(f => ({ ...f, from_bank_id: e.target.value }))}
+                className="w-full p-2 border rounded-lg text-sm bg-white"
+                style={{ borderColor: 'var(--stone)' }}
+              >
+                <option value="">Selecciona cuenta origen…</option>
+                {banks.map(b => (
+                  <option key={b.id} value={b.id}>{b.name} — saldo {fmtFull(b.current_balance)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>A *</label>
+              <select
+                value={transferForm.to_bank_id}
+                onChange={e => setTransferForm(f => ({ ...f, to_bank_id: e.target.value }))}
+                className="w-full p-2 border rounded-lg text-sm bg-white"
+                style={{ borderColor: 'var(--stone)' }}
+              >
+                <option value="">Selecciona cuenta destino…</option>
+                {banks.filter(b => b.id !== transferForm.from_bank_id).map(b => (
+                  <option key={b.id} value={b.id}>{b.name} — saldo {fmtFull(b.current_balance)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Monto *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={transferForm.amount}
+                  onChange={e => setTransferForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full p-2 border rounded-lg text-sm"
+                  style={{ borderColor: 'var(--stone)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Fecha</label>
+                <input
+                  type="date"
+                  value={transferForm.date}
+                  onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm"
+                  style={{ borderColor: 'var(--stone)' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Descripción (opcional)</label>
+              <input
+                type="text"
+                value={transferForm.description}
+                onChange={e => setTransferForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Ej. Mover capital al fund de renovaciones"
+                className="w-full p-2 border rounded-lg text-sm"
+                style={{ borderColor: 'var(--stone)' }}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowTransfer(false)}
+                disabled={transferSubmitting}
+                className="flex-1 px-4 py-2 rounded-lg border text-sm font-medium hover:bg-gray-50"
+                style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmitTransfer}
+                disabled={transferSubmitting || !transferForm.from_bank_id || !transferForm.to_bank_id || !transferForm.amount}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: 'var(--navy-800)' }}
+              >
+                {transferSubmitting ? 'Procesando…' : 'Transferir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

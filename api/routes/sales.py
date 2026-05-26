@@ -504,6 +504,32 @@ async def register_sale_payment(sale_id: str, data: dict):
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to register payment")
 
+    # Once the cumulative confirmed payments cover the sale_price, promote
+    # the sale from "pending" to "paid". Earlier code only flipped the
+    # PROPERTY to sold and left sale.status untouched, which is why a fully
+    # paid sale kept showing "pendiente" in the UI.
+    try:
+        sale_price = float(sale.data.get("sale_price") or 0)
+        if sale_price > 0:
+            paid_rows = (
+                sb.table("sale_payments")
+                .select("amount,status,payment_type")
+                .eq("sale_id", sale_id)
+                .execute()
+            ).data or []
+            total_confirmed = sum(
+                float(p.get("amount") or 0)
+                for p in paid_rows
+                if (p.get("status") or "") == "confirmed"
+            )
+            if total_confirmed + 0.01 >= sale_price and sale.data.get("status") == "pending":
+                sb.table("sales").update({"status": "paid"}).eq("id", sale_id).execute()
+                logger.info(
+                    f"[sales] Sale {sale_id} status → paid (confirmed ${total_confirmed:.2f} ≥ price ${sale_price:.2f})"
+                )
+    except Exception as e:
+        logger.warning(f"[sales] Could not auto-promote sale status: {e}")
+
     # Mark property as sold when a payment is received (down_payment or full)
     if is_staff and payment_data.payment_type in ("down_payment", "full"):
         try:

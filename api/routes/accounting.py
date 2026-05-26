@@ -1115,6 +1115,82 @@ async def list_bank_accounts():
     return {"bank_accounts": enriched}
 
 
+@router.post("/transfers")
+async def transfer_between_banks(data: dict):
+    """Move money between two Maninos bank/cash accounts.
+
+    Posts a single balanced double-entry pair via post_to_ledger:
+      DEBIT  → destination bank (cash comes IN)
+      CREDIT → source bank      (cash goes OUT)
+
+    Net impact on Balance Sheet: $0 (asset shuffles between two asset
+    accounts). Zero impact on P&L. Uses the same ledger plumbing as
+    purchases / sales / commissions so reports stay consistent."""
+
+    from_bank_id = data.get("from_bank_id")
+    to_bank_id = data.get("to_bank_id")
+    amount = data.get("amount")
+    txn_date = data.get("date") or date.today().isoformat()
+    description = (data.get("description") or "").strip()
+    notes = (data.get("notes") or "").strip()
+
+    if not from_bank_id or not to_bank_id:
+        raise HTTPException(status_code=400, detail="Se requieren from_bank_id y to_bank_id")
+    if from_bank_id == to_bank_id:
+        raise HTTPException(status_code=400, detail="No puedes transferir a la misma cuenta")
+    try:
+        amount_f = float(amount or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="amount inválido")
+    if amount_f <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+
+    # Fetch labels for the description so reports show source/destination.
+    banks_res = sb.table("bank_accounts").select("id, name").in_("id", [from_bank_id, to_bank_id]).execute()
+    bank_map = {b["id"]: b.get("name") or "Cuenta" for b in (banks_res.data or [])}
+    if from_bank_id not in bank_map or to_bank_id not in bank_map:
+        raise HTTPException(status_code=404, detail="Una o ambas cuentas no existen")
+    from_name = bank_map[from_bank_id]
+    to_name = bank_map[to_bank_id]
+
+    final_desc = description or f"Transferencia: {from_name} → {to_name}"
+
+    try:
+        from api.services.ledger import post_to_ledger
+        debit_id, credit_id = post_to_ledger(
+            event_type="bank_transfer",
+            amount=amount_f,
+            date=txn_date,
+            bank_account_id_from=from_bank_id,
+            bank_account_id_to=to_bank_id,
+            description_override=final_desc,
+            description_data={"concept": description or f"{from_name} → {to_name}"},
+            counterparty_name=f"Transferencia interna",
+            counterparty_type="internal",
+            entity_type="bank_transfer",
+            notes=notes or None,
+            payment_method="bank_transfer",
+            status="confirmed",
+        )
+        logger.info(
+            f"[transfers] {from_name} → {to_name} ${amount_f:.2f} pair=({debit_id},{credit_id})"
+        )
+        return {
+            "ok": True,
+            "debit_transaction_id": debit_id,
+            "credit_transaction_id": credit_id,
+            "from_bank": from_name,
+            "to_bank": to_name,
+            "amount": amount_f,
+            "date": txn_date,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[transfers] failed: {e!r}")
+        raise HTTPException(status_code=500, detail=f"Error al transferir: {e}")
+
+
 @router.post("/bank-accounts")
 async def create_bank_account(data: BankAccountCreate):
     insert_data = {k: v for k, v in data.model_dump().items() if v is not None}
