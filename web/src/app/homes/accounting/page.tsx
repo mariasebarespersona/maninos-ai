@@ -986,16 +986,133 @@ interface QBTreeNode {
   is_header: boolean; balance: number; total: number; children: QBTreeNode[]
 }
 
+// ── Shared drilldown modal ──
+// Used by both the P&L statement (click on an account line) and the
+// Banks tab (click on a bank card). Re-uses the existing list endpoint
+// instead of duplicating logic, so the breakdown always reflects the
+// same source of truth as the Transacciones tab.
+function TransactionsDrilldownModal({ title, subtitle, filter, onClose }: {
+  title: string
+  subtitle?: string
+  filter: { account_id?: string; bank_account_id?: string; property_id?: string; transaction_type?: string }
+  onClose: () => void
+}) {
+  const [txns, setTxns] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    (async () => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams({ per_page: '200', page: '1' })
+        Object.entries(filter).forEach(([k, v]) => { if (v) params.set(k, v) })
+        const res = await fetch(`/api/accounting/transactions?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          const all = (data.transactions || []) as Transaction[]
+          setTxns(all.filter(t => (t as any).entity_type !== 'opening_balance'))
+        }
+      } catch {}
+      finally { setLoading(false) }
+    })()
+  }, [filter])
+
+  const income = txns.filter(t => t.is_income && t.status !== 'voided').reduce((s, t) => s + Number(t.amount), 0)
+  const expense = txns.filter(t => !t.is_income && t.status !== 'voided').reduce((s, t) => s + Number(t.amount), 0)
+  const net = income - expense
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--sand)' }}>
+          <div>
+            <h3 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>{title}</h3>
+            {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 px-6 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--ivory)' }}>
+          <div>
+            <p className="text-[10px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Ingresos</p>
+            <p className="text-sm font-bold text-emerald-600 tabular-nums">{fmtFull(income)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Gastos</p>
+            <p className="text-sm font-bold text-red-600 tabular-nums">{fmtFull(expense)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Neto</p>
+            <p className={`text-sm font-bold tabular-nums ${net >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmtFull(net)}</p>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-navy-600" /></div>
+          ) : txns.length === 0 ? (
+            <div className="text-center py-12">
+              <Receipt className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} />
+              <p className="text-sm" style={{ color: 'var(--ash)' }}>No hay transacciones en este desglose</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0" style={{ backgroundColor: 'var(--ivory)' }}>
+                <tr className="border-b" style={{ borderColor: 'var(--sand)' }}>
+                  <th className="px-4 py-2 text-left text-xs font-medium" style={{ color: 'var(--slate)' }}>Fecha</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium" style={{ color: 'var(--slate)' }}>Casa</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium" style={{ color: 'var(--slate)' }}>Descripción</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium" style={{ color: 'var(--slate)' }}>Contraparte</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium" style={{ color: 'var(--slate)' }}>Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txns.map(t => (
+                  <tr key={t.id} className="border-b hover:bg-sand/20" style={{ borderColor: 'var(--sand)' }}>
+                    <td className="px-4 py-2 whitespace-nowrap text-xs" style={{ color: 'var(--charcoal)' }}>{t.transaction_date}</td>
+                    <td className="px-4 py-2">
+                      {t.properties?.property_code ? (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-navy-100 text-navy-700">{t.properties.property_code}</span>
+                      ) : <span className="text-[10px]" style={{ color: 'var(--ash)' }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+                      {t.description || (TYPE_LABELS[t.transaction_type] || t.transaction_type)}
+                      <span className="block text-[10px]" style={{ color: 'var(--ash)' }}>{t.transaction_number}</span>
+                    </td>
+                    <td className="px-4 py-2 text-xs" style={{ color: 'var(--slate)' }}>{t.counterparty_name || '—'}</td>
+                    <td className={`px-4 py-2 text-right text-xs font-bold tabular-nums whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {t.is_income ? '+' : '-'}{fmtFull(Number(t.amount))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="px-6 py-3 border-t text-xs flex items-center justify-between" style={{ borderColor: 'var(--sand)', color: 'var(--slate)' }}>
+          <span>{txns.length} transacción{txns.length === 1 ? '' : 'es'}</span>
+          <span style={{ color: 'var(--ash)' }}>Vista solo lectura · se ordena más reciente primero</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Recursive tree row component for QuickBooks-style indentation
-function QBTreeRow({ node, depth = 0, expanded, toggleExpand }: {
+function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown }: {
   node: QBTreeNode; depth?: number; expanded: Record<string, boolean>
   toggleExpand: (id: string) => void
+  onDrilldown?: (node: QBTreeNode) => void
 }) {
   const hasChildren = node.children && node.children.length > 0
   const isExpanded = expanded[node.id] !== false // default expanded
   const indent = depth * 24
   const isTopLevel = depth === 0
   const isTotal = node.is_header && hasChildren
+  const amount = node.total !== 0 ? node.total : node.balance
+  const canDrill = !!onDrilldown && !hasChildren && amount !== 0
 
   return (
     <>
@@ -1020,19 +1137,30 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand }: {
         </td>
         <td className="py-1.5 text-right pr-4">
           {(!hasChildren || (hasChildren && !isExpanded)) ? (
-            <span
-              className={`text-sm tabular-nums ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
-              style={{ color: 'var(--charcoal)' }}
-            >
-              {node.total !== 0 ? fmtFull(node.total) : node.balance !== 0 ? fmtFull(node.balance) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
-            </span>
+            canDrill ? (
+              <button
+                onClick={() => onDrilldown!(node)}
+                className={`text-sm tabular-nums underline decoration-dotted underline-offset-2 hover:text-navy-700 hover:decoration-solid transition-colors cursor-pointer ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
+                style={{ color: 'var(--charcoal)' }}
+                title="Ver desglose de transacciones"
+              >
+                {amount !== 0 ? fmtFull(amount) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
+              </button>
+            ) : (
+              <span
+                className={`text-sm tabular-nums ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
+                style={{ color: 'var(--charcoal)' }}
+              >
+                {amount !== 0 ? fmtFull(amount) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
+              </span>
+            )
           ) : null}
         </td>
       </tr>
       {hasChildren && isExpanded && (
         <>
           {node.children.map(child => (
-            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           {/* Total line for this section */}
           <tr className="border-b" style={{ borderColor: '#ccc' }}>
@@ -1081,6 +1209,7 @@ function StatementsTab() {
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [drilldown, setDrilldown] = useState<{ accountId: string; label: string; code: string } | null>(null)
 
   // Save / Saved reports state
   const [saving, setSaving] = useState(false)
@@ -1349,11 +1478,20 @@ function StatementsTab() {
       ) : !renderReport ? (
         <div className="text-center py-12 card-luxury"><p className="text-sm" style={{ color: 'var(--ash)' }}>No hay datos disponibles</p></div>
       ) : effectiveActiveReport === 'income' ? (
-        <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
+        <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={(n) => setDrilldown({ accountId: n.id, label: n.name, code: n.code })} />
       ) : effectiveActiveReport === 'balance' ? (
-        <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} />
+        <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={(n) => setDrilldown({ accountId: n.id, label: n.name, code: n.code })} />
       ) : (
         <CashFlowStatement data={renderReport} />
+      )}
+
+      {drilldown && (
+        <TransactionsDrilldownModal
+          title={drilldown.label}
+          subtitle={`Cuenta ${drilldown.code} · transacciones que componen este monto`}
+          filter={{ account_id: drilldown.accountId }}
+          onClose={() => setDrilldown(null)}
+        />
       )}
 
       {/* ── SAVED REPORTS ── */}
@@ -1505,7 +1643,7 @@ function StatementsTab() {
   )
 }
 
-function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void }) {
+function QBIncomeStatement({ data, expanded, toggleExpand, onDrilldown }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onDrilldown?: (node: QBTreeNode) => void }) {
   const sec = data.sections || {}
   const today = new Date()
   return (
@@ -1529,7 +1667,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
         <tbody>
           {/* Income */}
           {(sec.income || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           <QBComputedLine label="Total for Income" amount={sec.income?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold />
 
@@ -1537,7 +1675,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
           {(sec.other_income || []).length > 0 && (
             <>
               {(sec.other_income || []).map((node: QBTreeNode) => (
-                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
               ))}
               <QBComputedLine label="Total for Other Income" amount={sec.total_other_income || 0} bold />
             </>
@@ -1545,14 +1683,14 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
 
           {/* COGS */}
           {(sec.cost_of_goods_sold || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           <QBComputedLine label="Total for Cost of Goods Sold" amount={sec.cost_of_goods_sold?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold />
           <QBComputedLine label="Gross Profit" amount={sec.gross_profit || 0} bold thick highlight />
 
           {/* Expenses */}
           {(sec.expenses || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           <QBComputedLine label="Total for Expenses" amount={sec.total_expenses || 0} bold />
           <QBComputedLine label="Net Operating Income" amount={sec.net_operating_income || 0} bold thick />
@@ -1561,7 +1699,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
           {(sec.other_expenses || []).length > 0 && (
             <>
               {(sec.other_expenses || []).map((node: QBTreeNode) => (
-                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
               ))}
               <QBComputedLine label="Total for Other Expenses" amount={sec.total_other_expenses || 0} bold />
               <QBComputedLine label="Net Other Income" amount={sec.net_other_income || 0} bold />
@@ -1580,7 +1718,7 @@ function QBIncomeStatement({ data, expanded, toggleExpand }: { data: any; expand
   )
 }
 
-function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void }) {
+function QBBalanceSheet({ data, expanded, toggleExpand, onDrilldown }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onDrilldown?: (node: QBTreeNode) => void }) {
   const sec = data.sections || {}
   const today = new Date()
   return (
@@ -1604,7 +1742,7 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
         <tbody>
           {/* Assets */}
           {(sec.assets || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           <QBComputedLine label="Total for Assets" amount={sec.total_assets || 0} bold thick />
 
@@ -1617,13 +1755,13 @@ function QBBalanceSheet({ data, expanded, toggleExpand }: { data: any; expanded:
 
           {/* Liabilities */}
           {(sec.liabilities || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           <QBComputedLine label="Total for Liabilities" amount={sec.total_liabilities || 0} bold />
 
           {/* Equity */}
           {(sec.equity || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} />
+            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} />
           ))}
           {sec.net_income !== undefined && sec.net_income !== 0 && (
             <tr className="border-b" style={{ borderColor: '#ddd' }}>
@@ -2158,38 +2296,101 @@ function PropertiesTab({ properties }: { properties: PropertyPnl[] }) {
 //  BANKS TAB
 // ════════════════════════════════════════════════════════════════════════
 function BanksTab({ banks, onAdd }: { banks: BankAccount[]; onAdd: () => void }) {
+  const [summaries, setSummaries] = useState<Record<string, { income: number; expense: number; count: number }>>({})
+  const [drilldown, setDrilldown] = useState<{ bankId: string; name: string } | null>(null)
+
+  // Pull a quick per-bank summary (income / expense / transaction count) so
+  // the card itself shows the activity without forcing the user to drill in.
+  useEffect(() => {
+    if (banks.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const next: Record<string, { income: number; expense: number; count: number }> = {}
+      await Promise.all(banks.map(async b => {
+        try {
+          const res = await fetch(`/api/accounting/transactions?bank_account_id=${b.id}&per_page=200`)
+          if (!res.ok) return
+          const data = await res.json()
+          const all = (data.transactions || []) as Transaction[]
+          const live = all.filter(t => t.status !== 'voided' && (t as any).entity_type !== 'opening_balance')
+          const income = live.filter(t => t.is_income).reduce((s, t) => s + Number(t.amount), 0)
+          const expense = live.filter(t => !t.is_income).reduce((s, t) => s + Number(t.amount), 0)
+          next[b.id] = { income, expense, count: live.length }
+        } catch {}
+      }))
+      if (!cancelled) setSummaries(next)
+    })()
+    return () => { cancelled = true }
+  }, [banks])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas bancarias</p>
+        <p className="text-sm" style={{ color: 'var(--slate)' }}>{banks.length} cuentas bancarias · clic en una tarjeta para ver su movimiento</p>
         <button onClick={onAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg" style={{ backgroundColor: 'var(--navy-800)' }}>
           <Plus className="w-4 h-4" /> Nueva Cuenta
         </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {banks.map(b => (
-          <div key={b.id} className="card-luxury p-6 relative">
-            {b.is_primary && <span className="absolute top-3 right-3 text-xs font-medium bg-gold-100 text-gold-700 px-2 py-0.5 rounded-full">Principal</span>}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--navy-50)' }}>
-                <Landmark className="w-6 h-6" style={{ color: 'var(--navy-800)' }} />
+        {banks.map(b => {
+          const s = summaries[b.id]
+          return (
+            <button
+              key={b.id}
+              onClick={() => setDrilldown({ bankId: b.id, name: b.name })}
+              className="card-luxury p-6 relative text-left hover:shadow-lg hover:border-navy-200 transition-all"
+              title="Ver todas las transacciones de esta cuenta"
+            >
+              {b.is_primary && <span className="absolute top-3 right-3 text-xs font-medium bg-gold-100 text-gold-700 px-2 py-0.5 rounded-full">Principal</span>}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--navy-50)' }}>
+                  <Landmark className="w-6 h-6" style={{ color: 'var(--navy-800)' }} />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>{b.bank_name || b.account_type} {b.account_number_last4 && `····${b.account_number_last4}`}</p>
+                </div>
               </div>
-              <div><p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{b.name}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{b.bank_name || b.account_type} {b.account_number_last4 && `····${b.account_number_last4}`}</p></div>
-            </div>
-            <div className="mb-3"><p className="text-xs" style={{ color: 'var(--ash)' }}>Saldo Actual</p><p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p></div>
-            {b.routing_number && <div className="mb-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="text-sm font-mono" style={{ color: 'var(--charcoal)' }}>{b.routing_number}</p></div>}
-            {(b.zelle_email || b.zelle_phone) && (
-              <div className="pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
-                <p className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Zelle</p>
-                {b.zelle_email && <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.zelle_email}</p>}
-                {b.zelle_phone && <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.zelle_phone}</p>}
+              <div className="mb-3">
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Saldo Actual</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(b.current_balance)}</p>
               </div>
-            )}
-          </div>
-        ))}
+              <div className="grid grid-cols-3 gap-2 mb-3 pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                <div>
+                  <p className="text-[9px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Ingresos</p>
+                  <p className="text-sm font-bold text-emerald-600 tabular-nums">{s ? fmtFull(s.income) : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Gastos</p>
+                  <p className="text-sm font-bold text-red-600 tabular-nums">{s ? fmtFull(s.expense) : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Movs.</p>
+                  <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{s ? s.count : '—'}</p>
+                </div>
+              </div>
+              {b.routing_number && <div className="mb-1"><p className="text-xs" style={{ color: 'var(--ash)' }}>Routing</p><p className="text-sm font-mono" style={{ color: 'var(--charcoal)' }}>{b.routing_number}</p></div>}
+              {(b.zelle_email || b.zelle_phone) && (
+                <div className="pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                  <p className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Zelle</p>
+                  {b.zelle_email && <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.zelle_email}</p>}
+                  {b.zelle_phone && <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.zelle_phone}</p>}
+                </div>
+              )}
+            </button>
+          )
+        })}
       </div>
       {banks.length === 0 && (
         <div className="text-center py-12 card-luxury"><Landmark className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--ash)' }} /><p className="text-sm mb-3" style={{ color: 'var(--ash)' }}>No hay cuentas bancarias</p><button onClick={onAdd} className="text-sm font-medium text-navy-700 hover:underline">+ Agregar primera cuenta</button></div>
+      )}
+      {drilldown && (
+        <TransactionsDrilldownModal
+          title={drilldown.name}
+          subtitle="Todos los movimientos registrados en esta cuenta bancaria"
+          filter={{ bank_account_id: drilldown.bankId }}
+          onClose={() => setDrilldown(null)}
+        />
       )}
     </div>
   )

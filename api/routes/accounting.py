@@ -609,6 +609,7 @@ async def list_transactions(
     per_page: int = Query(50, ge=10, le=200),
     transaction_type: Optional[str] = None,
     account_id: Optional[str] = None,
+    bank_account_id: Optional[str] = None,
     yard_id: Optional[str] = None,
     property_id: Optional[str] = None,
     is_income: Optional[bool] = None,
@@ -625,6 +626,8 @@ async def list_transactions(
         q = q.eq("transaction_type", transaction_type)
     if account_id:
         q = q.eq("account_id", account_id)
+    if bank_account_id:
+        q = q.eq("bank_account_id", bank_account_id)
     if yard_id:
         q = q.eq("yard_id", yard_id)
     if property_id:
