@@ -3,6 +3,7 @@ import React from 'react'
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/Auth/AuthProvider'
 import { ToastProvider } from '@/components/ui/Toast'
+import NumberInputWheelGuard from '@/components/NumberInputWheelGuard'
 
 
 // Import Google Fonts via HTML link for reliability
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-slate-50 font-sans">
         <ToastProvider>
           <AuthProvider>
+            <NumberInputWheelGuard />
             {children}
           </AuthProvider>
         </ToastProvider>

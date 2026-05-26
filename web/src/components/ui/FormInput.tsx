@@ -84,6 +84,9 @@ const FormInput = forwardRef<HTMLInputElement, FormInputProps>(({
           aria-invalid={!!error}
           aria-describedby={error ? `${inputId}-error` : undefined}
           {...props}
+          onWheel={props.type === 'number'
+            ? (e) => { (e.currentTarget as HTMLInputElement).blur(); props.onWheel?.(e) }
+            : props.onWheel}
         />
 
         {/* Right side icon/status */}
