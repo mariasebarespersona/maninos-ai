@@ -3939,47 +3939,71 @@ function EstadoCuentaTab() {
                 <div className="space-y-0">
                   {/* Action bar */}
                   <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
-                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      {needsClassifyCount > 0
-                        ? `${needsClassifyCount} movimientos pendientes de clasificar`
-                        : confirmedCount > 0
-                        ? `${confirmedCount} movimientos confirmados, listos para integrar`
-                        : 'Todos los movimientos han sido procesados'}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      {needsClassifyCount > 0 && (
-                        <button
-                          onClick={() => classifyMovements(activeStatement)}
-                          disabled={classifying}
-                          className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
-                          style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
-                        >
-                          {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                          {classifying ? 'Clasificando...' : 'Clasificar con IA'}
-                        </button>
-                      )}
-                      {confirmedCount > 0 && (
-                        <button
-                          onClick={() => setWizardStep(3)}
-                          className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 transition-colors"
-                        >
-                          Siguiente: Integrar <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    {(() => {
+                      // Counts that are READY for the Integrar step: confirmed
+                      // OR reconciled movements that already have an account
+                      // assigned. A reconciled movement WITH a final_account_id
+                      // is fully prepared to be posted — keeping it in
+                      // 'reconciled' status (instead of flipping to
+                      // 'confirmed') is the post endpoint's signal to update
+                      // the existing ledger txn rather than create a new one.
+                      const reconciledReady = activeMovements.filter(
+                        m => m.status === 'reconciled' && m.final_account_id,
+                      ).length
+                      const readyCount = confirmedCount + reconciledReady
+                      return (
+                        <>
+                          <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                            {needsClassifyCount > 0
+                              ? `${needsClassifyCount} movimientos pendientes de clasificar`
+                              : readyCount > 0
+                              ? `${readyCount} movimiento${readyCount !== 1 ? 's' : ''} listo${readyCount !== 1 ? 's' : ''} para integrar`
+                              : 'Todos los movimientos han sido procesados'}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            {needsClassifyCount > 0 && (
+                              <button
+                                onClick={() => classifyMovements(activeStatement)}
+                                disabled={classifying}
+                                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 transition-colors"
+                                style={{ backgroundColor: classifying ? '#9ca3af' : '#7c3aed' }}
+                              >
+                                {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                                {classifying ? 'Clasificando...' : 'Clasificar con IA'}
+                              </button>
+                            )}
+                            {readyCount > 0 && needsClassifyCount === 0 && (
+                              <button
+                                onClick={() => setWizardStep(3)}
+                                data-testid="wizard-next-integrar"
+                                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                              >
+                                Siguiente: Integrar <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
 
-                  {/* Reconciled movements banner */}
-                  {reconciledCount > 0 && (
-                    <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0fdfa' }}>
-                      <ShieldCheck className="w-4 h-4 text-teal-600" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-teal-700">
-                          {reconciledCount} movimiento{reconciledCount !== 1 ? 's' : ''} conciliado{reconciledCount !== 1 ? 's' : ''} — aún necesitan cuenta contable
-                        </p>
+                  {/* Reconciled-still-needing-account banner */}
+                  {(() => {
+                    const reconciledMissingAccount = activeMovements.filter(
+                      m => m.status === 'reconciled' && !m.final_account_id,
+                    ).length
+                    if (reconciledMissingAccount === 0) return null
+                    return (
+                      <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: '#fefce8' }}>
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-amber-800">
+                            {reconciledMissingAccount} movimiento{reconciledMissingAccount !== 1 ? 's' : ''} conciliado{reconciledMissingAccount !== 1 ? 's' : ''} — aún necesitan cuenta contable
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* All movements table */}
                   <div className="overflow-x-auto">
