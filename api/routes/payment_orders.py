@@ -505,7 +505,7 @@ def _maybe_recognize_cogs_for_sale(
 
     sale = (
         sb.table("sales")
-        .select("id, sale_price, sale_type, property_id, clients(name), properties(address, purchase_price)")
+        .select("id, sale_price, sale_type, property_id, clients(name), properties(address, property_code, purchase_price)")
         .eq("property_id", property_id)
         .order("created_at", desc=True)
         .limit(1)
