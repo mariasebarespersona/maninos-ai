@@ -200,13 +200,15 @@ async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
         raise HTTPException(status_code=400, detail="No hay campos para actualizar")
 
     if "property_id" in update:
+        # property_code is not stored on payment_orders (the list endpoint
+        # enriches it at read time from the properties table). Only refresh
+        # the denormalized address snapshot.
         try:
-            prop = sb.table("properties").select("address,property_code").eq("id", update["property_id"]).execute()
+            prop = sb.table("properties").select("address").eq("id", update["property_id"]).execute()
             if prop.data:
                 update["property_address"] = prop.data[0].get("address")
-                update["property_code"] = prop.data[0].get("property_code")
         except Exception as e:
-            logger.warning(f"[payment_orders] could not enrich property fields: {e}")
+            logger.warning(f"[payment_orders] could not enrich property_address: {e}")
 
     try:
         sb.table("payment_orders").update(update).eq("id", order_id).execute()
