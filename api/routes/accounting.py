@@ -4428,7 +4428,10 @@ async def _extract_text_from_image(file_content: bytes, ext: str) -> str:
     mime = f"image/{ext}" if ext in ("png", "jpg", "jpeg") else "image/png"
 
     response = await client.chat.completions.create(
-        model="gpt-5",
+        # gpt-4o has vision and answers in 3-6s for a 1-page image. gpt-5
+        # is a reasoning model that thinks 30-60s even for trivial OCR —
+        # not useful here since the only output we want is verbatim text.
+        model="gpt-4o",
         messages=[
             {
                 "role": "system",
@@ -4575,12 +4578,17 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
         chunk_movements: list = []
         try:
             response = await client.chat.completions.create(
-                model="gpt-5",
+                # gpt-4o-mini handles structured extraction from bank
+                # statement tables in 2-5s with the same accuracy as the
+                # heavier models for this task. gpt-5 added 30+ seconds
+                # of "thinking" with no measurable accuracy gain.
+                model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, etc.) in English or Spanish. Return valid JSON arrays only."},
+                    {"role": "system", "content": "You are a bank statement parser. Parse any US bank format (BOA, Chase, Wells Fargo, Citi, Capital One, BBVA, PNC, credit unions, etc.) in English or Spanish. Return valid JSON arrays only — no markdown, no commentary."},
                     {"role": "user", "content": prompt},
                 ],
                 max_completion_tokens=8192,
+                temperature=0,
             )
 
             content = response.choices[0].message.content or ""
@@ -4704,12 +4712,16 @@ Remember: ONLY use account codes from the chart above. If you cannot find a perf
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-5",
+            # Same reasoning as the parser model swap above — pick a
+            # speed-optimized model for the mechanical mapping of
+            # movement → account_code.
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert staff accountant for Maninos Homes LLC. Return ONLY a valid JSON array. Every movement MUST have an account_code that exists in the QuickBooks Chart of Accounts provided — that chart is the single source of truth. Never invent account codes. Never return empty account_code."},
                 {"role": "user", "content": prompt},
             ],
             max_completion_tokens=8192,
+            temperature=0,
         )
     except Exception as api_err:
         logger.error(f"[AI Classify] OpenAI API error: {api_err}")
