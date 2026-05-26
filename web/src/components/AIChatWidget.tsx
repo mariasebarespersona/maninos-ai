@@ -194,8 +194,8 @@ export default function AIChatWidget() {
           fixed z-[9999] shadow-lg transition-all duration-300 ease-in-out
           flex items-center justify-center
           ${isOpen
-            ? 'bottom-[calc(min(80vh,600px)+1rem)] right-4 sm:right-6 w-10 h-10 rounded-full bg-white border border-stone hover:bg-cream'
-            : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 rounded-full'
+            ? 'bottom-[calc(min(80vh,600px)+1rem)] right-4 sm:right-6 w-8 h-8 rounded-full bg-white border border-stone hover:bg-cream'
+            : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-10 h-10 sm:w-11 sm:h-11 rounded-full'
           }
         `}
         style={!isOpen ? {
@@ -205,12 +205,12 @@ export default function AIChatWidget() {
         aria-label={isOpen ? 'Cerrar chat' : 'Abrir chat IA'}
       >
         {isOpen ? (
-          <X className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+          <X className="w-4 h-4" style={{ color: 'var(--slate)' }} />
         ) : (
           <>
-            <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                 {unreadCount}
               </span>
             )}

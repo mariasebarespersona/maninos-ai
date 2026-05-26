@@ -101,6 +101,63 @@ export default function NotificacionesPage() {
   // Approval state
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
+  // Inline edit state (amount + property_id) for "Por Aprobar" cards
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState<string>('')
+  const [editPropertyId, setEditPropertyId] = useState<string>('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [propertiesList, setPropertiesList] = useState<{ id: string; address: string; property_code: string | null }[]>([])
+
+  const fetchPropertiesList = useCallback(async () => {
+    try {
+      const res = await fetch('/api/properties')
+      if (!res.ok) return
+      const data = await res.json()
+      const arr = Array.isArray(data) ? data : (data.properties || data.data || [])
+      setPropertiesList(arr.map((p: any) => ({ id: p.id, address: p.address || '', property_code: p.property_code || null })))
+    } catch {}
+  }, [])
+
+  useEffect(() => { fetchPropertiesList() }, [fetchPropertiesList])
+
+  const openEditOrder = (order: PaymentOrder) => {
+    setEditingOrderId(order.id)
+    setEditAmount(String(order.amount))
+    setEditPropertyId(order.property_id || '')
+  }
+
+  const cancelEditOrder = () => {
+    setEditingOrderId(null); setEditAmount(''); setEditPropertyId('')
+  }
+
+  const submitEditOrder = async (orderId: string) => {
+    const body: any = {}
+    const newAmount = parseFloat(editAmount)
+    if (!isNaN(newAmount) && newAmount > 0) body.amount = newAmount
+    if (editPropertyId) body.property_id = editPropertyId
+    if (Object.keys(body).length === 0) { toast.error('No hay cambios'); return }
+    setEditSaving(true)
+    try {
+      const res = await fetch(`/api/payment-orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success('Orden actualizada')
+        cancelEditOrder()
+        fetchOrders()
+      } else {
+        toast.error(data.detail || 'Error al actualizar')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   // Default tab based on role (admin sees pending first, pure treasury sees approved)
   useEffect(() => {
     if (isTreasury && !isAdmin) setActiveTab('approved')
@@ -912,11 +969,21 @@ export default function NotificacionesPage() {
 
                 {/* Actions based on role */}
                 <div className="flex flex-col gap-2 flex-shrink-0">
-                  {/* Admin / Abigail: approve pending orders */}
+                  {/* Admin / Abigail: edit (amount + property) then approve pending orders */}
+                  {canSeePending && order.status === 'pending' && editingOrderId !== order.id && (
+                    <button
+                      onClick={() => openEditOrder(order)}
+                      data-testid={`edit-order-${order.id}`}
+                      className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:bg-gray-50"
+                      style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+                    >
+                      Editar
+                    </button>
+                  )}
                   {canSeePending && order.status === 'pending' && (
                     <button
                       onClick={() => handleApproveOrder(order)}
-                      disabled={approvingId === order.id}
+                      disabled={approvingId === order.id || editingOrderId === order.id}
                       className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
                       style={{ backgroundColor: 'var(--navy-800)' }}
                     >
@@ -927,6 +994,54 @@ export default function NotificacionesPage() {
                       )}
                       Aprobar
                     </button>
+                  )}
+                  {editingOrderId === order.id && (
+                    <div data-testid={`edit-order-form-${order.id}`} className="bg-white border rounded-lg p-3 shadow space-y-2 min-w-[260px]" style={{ borderColor: 'var(--stone)' }}>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Editar orden</p>
+                      <div>
+                        <label className="block text-[10px] font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editAmount}
+                          onChange={e => setEditAmount(e.target.value)}
+                          data-testid="edit-amount-input"
+                          className="w-full p-2 border rounded text-xs"
+                          style={{ borderColor: 'var(--stone)' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium mb-1" style={{ color: 'var(--slate)' }}>ID de la Casa</label>
+                        <select
+                          value={editPropertyId}
+                          onChange={e => setEditPropertyId(e.target.value)}
+                          data-testid="edit-property-select"
+                          className="w-full p-2 border rounded text-xs bg-white"
+                          style={{ borderColor: 'var(--stone)' }}
+                        >
+                          <option value="">— Sin propiedad —</option>
+                          {propertiesList.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.property_code ? `${p.property_code} · ` : ''}{p.address || p.id.slice(0, 8)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={cancelEditOrder}
+                          className="flex-1 px-3 py-1.5 rounded border text-xs font-medium hover:bg-gray-50"
+                          style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
+                          Cancelar
+                        </button>
+                        <button onClick={() => submitEditOrder(order.id)}
+                          disabled={editSaving}
+                          data-testid="edit-save-button"
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: 'var(--navy-800)' }}>
+                          {editSaving ? '...' : 'Guardar'}
+                        </button>
+                      </div>
+                    </div>
                   )}
                   {/* Treasury/Admin: complete approved orders (single button) */}
                   {isTreasury && order.status === 'approved' && (

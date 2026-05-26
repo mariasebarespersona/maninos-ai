@@ -64,6 +64,11 @@ class PaymentOrderComplete(BaseModel):
     notes: Optional[str] = None
 
 
+class PaymentOrderUpdate(BaseModel):
+    amount: Optional[float] = None
+    property_id: Optional[str] = None
+
+
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
@@ -172,6 +177,41 @@ async def get_payment_order(order_id: str):
     result = sb.table("payment_orders").select("*").eq("id", order_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Orden de pago no encontrada")
+    return {"ok": True, "data": result.data[0]}
+
+
+@router.patch("/{order_id}")
+async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
+    """
+    Edit a pending payment order. Only amount and property_id are editable.
+    Used by the Notificaciones "Por Aprobar" UI to correct values before
+    approving — the updated amount/property flow downstream into the
+    accounting transaction generated on approve (inbound) or complete (outbound).
+    """
+    order_res = sb.table("payment_orders").select("*").eq("id", order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Orden de pago no encontrada")
+    order = order_res.data[0]
+    if order["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Solo se pueden editar órdenes pendientes")
+
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+    if "property_id" in update:
+        try:
+            prop = sb.table("properties").select("address,property_code").eq("id", update["property_id"]).execute()
+            if prop.data:
+                update["property_address"] = prop.data[0].get("address")
+                update["property_code"] = prop.data[0].get("property_code")
+        except Exception as e:
+            logger.warning(f"[payment_orders] could not enrich property fields: {e}")
+
+    result = sb.table("payment_orders").update(update).eq("id", order_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Error al actualizar")
+    logger.info(f"[payment_orders] Updated order {order_id}: {list(update.keys())}")
     return {"ok": True, "data": result.data[0]}
 
 

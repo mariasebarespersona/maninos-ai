@@ -507,6 +507,8 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
   const [editData, setEditData] = useState<{ amount: string; description: string; counterparty_name: string }>({ amount: '', description: '', counterparty_name: '' })
   const [splitTxnId, setSplitTxnId] = useState<string | null>(null)
   const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([{ amount: '', description: '' }, { amount: '', description: '' }])
+  const [leadershipFilter, setLeadershipFilter] = useState<'' | 'dallas' | 'houston' | 'conroe' | 'unassigned'>('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   const handleEditSave = async (id: string) => {
     try {
@@ -676,6 +678,15 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
             </button>
           ))}
         </div>
+        <select value={leadershipFilter} onChange={e => { setLeadershipFilter(e.target.value as any); setPage(1) }}
+          className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+          aria-label="Filtro de liderazgo">
+          <option value="">Todos los liderazgos</option>
+          <option value="dallas">Dallas (DFW)</option>
+          <option value="houston">Houston (H)</option>
+          <option value="conroe">Conroe (B)</option>
+          <option value="unassigned">Sin asignar</option>
+        </select>
         <a href="/api/accounting/export/transactions" download className="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg border hover:bg-sand/50"
           style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
           <Download className="w-3 h-3" /> CSV
@@ -701,13 +712,26 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                 <th className="px-4 py-3" />
               </tr></thead>
               <tbody>
-                {transactions.map(t => {
-                  const Icon = TYPE_ICONS[t.transaction_type] || Receipt
-                  return (
-                    <tr key={t.id} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
+                {(() => {
+                  const getLeadership = (t: Transaction): 'dallas' | 'houston' | 'conroe' | 'unassigned' => {
+                    const code = (t.properties?.property_code || '').toUpperCase()
+                    if (code.startsWith('DFW')) return 'dallas'
+                    if (code.startsWith('H')) return 'houston'
+                    if (code.startsWith('B')) return 'conroe'
+                    return 'unassigned'
+                  }
+                  const LEADERSHIP_LABELS: Record<string, string> = { dallas: 'Dallas', houston: 'Houston', conroe: 'Conroe', unassigned: 'Sin asignar' }
+                  const ORDER: Array<'dallas' | 'houston' | 'conroe' | 'unassigned'> = ['dallas', 'houston', 'conroe', 'unassigned']
+                  const filtered = leadershipFilter ? transactions.filter(t => getLeadership(t) === leadershipFilter) : transactions
+                  const groups: Record<string, Transaction[]> = { dallas: [], houston: [], conroe: [], unassigned: [] }
+                  filtered.forEach(t => { groups[getLeadership(t)].push(t) })
+                  const renderRow = (t: Transaction) => {
+                    const Icon = TYPE_ICONS[t.transaction_type] || Receipt
+                    return (
+                      <tr key={t.id} data-testid="txn-row" data-leadership={getLeadership(t)} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.transaction_date}</td>
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${t.is_income ? 'text-emerald-500' : 'text-red-500'}`} /><span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{TYPE_LABELS[t.transaction_type] || t.transaction_type}</span></div></td>
-                      <td className="px-4 py-3 max-w-[250px]"><p className="truncate text-sm" style={{ color: 'var(--charcoal)' }}>{t.properties?.property_code ? `${TYPE_LABELS[t.transaction_type] || t.transaction_type} ${t.properties.property_code}` : t.description}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_number}</p></td>
+                      <td className="px-4 py-3 max-w-[250px]"><p className="truncate text-sm" style={{ color: 'var(--charcoal)' }}>{t.description || (t.properties?.property_code ? `${TYPE_LABELS[t.transaction_type] || t.transaction_type} ${t.properties.property_code}` : '—')}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{t.transaction_number}</p></td>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--slate)' }}>{t.counterparty_name || '—'}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--ash)' }}>{PAYMENT_LABELS[t.payment_method || ''] || t.payment_method || '—'}</td>
                       <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>{t.is_income ? '+' : '-'}{fmtFull(t.amount)}</td>
@@ -780,7 +804,36 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       </td>
                     </tr>
                   )
-                })}
+                  }
+                  const rows: React.ReactNode[] = []
+                  ORDER.forEach(key => {
+                    const list = groups[key]
+                    if (list.length === 0) return
+                    const collapsed = collapsedGroups.has(key)
+                    const total = list.reduce((s, t) => s + (t.is_income ? t.amount : -t.amount), 0)
+                    rows.push(
+                      <tr key={`hdr-${key}`} data-testid={`leadership-header-${key}`} className="cursor-pointer border-b" style={{ backgroundColor: 'var(--sand)', borderColor: 'var(--stone)' }}
+                        onClick={() => {
+                          const next = new Set(collapsedGroups)
+                          if (next.has(key)) next.delete(key); else next.add(key)
+                          setCollapsedGroups(next)
+                        }}>
+                        <td colSpan={8} className="px-4 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2 font-semibold text-sm" style={{ color: 'var(--ink)' }}>
+                              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              Liderazgo · {LEADERSHIP_LABELS[key]}
+                              <span className="text-xs font-normal" style={{ color: 'var(--slate)' }}>({list.length})</span>
+                            </span>
+                            <span className={`font-bold text-sm ${total >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{total >= 0 ? '+' : ''}{fmtFull(total)}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                    if (!collapsed) list.forEach(t => rows.push(renderRow(t)))
+                  })
+                  return rows
+                })()}
               </tbody>
             </table>
           </div>
