@@ -85,8 +85,13 @@ credits AS (
     linked_transaction_id
   )
   SELECT
+    -- is_income=TRUE on the equity contra so it aligns with the
+    -- convention used by post_to_ledger (credit-to-equity stores
+    -- is_income=TRUE so _signed_balance returns positive). Previously
+    -- this was FALSE which made the Balance Sheet show a negative
+    -- equity total.
     REPLACE(d.transaction_number, '-D', '-C'), CURRENT_DATE, 'adjustment',
-    d.amount, FALSE,
+    d.amount, TRUE,
     (SELECT id FROM ob), NULL,
     'Opening balance', 'system',
     'opening_balance',

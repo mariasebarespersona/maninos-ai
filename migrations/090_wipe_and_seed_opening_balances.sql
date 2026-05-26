@@ -134,8 +134,13 @@ BEGIN
       description, status, notes,
       linked_transaction_id
     ) VALUES (
+      -- is_income=TRUE on the equity contra so it aligns with the
+      -- convention post_to_ledger uses (credit-to-equity-account stores
+      -- is_income=TRUE so _signed_balance treats it as a positive
+      -- contribution). Previously this was FALSE which produced a
+      -- negative equity total on the Balance Sheet.
       v_serial_str || '-C', v_today, 'adjustment',
-      v_amount, FALSE,
+      v_amount, TRUE,
       v_ob_account_id, NULL,
       'Opening balance', 'system',
       'opening_balance', NULL,

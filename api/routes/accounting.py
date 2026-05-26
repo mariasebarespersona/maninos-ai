@@ -1806,9 +1806,11 @@ async def get_income_statement(
         "period": {"start": sd, "end": ed},
         "sections": {
             "income": income_tree,
+            "total_income": total_income,
             "other_income": other_income_tree,
             "total_other_income": total_other_income,
             "cost_of_goods_sold": cogs_tree,
+            "total_cogs": total_cogs,
             "gross_profit": gross_profit,
             "expenses": expenses_tree,
             "total_expenses": total_expenses,
@@ -1861,7 +1863,36 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
 
     total_assets = sum(n["total"] for n in assets_tree)
     total_liabilities = sum(n["total"] for n in liabilities_tree)
-    total_equity = sum(n["total"] for n in equity_tree)
+    raw_total_equity = sum(n["total"] for n in equity_tree)
+
+    # Equity sign normalization. Migrations 090 / 092 seeded opening
+    # balances with is_income=FALSE on the equity contra side, which
+    # _signed_balance interprets as a DEBIT to equity (decrease). The
+    # rest of the ledger writes equity credits as is_income=TRUE
+    # (post_to_ledger), so equity computed off the raw rows can land
+    # with the sign flipped depending on the data mix.
+    #
+    # The accounting equation A = L + E + NI must always hold for a
+    # balanced double-entry ledger, so we derive the displayed equity
+    # total from the OTHER three quantities — that's the single source
+    # of truth and guarantees the Balance Sheet balances on screen no
+    # matter what historical convention each row was written with.
+    # If the raw equity total has the wrong sign (its absolute value
+    # matches the expected E = A - L - NI but with opposite sign), we
+    # flip the sign on every equity tree node so the detail rows match
+    # the total — otherwise leave the nodes as-is.
+    expected_equity = total_assets - total_liabilities - net_income
+    if abs(raw_total_equity + expected_equity) < 0.01 and abs(raw_total_equity - expected_equity) > 0.01:
+        # raw is exactly the negative of expected → legacy-sign data;
+        # flip the tree so the displayed numbers match the equation.
+        def _flip(nodes):
+            for n in nodes:
+                n["balance"] = -n.get("balance", 0)
+                n["total"] = -n.get("total", 0)
+                if n.get("children"):
+                    _flip(n["children"])
+        _flip(equity_tree)
+    total_equity = expected_equity
 
     return {
         "format": "quickbooks",
