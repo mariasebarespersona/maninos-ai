@@ -2958,74 +2958,20 @@ async def get_bank_statement(statement_id: str):
     }
 
 
-@router.post("/bank-statements")
-async def upload_bank_statement(
-    file: UploadFile = File(...),
-    bank_account_id: str = Form(None),
-    account_key: str = Form(None),
-):
-    """Upload a bank statement file (PDF, PNG, JPG, Excel, CSV).
-    Stores the file and immediately starts AI-powered parsing.
-    Accepts bank_account_id (preferred) or account_key (legacy)."""
+async def _parse_statement_background(
+    statement_id: str,
+    file_content: bytes,
+    ext: str,
+    account_key: str,
+    bank_account_id: Optional[str] = None,
+) -> None:
+    """Run the GPT-5 parsing of a bank statement off the request path.
 
-    # Resolve the bank account
-    account_label = "Unknown Account"
-    resolved_account_key = account_key or "unknown"
-
-    if bank_account_id:
-        # Look up bank account from DB
-        ba = sb.table("bank_accounts").select("id, name, bank_name").eq("id", bank_account_id).execute()
-        if not ba.data:
-            raise HTTPException(status_code=400, detail="Bank account not found")
-        account_label = ba.data[0]["name"]
-        resolved_account_key = ba.data[0]["name"].lower().replace(" ", "_")
-    elif not account_key:
-        raise HTTPException(status_code=400, detail="Either bank_account_id or account_key is required")
-
-    # Validate file type
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
-    allowed = {"pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv"}
-    if ext not in allowed:
-        raise HTTPException(status_code=400, detail=f"File type .{ext} not supported. Use: {', '.join(allowed)}")
-
-    file_content = await file.read()
-    if len(file_content) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    # Upload to Supabase Storage
-    import uuid as _uuid
-    storage_path = f"bank-statements/{resolved_account_key}/{_uuid.uuid4().hex[:12]}_{file.filename}"
-    file_url = None
-    try:
-        sb.storage.from_("transaction-documents").upload(
-            storage_path, file_content,
-            {"content-type": file.content_type or "application/octet-stream"}
-        )
-        file_url = sb.storage.from_("transaction-documents").get_public_url(storage_path)
-        if file_url and file_url.endswith("?"):
-            file_url = file_url[:-1]
-    except Exception as e:
-        logger.warning(f"[BankStmt] Storage upload failed: {e}")
-
-    # Create DB record
-    stmt_data = {
-        "account_key": resolved_account_key,
-        "account_label": account_label,
-        "original_filename": file.filename or "unknown",
-        "file_type": ext,
-        "storage_path": storage_path,
-        "file_url": file_url,
-        "status": "parsing",
-    }
-    if bank_account_id:
-        stmt_data["bank_account_id"] = bank_account_id
-    result = sb.table("bank_statements").insert(stmt_data).execute()
-    if not result.data:
-        raise HTTPException(status_code=500, detail="Could not save statement record")
-    statement = result.data[0]
-    statement_id = statement["id"]
-
-    # Extract text + parse movements
+    Vercel's serverless functions cap at 10s on Hobby and 60s on Pro —
+    well below the 15-30s the AI parser routinely takes for a multi-page
+    statement. We fire-and-forget this so the upload request returns in
+    <2s and the frontend polls /bank-statements/{id} until status flips
+    from 'parsing' to 'parsed' or 'error'."""
     try:
         raw_text, movements = await _extract_and_parse_statement(file_content, ext, account_key)
 
@@ -3119,15 +3065,7 @@ async def upload_bank_statement(
             except Exception as audit_err:
                 logger.warning(f"[BankStmt] Discrepancy check failed: {audit_err}")
 
-        # Refresh statement from DB (no auto-classify — user drives the 3-step wizard)
-        stmt_refresh = sb.table("bank_statements").select("*").eq("id", statement_id).execute()
-        mvs = sb.table("statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
-
-        return {
-            "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
-            "movements": mvs.data or [],
-            "message": f"Extraídos {len(movements)} movimientos del estado de cuenta",
-        }
+        logger.info(f"[BankStmt] background parse complete for {statement_id}: {len(movements)} movements")
 
     except Exception as e:
         logger.error(f"[BankStmt] Parse error: {e}")
@@ -3135,7 +3073,88 @@ async def upload_bank_statement(
             "status": "error",
             "error_message": str(e)[:500],
         }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=500, detail=f"Error parsing statement: {str(e)}")
+
+
+@router.post("/bank-statements")
+async def upload_bank_statement(
+    file: UploadFile = File(...),
+    bank_account_id: str = Form(None),
+    account_key: str = Form(None),
+):
+    """Upload a bank statement file (PDF, PNG, JPG, Excel, CSV).
+    Stores the file + DB record synchronously (~1-2s) then launches the
+    AI parsing as a background task. The frontend polls
+    /api/accounting/bank-statements/{id} until status flips from
+    'parsing' to 'parsed' (or 'error'). This keeps the HTTP request well
+    under the Vercel serverless function timeout (10s on Hobby)."""
+
+    # Resolve the bank account
+    account_label = "Unknown Account"
+    resolved_account_key = account_key or "unknown"
+
+    if bank_account_id:
+        ba = sb.table("bank_accounts").select("id, name, bank_name").eq("id", bank_account_id).execute()
+        if not ba.data:
+            raise HTTPException(status_code=400, detail="Bank account not found")
+        account_label = ba.data[0]["name"]
+        resolved_account_key = ba.data[0]["name"].lower().replace(" ", "_")
+    elif not account_key:
+        raise HTTPException(status_code=400, detail="Either bank_account_id or account_key is required")
+
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
+    allowed = {"pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"File type .{ext} not supported. Use: {', '.join(allowed)}")
+
+    file_content = await file.read()
+    if len(file_content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    import uuid as _uuid
+    storage_path = f"bank-statements/{resolved_account_key}/{_uuid.uuid4().hex[:12]}_{file.filename}"
+    file_url = None
+    try:
+        sb.storage.from_("transaction-documents").upload(
+            storage_path, file_content,
+            {"content-type": file.content_type or "application/octet-stream"}
+        )
+        file_url = sb.storage.from_("transaction-documents").get_public_url(storage_path)
+        if file_url and file_url.endswith("?"):
+            file_url = file_url[:-1]
+    except Exception as e:
+        logger.warning(f"[BankStmt] Storage upload failed: {e}")
+
+    stmt_data = {
+        "account_key": resolved_account_key,
+        "account_label": account_label,
+        "original_filename": file.filename or "unknown",
+        "file_type": ext,
+        "storage_path": storage_path,
+        "file_url": file_url,
+        "status": "parsing",
+    }
+    if bank_account_id:
+        stmt_data["bank_account_id"] = bank_account_id
+    result = sb.table("bank_statements").insert(stmt_data).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Could not save statement record")
+    statement = result.data[0]
+    statement_id = statement["id"]
+
+    # Fire-and-forget the AI parsing. Railway keeps the worker alive even
+    # after we return the response, so the task finishes server-side.
+    import asyncio
+    asyncio.create_task(
+        _parse_statement_background(
+            statement_id, file_content, ext, resolved_account_key, bank_account_id,
+        )
+    )
+
+    return {
+        "statement": statement,
+        "movements": [],
+        "message": "Archivo subido. Parseando movimientos en segundo plano…",
+    }
 
 
 @router.post("/bank-statements/{statement_id}/reconcile")

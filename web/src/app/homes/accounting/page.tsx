@@ -3113,19 +3113,51 @@ function EstadoCuentaTab() {
       formData.append('bank_account_id', bankAccountId)
 
       const res = await fetch('/api/accounting/bank-statements', { method: 'POST', body: formData })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.message) alert(data.message)
-        fetchStatements()
-        if (data.statement?.id) {
-          setActiveStatement(data.statement.id)
-          setActiveMovements(data.movements || [])
-          setExpandedDrawer(bankAccountId)
-        }
-      } else {
+      if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         alert(`Error: ${err.detail || 'Error al subir archivo'}`)
+        return
       }
+      const data = await res.json()
+      const stmtId = data.statement?.id
+      if (!stmtId) {
+        alert('El archivo se subió pero no se recibió un ID de statement.')
+        return
+      }
+      setActiveStatement(stmtId)
+      setActiveMovements(data.movements || [])
+      setExpandedDrawer(bankAccountId)
+      fetchStatements()
+
+      // The backend parses with GPT-5 in the background (15–30s typically).
+      // Poll until status flips out of 'parsing'.
+      const start = Date.now()
+      const maxWait = 180_000 // 3 minutes
+      const pollInterval = 3000
+      while (Date.now() - start < maxWait) {
+        await new Promise(r => setTimeout(r, pollInterval))
+        try {
+          const pollRes = await fetch(`/api/accounting/bank-statements/${stmtId}`)
+          if (!pollRes.ok) continue
+          const pollData = await pollRes.json()
+          const status = pollData.statement?.status
+          if (status === 'parsed') {
+            setActiveMovements(pollData.movements || [])
+            fetchStatements()
+            alert(`Extraídos ${(pollData.movements || []).length} movimientos del estado de cuenta`)
+            return
+          }
+          if (status === 'error') {
+            const msg = pollData.statement?.error_message || 'Error al parsear el archivo'
+            alert(`Error: ${msg}`)
+            fetchStatements()
+            return
+          }
+          // status === 'parsing' or 'uploaded' → keep polling
+        } catch { /* network blip — keep trying */ }
+      }
+      alert('El parser está tardando más de lo esperado. Revisa el statement en unos minutos.')
+      fetchStatements()
     } catch (e) {
       alert('Error de conexión al subir archivo')
     }
