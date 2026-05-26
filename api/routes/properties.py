@@ -98,9 +98,13 @@ def _create_inventory_account_for_property(prop: dict):
             return None
         header_id = header.data[0]["id"]
 
-    # Ensure the 3 cost-bucket sub-accounts exist. Create only the ones
-    # that are missing so re-running is safe.
-    subs = [f"Compra {code}", f"Renovación {code}", f"Movida {code}"]
+    # Ensure the 4 cost-bucket sub-accounts exist. Create only the ones
+    # that are missing so re-running is safe. Commission is included
+    # alongside Compra/Renovación/Movida because the client tracks
+    # per-house profitability the QuickBooks way — all costs directly
+    # attributable to the house get capitalized into its inventory bucket
+    # and zeroed against COGS at sale time.
+    subs = [f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]
     created = 0
     for i, name in enumerate(subs):
         already = sb.table("accounting_accounts").select("id").eq("code", name).execute()

@@ -267,6 +267,7 @@ _PROPERTY_SUBACCOUNT_BY_EVENT: dict[str, str] = {
     "property_purchase_paid": "Compra",
     "renovation_paid": "Renovación",
     "moving_transport_paid": "Movida",
+    "commission_paid": "Comisión",
 }
 
 

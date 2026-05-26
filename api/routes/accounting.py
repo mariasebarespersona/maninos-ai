@@ -675,6 +675,7 @@ async def create_transaction(data: TransactionCreate):
         "purchase_house": "Compra",
         "renovation": "Renovación",
         "moving_transport": "Movida",
+        "commission": "Comisión",
     }
     if not account_id and data.property_id and data.transaction_type in sub_label_by_type:
         try:

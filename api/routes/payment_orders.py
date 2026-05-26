@@ -574,7 +574,7 @@ def _maybe_recognize_cogs_for_sale(
     prop_code = prop.get("property_code")
     sub_balances: list[tuple[str, str, float]] = []  # (sub_acct_id, label, balance)
     if prop_code:
-        for sub_label in ("Compra", "Renovación", "Movida"):
+        for sub_label in ("Compra", "Renovación", "Movida", "Comisión"):
             code = f"{sub_label} {prop_code}"
             try:
                 acc = sb.table("accounting_accounts").select("id").eq("code", code).limit(1).execute()
