@@ -444,6 +444,17 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
 
     logger.info(f"[payment_orders] Completed order {order_id}: ref={req.reference}")
 
+    # If this payment landed against a property that's already been sold
+    # (i.e. has prior COGS), sweep the new sub-account balance into COGS
+    # so commissions paid post-sale don't leave the property's bucket
+    # with leftover value. _maybe_recognize_cogs_for_sale handles the
+    # has_prior_cogs path correctly now.
+    if property_id and (order.get("concept") or "").lower() in ("comision", "renovacion", "movida", "compra"):
+        try:
+            _maybe_recognize_cogs_for_sale(property_id, req.bank_account_id, req.completed_by)
+        except Exception as e:
+            logger.warning(f"[payment_orders] post-complete COGS sweep failed: {e}")
+
     try:
         from api.services.notification_service import notify_payment_completed
         notify_payment_completed(
@@ -492,13 +503,20 @@ def _maybe_recognize_cogs_for_sale(
     approved_by: Optional[str],
 ) -> None:
     """
-    If the most recent contado sale on `property_id` is now fully paid
-    (sum of inbound ledger rows >= sale_price) AND no COGS pair has been
-    written for that sale yet, post the sale_contado_cogs entry now.
+    Recognize Cost of Goods Sold for the most recent contado sale on
+    `property_id`. Two scenarios trigger work here:
 
-    Idempotent: re-running on subsequent payments after the sale was
-    already fully paid is a no-op because the entity_type/entity_id
-    guard prevents duplicate COGS rows.
+      1. Initial COGS at sale close — sale just became fully paid and we
+         have not posted any COGS rows yet. Sweep every non-zero
+         per-property inventory sub-account into COGS.
+      2. Late-arriving costs — sale already closed in the past, but a
+         capitalized cost (typically commission, sometimes a stragglers'
+         renovation invoice) just landed in a sub-account. Sweep just
+         that delta as additional COGS so the bucket returns to $0.
+
+    Both scenarios use the same sweep logic; we only short-circuit when
+    the sale truly is not yet closed (paid_total < sale_price) AND no
+    COGS has ever been recognized.
     """
     if not property_id:
         return
@@ -517,8 +535,7 @@ def _maybe_recognize_cogs_for_sale(
     if (sale.get("sale_type") or "").lower() != "contado":
         return  # COGS for RTO is a different conversation
 
-    # Already recognized? Guard against duplicate firing.
-    existing_cogs = (
+    has_prior_cogs = bool((
         sb.table("accounting_transactions")
         .select("id")
         .eq("entity_type", "sale")
@@ -526,26 +543,29 @@ def _maybe_recognize_cogs_for_sale(
         .eq("transaction_type", "cogs")
         .limit(1)
         .execute()
-    ).data
-    if existing_cogs:
-        return
+    ).data)
 
-    # Sum of confirmed inbound payments on the linked payment_orders.
-    in_orders = (
-        sb.table("payment_orders")
-        .select("amount, status")
-        .eq("property_id", property_id)
-        .eq("direction", "inbound")
-        .execute()
-    ).data or []
-    paid_total = sum(float(o.get("amount") or 0) for o in in_orders
-                     if (o.get("status") or "") in ("approved", "completed"))
-
-    sale_price = float(sale.get("sale_price") or 0)
-    if paid_total + 0.01 < sale_price:  # epsilon for float rounding
-        return
+    # If COGS has never been recognized for this sale we need the sale
+    # to actually be paid in full first. Once it has been recognized
+    # once, every subsequent call is a "late-arriving cost" sweep and
+    # the paid_total check no longer applies.
+    if not has_prior_cogs:
+        in_orders = (
+            sb.table("payment_orders")
+            .select("amount, status")
+            .eq("property_id", property_id)
+            .eq("direction", "inbound")
+            .execute()
+        ).data or []
+        paid_total = sum(float(o.get("amount") or 0) for o in in_orders
+                         if (o.get("status") or "") in ("approved", "completed"))
+        sale_price = float(sale.get("sale_price") or 0)
+        if paid_total + 0.01 < sale_price:  # epsilon for float rounding
+            return
 
     # Compute inventory cost = purchase_price + Σ renovations.total_cost
+    # (only used as the legacy fallback when this property has no
+    # per-property sub-accounts at all).
     prop = sale.get("properties") or {}
     purchase_price = float(prop.get("purchase_price") or 0)
     reno_total = 0.0
@@ -555,8 +575,6 @@ def _maybe_recognize_cogs_for_sale(
     except Exception:
         pass
     inventory_cost = round(purchase_price + reno_total, 2)
-    if inventory_cost <= 0:
-        return  # nothing to recognize
 
     from api.services.ledger import post_to_ledger
     from datetime import date as date_type
@@ -623,8 +641,11 @@ def _maybe_recognize_cogs_for_sale(
             f"{[(l, b) for (_, l, b) in sub_balances]} total=${total_posted:.2f} "
             f"(estimate was ${inventory_cost:.2f})"
         )
-    else:
+    elif not has_prior_cogs and inventory_cost > 0:
         # Legacy fallback path — single COGS pair against parent Inventory.
+        # Only runs the FIRST time COGS is recognized for this sale (no
+        # late-arriving sweep against the parent because that account isn't
+        # per-property).
         post_to_ledger(
             event_type="sale_contado_cogs",
             amount=inventory_cost,
