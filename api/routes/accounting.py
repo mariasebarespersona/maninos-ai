@@ -664,6 +664,30 @@ async def list_transactions(
 async def create_transaction(data: TransactionCreate):
     txn_number = _generate_transaction_number()
     account_id = data.account_id
+
+    # Per-property job-costing: when the operator creates a manual
+    # transaction tied to a property AND the transaction is a capitalized
+    # cost type (purchase / renovation / movida), prefer the per-property
+    # inventory sub-account (Compra/Renovación/Movida <CODE>) over the
+    # generic category lookup below. Same behavior as the ledger-driven
+    # path in api/services/ledger.py.
+    sub_label_by_type = {
+        "purchase_house": "Compra",
+        "renovation": "Renovación",
+        "moving_transport": "Movida",
+    }
+    if not account_id and data.property_id and data.transaction_type in sub_label_by_type:
+        try:
+            prop = sb.table("properties").select("property_code").eq("id", data.property_id).limit(1).execute()
+            code = (prop.data[0] or {}).get("property_code") if prop.data else None
+            if code:
+                target = f"{sub_label_by_type[data.transaction_type]} {code}"
+                acc = sb.table("accounting_accounts").select("id").eq("code", target).limit(1).execute()
+                if acc.data:
+                    account_id = acc.data[0]["id"]
+        except Exception as e:
+            logger.warning(f"[transactions] per-property routing failed: {e}")
+
     if not account_id:
         type_to_cat = {
             "sale_cash": "ventas_contado", "sale_rto_capital": "ventas_capital",
