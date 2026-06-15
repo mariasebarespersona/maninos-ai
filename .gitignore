@@ -80,6 +80,7 @@ web/src/app/api/legacy/
 web/src/app/legacy/
 
 # Sensitive data / sample files (do not commit)
+scripts/backup_before_cleanup_*.json
 *.xlsx
 *.xls
 eStmt*.pdf
