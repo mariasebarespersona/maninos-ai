@@ -429,9 +429,12 @@ async def get_accounting_dashboard(
     # total_purchases sums confirmed (non-voided) purchase_house transactions.
     # This is the single source of truth — properties.purchase_price is not used
     # so that "Vaciar Cifras" (which voids transactions) is reflected here.
+    # Each purchase_house transaction is a double-entry pair (inventory debit +
+    # bank/cash-out credit), BOTH rows tagged transaction_type='purchase_house'.
+    # Count only the cash-out leg (is_income=False) so we don't double the total.
     total_purchases = sum(
         float(t.get("amount") or 0) for t in transactions
-        if t.get("transaction_type") == "purchase_house"
+        if t.get("transaction_type") == "purchase_house" and not t.get("is_income")
     )
     total_renovations = sum(float(r.get("total_cost") or 0) for r in renovations)
     total_commissions = sum(float(s.get("commission_amount") or 0) for s in sales)
@@ -441,13 +444,21 @@ async def get_accounting_dashboard(
     # above (purchases, sales) to prevent double-counting.
     CATEGORIZED_INCOME_TYPES = {"sale_cash", "sale_rto_capital"}
     CATEGORIZED_EXPENSE_TYPES = {"purchase_house", "renovation", "commission"}
+    # Count only the bank leg (bank_account_id set) so two-legged transactions
+    # are not double-counted, and exclude balance-sheet movements (opening
+    # balances, transfers between own accounts) which are NOT P&L income/expense.
+    BALANCE_SHEET_ENTITY = {"opening_balance", "bank_transfer"}
     manual_income = sum(
         float(t["amount"]) for t in transactions
-        if t["is_income"] and t.get("transaction_type") not in CATEGORIZED_INCOME_TYPES
+        if t["is_income"] and t.get("bank_account_id")
+        and t.get("transaction_type") not in CATEGORIZED_INCOME_TYPES
+        and t.get("entity_type") not in BALANCE_SHEET_ENTITY
     )
     manual_expense = sum(
         float(t["amount"]) for t in transactions
-        if not t["is_income"] and t.get("transaction_type") not in CATEGORIZED_EXPENSE_TYPES
+        if not t["is_income"] and t.get("bank_account_id")
+        and t.get("transaction_type") not in CATEGORIZED_EXPENSE_TYPES
+        and t.get("entity_type") not in BALANCE_SHEET_ENTITY
     )
 
     total_income = total_sales_income + manual_income
@@ -2449,8 +2460,10 @@ async def get_property_pnl(property_id: str):
         .neq("status", "voided").order("transaction_date").execute()
     transactions = txn.data or []
 
-    income = sum(float(t["amount"]) for t in transactions if t["is_income"])
-    expenses = sum(float(t["amount"]) for t in transactions if not t["is_income"])
+    # Count only the bank (cash) leg so the inventory/asset leg of each
+    # double-entry pair isn't double-counted into the wrong bucket.
+    income = sum(float(t["amount"]) for t in transactions if t["is_income"] and t.get("bank_account_id"))
+    expenses = sum(float(t["amount"]) for t in transactions if not t["is_income"] and t.get("bank_account_id"))
 
     return {
         "property": {
