@@ -4725,21 +4725,23 @@ Also extract these metadata fields (include them in the FIRST movement only):
 - "ending_balance": number"""
 
         prompt = f"""Parse this bank statement for Maninos Homes LLC ({account_key}).
-Extract EVERY transaction as a JSON object:
+Output one JSON object PER TRANSACTION with these fields:
 - "date": "YYYY-MM-DD"
-- "description": full description (merge multi-line entries)
-- "amount": positive for deposits, negative for withdrawals
-- "is_credit": true for deposits, false for withdrawals
+- "description": the transaction description
+- "amount": the amount as a number, signed (negative for withdrawals, positive for deposits)
+- "is_credit": true for deposits / money in, false for withdrawals / money out
 - "reference": check #, confirmation #, wire TRN (if found)
 - "payment_method": "zelle"|"wire"|"check"|"card"|"ach"|"transfer"|"merchant"|"other"
 - "counterparty": person/company name (if identifiable)
 {metadata_instruction}
 
 RULES:
-- Extract ALL transactions. Skip totals, running balances, headers, legal text, ads, check images.
+- One object per transaction row. Each row that has its OWN date and amount is a SEPARATE transaction — NEVER merge distinct transactions into one. Only merge a continuation line that clearly belongs to the SAME transaction (e.g. a wire reference on the next line that has no date/amount of its own).
+- Do NOT create an entry for summary or total lines ("Total withdrawals", "Beginning balance", "Ending balance"), column headers, running balances, legal text, ads, or check images.
+- Sign of amount: a value written with a leading minus (-1234.56), in parentheses ((1234.56) or ($1,234.56)), in a DEBIT/Withdrawals column, or marked "DR" is a WITHDRAWAL → is_credit=false. A value with no sign, in a CREDIT/Deposits column, or marked "CR" is a DEPOSIT → is_credit=true.
+- The sign of "amount" MUST agree with is_credit: a negative number when is_credit=false, a positive number when is_credit=true.
+- Strip currency symbols and thousand separators ($ and commas) from the number.
 - Normalize any date format to YYYY-MM-DD.
-- Normalize amounts: debits are NEGATIVE, credits are POSITIVE (regardless of bank format — parentheses, D/C codes, separate columns, etc.)
-- Merge multi-line transactions (wire transfers, ACH) into one entry.
 
 Return a JSON object with a single key "movements" whose value is the array of
 transaction objects (e.g. {{"movements": [ {{...}}, {{...}} ]}}). No markdown fences.
