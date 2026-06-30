@@ -4621,6 +4621,57 @@ def _parse_csv_statement(file_content: bytes) -> tuple:
         raise ValueError(f"Could not read CSV file: {e}")
 
 
+def _coerce_json(content: str):
+    """Best-effort parse of an LLM JSON response that may have minor defects.
+
+    Handles: markdown code fences, leading/trailing prose, // and /* */
+    comments, and trailing commas before } or ]. Returns the parsed object/list,
+    or raises json.JSONDecodeError if it truly can't be salvaged. This is the
+    safety net behind OpenAI's json_object mode so a single malformed token
+    never sinks a whole statement upload.
+    """
+    s = (content or "").strip()
+    if s.startswith("```"):
+        s = re.sub(r'^```(?:json)?\s*', '', s)
+        s = re.sub(r'\s*```$', '', s)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # Slice the outermost object or array, then repair common LLM defects.
+    candidates = []
+    for op, cl in (('{', '}'), ('[', ']')):
+        a, b = s.find(op), s.rfind(cl)
+        if a != -1 and b != -1 and b > a:
+            candidates.append((a, s[a:b + 1]))
+    for _, cand in sorted(candidates):
+        cand = re.sub(r'//[^\n\r]*', '', cand)
+        cand = re.sub(r'/\*.*?\*/', '', cand, flags=re.DOTALL)
+        cand = re.sub(r',(\s*[}\]])', r'\1', cand)
+        try:
+            return json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+    return json.loads(s)  # re-raise the original error for the caller
+
+
+def _movements_from_parsed(parsed):
+    """Normalize a parsed JSON payload into a list of movement dicts, whether
+    the model returned a bare array, a {"movements": [...]} wrapper, or a
+    single object."""
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        for key in ("movements", "transactions", "data", "items"):
+            val = parsed.get(key)
+            if isinstance(val, list):
+                return val
+        # A single movement object
+        if any(k in parsed for k in ("date", "amount", "description")):
+            return [parsed]
+    return []
+
+
 async def _ai_parse_movements(raw_text: str, account_key: str) -> list:
     """Use GPT-4 to parse raw bank statement text into structured movements.
     Splits long statements into chunks and processes each separately."""
@@ -4690,7 +4741,8 @@ RULES:
 - Normalize amounts: debits are NEGATIVE, credits are POSITIVE (regardless of bank format — parentheses, D/C codes, separate columns, etc.)
 - Merge multi-line transactions (wire transfers, ACH) into one entry.
 
-Return ONLY a valid JSON array. No markdown fences.
+Return a JSON object with a single key "movements" whose value is the array of
+transaction objects (e.g. {{"movements": [ {{...}}, {{...}} ]}}). No markdown fences.
 
 BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
 {chunk}"""
@@ -4709,6 +4761,7 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
                 ],
                 max_completion_tokens=8192,
                 temperature=0,
+                response_format={"type": "json_object"},
             )
 
             content = response.choices[0].message.content or ""
@@ -4730,10 +4783,9 @@ BANK STATEMENT TEXT (chunk {i+1}/{len(chunks)}):
                 content_stripped = re.sub(r'^```(?:json)?\s*', '', content_stripped)
                 content_stripped = re.sub(r'\s*```$', '', content_stripped)
 
-            chunk_movements = json.loads(content_stripped)
-            if isinstance(chunk_movements, dict):
-                chunk_movements = [chunk_movements]
-            if isinstance(chunk_movements, list):
+            parsed = _coerce_json(content_stripped)
+            chunk_movements = _movements_from_parsed(parsed)
+            if chunk_movements:
                 all_movements.extend(chunk_movements)
                 logger.info(f"[BankStmt] Chunk {i+1}: parsed {len(chunk_movements)} movements")
             is_first_chunk = False
