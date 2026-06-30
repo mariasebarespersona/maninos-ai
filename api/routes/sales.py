@@ -1181,8 +1181,11 @@ async def confirm_transfer(sale_id: str, body: Optional[ConfirmTransferBody] = N
                     payment_reference=body.payment_reference,
                     status="confirmed",
                 )
-                # (b) COGS recognition — only post if we know what was invested.
-                if inventory_cost > 0:
+                # (b) COGS recognition at sale is DISABLED: property costs are
+                # now expensed to each house's per-house COGS bucket when PAID
+                # (not capitalized to inventory), so posting COGS here would
+                # double-count. Kept dead-coded for traceability.
+                if False and inventory_cost > 0:
                     post_to_ledger(
                         event_type="sale_contado_cogs",
                         amount=inventory_cost,

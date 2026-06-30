@@ -521,6 +521,12 @@ def _maybe_recognize_cogs_for_sale(
     if not property_id:
         return
 
+    # COGS POLICY: property costs (purchase/renovation/moving/commission) are now
+    # expensed to each house's per-house COGS bucket when PAID — not capitalized
+    # to inventory and swept at sale. Recognizing COGS again here would
+    # double-count, so sale-time COGS recognition is disabled.
+    return
+
     sale = (
         sb.table("sales")
         .select("id, sale_price, sale_type, property_id, clients(name), properties(address, property_code, purchase_price)")

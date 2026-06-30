@@ -42,15 +42,24 @@ COMMISSION_MAX = 1500  # Max commission (contado = $1500, RTO = $1000)
 
 # Inventory parent account ID from QuickBooks chart of accounts
 INVENTORY_PARENT_ID = "8f1096b1-7c74-4a31-a27d-5bf7cce66e6a"
+# Cost of Goods Sold root — per-house cost buckets live here so every house's
+# costs (compra/renovación/movida/comisión) hit COGS per the client's policy:
+# costs are expensed to COGS per-house as they're paid (not capitalized).
+COGS_PARENT_ID = "ef884059-a5f3-497d-91d2-4bdfcf76cb50"
 
 
 def _create_inventory_account_for_property(prop: dict):
-    """Create inventory sub-accounts under Inventory in the Chart of Accounts:
-      Inventory
+    """Create per-house COST sub-accounts under Cost of Goods Sold:
+      Cost of Goods Sold
         └── House <CODE>      (header)
              ├── Compra <CODE>
              ├── Renovación <CODE>
-             └── Movida <CODE>
+             ├── Movida <CODE>
+             └── Comisión <CODE>
+
+    Per client policy, every cost attributable to a house (purchase, renovation,
+    moving, commission) is expensed to COGS per-house as it is paid — so the P&L
+    shows each house's cost under Cost of Goods Sold with its own code.
 
     The header label is intentionally just "House <CODE>" — short, scannable,
     and matches how operators talk about houses in the rest of the app (the
@@ -77,16 +86,16 @@ def _create_inventory_account_for_property(prop: dict):
     else:
         # Get next display_order
         max_order = sb.table("accounting_accounts").select("display_order") \
-            .eq("parent_account_id", INVENTORY_PARENT_ID) \
+            .eq("parent_account_id", COGS_PARENT_ID) \
             .order("display_order", desc=True).limit(1).execute()
         next_order = (max_order.data[0]["display_order"] + 1) if max_order.data else 1000
 
         header = sb.table("accounting_accounts").insert({
             "code": label,
             "name": label,
-            "account_type": "Other Current Assets",
-            "category": "Inventory",
-            "parent_account_id": INVENTORY_PARENT_ID,
+            "account_type": "Cost of Goods Sold",
+            "category": "COGS",
+            "parent_account_id": COGS_PARENT_ID,
             "is_header": True,
             "is_active": True,
             "display_order": next_order,
@@ -99,11 +108,10 @@ def _create_inventory_account_for_property(prop: dict):
         header_id = header.data[0]["id"]
 
     # Ensure the 4 cost-bucket sub-accounts exist. Create only the ones
-    # that are missing so re-running is safe. Commission is included
-    # alongside Compra/Renovación/Movida because the client tracks
-    # per-house profitability the QuickBooks way — all costs directly
-    # attributable to the house get capitalized into its inventory bucket
-    # and zeroed against COGS at sale time.
+    # that are missing so re-running is safe. All four (Compra/Renovación/
+    # Movida/Comisión) are COGS accounts: each cost hits the house's COGS
+    # bucket directly when paid, so per-house profitability reads straight
+    # off the P&L (no inventory capitalization, no sweep at sale).
     subs = [f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]
     created = 0
     for i, name in enumerate(subs):
@@ -113,8 +121,8 @@ def _create_inventory_account_for_property(prop: dict):
         sb.table("accounting_accounts").insert({
             "code": name,
             "name": name,
-            "account_type": "Other Current Assets",
-            "category": "Inventory",
+            "account_type": "Cost of Goods Sold",
+            "category": "COGS",
             "parent_account_id": header_id,
             "is_header": False,
             "is_active": True,
