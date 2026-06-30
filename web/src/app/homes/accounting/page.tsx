@@ -873,6 +873,25 @@ function InvoicesTab() {
   const [loading, setLoading] = useState(true)
   const [direction, setDirection] = useState<'' | 'receivable' | 'payable'>('')
   const [aging, setAging] = useState<any>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const handleDeleteInvoice = async (inv: Invoice) => {
+    if (!confirm(`¿Eliminar la factura ${inv.invoice_number} (${fmtFull(inv.total_amount)})?\n\nSe borrarán también sus asientos contables. Esta acción no se puede deshacer.`)) return
+    setDeletingId(inv.id)
+    try {
+      const res = await fetch(`/api/accounting/invoices/${inv.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setInvoices(prev => prev.filter(i => i.id !== inv.id))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.detail || 'No se pudo eliminar la factura')
+      }
+    } catch (e) {
+      alert('Error al eliminar la factura')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -953,6 +972,7 @@ function InvoicesTab() {
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Pagado</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Pendiente</th>
                 <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--slate)' }}>Estado</th>
+                <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Acciones</th>
               </tr></thead>
               <tbody>
                 {invoices.map(inv => (
@@ -966,6 +986,15 @@ function InvoicesTab() {
                     <td className="px-4 py-3 text-right text-emerald-600 font-medium">{fmtFull(inv.amount_paid)}</td>
                     <td className="px-4 py-3 text-right font-bold" style={{ color: inv.balance_due > 0 ? '#dc2626' : 'var(--charcoal)' }}>{fmtFull(inv.balance_due)}</td>
                     <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>{statusLabel[inv.status] || inv.status}</span></td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => handleDeleteInvoice(inv)} disabled={deletingId === inv.id}
+                        title="Eliminar factura"
+                        className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
+                        {deletingId === inv.id
+                          ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--danger)' }} />
+                          : <Trash2 className="w-4 h-4" style={{ color: 'var(--danger)' }} />}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

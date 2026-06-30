@@ -1406,6 +1406,53 @@ async def update_invoice(invoice_id: str, data: dict):
     return result.data[0]
 
 
+@router.delete("/invoices/{invoice_id}")
+async def delete_invoice(invoice_id: str):
+    """Delete an invoice and everything linked to it: its ledger entries
+    (issuance + payment legs, all tagged entity_type='invoice'), its payment
+    records, and any statement_movements links. Powers the Facturas delete
+    button so staff can remove invoices without leaving orphaned ledger rows."""
+    inv = sb.table("accounting_invoices").select("*").eq("id", invoice_id).execute()
+    if not inv.data:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    invoice = inv.data[0]
+
+    # 1. All ledger rows tied to this invoice (issuance AR/AP pair + payment legs)
+    legs = sb.table("accounting_transactions").select("id") \
+        .eq("entity_type", "invoice").eq("entity_id", invoice_id).execute().data or []
+    leg_ids = [r["id"] for r in legs]
+
+    if leg_ids:
+        # 2. Release FKs before deleting: statement reconciliation links + the
+        #    self-referential linked_transaction_id between the two legs.
+        try:
+            sb.table("statement_movements").update({"transaction_id": None}) \
+                .in_("transaction_id", leg_ids).execute()
+            sb.table("statement_movements").update({"matched_transaction_id": None}) \
+                .in_("matched_transaction_id", leg_ids).execute()
+        except Exception as e:
+            logger.warning(f"[accounting] Could not clear statement_movements for invoice {invoice_id}: {e}")
+        sb.table("accounting_transactions").update({"linked_transaction_id": None}) \
+            .in_("id", leg_ids).execute()
+        # 3. Delete the ledger rows
+        sb.table("accounting_transactions").delete().in_("id", leg_ids).execute()
+
+    # 4. Delete payment records
+    try:
+        sb.table("accounting_invoice_payments").delete().eq("invoice_id", invoice_id).execute()
+    except Exception as e:
+        logger.warning(f"[accounting] Could not delete payments for invoice {invoice_id}: {e}")
+
+    # 5. Delete the invoice itself
+    sb.table("accounting_invoices").delete().eq("id", invoice_id).execute()
+
+    _log_audit("accounting_invoices", invoice_id, "delete",
+               description=f"Deleted invoice {invoice.get('invoice_number')} (${invoice.get('total_amount')})")
+    return {"message": "Factura eliminada",
+            "invoice_number": invoice.get("invoice_number"),
+            "deleted_ledger_rows": len(leg_ids)}
+
+
 @router.post("/invoices/{invoice_id}/payments")
 async def add_invoice_payment(invoice_id: str, data: InvoicePaymentCreate):
     # Get invoice

@@ -25,3 +25,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const res = await fetch(`${API}/api/accounting/invoices/${params.id}`, {
+      method: 'DELETE', cache: 'no-store',
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (e) {
+    return NextResponse.json({ detail: 'API error' }, { status: 500 })
+  }
+}
+
