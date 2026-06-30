@@ -1424,11 +1424,14 @@ async def delete_invoice(invoice_id: str):
 
     if leg_ids:
         # 2. Release FKs before deleting: statement reconciliation links + the
-        #    self-referential linked_transaction_id between the two legs.
+        #    self-referential linked_transaction_id between the two legs. Any
+        #    bank-statement movement that was reconciled against one of these
+        #    rows is returned to the unmatched queue (status -> 'pending'), so
+        #    it doesn't linger as 'posted'/matched pointing to a deleted row.
         try:
-            sb.table("statement_movements").update({"transaction_id": None}) \
+            sb.table("statement_movements").update({"transaction_id": None, "status": "pending"}) \
                 .in_("transaction_id", leg_ids).execute()
-            sb.table("statement_movements").update({"matched_transaction_id": None}) \
+            sb.table("statement_movements").update({"matched_transaction_id": None, "status": "pending"}) \
                 .in_("matched_transaction_id", leg_ids).execute()
         except Exception as e:
             logger.warning(f"[accounting] Could not clear statement_movements for invoice {invoice_id}: {e}")
