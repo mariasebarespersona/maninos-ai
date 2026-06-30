@@ -91,7 +91,7 @@ def _fetch_all_transactions(extra_filters: dict = None) -> list:
     offset = 0
     page_size = 1000
     while True:
-        q = sb.table("accounting_transactions").select("account_id, amount, is_income").neq("status", "voided")
+        q = sb.table("accounting_transactions").select("account_id, amount, is_income, property_id").neq("status", "voided")
         if extra_filters:
             for k, v in extra_filters.items():
                 if k == "gte_date":
