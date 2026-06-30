@@ -516,11 +516,15 @@ async def get_accounting_dashboard(
             m += 12
             y -= 1
         ym = f"{y:04d}-{m:02d}"
-        mi = sum(float(s.get("sale_price") or 0) for s in sales
-                 if s.get("created_at", "")[:7] == ym and s.get("status") in ("paid", "completed", "rto_approved", "rto_active"))
-        me = sum(float(p.get("purchase_price") or 0) for p in properties if p.get("created_at", "")[:7] == ym)
+        # Cash flow = actual money in/out of bank accounts. Count only the bank
+        # leg of each transaction (bank_account_id set) so two-legged entries
+        # aren't double-counted, and exclude balance-sheet movements (opening
+        # balances, transfers between own accounts) that aren't operating cash flow.
+        mi = 0.0
+        me = 0.0
         for t in transactions:
-            if t.get("transaction_date", "")[:7] == ym:
+            if (t.get("transaction_date", "")[:7] == ym and t.get("bank_account_id")
+                    and t.get("entity_type") not in ("opening_balance", "bank_transfer")):
                 if t["is_income"]:
                     mi += float(t["amount"])
                 else:
@@ -2477,13 +2481,19 @@ async def get_profit_and_loss(
     expense_categories = {}
     for txn in transactions:
         acc = txn.get("accounting_accounts") or {}
-        cat = acc.get("category", txn.get("transaction_type", "other"))
+        atype = acc.get("account_type", "")
+        # Only P&L accounts contribute to the income statement. This excludes
+        # the balance-sheet leg of every double-entry pair (bank, inventory,
+        # A/R, A/P, equity), so legs are neither double-counted nor miscategorized.
+        if atype not in PL_TYPES:
+            continue
+        cat = acc.get("category") or txn.get("transaction_type", "other")
         acc_name = acc.get("name", cat)
-        amount = float(txn["amount"])
-        target = income_categories if txn["is_income"] else expense_categories
+        signed = _signed_balance(float(txn["amount"]), atype, txn.get("is_income", False))
+        target = income_categories if atype in INCOME_TYPES else expense_categories
         if cat not in target:
             target[cat] = {"name": acc_name, "total": 0, "count": 0}
-        target[cat]["total"] += amount
+        target[cat]["total"] += signed
         target[cat]["count"] += 1
 
     total_income = sum(c["total"] for c in income_categories.values())
