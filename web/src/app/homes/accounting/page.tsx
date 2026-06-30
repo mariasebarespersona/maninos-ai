@@ -1013,6 +1013,7 @@ function InvoicesTab() {
 interface QBTreeNode {
   id: string; code: string; name: string; account_type: string
   is_header: boolean; balance: number; total: number; children: QBTreeNode[]
+  by_location?: Record<string, number>
 }
 
 // ── Shared drilldown modal ──
@@ -1129,12 +1130,16 @@ function TransactionsDrilldownModal({ title, subtitle, filter, onClose }: {
   )
 }
 
-// Recursive tree row component for QuickBooks-style indentation
-function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZeros = false }: {
+// Recursive tree row component for QuickBooks-style indentation.
+// When `locations` is passed (P&L by location), each row renders one money
+// column per location plus the Total column; without it (balance sheet) it
+// renders the single Total column as before.
+function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZeros = false, locations }: {
   node: QBTreeNode; depth?: number; expanded: Record<string, boolean>
   toggleExpand: (id: string) => void
   onDrilldown?: (node: QBTreeNode) => void
   hideZeros?: boolean
+  locations?: string[]
 }) {
   const hasChildren = node.children && node.children.length > 0
   const isExpanded = expanded[node.id] !== false // default expanded
@@ -1143,13 +1148,16 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
   const isTotal = node.is_header && hasChildren
   const amount = node.total !== 0 ? node.total : node.balance
   const canDrill = !!onDrilldown && !hasChildren && amount !== 0
+  const showAmt = (!hasChildren || (hasChildren && !isExpanded))
+  const fontCls = isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''
 
-  // Hide zero-balance rows when the filter is on. For headers we still
-  // render them if ANY descendant has a non-zero amount (the parent's
-  // .total rolls up the children).
   if (hideZeros && Math.abs(amount) < 0.005) {
     return null
   }
+
+  const Money = ({ value }: { value: number }) => (
+    value !== 0 ? <>{fmtFull(value)}</> : <span style={{ color: 'var(--ash)' }}>0.00</span>
+  )
 
   return (
     <>
@@ -1172,23 +1180,29 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
             </span>
           </div>
         </td>
+        {locations?.map(loc => (
+          <td key={loc} className="py-1.5 text-right pr-4">
+            {showAmt ? (
+              <span className={`text-sm tabular-nums ${fontCls}`} style={{ color: 'var(--slate)' }}>
+                <Money value={node.by_location?.[loc] || 0} />
+              </span>
+            ) : null}
+          </td>
+        ))}
         <td className="py-1.5 text-right pr-4">
-          {(!hasChildren || (hasChildren && !isExpanded)) ? (
+          {showAmt ? (
             canDrill ? (
               <button
                 onClick={() => onDrilldown!(node)}
-                className={`text-sm tabular-nums underline decoration-dotted underline-offset-2 hover:text-navy-700 hover:decoration-solid transition-colors cursor-pointer ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
+                className={`text-sm tabular-nums underline decoration-dotted underline-offset-2 hover:text-navy-700 hover:decoration-solid transition-colors cursor-pointer ${fontCls}`}
                 style={{ color: 'var(--charcoal)' }}
                 title="Ver desglose de transacciones"
               >
-                {amount !== 0 ? fmtFull(amount) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
+                <Money value={amount} />
               </button>
             ) : (
-              <span
-                className={`text-sm tabular-nums ${isTopLevel ? 'font-bold' : node.is_header ? 'font-semibold' : ''}`}
-                style={{ color: 'var(--charcoal)' }}
-              >
-                {amount !== 0 ? fmtFull(amount) : <span style={{ color: 'var(--ash)' }}>0.00</span>}
+              <span className={`text-sm tabular-nums ${fontCls}`} style={{ color: 'var(--charcoal)' }}>
+                <Money value={amount} />
               </span>
             )
           ) : null}
@@ -1197,7 +1211,7 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
       {hasChildren && isExpanded && (
         <>
           {node.children.map(child => (
-            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+            <QBTreeRow key={child.id} node={child} depth={depth + 1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
           ))}
           {/* Total line for this section */}
           <tr className="border-b" style={{ borderColor: '#ccc' }}>
@@ -1206,6 +1220,13 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
                 Total for {node.name}
               </span>
             </td>
+            {locations?.map(loc => (
+              <td key={loc} className="py-1.5 text-right pr-4">
+                <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                  <Money value={node.by_location?.[loc] || 0} />
+                </span>
+              </td>
+            ))}
             <td className="py-1.5 text-right pr-4">
               <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>
                 {fmtFull(node.total)}
@@ -1218,11 +1239,13 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
   )
 }
 
-function QBComputedLine({ label, amount, bold, thick, highlight, hideZeros = false }: {
+function QBComputedLine({ label, amount, bold, thick, highlight, hideZeros = false, locations, byLocation }: {
   label: string; amount: number; bold?: boolean; thick?: boolean; highlight?: boolean
-  hideZeros?: boolean
+  hideZeros?: boolean; locations?: string[]; byLocation?: Record<string, number>
 }) {
   if (hideZeros && Math.abs(amount) < 0.005) return null
+  const cls = `text-sm tabular-nums ${bold ? 'font-bold' : 'font-semibold'}`
+  const col = (v: number) => v >= 0 ? (highlight ? 'var(--navy-800)' : 'var(--charcoal)') : '#dc2626'
   return (
     <tr className={`${thick ? 'border-t-2 border-b-2' : 'border-b'} ${highlight ? 'bg-emerald-50' : ''}`}
       style={{ borderColor: thick ? 'var(--charcoal)' : '#ddd' }}>
@@ -1232,11 +1255,18 @@ function QBComputedLine({ label, amount, bold, thick, highlight, hideZeros = fal
           {label}
         </span>
       </td>
+      {locations?.map(loc => {
+        const v = byLocation ? (byLocation[loc] || 0) : null
+        return (
+          <td key={loc} className="py-2 text-right pr-4">
+            {v !== null && (
+              <span className={cls} style={{ color: col(v) }}>{fmtFull(v)}</span>
+            )}
+          </td>
+        )
+      })}
       <td className="py-2 text-right pr-4">
-        <span className={`text-sm tabular-nums ${bold ? 'font-bold' : 'font-semibold'}`}
-          style={{ color: amount >= 0 ? (highlight ? 'var(--navy-800)' : 'var(--charcoal)') : '#dc2626' }}>
-          {fmtFull(amount)}
-        </span>
+        <span className={cls} style={{ color: col(amount) }}>{fmtFull(amount)}</span>
       </td>
     </tr>
   )
@@ -1696,6 +1726,9 @@ function StatementsTab() {
 
 function QBIncomeStatement({ data, expanded, toggleExpand, onDrilldown, hideZeros = false }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onDrilldown?: (node: QBTreeNode) => void; hideZeros?: boolean }) {
   const sec = data.sections || {}
+  const locations: string[] = data.locations || []
+  const byLoc = sec.by_location || {}
+  const locLabel = (l: string) => l === 'Not specified' ? 'Not Specified' : l
   const today = new Date()
   return (
     <div className="card-luxury overflow-hidden">
@@ -1712,52 +1745,55 @@ function QBIncomeStatement({ data, expanded, toggleExpand, onDrilldown, hideZero
         <thead>
           <tr className="border-b-2" style={{ borderColor: 'var(--stone)' }}>
             <th className="text-left text-xs font-semibold py-2 pl-3 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Account</th>
+            {locations.map(loc => (
+              <th key={loc} className="text-right text-xs font-semibold py-2 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>{locLabel(loc)}</th>
+            ))}
             <th className="text-right text-xs font-semibold py-2 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Total</th>
           </tr>
         </thead>
         <tbody>
           {/* Income */}
           {(sec.income || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
           ))}
-          <QBComputedLine label="Total for Income" amount={sec.income?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold  hideZeros={hideZeros} />
+          <QBComputedLine label="Total for Income" amount={sec.total_income ?? (sec.income?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0)} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_income} />
 
           {/* Other Income */}
           {(sec.other_income || []).length > 0 && (
             <>
               {(sec.other_income || []).map((node: QBTreeNode) => (
-                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
               ))}
-              <QBComputedLine label="Total for Other Income" amount={sec.total_other_income || 0} bold  hideZeros={hideZeros} />
+              <QBComputedLine label="Total for Other Income" amount={sec.total_other_income || 0} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_other_income} />
             </>
           )}
 
           {/* COGS */}
           {(sec.cost_of_goods_sold || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
           ))}
-          <QBComputedLine label="Total for Cost of Goods Sold" amount={sec.cost_of_goods_sold?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0} bold  hideZeros={hideZeros} />
-          <QBComputedLine label="Gross Profit" amount={sec.gross_profit || 0} bold thick highlight  hideZeros={hideZeros} />
+          <QBComputedLine label="Total for Cost of Goods Sold" amount={sec.total_cogs ?? (sec.cost_of_goods_sold?.reduce((s: number, n: QBTreeNode) => s + n.total, 0) || 0)} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_cogs} />
+          <QBComputedLine label="Gross Profit" amount={sec.gross_profit || 0} bold thick highlight hideZeros={hideZeros} locations={locations} byLocation={byLoc.gross_profit} />
 
           {/* Expenses */}
           {(sec.expenses || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
           ))}
-          <QBComputedLine label="Total for Expenses" amount={sec.total_expenses || 0} bold  hideZeros={hideZeros} />
-          <QBComputedLine label="Net Operating Income" amount={sec.net_operating_income || 0} bold thick  hideZeros={hideZeros} />
+          <QBComputedLine label="Total for Expenses" amount={sec.total_expenses || 0} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_expenses} />
+          <QBComputedLine label="Net Operating Income" amount={sec.net_operating_income || 0} bold thick hideZeros={hideZeros} locations={locations} />
 
           {/* Other Expenses */}
           {(sec.other_expenses || []).length > 0 && (
             <>
               {(sec.other_expenses || []).map((node: QBTreeNode) => (
-                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+                <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
               ))}
-              <QBComputedLine label="Total for Other Expenses" amount={sec.total_other_expenses || 0} bold  hideZeros={hideZeros} />
-              <QBComputedLine label="Net Other Income" amount={sec.net_other_income || 0} bold  hideZeros={hideZeros} />
+              <QBComputedLine label="Total for Other Expenses" amount={sec.total_other_expenses || 0} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_other_expenses} />
+              <QBComputedLine label="Net Other Income" amount={sec.net_other_income || 0} bold hideZeros={hideZeros} locations={locations} />
             </>
           )}
 
-          <QBComputedLine label="Net Income" amount={sec.net_income || 0} bold thick highlight  hideZeros={hideZeros} />
+          <QBComputedLine label="Net Income" amount={sec.net_income || 0} bold thick highlight hideZeros={hideZeros} locations={locations} byLocation={byLoc.net_income} />
         </tbody>
       </table>
 

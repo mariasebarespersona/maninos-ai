@@ -1793,6 +1793,51 @@ async def get_unreconciled(
 # FINANCIAL STATEMENTS
 # ============================================================================
 
+# P&L location columns — derived from the property_code prefix (the yards table
+# is unused). H→Houston, B→Conroe, DFW→Dallas; anything else → Not specified.
+PL_LOCATIONS = ["Conroe", "DFW", "Houston", "Not specified"]
+
+
+def _location_for_code(code: str) -> str:
+    c = (code or "").strip().upper()
+    if c.startswith("DFW"):
+        return "DFW"
+    if c.startswith("H"):
+        return "Houston"
+    if c.startswith("B"):
+        return "Conroe"
+    return "Not specified"
+
+
+def _tree_totals(accounts, balances, root_codes):
+    """Return {account_id: rolled-up total} for one balances dict (pure
+    transaction balances, no current_balance), summing children into parents
+    under the given root codes. Used to compute per-location column totals."""
+    by_id = {
+        a["id"]: {
+            "id": a["id"], "parent": a.get("parent_account_id"),
+            "bal": float(balances.get(a["id"], 0) or 0),
+            "children": [], "is_root": a["code"] in root_codes,
+        }
+        for a in accounts
+    }
+    for a in accounts:
+        pid = a.get("parent_account_id")
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(by_id[a["id"]])
+    totals: dict = {}
+
+    def calc(n):
+        t = n["bal"] + sum(calc(c) for c in n["children"])
+        totals[n["id"]] = t
+        return t
+
+    for n in by_id.values():
+        if n["is_root"]:
+            calc(n)
+    return totals
+
+
 def _build_report_tree(accounts, balances, root_codes):
     """Build hierarchical report tree from accounts and transaction balances."""
     by_id = {}
@@ -1849,7 +1894,15 @@ async def get_income_statement(
     # Compute balances from transactions in period — P&L accounts only
     pl_account_ids = set(a["id"] for a in accounts if a.get("account_type") in PL_TYPES)
     acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
+    # property_id -> location (via property_code prefix; the yards table is unused)
+    try:
+        props = sb.table("properties").select("id, property_code").execute().data or []
+    except Exception:
+        props = []
+    loc_by_prop = {p["id"]: _location_for_code(p.get("property_code")) for p in props}
+
     balances = {}
+    bal_by_loc = {loc: {} for loc in PL_LOCATIONS}
     try:
         filters = {"gte_date": sd, "lte_date": ed}
         if yard_id:
@@ -1859,9 +1912,10 @@ async def get_income_statement(
             aid = t.get("account_id")
             if aid and aid in pl_account_ids:
                 atype = acct_type_by_id.get(aid, "")
-                balances[aid] = balances.get(aid, 0) + _signed_balance(
-                    float(t["amount"]), atype, t.get("is_income", False)
-                )
+                amt = _signed_balance(float(t["amount"]), atype, t.get("is_income", False))
+                balances[aid] = balances.get(aid, 0) + amt
+                loc = loc_by_prop.get(t.get("property_id")) or "Not specified"
+                bal_by_loc[loc][aid] = bal_by_loc[loc].get(aid, 0) + amt
     except Exception as e:
         logger.warning(f"[income-statement] Error fetching transactions: {e}")
 
@@ -1871,6 +1925,29 @@ async def get_income_statement(
     cogs_tree = _build_report_tree(accounts, balances, ["PL_COGS"])
     expenses_tree = _build_report_tree(accounts, balances, ["PL_EXPENSES"])
     other_expenses_tree = _build_report_tree(accounts, balances, ["PL_OTHER_EXPENSES"])
+
+    # Per-location column totals, attached to every tree node as `by_location`.
+    _all_pl_roots = ["PL_INCOME", "PL_OTHER_INCOME", "PL_COGS", "PL_EXPENSES", "PL_OTHER_EXPENSES"]
+    _loc_totals = {loc: _tree_totals(accounts, bal_by_loc[loc], _all_pl_roots) for loc in PL_LOCATIONS}
+
+    def _attach_loc(nodes):
+        for n in nodes:
+            n["by_location"] = {loc: round(_loc_totals[loc].get(n["id"], 0.0), 2) for loc in PL_LOCATIONS}
+            _attach_loc(n["children"])
+
+    for _tree in (income_tree, other_income_tree, cogs_tree, expenses_tree, other_expenses_tree):
+        _attach_loc(_tree)
+
+    def _sec_loc(tree):
+        return {loc: round(sum(n["by_location"][loc] for n in tree), 2) for loc in PL_LOCATIONS}
+
+    income_loc = _sec_loc(income_tree)
+    other_income_loc = _sec_loc(other_income_tree)
+    cogs_loc = _sec_loc(cogs_tree)
+    expenses_loc = _sec_loc(expenses_tree)
+    other_expenses_loc = _sec_loc(other_expenses_tree)
+    gross_profit_loc = {loc: round(income_loc[loc] + other_income_loc[loc] - cogs_loc[loc], 2) for loc in PL_LOCATIONS}
+    net_income_loc = {loc: round(gross_profit_loc[loc] - expenses_loc[loc] - other_expenses_loc[loc], 2) for loc in PL_LOCATIONS}
 
     total_income = sum(n["total"] for n in income_tree)
     total_other_income = sum(n["total"] for n in other_income_tree)
@@ -1885,6 +1962,7 @@ async def get_income_statement(
     return {
         "format": "quickbooks",
         "period": {"start": sd, "end": ed},
+        "locations": PL_LOCATIONS,
         "sections": {
             "income": income_tree,
             "total_income": total_income,
@@ -1900,6 +1978,15 @@ async def get_income_statement(
             "total_other_expenses": total_other_expenses,
             "net_other_income": net_other_income,
             "net_income": net_income,
+            "by_location": {
+                "total_income": income_loc,
+                "total_other_income": other_income_loc,
+                "total_cogs": cogs_loc,
+                "gross_profit": gross_profit_loc,
+                "total_expenses": expenses_loc,
+                "total_other_expenses": other_expenses_loc,
+                "net_income": net_income_loc,
+            },
         },
     }
 
