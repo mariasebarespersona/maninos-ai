@@ -259,6 +259,28 @@ export default function NotificacionesPage() {
   useEffect(() => { fetchPendingRenovations() }, [fetchPendingRenovations])
   useEffect(() => { fetchNotifications() }, [fetchNotifications])
 
+  // Auto-refresh: approvals/requisitions are not pushed to the client, so poll
+  // every 30s (only while the tab is visible) and refetch when the tab regains
+  // focus — this way a newly-created requisition shows up without a manual
+  // reload (the reason approvers sometimes "didn't see" a pending payment).
+  useEffect(() => {
+    const refreshAll = () => {
+      fetchOrders(); fetchInboundReceived(); fetchPendingTransfers()
+      fetchConfirmedTransfers(); fetchPendingRenovations(); fetchNotifications()
+    }
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshAll()
+    }, 30000)
+    const onFocus = () => { if (document.visibilityState === 'visible') refreshAll() }
+    document.addEventListener('visibilitychange', onFocus)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onFocus)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [fetchOrders, fetchInboundReceived, fetchPendingTransfers, fetchConfirmedTransfers, fetchPendingRenovations, fetchNotifications])
+
   // ── Approve (admin only) ──────────────────────────────────────────────
   // For OUTBOUND orders, approving just moves them to "Aprobadas" so
   // Treasury can later mark them complete (which is when the bank is
