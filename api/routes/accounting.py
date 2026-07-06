@@ -421,14 +421,19 @@ async def get_accounting_dashboard(
     renovations = (reno_q.execute()).data or []
 
     # ---- Financials ----
-    total_sales_income = 0
-    sales_by_type = {"contado": 0, "rto": 0}
-    for sale in sales:
-        if sale.get("status") in ("paid", "completed", "rto_approved", "rto_active"):
-            amount = float(sale.get("sale_price") or 0)
+    # Sales income comes from the LEDGER, not the sales table's status filter
+    # (which excluded rto_pending / partially-paid sales, so the Resumen showed
+    # $0 even after money was received). Count the bank leg of each sale entry =
+    # money actually received — same cash basis as manual_income and consistent
+    # with the P&L. RTO down payments / partial payments show as they arrive.
+    total_sales_income = 0.0
+    sales_by_type = {"contado": 0.0, "rto": 0.0}
+    for t in transactions:
+        tt = t.get("transaction_type")
+        if tt in ("sale_cash", "sale_rto_capital") and t.get("is_income") and t.get("bank_account_id"):
+            amount = float(t.get("amount") or 0)
             total_sales_income += amount
-            st = sale.get("sale_type", "contado")
-            sales_by_type[st] = sales_by_type.get(st, 0) + amount
+            sales_by_type["rto" if tt == "sale_rto_capital" else "contado"] += amount
 
     # total_purchases sums confirmed (non-voided) purchase_house transactions.
     # This is the single source of truth — properties.purchase_price is not used
