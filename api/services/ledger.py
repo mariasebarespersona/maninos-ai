@@ -450,6 +450,8 @@ def post_to_ledger(
             credit_bank_id = bank_account_id
         elif spec.credit == "__caller__":
             code = income_account_code
+            if not code and event_type == "invoice_issued_ar":
+                code = "House Sales"  # backward-compatible default when caller omits the income account
             if not code:
                 raise ValueError(f"event '{event_type}' requires income_account_code.")
             credit_account_id = _get_account_id_by_code(db, code)
