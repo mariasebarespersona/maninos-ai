@@ -507,6 +507,34 @@ async def get_accounting_dashboard(
                              "sale_price": sp, "profit": profit, "margin": round(margin, 1)})
     property_pnl.sort(key=lambda x: x["profit"], reverse=True)
 
+    # ---- Property inventory (per-house cost breakdown for ALL houses, not
+    # period-filtered) — powers the "Inventario por casa" table on the Overview.
+    property_inventory = []
+    try:
+        all_props = (sb.table("properties")
+                     .select("id, property_code, address, status, purchase_price, "
+                             "renovation_cost, move_cost, commission, sale_price")
+                     .order("property_code").execute()).data or []
+        for p in all_props:
+            compra = float(p.get("purchase_price") or 0)
+            reno = float(p.get("renovation_cost") or 0)
+            movida = float(p.get("move_cost") or 0)
+            comision = float(p.get("commission") or 0)
+            venta = float(p.get("sale_price") or 0)
+            invertido = round(compra + reno + movida + comision, 2)
+            property_inventory.append({
+                "property_id": p["id"],
+                "code": p.get("property_code") or "—",
+                "address": p.get("address") or "—",
+                "status": p.get("status") or "—",
+                "compra": compra, "renovacion": reno, "movida": movida,
+                "comision": comision, "invertido": invertido,
+                "venta": venta,
+                "ganancia": round(venta - invertido, 2) if venta > 0 else 0,
+            })
+    except Exception as e:
+        logger.warning(f"[dashboard] property_inventory failed: {e}")
+
     # ---- Cash flow (12 months) ----
     cash_flow = []
     for i in range(12):
@@ -604,6 +632,7 @@ async def get_accounting_dashboard(
         "bank_accounts": bank_accounts,
         "yard_breakdown": list(yard_breakdown.values()),
         "property_pnl": property_pnl[:20],
+        "property_inventory": property_inventory,
         "recent_transactions": recent_data,
         "totals": {
             "properties_count": len(properties),

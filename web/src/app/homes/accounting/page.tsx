@@ -25,6 +25,12 @@ interface SavedStatement {
 }
 
 // ── Types ──
+interface PropertyInventoryRow {
+  property_id: string; code: string; address: string; status: string
+  compra: number; renovacion: number; movida: number; comision: number
+  invertido: number; venta: number; ganancia: number
+}
+
 interface DashboardData {
   period: { type: string; start_date: string; end_date: string; year: number; month: number }
   summary: {
@@ -40,6 +46,7 @@ interface DashboardData {
   bank_accounts: BankAccount[]
   yard_breakdown: YardBreakdown[]
   property_pnl: PropertyPnl[]
+  property_inventory?: PropertyInventoryRow[]
   recent_transactions: Transaction[]
   totals: { properties_count: number; sales_count: number; renovations_count: number; transactions_count: number }
 }
@@ -323,7 +330,7 @@ export default function AccountingPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} />}
+      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
       {activeTab === 'statements' && <StatementsTab />}
@@ -347,10 +354,10 @@ export default function AccountingPage() {
 // ════════════════════════════════════════════════════════════════════════
 //  OVERVIEW TAB
 // ════════════════════════════════════════════════════════════════════════
-function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals }: {
+function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals, propertyInventory }: {
   summary: DashboardData['summary']; cashFlow: DashboardData['cash_flow']; maxCf: number
   yardBreakdown: YardBreakdown[]; recentTransactions: Transaction[]; bankAccounts: BankAccount[]
-  totals: DashboardData['totals']
+  totals: DashboardData['totals']; propertyInventory: PropertyInventoryRow[]
 }) {
   return (
     <div className="space-y-6">
@@ -428,6 +435,63 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           <div className="flex items-center gap-2 text-xs"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#059669' }} /> Ingresos</div>
           <div className="flex items-center gap-2 text-xs"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#ef4444' }} /> Gastos</div>
         </div>
+      </div>
+
+      {/* Inventario por casa */}
+      <div className="card-luxury p-6">
+        <h3 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+          <Home className="w-5 h-5" style={{ color: 'var(--gold-600)' }} /> Inventario por Casa
+        </h3>
+        {propertyInventory.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--ash)' }}>No hay casas registradas.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--sand)' }}>
+                  <th className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--slate)' }}>Casa</th>
+                  <th className="text-center py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Estado</th>
+                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Compra</th>
+                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Renovación</th>
+                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Movida</th>
+                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Comisión</th>
+                  <th className="text-right py-2 px-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Invertido</th>
+                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Venta</th>
+                  <th className="text-right py-2 pl-2 font-medium" style={{ color: 'var(--slate)' }}>Ganancia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {propertyInventory.map(p => (
+                  <tr key={p.property_id} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
+                    <td className="py-2 pr-3">
+                      <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{p.code}</span>
+                      <span className="text-xs block truncate max-w-[160px]" style={{ color: 'var(--ash)' }}>{p.address}</span>
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{fmtFull(p.compra)}</td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(p.renovacion)}</td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(p.movida)}</td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(p.comision)}</td>
+                    <td className="py-2 px-2 text-right tabular-nums font-semibold" style={{ color: 'var(--charcoal)' }}>{fmtFull(p.invertido)}</td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{p.venta > 0 ? fmtFull(p.venta) : '—'}</td>
+                    <td className="py-2 pl-2 text-right tabular-nums font-semibold" style={{ color: p.ganancia > 0 ? '#059669' : p.ganancia < 0 ? '#dc2626' : 'var(--ash)' }}>{p.venta > 0 ? fmtFull(p.ganancia) : '—'}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2" style={{ borderColor: 'var(--stone)' }}>
+                  <td className="py-2 pr-3 font-bold" style={{ color: 'var(--charcoal)' }}>Total ({propertyInventory.length})</td>
+                  <td />
+                  {(['compra', 'renovacion', 'movida', 'comision', 'invertido', 'venta', 'ganancia'] as const).map(k => (
+                    <td key={k} className={`py-2 text-right tabular-nums font-bold ${k === 'ganancia' ? 'pl-2' : 'px-2'}`} style={{ color: 'var(--charcoal)' }}>
+                      {fmtFull(propertyInventory.reduce((sum, p) => sum + (p[k] || 0), 0))}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Yard Breakdown + Recent Transactions */}
