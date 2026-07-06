@@ -193,6 +193,10 @@ class InvoiceCreate(BaseModel):
     # For 'payable' invoices the caller can override which expense account
     # to debit (defaults to 69000 Other Operating Expenses if not given).
     expense_account_code: Optional[str] = None
+    # The accounting account (chart code) the invoice posts to: for 'receivable'
+    # it's the income account credited, for 'payable' the expense/COGS account
+    # debited. Falls back to sensible defaults when not provided.
+    account_code: Optional[str] = None
 
 
 class InvoicePaymentCreate(BaseModel):
@@ -1388,6 +1392,7 @@ async def create_invoice(data: InvoiceCreate):
             if data.direction == "receivable":
                 post_to_ledger(
                     event_type="invoice_issued_ar",
+                    income_account_code=data.account_code or "House Sales",
                     amount=total,
                     date=invoice_row.get("issue_date") or date.today().isoformat(),
                     counterparty_name=data.counterparty_name,
@@ -1412,7 +1417,7 @@ async def create_invoice(data: InvoiceCreate):
                     property_id=data.property_id,
                     yard_id=data.yard_id,
                     description_data={"invoice_number": inv_number},
-                    expense_account_code=data.expense_account_code or "Other Operating Expenses",
+                    expense_account_code=data.account_code or data.expense_account_code or "Other Operating Expenses",
                     notes=data.notes,
                     status="confirmed",
                 )

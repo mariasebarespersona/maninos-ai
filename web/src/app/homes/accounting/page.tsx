@@ -3005,8 +3005,17 @@ function NewRecurringExpenseModal({ accounts, onClose, onCreated }: { accounts: 
 }
 
 function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ direction: 'receivable', counterparty_name: '', total_amount: '', due_date: '', description: '', payment_terms: 'Due on receipt' })
+  const [form, setForm] = useState({ direction: 'receivable', counterparty_name: '', total_amount: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', description: '', payment_terms: 'Due on receipt', account_code: '' })
+  const [accounts, setAccounts] = useState<AccountInfo[]>([])
   const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    fetch('/api/accounting/accounts').then(r => r.ok ? r.json() : { accounts: [] }).then(d => setAccounts(d.accounts || [])).catch(() => {})
+  }, [])
+  const INCOME_T = ['Income', 'Other Income', 'income']
+  const EXPENSE_T = ['Expenses', 'Other Expense', 'Cost of Goods Sold', 'expense', 'cogs']
+  const acctOptions = accounts
+    .filter(a => (form.direction === 'receivable' ? INCOME_T : EXPENSE_T).includes(a.account_type) && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
+    .sort((a, b) => a.name.localeCompare(b.name))
   const handleSubmit = async () => {
     if (!form.counterparty_name || !form.total_amount) return alert('Nombre y monto requeridos')
     setSaving(true)
@@ -3027,11 +3036,11 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
         </div>
         <div className="p-6 space-y-4">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--stone)' }}>
-            <button onClick={() => setForm(f => ({ ...f, direction: 'receivable' }))}
+            <button onClick={() => setForm(f => ({ ...f, direction: 'receivable', account_code: '' }))}
               className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${form.direction === 'receivable' ? 'bg-emerald-500 text-white' : ''}`}>
               <ArrowUpRight className="w-4 h-4" /> Por Cobrar
             </button>
-            <button onClick={() => setForm(f => ({ ...f, direction: 'payable' }))}
+            <button onClick={() => setForm(f => ({ ...f, direction: 'payable', account_code: '' }))}
               className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${form.direction === 'payable' ? 'bg-red-500 text-white' : ''}`}>
               <ArrowDownRight className="w-4 h-4" /> Por Pagar
             </button>
@@ -3041,8 +3050,17 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($) *</label>
               <input type="number" step="0.01" value={form.total_amount} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
+            <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Fecha de emisión</label>
+              <input type="date" value={form.issue_date} onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Vencimiento</label>
               <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
+            <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta contable {form.direction === 'receivable' ? '(ingreso)' : '(gasto)'}</label>
+              <select value={form.account_code} onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
+                <option value="">{form.direction === 'receivable' ? 'House Sales (por defecto)' : 'Other Operating Expenses (por defecto)'}</option>
+                {acctOptions.map(a => <option key={a.id} value={a.code}>{a.name}</option>)}
+              </select></div>
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción</label>
             <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Concepto de la factura" /></div>

@@ -197,7 +197,7 @@ EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Cashless / no-bank-side -----------------------------------------
     "invoice_issued_ar": EventSpec(
         debit="Accounts receivable (A/R)",
-        credit="House Sales",
+        credit="__caller__",   # income account chosen by caller (defaults to House Sales)
         transaction_type="invoice_ar",
         is_income_on_bank_side=False,
         description_template="Factura emitida {invoice_number}: {counterparty}",
