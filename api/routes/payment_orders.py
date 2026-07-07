@@ -32,6 +32,90 @@ def _generate_transaction_number() -> str:
     return f"{prefix}{count + 1:03d}"
 
 
+# Concept → human label / counterparty type for the auto-generated payable bill.
+_PAYABLE_CONCEPT_LABEL = {
+    "compra": ("Compra de casa", "seller"),
+    "renovacion": ("Renovación", "contractor"),
+    "movida": ("Movida/Transporte", "contractor"),
+    "comision": ("Comisión", "employee"),
+    "otro": ("Pago", "vendor"),
+}
+
+
+def _sync_payable_invoice(order: dict, state: str) -> None:
+    """Mirror an OUTBOUND payment_order into an accounts-payable bill so payables
+    show up automatically in Facturación and in the "Por Pagar" KPI.
+
+    IMPORTANT: this writes a DOCUMENT record only — it does NOT post to the
+    ledger. The payment_order's own `complete` flow posts the real expense /
+    inventory entry, so mirroring here would double-count if it also posted.
+    That's why we insert directly into accounting_invoices instead of calling
+    create_invoice() (which posts invoice_received_ap).
+
+    state: 'open'  → pending/approved (unpaid, counts toward Por Pagar)
+           'paid'  → completed (disbursed; drops off Por Pagar, stays as history)
+           'voided'→ cancelled
+
+    Idempotent: the order id is embedded in notes as [PO:<id>] so re-runs update
+    the existing bill instead of duplicating it.
+    """
+    try:
+        if (order.get("direction") or "outbound") == "inbound":
+            return  # inbound = money received, not a payable
+        order_id = order.get("id")
+        amount = float(order.get("amount") or 0)
+        if not order_id or amount <= 0:
+            return
+
+        tag = f"[PO:{order_id}]"
+        concept = (order.get("concept") or "otro").lower()
+        label, ctype = _PAYABLE_CONCEPT_LABEL.get(concept, _PAYABLE_CONCEPT_LABEL["otro"])
+
+        if state == "paid":
+            new_status, paid = "paid", amount
+        elif state == "voided":
+            new_status, paid = "voided", 0.0
+        else:  # open
+            new_status, paid = "sent", 0.0
+
+        existing = (sb.table("accounting_invoices").select("id")
+                    .eq("direction", "payable").ilike("notes", f"%{tag}%")
+                    .limit(1).execute()).data or []
+
+        if existing:
+            sb.table("accounting_invoices").update({
+                "status": new_status,
+                "amount_paid": paid,
+                "total_amount": amount,
+            }).eq("id", existing[0]["id"]).execute()
+            return
+
+        from api.routes.accounting import _generate_invoice_number
+        inv_number = _generate_invoice_number("payable")
+        addr = order.get("property_address") or order.get("payee_name") or ""
+        desc = f"{label} — {addr}".strip(" —") or label
+        insert = {
+            "invoice_number": inv_number,
+            "direction": "payable",
+            "counterparty_name": order.get("payee_name") or "—",
+            "counterparty_type": ctype,
+            "property_id": order.get("property_id"),
+            "issue_date": (order.get("created_at") or datetime.utcnow().isoformat())[:10],
+            "subtotal": amount,
+            "tax_amount": 0,
+            "total_amount": amount,
+            "amount_paid": paid,
+            "description": desc,
+            "notes": f"{tag} Factura por pagar generada automáticamente desde la orden de pago.",
+            "status": new_status,
+        }
+        insert = {k: v for k, v in insert.items() if v is not None}
+        sb.table("accounting_invoices").insert(insert).execute()
+        logger.info(f"[payment_orders] Auto-generated payable bill {inv_number} for order {order_id} ({state})")
+    except Exception as e:
+        logger.warning(f"[payment_orders] Could not sync payable invoice for {order.get('id')}: {e}")
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -108,6 +192,10 @@ async def create_payment_order(req: PaymentOrderCreate):
 
     order = result.data[0]
     logger.info(f"[payment_orders] Created order {order['id']} for ${req.amount:,.2f} to {req.payee_name} concept={req.concept}")
+
+    # Auto-generate the matching "por pagar" bill in Facturación (document only,
+    # no ledger post — the ledger entry is written when the order is completed).
+    _sync_payable_invoice(order, "open")
 
     # Create notification with full context
     try:
@@ -222,6 +310,10 @@ async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
     if not after.data:
         raise HTTPException(status_code=404, detail="Orden no encontrada después de actualizar")
     logger.info(f"[payment_orders] Updated order {order_id}: {list(update.keys())}")
+
+    # Keep the auto-generated "por pagar" bill in sync with the edited amount.
+    _sync_payable_invoice(after.data[0], "open")
+
     return {"ok": True, "data": after.data[0]}
 
 
@@ -433,6 +525,9 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     if not result.data:
         raise HTTPException(status_code=500, detail="Error updating payment order")
 
+    # Mark the auto-generated "por pagar" bill as paid (drops off Por Pagar).
+    _sync_payable_invoice({**order, **update}, "paid")
+
     # Update property status from pending_payment → purchased
     property_id = order.get("property_id")
     if property_id:
@@ -489,6 +584,9 @@ async def cancel_payment_order(order_id: str, cancelled_by: Optional[str] = None
         "cancelled_by": cancelled_by,
         "cancelled_at": now,
     }).eq("id", order_id).execute()
+
+    # Void the auto-generated "por pagar" bill so it drops off Facturación.
+    _sync_payable_invoice(order_res.data[0], "voided")
 
     return {"ok": True, "data": result.data[0] if result.data else None, "message": "Orden cancelada"}
 
