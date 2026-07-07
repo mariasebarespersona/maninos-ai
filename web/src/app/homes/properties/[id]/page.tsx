@@ -1402,19 +1402,13 @@ ${price}
                   </Link>
                 )}
                 {property.is_consignment && !property.consignment_paid_at && (
-                  <button
-                    onClick={() => {
-                      setConsignmentPayee(prev => ({
-                        ...prev,
-                        amount: property.purchase_price ? String(property.purchase_price) : prev.amount,
-                      }))
-                      setShowConsignmentModal(true)
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg font-medium hover:bg-amber-100 transition-colors"
+                  <div
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg font-medium"
+                    title="La orden de pago al dueño anterior ya está registrada como 'por pagar'. Se paga desde Notificaciones / Tesorería como cualquier compra."
                   >
                     <DollarSign className="w-5 h-5" />
-                    Pagar Consignación
-                  </button>
+                    Consignación pendiente de pago
+                  </div>
                 )}
                 <button
                   onClick={() => openMoveModal('purchase')}

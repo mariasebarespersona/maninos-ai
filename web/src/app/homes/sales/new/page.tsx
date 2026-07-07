@@ -178,11 +178,19 @@ function NewSaleContent() {
 
   const fetchProperties = async () => {
     try {
-      const res = await fetch('/api/properties?status=published')
-      if (res.ok) {
-        const data = await res.json()
-        setProperties(data)
+      // Published houses + consignment houses (which can be sold before the
+      // previous owner is paid). Merge and de-duplicate by id.
+      const [pubRes, consRes] = await Promise.all([
+        fetch('/api/properties?status=published'),
+        fetch('/api/properties?is_consignment=true'),
+      ])
+      const pub = pubRes.ok ? await pubRes.json() : []
+      const cons = consRes.ok ? await consRes.json() : []
+      const byId = new Map<string, any>()
+      for (const p of [...pub, ...cons]) {
+        if (p.status !== 'sold') byId.set(p.id, p)
       }
+      setProperties(Array.from(byId.values()))
     } catch (error) {
       console.error('Error:', error)
     }

@@ -194,14 +194,22 @@ def _calculate_post_renovation_price(property_id: str, purchase_price: float, pr
 @router.get("", response_model=list[PropertyResponse])
 async def list_properties(
     status: Optional[PropertyStatus] = Query(None, description="Filter by status"),
+    is_consignment: Optional[bool] = Query(None, description="Filter consignment houses"),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
 ):
     """List all properties with optional status filter."""
     query = sb.table("properties").select("*")
 
+    if is_consignment is not None:
+        query = query.eq("is_consignment", is_consignment)
+
     if status:
         query = query.eq("status", status.value)
+    elif is_consignment:
+        # Consignment list (e.g. for the sell UI): a consignment house can be sold
+        # before the previous owner is paid, so surface every one that isn't sold.
+        query = query.neq("status", "sold")
     else:
         # By default, hide pending_payment properties (not yet paid)
         query = query.neq("status", "pending_payment")
@@ -670,6 +678,34 @@ async def create_property(data: PropertyCreate):
         _create_inventory_account_for_property(prop)
     except Exception as e:
         logger.warning(f"[properties] Could not create inventory account for {prop['id']}: {e}")
+
+    # Consignment: we take the house without paying the previous owner, so we owe
+    # them the purchase price from this moment (we "bought" it without paying).
+    # Record that debt now as an outstanding purchase payment order → which
+    # auto-generates the matching "por pagar" bill in Facturación, so the debt is
+    # visible immediately (and the house can be sold before it's paid). COGS is
+    # still recognized when the order is actually paid (completed), consistent
+    # with the COGS-at-payment policy.
+    if prop.get("is_consignment") and not prop.get("consignment_paid_at"):
+        try:
+            amount = float(prop.get("purchase_price") or 0)
+            if amount > 0:
+                payee = (prop.get("seller_name") or "").strip() or f"Dueño anterior — {prop.get('property_code', '')}".strip()
+                order = sb.table("payment_orders").insert({
+                    "property_id": prop["id"],
+                    "property_address": prop.get("address"),
+                    "payee_name": payee,
+                    "amount": amount,
+                    "status": "approved",  # committed consignment debt, awaiting payment
+                    "concept": "compra",
+                    "notes": "Consignación — pago pendiente al dueño anterior",
+                }).execute().data
+                if order:
+                    from api.routes.payment_orders import _sync_payable_invoice
+                    _sync_payable_invoice(order[0], "open")
+                    logger.info(f"[properties] Consignment payable created for {prop['id']}: ${amount:,.2f} to {payee}")
+        except Exception as e:
+            logger.warning(f"[properties] Could not create consignment payable for {prop['id']}: {e}")
 
     return _format_property(prop)
 

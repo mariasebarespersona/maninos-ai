@@ -695,7 +695,18 @@ async def create_sale(data: SaleCreate):
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
     
-    if prop["status"] not in (PropertyStatus.PUBLISHED.value, PropertyStatus.RESERVED.value):
+    # Normally a house must be published (or already reserved) to sell. But a
+    # CONSIGNMENT house can be sold before the previous owner is paid — that's the
+    # whole point of consignment (buy without paying, sell, then pay the owner).
+    # So allow selling a consignment house from any not-yet-sold status.
+    sellable = {PropertyStatus.PUBLISHED.value, PropertyStatus.RESERVED.value}
+    if prop.get("is_consignment"):
+        sellable |= {
+            PropertyStatus.PURCHASED.value,
+            PropertyStatus.RENOVATING.value,
+            PropertyStatus.PENDING_PAYMENT.value,
+        }
+    if prop["status"] not in sellable:
         raise HTTPException(
             status_code=400,
             detail=f"Property must be published to sell (current status: {prop['status']})"
@@ -772,8 +783,11 @@ async def create_sale(data: SaleCreate):
     
     sale_record = result.data[0]
     
-    # Reserve the property — removes it from the public catalog immediately
-    if prop["status"] == PropertyStatus.PUBLISHED.value:
+    # Reserve the property — removes it from the public catalog immediately.
+    # Reserve from ANY pre-sale status (published, or a consignment house being
+    # sold directly from 'purchased'/'renovating'/'pending_payment'), never
+    # touching an already reserved/sold house.
+    if prop["status"] not in (PropertyStatus.RESERVED.value, PropertyStatus.SOLD.value):
         sb.table("properties").update({
             "status": PropertyStatus.RESERVED.value,
         }).eq("id", data.property_id).execute()

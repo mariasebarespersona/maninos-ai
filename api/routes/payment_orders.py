@@ -528,12 +528,27 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     # Mark the auto-generated "por pagar" bill as paid (drops off Por Pagar).
     _sync_payable_invoice({**order, **update}, "paid")
 
-    # Update property status from pending_payment → purchased
+    # Update property status + consignment paid flag.
     property_id = order.get("property_id")
     if property_id:
         try:
-            sb.table("properties").update({"status": "purchased"}).eq("id", property_id).execute()
-            logger.info(f"[payment_orders] Property {property_id} status → purchased")
+            prop_row = (sb.table("properties").select("status, is_consignment, consignment_paid_at")
+                        .eq("id", property_id).single().execute()).data or {}
+            prop_update = {}
+            # Only promote pending_payment → purchased. NEVER override a later
+            # status (sold/published/reserved/renovating): a consignment house
+            # may be SOLD before the previous owner is paid, and paying the owner
+            # afterwards must not revert it back to 'purchased'.
+            if prop_row.get("status") == "pending_payment":
+                prop_update["status"] = "purchased"
+            # Paying a 'compra' order for a consignment house settles the debt to
+            # the previous owner → stamp consignment_paid_at.
+            if (order.get("concept") or "").lower() == "compra" \
+                    and prop_row.get("is_consignment") and not prop_row.get("consignment_paid_at"):
+                prop_update["consignment_paid_at"] = now
+            if prop_update:
+                sb.table("properties").update(prop_update).eq("id", property_id).execute()
+                logger.info(f"[payment_orders] Property {property_id} updated: {prop_update}")
         except Exception as e:
             logger.warning(f"[payment_orders] Could not update property status: {e}")
 
