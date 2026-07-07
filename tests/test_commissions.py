@@ -49,16 +49,18 @@ class TestCalculateCommission:
         assert result["commission_sold_by"] == Decimal("500.00")
 
     def test_only_found_by(self):
-        """Only found_by assigned → 100% to found_by."""
+        """Only found_by assigned → only the finder's half is paid."""
         result = calculate_commission("contado", "emp1", None)
-        assert result["commission_found_by"] == COMMISSION_CASH
+        assert result["commission_found_by"] == COMMISSION_CASH * Decimal("0.50")
         assert result["commission_sold_by"] == Decimal("0")
+        assert result["commission_amount"] == COMMISSION_CASH * Decimal("0.50")
 
     def test_only_sold_by(self):
-        """Only sold_by assigned → 100% to sold_by."""
+        """Only sold_by assigned → only the closer's half is paid."""
         result = calculate_commission("contado", None, "emp2")
         assert result["commission_found_by"] == Decimal("0")
-        assert result["commission_sold_by"] == COMMISSION_CASH
+        assert result["commission_sold_by"] == COMMISSION_CASH * Decimal("0.50")
+        assert result["commission_amount"] == COMMISSION_CASH * Decimal("0.50")
 
     def test_no_employees(self):
         """No employees assigned → NO commission (must not appear in accounting)."""

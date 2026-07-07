@@ -66,16 +66,11 @@ def calculate_commission(
             "commission_sold_by": Decimal("0"),  # Same person, counted under found_by
         }
     
-    # Different people = 50/50 split
+    # Each assigned role earns its own half (50%). If only one role is assigned,
+    # only that half is paid — the other half is NOT paid to anyone.
     found_amount = total * SPLIT_RATIO if found_by_employee_id else Decimal("0")
     sold_amount = total * SPLIT_RATIO if sold_by_employee_id else Decimal("0")
-    
-    # If only one is assigned, they get 100%
-    if found_by_employee_id and not sold_by_employee_id:
-        found_amount = total
-    elif sold_by_employee_id and not found_by_employee_id:
-        sold_amount = total
-    
+
     # commission_amount is the actual assigned total (not the theoretical max),
     # so an unassigned/partially-assigned sale never overstates commissions.
     return {
