@@ -516,24 +516,56 @@ async def get_accounting_dashboard(
                              "sale_price": sp, "profit": profit, "margin": round(margin, 1)})
     property_pnl.sort(key=lambda x: x["profit"], reverse=True)
 
-    # ---- Property inventory (per-house cost breakdown for ALL houses, not
-    # period-filtered) — powers the "Inventario por casa" table on the Overview.
+    # ---- Property inventory (per-house cost breakdown) — powers the "Inventario
+    # por casa" table on the Overview. Shows only CURRENT houses (drops houses
+    # already fully sold, status='sold'), and pulls the REAL costs from each
+    # house's per-house COGS accounts (Compra/Renovación/Movida/Comisión <CODE> =
+    # money actually spent), falling back to the property's own fields when a
+    # COGS account doesn't exist for that house.
     property_inventory = []
     try:
         all_props = (sb.table("properties")
                      .select("id, property_code, address, status, purchase_price, "
                              "renovation_cost, move_cost, commission, sale_price")
+                     .neq("status", "sold")
                      .order("property_code").execute()).data or []
+
+        # Per-house COGS account balances (actual money spent), keyed by code.
+        cogs_bal_by_code: dict = {}
+        try:
+            cogs_accts = (sb.table("accounting_accounts").select("id, code")
+                          .eq("account_type", "Cost of Goods Sold").execute()).data or []
+            id_to_code = {a["id"]: a["code"] for a in cogs_accts
+                          if (a.get("code") or "").split(" ")[0] in ("Compra", "Renovación", "Movida", "Comisión")}
+            if id_to_code:
+                rows = (sb.table("accounting_transactions")
+                        .select("account_id, amount, is_income, status")
+                        .in_("account_id", list(id_to_code.keys()))
+                        .neq("status", "voided").execute()).data or []
+                for r in rows:
+                    code = id_to_code.get(r.get("account_id"))
+                    if not code:
+                        continue
+                    amt = float(r.get("amount") or 0)
+                    cogs_bal_by_code[code] = cogs_bal_by_code.get(code, 0.0) + (amt if not r.get("is_income") else -amt)
+        except Exception as e:
+            logger.warning(f"[dashboard] per-house COGS fetch failed: {e}")
+
+        def _cost(prefix, prop_code, fallback):
+            bal = cogs_bal_by_code.get(f"{prefix} {prop_code}")
+            return round(bal, 2) if bal is not None else float(fallback or 0)
+
         for p in all_props:
-            compra = float(p.get("purchase_price") or 0)
-            reno = float(p.get("renovation_cost") or 0)
-            movida = float(p.get("move_cost") or 0)
-            comision = float(p.get("commission") or 0)
+            code = p.get("property_code") or ""
+            compra = _cost("Compra", code, p.get("purchase_price"))
+            reno = _cost("Renovación", code, p.get("renovation_cost"))
+            movida = _cost("Movida", code, p.get("move_cost"))
+            comision = _cost("Comisión", code, p.get("commission"))
             venta = float(p.get("sale_price") or 0)
             invertido = round(compra + reno + movida + comision, 2)
             property_inventory.append({
                 "property_id": p["id"],
-                "code": p.get("property_code") or "—",
+                "code": code or "—",
                 "address": p.get("address") or "—",
                 "status": p.get("status") or "—",
                 "compra": compra, "renovacion": reno, "movida": movida,
