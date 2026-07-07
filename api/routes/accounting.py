@@ -403,7 +403,7 @@ async def get_accounting_dashboard(
 
     # ---- Pull from existing tables ----
     sales_q = sb.table("sales") \
-        .select("id, sale_price, sale_type, status, payment_method, created_at, property_id, commission_amount, clients(name), properties(address, city, yard_id, purchase_price)") \
+        .select("id, sale_price, sale_type, status, payment_method, created_at, property_id, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, city, yard_id, purchase_price)") \
         .gte("created_at", start_str) \
         .lte("created_at", end_str + "T23:59:59")
     sales = (sales_q.execute()).data or []
@@ -446,7 +446,15 @@ async def get_accounting_dashboard(
         if t.get("transaction_type") == "purchase_house" and not t.get("is_income")
     )
     total_renovations = sum(float(r.get("total_cost") or 0) for r in renovations)
-    total_commissions = sum(float(s.get("commission_amount") or 0) for s in sales)
+    # Commissions only count what is actually ASSIGNED to a person: the finder's
+    # portion only when there's a found_by employee, the closer's portion only
+    # when there's a sold_by employee. An unassigned commission (no name) does
+    # NOT appear in accounting; a half-assigned one only counts that half.
+    total_commissions = sum(
+        (float(s.get("commission_found_by") or 0) if s.get("found_by_employee_id") else 0.0)
+        + (float(s.get("commission_sold_by") or 0) if s.get("sold_by_employee_id") else 0.0)
+        for s in sales
+    )
 
     # manual_income / manual_expense are the "Otros" buckets — exclude
     # transaction types that are already counted in the categorized totals
@@ -2929,7 +2937,7 @@ async def sync_from_existing_data():
 
     # 2. Sales
     sales = (sb.table("sales")
-             .select("id, property_id, client_id, sale_price, sale_type, status, payment_method, created_at, commission_amount, clients(name), properties(address, yard_id)")
+             .select("id, property_id, client_id, sale_price, sale_type, status, payment_method, created_at, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, yard_id)")
              .in_("status", ["paid", "completed", "rto_approved", "rto_active"]).execute()).data or []
     for sale in sales:
         key = f"sale:{sale['id']}"
@@ -2963,7 +2971,12 @@ async def sync_from_existing_data():
         except Exception:
             skipped += 1
 
-        comm = float(sale.get("commission_amount") or 0)
+        # Only the ASSIGNED commission hits accounting (finder's half only if a
+        # found_by employee exists, closer's half only if a sold_by employee does).
+        comm = (
+            (float(sale.get("commission_found_by") or 0) if sale.get("found_by_employee_id") else 0.0)
+            + (float(sale.get("commission_sold_by") or 0) if sale.get("sold_by_employee_id") else 0.0)
+        )
         if comm > 0 and f"commission:{sale['id']}" not in existing_keys:
             comm_data = {
                 "transaction_number": _generate_transaction_number(),
