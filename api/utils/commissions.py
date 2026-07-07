@@ -49,10 +49,11 @@ def calculate_commission(
     else:
         total = Decimal("0")
     
-    # If no employees assigned, return total with no split
+    # If no employees assigned there is NO commission — it must not appear in
+    # accounting until it's actually assigned to a person.
     if not found_by_employee_id and not sold_by_employee_id:
         return {
-            "commission_amount": total,
+            "commission_amount": Decimal("0"),
             "commission_found_by": Decimal("0"),
             "commission_sold_by": Decimal("0"),
         }
@@ -75,8 +76,10 @@ def calculate_commission(
     elif sold_by_employee_id and not found_by_employee_id:
         sold_amount = total
     
+    # commission_amount is the actual assigned total (not the theoretical max),
+    # so an unassigned/partially-assigned sale never overstates commissions.
     return {
-        "commission_amount": total,
+        "commission_amount": found_amount + sold_amount,
         "commission_found_by": found_amount,
         "commission_sold_by": sold_amount,
     }

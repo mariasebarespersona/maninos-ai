@@ -61,9 +61,9 @@ class TestCalculateCommission:
         assert result["commission_sold_by"] == COMMISSION_CASH
 
     def test_no_employees(self):
-        """No employees → total still calculated, but $0 to each."""
+        """No employees assigned → NO commission (must not appear in accounting)."""
         result = calculate_commission("contado", None, None)
-        assert result["commission_amount"] == COMMISSION_CASH
+        assert result["commission_amount"] == Decimal("0")
         assert result["commission_found_by"] == Decimal("0")
         assert result["commission_sold_by"] == Decimal("0")
 
