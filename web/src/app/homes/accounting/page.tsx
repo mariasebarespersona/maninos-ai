@@ -3184,6 +3184,7 @@ interface ReconcileMatch {
   target_type?: 'transaction' | 'invoice'
   score: number
   confidence: string
+  partial?: boolean
   movement: StatementMovement
   transaction?: Transaction
   invoice?: { id: string; invoice_number?: string; counterparty_name?: string; total_amount?: number; balance_due?: number; direction?: string }
@@ -3560,7 +3561,9 @@ function EstadoCuentaTab() {
         const matches: ReconcileMatch[] = data.matches || []
         setReconcileMatches(matches)
         // Auto-select high confidence matches
-        setSelectedMatches(new Set(matches.filter(m => m.confidence === 'high').map(m => m.movement_id)))
+        // Auto-select only high-confidence full matches. Partial (split) payments
+        // are left unchecked so the operator reviews them before confirming.
+        setSelectedMatches(new Set(matches.filter(m => m.confidence === 'high' && !m.partial).map(m => m.movement_id)))
         // If no matches, mark as done so UI shows the "no matches" message
         if (matches.length === 0) setReconcileDone(true)
       } else {
@@ -4040,8 +4043,11 @@ function EstadoCuentaTab() {
                                 {/* Match target — Transacción de la app o Factura por cobrar/pagar */}
                                 {match.target_type === 'invoice' && match.invoice ? (
                                   <div className="rounded-lg bg-violet-50 p-2.5">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500 mb-1">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500 mb-1 flex items-center gap-1.5">
                                       Factura {match.invoice.direction === 'receivable' ? '(Por Cobrar)' : '(Por Pagar)'}
+                                      {match.partial && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 text-[9px] font-bold normal-case tracking-normal">Pago parcial</span>
+                                      )}
                                     </p>
                                     <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
                                       {match.invoice.invoice_number || '—'}: {match.invoice.counterparty_name || '—'}
@@ -4049,9 +4055,15 @@ function EstadoCuentaTab() {
                                     <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
                                       Balance: ${Number(match.invoice.balance_due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} de ${Number(match.invoice.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                     </p>
-                                    <p className="text-xs mt-1 text-violet-700 font-medium">
-                                      Al confirmar: se cobra/paga automáticamente
-                                    </p>
+                                    {match.partial ? (
+                                      <p className="text-xs mt-1 text-amber-700 font-medium">
+                                        Aplica ${Math.abs(match.movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} · quedarían ${Math.max(0, Number(match.invoice.balance_due || 0) - Math.abs(match.movement.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs mt-1 text-violet-700 font-medium">
+                                        Al confirmar: se cobra/paga automáticamente
+                                      </p>
+                                    )}
                                   </div>
                                 ) : (
                                   <div className="rounded-lg bg-blue-50 p-2.5">

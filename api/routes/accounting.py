@@ -3532,14 +3532,11 @@ async def reconcile_statement_movements(statement_id: str):
                 .order("transaction_date", desc=True).execute())
         unreconciled_txns = txns.data or []
 
-    if not unreconciled_txns:
-        return {
-            "matches": [],
-            "unmatched_count": len(movements.data),
-            "message": "No hay transacciones existentes para conciliar",
-        }
-
-    matches = _match_movements_to_transactions(movements.data, unreconciled_txns)
+    # Note: we do NOT early-return when there are no transactions — a movement
+    # can still match an open invoice (this is how split payments reconcile via
+    # facturas), so we always fall through to the invoice matcher below.
+    matches = (_match_movements_to_transactions(movements.data, unreconciled_txns)
+               if unreconciled_txns else [])
 
     # Also look for OPEN INVOICES that could match a movement. This lets the
     # operator auto-cobrar a factura from a bank deposit (or auto-pay an AP
@@ -3709,18 +3706,36 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
 
 
 def _match_movements_to_invoices(movements: list, invoices: list) -> list:
-    """Match bank statement movements against open invoices (AR or AP).
-    Used by the reconcile wizard to surface auto-collect / auto-pay
-    candidates: a deposit that matches an unpaid receivable, or a
-    withdrawal that matches an unpaid payable.
-    Returns list of match dicts with `target_type='invoice'` and
-    `invoice_id` so reconcile-confirm can branch on it.
+    """Match bank statement movements against open invoices (AR or AP), including
+    SPLIT / PARTIAL payments.
+
+    Why invoices (and not the transaction matcher) unlock split payments: the
+    exact-amount transaction matcher can't reconcile "$500 + $500 = a $1000
+    factura" because each $500 is 50% off the target. An invoice, however,
+    carries a `balance_due` and natively accumulates `amount_paid`, so it can
+    absorb several movements until it's settled. Each invoice therefore keeps a
+    running `remaining` balance that is decremented as movements are allocated,
+    letting one invoice take multiple movements in a single pass without
+    over-allocating.
+
+    Partial matches (a movement smaller than the remaining balance) are only
+    offered when something corroborates them — the counterparty name matches, or
+    the invoice number appears in the movement text — so a random small deposit
+    is never glued onto a large unrelated invoice. Matches carry a `partial`
+    flag so the UI can label them and skip auto-selecting them.
+
+    Returns match dicts with `target_type='invoice'` and `invoice_id` so
+    reconcile-confirm can branch on it (that endpoint already re-reads the
+    invoice per pair and accumulates amount_paid, so N partials settle correctly).
     """
     matches: list = []
-    used_invoice_ids: set = set()
+    # Running unallocated balance per invoice, decremented as we allocate.
+    remaining = {inv["id"]: float(inv.get("balance_due") or 0) for inv in invoices}
 
     for mv in movements:
         mv_amount = abs(float(mv.get("amount", 0)))
+        if mv_amount <= 0:
+            continue
         mv_is_credit = mv.get("is_credit", False)  # True=deposit, False=withdrawal
         mv_date_str = mv.get("movement_date", "")
         mv_counterparty = mv.get("counterparty") or ""
@@ -3728,10 +3743,12 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
 
         best_match = None
         best_score = 0
+        best_is_partial = False
 
         for inv in invoices:
-            if inv["id"] in used_invoice_ids:
-                continue
+            rem = remaining.get(inv["id"], 0.0)
+            if rem <= 0.01:
+                continue  # already fully allocated by earlier movements
 
             # Direction must agree:
             #   deposit (is_credit=True)  → receivable (we get paid)
@@ -3742,24 +3759,39 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
             if not mv_is_credit and direction != "payable":
                 continue
 
-            balance_due = float(inv.get("balance_due") or 0)
-            if balance_due <= 0:
-                continue
+            # Corroboration signals (name similarity / invoice number in text).
+            inv_counterparty = inv.get("counterparty_name") or ""
+            inv_num = (inv.get("invoice_number") or "").lower()
+            best_name_sim = 0.0
+            for mv_name in (mv_counterparty, mv_description):
+                if mv_name and inv_counterparty:
+                    best_name_sim = max(best_name_sim, _name_similarity(mv_name, inv_counterparty))
+                if inv_num and mv_name and inv_num in mv_name.lower():
+                    best_name_sim = max(best_name_sim, 1.0)
 
+            # ---- Amount scoring against the REMAINING balance ----
             score = 0
-            # Amount match against balance_due (exact, 1%, 5%)
-            if mv_amount > 0 and balance_due > 0:
-                diff_pct = abs(mv_amount - balance_due) / max(mv_amount, balance_due)
-                if abs(mv_amount - balance_due) < 0.01:
-                    score += 50
-                elif diff_pct < 0.01:
-                    score += 35
-                elif diff_pct < 0.05:
-                    score += 15
+            is_partial = False
+            diff = abs(mv_amount - rem)
+            diff_pct = diff / max(mv_amount, rem)
+            if diff < 0.01:
+                score += 50            # settles the remaining balance exactly
+            elif diff_pct < 0.01:
+                score += 35
+            elif diff_pct < 0.05:
+                score += 15
+            elif mv_amount < rem:
+                # PARTIAL payment: only a candidate when corroborated, so we
+                # never glue an unrelated small deposit onto a large invoice.
+                if best_name_sim >= 0.5:
+                    score += 25
+                    is_partial = True
                 else:
                     continue
+            else:
+                continue  # movement bigger than the remaining balance → not this invoice
 
-            # Date proximity vs invoice due_date or issue_date (best of the two)
+            # ---- Date proximity vs due_date or issue_date (best of the two) ----
             try:
                 mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
                 for cmp_str in (inv.get("due_date"), inv.get("issue_date")):
@@ -3768,34 +3800,26 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
                     cmp_date = datetime.strptime(cmp_str, "%Y-%m-%d").date()
                     diff_days = abs((mv_date - cmp_date).days)
                     if diff_days == 0:
-                        score = max(score, score + 30); break
+                        score += 30; break
                     elif diff_days <= 3:
-                        score = max(score, score + 20); break
+                        score += 20; break
                     elif diff_days <= 14:
-                        score = max(score, score + 10); break
+                        score += 10; break
                     elif diff_days <= 30:
-                        score = max(score, score + 5); break
+                        score += 5; break
             except Exception:
                 pass
 
-            # Counterparty similarity
-            inv_counterparty = inv.get("counterparty_name") or ""
-            best_name_sim = 0.0
-            for mv_name in [mv_counterparty, mv_description]:
-                if mv_name and inv_counterparty:
-                    best_name_sim = max(best_name_sim, _name_similarity(mv_name, inv_counterparty))
-                # also try matching invoice_number in movement description (e.g. "PAGO FAC-XXX")
-                inv_num = (inv.get("invoice_number") or "").lower()
-                if inv_num and mv_name and inv_num in mv_name.lower():
-                    best_name_sim = max(best_name_sim, 1.0)
             score += int(20 * best_name_sim)
 
             if score > best_score:
                 best_score = score
                 best_match = inv
+                best_is_partial = is_partial
 
         if best_match and best_score >= 50:
-            used_invoice_ids.add(best_match["id"])
+            rem_before = remaining.get(best_match["id"], 0.0)
+            remaining[best_match["id"]] = rem_before - mv_amount  # allocate this movement
             confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
             matches.append({
                 "movement_id": mv["id"],
@@ -3803,6 +3827,7 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
                 "target_type": "invoice",
                 "score": best_score,
                 "confidence": confidence,
+                "partial": best_is_partial,
                 "movement": mv,
                 "invoice": best_match,
             })
