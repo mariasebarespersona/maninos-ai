@@ -31,6 +31,11 @@ interface PropertyInventoryRow {
   invertido: number; venta: number; ganancia: number
 }
 
+interface SalesReceivable {
+  sale_id: string; property_id: string; property_code: string; address: string
+  counterparty: string; sale_type: string; status: string; amount: number
+}
+
 interface DashboardData {
   period: { type: string; start_date: string; end_date: string; year: number; month: number }
   summary: {
@@ -47,6 +52,7 @@ interface DashboardData {
   yard_breakdown: YardBreakdown[]
   property_pnl: PropertyPnl[]
   property_inventory?: PropertyInventoryRow[]
+  sales_receivables?: SalesReceivable[]
   recent_transactions: Transaction[]
   totals: { properties_count: number; sales_count: number; renovations_count: number; transactions_count: number }
 }
@@ -330,7 +336,7 @@ export default function AccountingPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} />}
+      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} salesReceivables={dashboard?.sales_receivables || []} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
       {activeTab === 'statements' && <StatementsTab />}
@@ -354,10 +360,10 @@ export default function AccountingPage() {
 // ════════════════════════════════════════════════════════════════════════
 //  OVERVIEW TAB
 // ════════════════════════════════════════════════════════════════════════
-function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals, propertyInventory }: {
+function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals, propertyInventory, salesReceivables }: {
   summary: DashboardData['summary']; cashFlow: DashboardData['cash_flow']; maxCf: number
   yardBreakdown: YardBreakdown[]; recentTransactions: Transaction[]; bankAccounts: BankAccount[]
-  totals: DashboardData['totals']; propertyInventory: PropertyInventoryRow[]
+  totals: DashboardData['totals']; propertyInventory: PropertyInventoryRow[]; salesReceivables: SalesReceivable[]
 }) {
   return (
     <div className="space-y-6">
@@ -436,6 +442,59 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           <div className="flex items-center gap-2 text-xs"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#ef4444' }} /> Gastos</div>
         </div>
       </div>
+
+      {/* Cuentas por cobrar de ventas */}
+      {salesReceivables.length > 0 && (
+        <div className="card-luxury p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              <ArrowUpRight className="w-5 h-5" style={{ color: '#8b5cf6' }} /> Cuentas por Cobrar (Ventas)
+            </h3>
+            <span className="text-lg font-bold" style={{ color: '#8b5cf6' }}>
+              {fmtFull(salesReceivables.reduce((a, r) => a + r.amount, 0))}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--sand)' }}>
+                  <th className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--slate)' }}>Casa</th>
+                  <th className="text-left py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Debe</th>
+                  <th className="text-center py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Tipo</th>
+                  <th className="text-right py-2 pl-2 font-medium" style={{ color: 'var(--slate)' }}>Por cobrar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesReceivables.map(r => (
+                  <tr key={r.sale_id} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
+                    <td className="py-2 pr-3">
+                      <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{r.property_code || '—'}</span>
+                      <span className="text-xs block truncate max-w-[180px]" style={{ color: 'var(--ash)' }}>{r.address}</span>
+                    </td>
+                    <td className="py-2 px-2" style={{ color: 'var(--charcoal)' }}>{r.counterparty}</td>
+                    <td className="py-2 px-2 text-center">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700">
+                        {r.sale_type === 'rto' || r.sale_type === 'rent_to_own' ? 'RTO' : 'Contado'}
+                      </span>
+                    </td>
+                    <td className="py-2 pl-2 text-right tabular-nums font-semibold" style={{ color: '#7c3aed' }}>{fmtFull(r.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2" style={{ borderColor: 'var(--stone)' }}>
+                  <td className="py-2 pr-3 font-bold" style={{ color: 'var(--charcoal)' }}>Total ({salesReceivables.length})</td>
+                  <td /><td />
+                  <td className="py-2 pl-2 text-right tabular-nums font-bold" style={{ color: '#7c3aed' }}>
+                    {fmtFull(salesReceivables.reduce((a, r) => a + r.amount, 0))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--ash)' }}>
+            Saldo pendiente de cobro por casa vendida. En ventas RTO corresponde a la porción financiada que Maninos Capital le debe a Homes.
+          </p>
+        </div>
+      )}
 
       {/* Inventario por casa */}
       <div className="card-luxury p-6">

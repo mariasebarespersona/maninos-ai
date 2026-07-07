@@ -657,6 +657,54 @@ async def get_accounting_dashboard(
     except Exception:
         pass
 
+    # ---- Sales receivables (money owed to Homes from sales not yet collected) ----
+    # Derived from the sales table's amount_pending, independent of the reporting
+    # period: an outstanding receivable stays outstanding until it's collected.
+    # Covers ALL sale types — RTO (the financed portion Maninos Capital owes Homes
+    # after the client's enganche) and any contado sale left with a partial
+    # balance. Consistent with the derived-bank-balance pattern: read the source
+    # of truth (sales) rather than requiring a mirror ledger posting to exist.
+    sales_receivables = []
+    try:
+        sr = (sb.table("sales")
+              .select("id, property_id, sale_type, status, sale_price, amount_paid, "
+                      "amount_pending, financed_remaining, capital_payment_status, "
+                      "created_at, clients(name), properties(address, city, property_code)")
+              .execute()).data or []
+        for s in sr:
+            status = (s.get("status") or "").lower()
+            if status in ("cancelled", "canceled", "refunded"):
+                continue
+            pending = float(s.get("amount_pending") or 0)
+            if pending <= 0:  # fallback if amount_pending isn't populated
+                pending = float(s.get("sale_price") or 0) - float(s.get("amount_paid") or 0)
+            if pending <= 0.01:
+                continue
+            stype = (s.get("sale_type") or "").lower()
+            is_rto = stype in ("rto", "rent_to_own")
+            cap_pending = (s.get("capital_payment_status") or "").lower() != "paid"
+            # RTO financed portion is owed by Maninos Capital; anything else by the client.
+            if is_rto and cap_pending:
+                counterparty = "Maninos Capital LLC"
+            else:
+                counterparty = (s.get("clients") or {}).get("name") or "Cliente"
+            prop = s.get("properties") or {}
+            sales_receivables.append({
+                "sale_id": s.get("id"),
+                "property_id": s.get("property_id"),
+                "property_code": prop.get("property_code") or "",
+                "address": prop.get("address") or "—",
+                "counterparty": counterparty,
+                "sale_type": stype,
+                "status": status,
+                "amount": round(pending, 2),
+            })
+    except Exception as e:
+        logger.warning(f"[accounting] Could not compute sales receivables: {e}")
+
+    # Sales receivables add to the A/R total so the "Por Cobrar" KPI reflects them.
+    ar_total += sum(r["amount"] for r in sales_receivables)
+
     return {
         "period": {"type": period, "start_date": start_str, "end_date": end_str,
                    "year": target_year, "month": target_month},
@@ -682,6 +730,7 @@ async def get_accounting_dashboard(
         "yard_breakdown": list(yard_breakdown.values()),
         "property_pnl": property_pnl[:20],
         "property_inventory": property_inventory,
+        "sales_receivables": sales_receivables,
         "recent_transactions": recent_data,
         "totals": {
             "properties_count": len(properties),
