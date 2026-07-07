@@ -56,10 +56,9 @@ const EMAIL_EXTRA_HREFS: Record<string, string[]> = {
   'aldair': ['/homes/commissions'],
 }
 
-// Override nav access by email (replaces role-based access — user sees ONLY these)
-const EMAIL_OVERRIDE_HREFS: Record<string, string[]> = {
-  'aruiz': ['/homes', '/homes/properties', '/homes/commissions', '/homes/accounting', '/homes/notificaciones'],
-}
+// Override nav access by email (replaces role-based access — user sees ONLY these).
+// Empty: aruiz (Abigail Ruiz) is admin and must see the whole app, so no override.
+const EMAIL_OVERRIDE_HREFS: Record<string, string[]> = {}
 
 function getNavForRole(role?: string, email?: string): NavItem[] {
   // Check email override first (takes priority over role)
