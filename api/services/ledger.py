@@ -1,20 +1,27 @@
 """
-Unified accounting ledger writer for Homes.
+Unified accounting ledger writer for Maninos (Homes + Capital).
 
 The ONLY function any other code should call to create accounting rows is
 `post_to_ledger`. This guarantees:
 
   - Every money-movement event lands as a balanced double-entry pair in
-    `accounting_transactions` (linked via `linked_transaction_id`).
+    the entity's transactions table (linked via `linked_transaction_id`).
   - The chart account (`account_id`) and bank (`bank_account_id`) are filled
     consistently — never NULL on rows that should have them.
   - Descriptions are produced by a single template per event type, so the
     text shown in "Transacciones" matches what shows in "Por Conciliar".
   - Bank-side postings resolve to the correct QuickBooks chart account via
-    `bank_accounts.accounting_account_id` (see migration 089).
+    `<banks_table>.accounting_account_id` (see migration 089 / 061).
 
-This module does NOT update `bank_accounts.current_balance` — that pipeline
-is owned by Phase D of the ledger-unification work (PR 3).
+The module is parameterized by `LedgerConfig`: Homes (default) writes to
+accounting_transactions / accounting_accounts / bank_accounts; Capital
+(see api/services/capital_ledger.py) writes to capital_transactions /
+capital_accounts / capital_bank_accounts with its own event registry.
+Calling `post_to_ledger` without a config keeps the exact pre-refactor
+Homes behavior.
+
+This module does NOT update `bank_accounts.current_balance` — balances are
+DERIVED on read via get_bank_balance / get_all_bank_balances.
 
 Usage:
 
@@ -36,15 +43,17 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+logger = logging.getLogger(__name__)
+
 
 def _persist_created_by(db, value: Optional[str]) -> Optional[str]:
     """accounting_transactions.created_by is a UUID FK → users(id). Two ways
@@ -64,8 +73,6 @@ def _persist_created_by(db, value: Optional[str]) -> Optional[str]:
         pass
     return None
 
-logger = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Event registry
@@ -82,7 +89,7 @@ logger = logging.getLogger(__name__)
 #       have no cash leg.
 #
 # When `debit == "bank"` or `credit == "bank"`, the bank's chart account is
-# resolved at post time via `bank_accounts.accounting_account_id`.
+# resolved at post time via `<banks_table>.accounting_account_id`.
 
 BANK = "bank"
 
@@ -106,6 +113,7 @@ class EventSpec:
 # live DB never used those — it's the names. The registry below uses the
 # live names so post_to_ledger can resolve them. If the chart is ever
 # re-seeded with numeric codes, update this table accordingly.
+# (Capital's chart DOES use numeric codes — see capital_ledger.py.)
 
 EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Outbound (cash leaves a bank) -----------------------------------
@@ -197,7 +205,7 @@ EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Cashless / no-bank-side -----------------------------------------
     "invoice_issued_ar": EventSpec(
         debit="Accounts receivable (A/R)",
-        credit="__caller__",   # income account chosen by caller (defaults to House Sales)
+        credit="__caller__",   # income account chosen by caller (defaults per config)
         transaction_type="invoice_ar",
         is_income_on_bank_side=False,
         description_template="Factura emitida {invoice_number}: {counterparty}",
@@ -231,30 +239,67 @@ EVENT_REGISTRY: dict[str, EventSpec] = {
 
 
 # ---------------------------------------------------------------------------
+# Entity configuration — Homes (default) vs Capital
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class LedgerConfig:
+    transactions_table: str
+    accounts_table: str
+    banks_table: str
+    registry: dict[str, EventSpec] = field(default_factory=dict)
+    # Default income account for invoice_issued_ar when the caller omits one.
+    default_ar_income_code: Optional[str] = None
+    # Homes: created_by is a UUID FK → users(id) and must be validated.
+    # Capital: created_by is free TEXT — persist as given.
+    created_by_is_user_fk: bool = True
+    # Homes-only: route capitalized costs to per-property sub-accounts.
+    property_subaccount_routing: bool = True
+    # Homes' transactions table has yard_id; Capital's doesn't.
+    supports_yard: bool = True
+    # Statuses excluded from derived bank balances.
+    balance_excluded_statuses: tuple = ("voided",)
+
+
+HOMES_CONFIG = LedgerConfig(
+    transactions_table="accounting_transactions",
+    accounts_table="accounting_accounts",
+    banks_table="bank_accounts",
+    registry=EVENT_REGISTRY,
+    default_ar_income_code="House Sales",
+    created_by_is_user_fk=True,
+    property_subaccount_routing=True,
+    supports_yard=True,
+    balance_excluded_statuses=("voided",),
+)
+
+
+# ---------------------------------------------------------------------------
 # Lookup helpers (with tiny in-process cache — these tables are tiny)
 # ---------------------------------------------------------------------------
+# Caches are keyed by (table, key) so Homes and Capital never collide.
 _lock = threading.Lock()
-_account_by_code_cache: dict[str, str] = {}      # code -> id
-_bank_chart_cache: dict[str, str] = {}            # bank_account_id -> chart_account_id
+_account_by_code_cache: dict[tuple[str, str], str] = {}   # (accounts_table, code) -> id
+_bank_chart_cache: dict[tuple[str, str], str] = {}         # (banks_table, bank_id) -> chart_account_id
+_account_type_cache: dict[tuple[str, str], str] = {}       # (accounts_table, account_id) -> account_type
 
 
-_account_type_cache: dict[str, str] = {}
-
-def _get_account_type_by_id(db, account_id: str) -> str:
+def _get_account_type_by_id(db, account_id: str, accounts_table: str) -> str:
     """Return the account_type of a chart account (cached)."""
     if not account_id:
         return ""
+    key = (accounts_table, account_id)
     with _lock:
-        cached = _account_type_cache.get(account_id)
+        cached = _account_type_cache.get(key)
     if cached is not None:
         return cached
     try:
-        res = db.table("accounting_accounts").select("account_type").eq("id", account_id).limit(1).execute()
+        res = db.table(accounts_table).select("account_type").eq("id", account_id).limit(1).execute()
         at = (res.data[0].get("account_type") if res.data else "") or ""
     except Exception:
         at = ""
     with _lock:
-        _account_type_cache[account_id] = at
+        _account_type_cache[key] = at
     return at
 
 
@@ -263,6 +308,7 @@ def _get_account_type_by_id(db, account_id: str) -> str:
 # parent. Falls back to None if the property has no sub-accounts yet
 # (legacy data created before _create_inventory_account_for_property
 # existed) — callers must keep the existing behavior in that case.
+# Homes-only (config.property_subaccount_routing).
 _PROPERTY_SUBACCOUNT_BY_EVENT: dict[str, str] = {
     "property_purchase_paid": "Compra",
     "renovation_paid": "Renovación",
@@ -271,7 +317,7 @@ _PROPERTY_SUBACCOUNT_BY_EVENT: dict[str, str] = {
 }
 
 
-def _resolve_property_subaccount(db, property_id: Optional[str], sub_label: str) -> Optional[str]:
+def _resolve_property_subaccount(db, property_id: Optional[str], sub_label: str, accounts_table: str) -> Optional[str]:
     """Look up the inventory sub-account id for `<sub_label> <property_code>`.
     Returns None if the property doesn't exist, has no code, or no sub-account
     was provisioned for it (legacy houses created before per-property
@@ -291,7 +337,7 @@ def _resolve_property_subaccount(db, property_id: Optional[str], sub_label: str)
             return None
         target = f"{sub_label} {code}"
         res = (
-            db.table("accounting_accounts")
+            db.table(accounts_table)
             .select("id")
             .eq("code", target)
             .limit(1)
@@ -304,57 +350,59 @@ def _resolve_property_subaccount(db, property_id: Optional[str], sub_label: str)
     return None
 
 
-def _get_account_id_by_code(db, code: str) -> str:
+def _get_account_id_by_code(db, code: str, accounts_table: str) -> str:
+    key = (accounts_table, code)
     with _lock:
-        cached = _account_by_code_cache.get(code)
+        cached = _account_by_code_cache.get(key)
     if cached:
         return cached
-    res = db.table("accounting_accounts").select("id").eq("code", code).limit(1).execute()
+    res = db.table(accounts_table).select("id").eq("code", code).limit(1).execute()
     if not res.data:
         raise ValueError(
-            f"Chart account with code '{code}' not found in accounting_accounts. "
+            f"Chart account with code '{code}' not found in {accounts_table}. "
             f"This event cannot be posted until the chart of accounts is seeded."
         )
     aid = res.data[0]["id"]
     with _lock:
-        _account_by_code_cache[code] = aid
+        _account_by_code_cache[key] = aid
     return aid
 
 
-def _get_bank_chart_account_id(db, bank_account_id: str) -> str:
+def _get_bank_chart_account_id(db, bank_account_id: str, banks_table: str) -> str:
+    key = (banks_table, bank_account_id)
     with _lock:
-        cached = _bank_chart_cache.get(bank_account_id)
+        cached = _bank_chart_cache.get(key)
     if cached:
         return cached
     res = (
-        db.table("bank_accounts")
+        db.table(banks_table)
         .select("id, name, accounting_account_id")
         .eq("id", bank_account_id)
         .limit(1)
         .execute()
     )
     if not res.data:
-        raise ValueError(f"bank_accounts row {bank_account_id} does not exist.")
+        raise ValueError(f"{banks_table} row {bank_account_id} does not exist.")
     row = res.data[0]
     chart_id = row.get("accounting_account_id")
     if not chart_id:
         raise ValueError(
             f"Bank '{row.get('name')}' (id={bank_account_id}) has no "
-            f"accounting_account_id set. Run migration 089 or link it manually "
-            f"in the Cuentas Bancarias UI before posting ledger entries against it."
+            f"accounting_account_id set. Link it to a chart account in the "
+            f"Cuentas Bancarias UI before posting ledger entries against it."
         )
     with _lock:
-        _bank_chart_cache[bank_account_id] = chart_id
+        _bank_chart_cache[key] = chart_id
     return chart_id
 
 
-def _generate_transaction_number(db) -> str:
+def _generate_transaction_number(db, transactions_table: str) -> str:
     """Match the convention in api/routes/accounting.py:217."""
     today = date.today().strftime("%y%m%d")
     prefix = f"TXN-{today}-"
     try:
         existing = (
-            db.table("accounting_transactions")
+            db.table(transactions_table)
             .select("transaction_number")
             .like("transaction_number", f"{prefix}%")
             .execute()
@@ -394,7 +442,9 @@ def post_to_ledger(
     notes: Optional[str] = None,
     status: str = "confirmed",
     created_by: Optional[str] = None,
+    extra_fields: Optional[dict[str, Any]] = None,  # entity-specific columns (e.g. Capital's investor_id)
     db: Any = None,
+    config: Optional[LedgerConfig] = None,
 ) -> tuple[str, str]:
     """
     Post a balanced double-entry pair to the ledger.
@@ -406,12 +456,13 @@ def post_to_ledger(
     if db is None:
         from tools.supabase_client import sb
         db = sb
+    cfg = config or HOMES_CONFIG
 
-    spec = EVENT_REGISTRY.get(event_type)
+    spec = cfg.registry.get(event_type)
     if spec is None:
         raise ValueError(
             f"Unknown event_type '{event_type}'. "
-            f"Valid: {sorted(EVENT_REGISTRY.keys())}"
+            f"Valid: {sorted(cfg.registry.keys())}"
         )
 
     if amount is None or float(amount) <= 0:
@@ -421,8 +472,8 @@ def post_to_ledger(
     if event_type == "bank_transfer":
         if not (bank_account_id_from and bank_account_id_to):
             raise ValueError("bank_transfer requires bank_account_id_from and bank_account_id_to")
-        debit_account_id = _get_bank_chart_account_id(db, bank_account_id_to)
-        credit_account_id = _get_bank_chart_account_id(db, bank_account_id_from)
+        debit_account_id = _get_bank_chart_account_id(db, bank_account_id_to, cfg.banks_table)
+        credit_account_id = _get_bank_chart_account_id(db, bank_account_id_from, cfg.banks_table)
         debit_bank_id = bank_account_id_to
         credit_bank_id = bank_account_id_from
     else:
@@ -430,34 +481,34 @@ def post_to_ledger(
         if spec.debit == BANK:
             if not bank_account_id:
                 raise ValueError(f"event '{event_type}' requires bank_account_id (debit side is bank).")
-            debit_account_id = _get_bank_chart_account_id(db, bank_account_id)
+            debit_account_id = _get_bank_chart_account_id(db, bank_account_id, cfg.banks_table)
             debit_bank_id = bank_account_id
         elif spec.debit == "__caller__":
             code = expense_account_code if "expense" in event_type or event_type == "invoice_received_ap" else (income_account_code or expense_account_code)
             if not code:
                 raise ValueError(f"event '{event_type}' requires expense_account_code or income_account_code.")
-            debit_account_id = _get_account_id_by_code(db, code)
+            debit_account_id = _get_account_id_by_code(db, code, cfg.accounts_table)
             debit_bank_id = None
         else:
-            debit_account_id = _get_account_id_by_code(db, spec.debit)
+            debit_account_id = _get_account_id_by_code(db, spec.debit, cfg.accounts_table)
             debit_bank_id = None
 
         # Resolve credit
         if spec.credit == BANK:
             if not bank_account_id:
                 raise ValueError(f"event '{event_type}' requires bank_account_id (credit side is bank).")
-            credit_account_id = _get_bank_chart_account_id(db, bank_account_id)
+            credit_account_id = _get_bank_chart_account_id(db, bank_account_id, cfg.banks_table)
             credit_bank_id = bank_account_id
         elif spec.credit == "__caller__":
             code = income_account_code
             if not code and event_type == "invoice_issued_ar":
-                code = "House Sales"  # backward-compatible default when caller omits the income account
+                code = cfg.default_ar_income_code  # backward-compatible default when caller omits the income account
             if not code:
                 raise ValueError(f"event '{event_type}' requires income_account_code.")
-            credit_account_id = _get_account_id_by_code(db, code)
+            credit_account_id = _get_account_id_by_code(db, code, cfg.accounts_table)
             credit_bank_id = None
         else:
-            credit_account_id = _get_account_id_by_code(db, spec.credit)
+            credit_account_id = _get_account_id_by_code(db, spec.credit, cfg.accounts_table)
             credit_bank_id = None
 
         # Per-property inventory routing: for capitalized-cost events
@@ -465,10 +516,10 @@ def post_to_ledger(
         # sub-account (Compra/Renovación/Movida <CODE>) so each house
         # accumulates its own cost basis in Balance Sheet → Inventory.
         # If no sub-account exists (legacy data), fall through to the
-        # generic parent account from the EventSpec.
-        sub_label = _PROPERTY_SUBACCOUNT_BY_EVENT.get(event_type)
+        # generic parent account from the EventSpec. Homes-only.
+        sub_label = _PROPERTY_SUBACCOUNT_BY_EVENT.get(event_type) if cfg.property_subaccount_routing else None
         if sub_label and property_id and not debit_account_id_override:
-            sub_acct_id = _resolve_property_subaccount(db, property_id, sub_label)
+            sub_acct_id = _resolve_property_subaccount(db, property_id, sub_label, cfg.accounts_table)
             if sub_acct_id:
                 debit_account_id = sub_acct_id
                 logger.info(
@@ -499,9 +550,6 @@ def post_to_ledger(
 
     # ---- Build the two rows -------------------------------------------------
     amt = float(amount)
-    # is_income convention (legacy): true means money INTO a bank (cash inflow).
-    # We set is_income only on the bank leg; non-bank leg uses the inverse so
-    # totals net to zero for any view that sums is_income=true minus =false.
     # is_income convention (the column the reports & balance derivation read):
     #
     # The report helper _signed_balance(amt, account_type, is_income) returns:
@@ -519,8 +567,8 @@ def post_to_ledger(
     # Combining: for the DEBIT leg, asset accounts → is_income=True.
     # For the CREDIT leg, every non-asset account → is_income=True.
     # That's the rule below.
-    debit_acct_type = _get_account_type_by_id(db, debit_account_id) or ""
-    credit_acct_type = _get_account_type_by_id(db, credit_account_id) or ""
+    debit_acct_type = _get_account_type_by_id(db, debit_account_id, cfg.accounts_table) or ""
+    credit_acct_type = _get_account_type_by_id(db, credit_account_id, cfg.accounts_table) or ""
 
     def _is_asset_like(at: str) -> bool:
         at = (at or "").strip().lower()
@@ -542,21 +590,24 @@ def post_to_ledger(
         "entity_type": entity_type,
         "entity_id": entity_id,
         "property_id": property_id,
-        "yard_id": yard_id,
         "counterparty_name": counterparty_name,
         "counterparty_type": counterparty_type,
         "payment_method": payment_method,
         "payment_reference": payment_reference,
         "notes": notes,
         "status": status,
-        "created_by": _persist_created_by(db, created_by),
+        "created_by": _persist_created_by(db, created_by) if cfg.created_by_is_user_fk else created_by,
     }
+    if cfg.supports_yard:
+        base["yard_id"] = yard_id
+    if extra_fields:
+        base.update(extra_fields)
 
     # One serial per *pair*, with -D / -C suffix so the two legs are unique
     # within the pair AND visibly linked when an operator scans the ledger.
     # Calling _generate_transaction_number twice in a row would race on the
     # COUNT query and produce duplicates that hit the UNIQUE constraint.
-    base_serial = _generate_transaction_number(db)
+    base_serial = _generate_transaction_number(db, cfg.transactions_table)
     debit_row = {
         **base,
         "transaction_number": f"{base_serial}-D",
@@ -575,14 +626,14 @@ def post_to_ledger(
     credit_row = {k: v for k, v in credit_row.items() if v is not None}
 
     # ---- Insert + link, rolling back on any failure of the second leg ----
-    debit_res = db.table("accounting_transactions").insert(debit_row).execute()
+    debit_res = db.table(cfg.transactions_table).insert(debit_row).execute()
     if not debit_res.data:
         raise RuntimeError("Failed to insert debit leg of ledger entry.")
     debit_id = debit_res.data[0]["id"]
 
     credit_row["linked_transaction_id"] = debit_id
     try:
-        credit_res = db.table("accounting_transactions").insert(credit_row).execute()
+        credit_res = db.table(cfg.transactions_table).insert(credit_row).execute()
         if not credit_res.data:
             raise RuntimeError("credit leg insert returned no data")
         credit_id = credit_res.data[0]["id"]
@@ -590,16 +641,16 @@ def post_to_ledger(
         # Roll back the orphan debit so half-pair rows never live in the
         # ledger. Swallow rollback failures (best-effort cleanup).
         try:
-            db.table("accounting_transactions").delete().eq("id", debit_id).execute()
+            db.table(cfg.transactions_table).delete().eq("id", debit_id).execute()
         except Exception as cleanup_err:
             logger.error(f"post_to_ledger rollback failed for debit {debit_id}: {cleanup_err}")
         raise RuntimeError(f"Failed to insert credit leg of ledger entry; debit rolled back. cause={e}") from e
 
-    db.table("accounting_transactions").update({"linked_transaction_id": credit_id}).eq("id", debit_id).execute()
+    db.table(cfg.transactions_table).update({"linked_transaction_id": credit_id}).eq("id", debit_id).execute()
 
     logger.info(
-        "post_to_ledger event=%s amount=%s pair=(%s, %s) bank=%s entity=%s/%s",
-        event_type, amt, debit_id, credit_id, bank_account_id, entity_type, entity_id,
+        "post_to_ledger table=%s event=%s amount=%s pair=(%s, %s) bank=%s entity=%s/%s",
+        cfg.transactions_table, event_type, amt, debit_id, credit_id, bank_account_id, entity_type, entity_id,
     )
     return debit_id, credit_id
 
@@ -617,27 +668,30 @@ def get_bank_balance(
     *,
     as_of: Optional[str] = None,
     db: Any = None,
+    config: Optional[LedgerConfig] = None,
 ) -> float:
     """
     QuickBooks-style derived balance for a bank account:
         balance = Σ(amount on rows where is_income=true)
                 − Σ(amount on rows where is_income=false)
-    over `accounting_transactions` filtered by bank_account_id.
+    over the entity's transactions table filtered by bank_account_id.
 
     `as_of` is an ISO date — if given, only rows with transaction_date <=
     as_of are summed (use to reconcile against a statement's period_end).
 
-    Excludes rows with status='voided'.
+    Excludes rows whose status is in config.balance_excluded_statuses
+    (Homes: voided; Capital also excludes pending_confirmation/draft).
 
     This function is intentionally pure: it does NOT write to
-    bank_accounts.current_balance. The stored column is now decoupled
+    <banks_table>.current_balance. The stored column is decoupled
     from the ledger — callers compute on read.
     """
     if db is None:
         from tools.supabase_client import sb
         db = sb
+    cfg = config or HOMES_CONFIG
     q = (
-        db.table("accounting_transactions")
+        db.table(cfg.transactions_table)
         .select("amount,is_income,status")
         .eq("bank_account_id", bank_account_id)
     )
@@ -646,21 +700,22 @@ def get_bank_balance(
     rows = (q.execute().data or [])
     bal = 0.0
     for r in rows:
-        if (r.get("status") or "") == "voided":
+        if (r.get("status") or "") in cfg.balance_excluded_statuses:
             continue
         amt = float(r.get("amount") or 0)
         bal += amt if r.get("is_income") else -amt
     return round(bal, 2)
 
 
-def get_all_bank_balances(*, db: Any = None) -> dict[str, float]:
+def get_all_bank_balances(*, db: Any = None, config: Optional[LedgerConfig] = None) -> dict[str, float]:
     """Return {bank_account_id → derived balance} for every active bank.
     One query instead of one per bank — used by the dashboard."""
     if db is None:
         from tools.supabase_client import sb
         db = sb
+    cfg = config or HOMES_CONFIG
     rows = (
-        db.table("accounting_transactions")
+        db.table(cfg.transactions_table)
         .select("bank_account_id,amount,is_income,status")
         .not_.is_("bank_account_id", "null")
         .execute()
@@ -668,7 +723,7 @@ def get_all_bank_balances(*, db: Any = None) -> dict[str, float]:
     )
     out: dict[str, float] = {}
     for r in rows:
-        if (r.get("status") or "") == "voided":
+        if (r.get("status") or "") in cfg.balance_excluded_statuses:
             continue
         bid = r.get("bank_account_id")
         if not bid:

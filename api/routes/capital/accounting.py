@@ -177,7 +177,7 @@ INCOME_ACCOUNT_MAP: dict[str, str] = {
 
 # ── EXPENSE transaction types → account codes ──
 EXPENSE_ACCOUNT_MAP: dict[str, str] = {
-    "acquisition":       "14100",  # Other Current Assets (property purchases)
+    "acquisition":       "14300",  # RTO Properties (postable; 14100 is a header)
     "investor_return":   "71400",  # Interest paid (exists)
     "commission":        "60100",  # Commissions & fees (exists)
     "operating_expense": "60500",  # Office expenses (exists)
@@ -188,7 +188,7 @@ EXPENSE_ACCOUNT_MAP: dict[str, str] = {
 
 # ── BALANCE SHEET transaction types → account codes ──
 BALANCE_ACCOUNT_MAP: dict[str, str] = {
-    "investor_deposit":  "23000",  # Notes Payable header (investor obligation)
+    "investor_deposit":  "23900",  # Investor Notes Payable (postable; 23000 is a header)
     "transfer":          "10100",  # Bank and Cash Equivalents (inter-account transfer)
 }
 
@@ -386,22 +386,48 @@ async def get_accounting_dashboard(
         active_contracts = 0
         portfolio_value = 0
 
-    # ---- Bank Accounts ----
+    # ---- Bank Accounts (balances DERIVED from the ledger, like Homes) ----
     bank_accounts = []
     total_bank_balance = 0
     total_cash_on_hand = 0
     try:
+        from api.services.capital_ledger import get_all_capital_bank_balances
         bank_accounts = sb.table("capital_bank_accounts") \
             .select("*") \
             .eq("is_active", True) \
             .order("is_primary", desc=True) \
             .execute().data or []
-        total_bank_balance = sum(float(b.get("current_balance", 0)) for b in bank_accounts
+        derived = get_all_capital_bank_balances()
+        for b in bank_accounts:
+            b["derived_balance"] = derived.get(b["id"], 0.0)
+            # current_balance shown in the UI mirrors the ledger; the stored
+            # column is only a reference and is never trusted for display.
+            b["current_balance"] = b["derived_balance"]
+        total_bank_balance = sum(float(b.get("derived_balance", 0)) for b in bank_accounts
                                  if b.get("account_type") != "cash")
-        total_cash_on_hand = sum(float(b.get("current_balance", 0)) for b in bank_accounts
+        total_cash_on_hand = sum(float(b.get("derived_balance", 0)) for b in bank_accounts
                                   if b.get("account_type") == "cash")
     except Exception as e:
         logger.warning(f"[capital-accounting] Could not fetch bank accounts: {e}")
+
+    # ---- Invoice-based AR/AP (Facturación) ----
+    ar_invoices_total = 0.0
+    ap_invoices_total = 0.0
+    try:
+        open_invoices = sb.table("capital_invoices") \
+            .select("direction, balance_due") \
+            .in_("status", ["sent", "partial", "overdue"]) \
+            .execute().data or []
+        for inv in open_invoices:
+            bal = float(inv.get("balance_due") or 0)
+            if bal <= 0:
+                continue
+            if inv.get("direction") == "receivable":
+                ar_invoices_total += bal
+            else:
+                ap_invoices_total += bal
+    except Exception as e:
+        logger.warning(f"[capital-accounting] Could not fetch open invoices: {e}")
 
     return {
         "period": {"type": period, "start_date": start_date, "end_date": end_date, "year": y, "month": m},
@@ -424,6 +450,8 @@ async def get_accounting_dashboard(
             "accounts_receivable": round(accounts_receivable, 2),
             "accounts_receivable_overdue": round(accounts_receivable_overdue, 2),
             "accounts_payable": round(accounts_payable, 2),
+            "ar_invoices_total": round(ar_invoices_total, 2),
+            "ap_invoices_total": round(ap_invoices_total, 2),
             "active_contracts": active_contracts,
             "portfolio_value": round(portfolio_value, 2),
             "total_bank_balance": round(total_bank_balance, 2),
@@ -477,18 +505,36 @@ async def list_transactions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _generate_capital_txn_number() -> str:
+    today = date.today().strftime("%y%m%d")
+    prefix = f"TXN-{today}-"
+    try:
+        existing = sb.table("capital_transactions") \
+            .select("transaction_number") \
+            .like("transaction_number", f"{prefix}%") \
+            .execute()
+        count = len(existing.data) if existing.data else 0
+    except Exception:
+        count = 0
+    return f"{prefix}{count + 1:03d}"
+
+
 @router.post("/transactions")
 async def create_transaction(data: TransactionCreate):
-    """Create a manual capital transaction.
+    """Create a manual capital transaction as a DOUBLE-ENTRY pair (like Homes).
 
     If no account_id is provided, the system auto-assigns one based on
-    the transaction_type using the ACCOUNT_MAP.
+    the transaction_type using the ACCOUNT_MAP. If a bank_account_id is
+    provided and the bank is linked to a chart account, the bank-side
+    counterpart row is created and linked automatically.
     """
     try:
         # Auto-assign account_id if not explicitly provided
         account_id = data.account_id or _resolve_account_id(data.transaction_type)
+        txn_number = _generate_capital_txn_number()
 
         record = {
+            "transaction_number": txn_number,
             "transaction_date": data.transaction_date,
             "transaction_type": data.transaction_type,
             "amount": data.amount,
@@ -511,7 +557,54 @@ async def create_transaction(data: TransactionCreate):
         record = {k: v for k, v in record.items() if v is not None}
 
         result = sb.table("capital_transactions").insert(record).execute()
-        return {"ok": True, "transaction": result.data[0] if result.data else None}
+        pnl_txn = result.data[0] if result.data else None
+        if not pnl_txn:
+            raise HTTPException(status_code=500, detail="Error creating transaction")
+
+        try:
+            from api.routes.capital.accounting_invoices import _log_capital_audit
+            _log_capital_audit("capital_transactions", pnl_txn["id"], "create",
+                               description=f"Created {txn_number}: ${data.amount}")
+        except Exception:
+            pass
+
+        # Double-entry: bank-side counterpart when the bank is chart-linked.
+        if data.bank_account_id:
+            ba = sb.table("capital_bank_accounts").select("accounting_account_id") \
+                .eq("id", data.bank_account_id).execute()
+            bank_accounting_id = ba.data[0].get("accounting_account_id") if ba.data else None
+            if bank_accounting_id:
+                bank_data = {
+                    "transaction_number": _generate_capital_txn_number(),
+                    "transaction_date": data.transaction_date,
+                    "transaction_type": data.transaction_type,
+                    "amount": data.amount,
+                    "is_income": data.is_income,  # deposits grow the bank, withdrawals shrink it
+                    "account_id": bank_accounting_id,
+                    "bank_account_id": data.bank_account_id,
+                    "linked_transaction_id": pnl_txn["id"],
+                    "counterparty_name": data.counterparty_name,
+                    "description": data.description,
+                    "notes": f"Contrapartida bancaria de {txn_number}",
+                    "status": "confirmed",
+                }
+                bank_data = {k: v for k, v in bank_data.items() if v is not None}
+                bank_result = sb.table("capital_transactions").insert(bank_data).execute()
+                if bank_result.data:
+                    sb.table("capital_transactions").update(
+                        {"linked_transaction_id": bank_result.data[0]["id"]}
+                    ).eq("id", pnl_txn["id"]).execute()
+                    pnl_txn["linked_transaction_id"] = bank_result.data[0]["id"]
+                # The P&L leg keeps bank_account_id=None so derived balances
+                # only count the bank leg once.
+                sb.table("capital_transactions").update(
+                    {"bank_account_id": None}
+                ).eq("id", pnl_txn["id"]).execute()
+                pnl_txn["bank_account_id"] = None
+
+        return {"ok": True, "transaction": pnl_txn}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating capital transaction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -543,15 +636,125 @@ async def update_transaction(transaction_id: str, data: TransactionUpdate):
 
 @router.delete("/transactions/{transaction_id}")
 async def void_transaction(transaction_id: str):
-    """Void (soft-delete) a transaction."""
+    """Void (soft-delete) a transaction AND its linked double-entry leg."""
     try:
-        result = sb.table("capital_transactions") \
+        row = sb.table("capital_transactions").select("id, linked_transaction_id") \
+            .eq("id", transaction_id).execute()
+        sb.table("capital_transactions") \
             .update({"status": "voided"}) \
             .eq("id", transaction_id) \
             .execute()
+        linked = (row.data[0].get("linked_transaction_id") if row.data else None)
+        if linked:
+            sb.table("capital_transactions") \
+                .update({"status": "voided"}).eq("id", linked).execute()
+        try:
+            from api.routes.capital.accounting_invoices import _log_capital_audit
+            _log_capital_audit("capital_transactions", transaction_id, "void")
+        except Exception:
+            pass
         return {"ok": True, "message": "Transaction voided"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/transactions/{transaction_id}/split")
+async def split_capital_transaction(transaction_id: str, data: dict):
+    """Split a transaction into multiple parts. Sum of parts must equal the
+    original amount. Voids the original pair and creates child pairs."""
+    parts = data.get("parts")
+    if not parts or not isinstance(parts, list) or len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Must provide at least 2 parts")
+
+    parent = sb.table("capital_transactions").select("*").eq("id", transaction_id).execute()
+    if not parent.data:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    p = parent.data[0]
+
+    parent_amount = float(p["amount"])
+    parts_total = sum(abs(float(pt["amount"])) for pt in parts)
+    if abs(parts_total - abs(parent_amount)) > 0.01:
+        raise HTTPException(status_code=400, detail=f"Parts total ({parts_total:.2f}) != transaction ({abs(parent_amount):.2f})")
+
+    # Void original + linked bank-side leg
+    sb.table("capital_transactions").update({"status": "voided"}).eq("id", transaction_id).execute()
+    if p.get("linked_transaction_id"):
+        sb.table("capital_transactions").update({"status": "voided"}).eq("id", p["linked_transaction_id"]).execute()
+    try:
+        from api.routes.capital.accounting_invoices import _log_capital_audit
+        _log_capital_audit("capital_transactions", transaction_id, "update",
+                           description=f"Split into {len(parts)} parts")
+    except Exception:
+        pass
+
+    # Bank chart account for double-entry on children. The P&L leg doesn't
+    # carry the bank id (only the bank leg does), so fall back to the linked
+    # counterpart's bank when splitting from the P&L side.
+    split_bank_id = p.get("bank_account_id")
+    if not split_bank_id and p.get("linked_transaction_id"):
+        linked_row = sb.table("capital_transactions").select("bank_account_id") \
+            .eq("id", p["linked_transaction_id"]).execute().data
+        if linked_row:
+            split_bank_id = linked_row[0].get("bank_account_id")
+    bank_accounting_id = None
+    if split_bank_id:
+        ba = sb.table("capital_bank_accounts").select("accounting_account_id").eq("id", split_bank_id).execute()
+        if ba.data and ba.data[0].get("accounting_account_id"):
+            bank_accounting_id = ba.data[0]["accounting_account_id"]
+
+    created = []
+    for pt in parts:
+        child = {
+            "transaction_number": _generate_capital_txn_number(),
+            "transaction_date": p["transaction_date"],
+            "transaction_type": p["transaction_type"],
+            "amount": float(pt["amount"]),
+            "is_income": p["is_income"],
+            "account_id": pt.get("account_id") or p.get("account_id"),
+            "description": pt.get("description", p.get("description", ""))[:500],
+            "counterparty_name": p.get("counterparty_name"),
+            "investor_id": p.get("investor_id"),
+            "rto_contract_id": p.get("rto_contract_id"),
+            "client_id": p.get("client_id"),
+            "property_id": pt.get("property_id") or p.get("property_id"),
+            "entity_type": p.get("entity_type"),
+            "entity_id": p.get("entity_id"),
+            "payment_method": p.get("payment_method"),
+            "status": "confirmed",
+        }
+        # The P&L child carries no bank id when a bank counterpart is created,
+        # so derived balances count the movement once.
+        if not bank_accounting_id:
+            child["bank_account_id"] = split_bank_id
+        child = {k: v for k, v in child.items() if v is not None}
+        try:
+            r = sb.table("capital_transactions").insert(child).execute()
+            if r.data:
+                pnl_id = r.data[0]["id"]
+                created.append(r.data[0])
+                if bank_accounting_id:
+                    bank_child = {
+                        "transaction_number": _generate_capital_txn_number(),
+                        "transaction_date": p["transaction_date"],
+                        "transaction_type": p["transaction_type"],
+                        "amount": float(pt["amount"]),
+                        "is_income": p["is_income"],
+                        "account_id": bank_accounting_id,
+                        "linked_transaction_id": pnl_id,
+                        "description": pt.get("description", p.get("description", ""))[:500],
+                        "bank_account_id": split_bank_id,
+                        "notes": "Contrapartida bancaria (split)",
+                        "status": "confirmed",
+                    }
+                    bank_r = sb.table("capital_transactions").insert(bank_child).execute()
+                    if bank_r.data:
+                        sb.table("capital_transactions").update(
+                            {"linked_transaction_id": bank_r.data[0]["id"]}
+                        ).eq("id", pnl_id).execute()
+        except Exception as e:
+            logger.error(f"[capital-accounting] Split child error: {e}")
+
+    return {"ok": True, "message": f"Split into {len(created)} parts", "children": created}
 
 
 # ============================================================================
@@ -804,17 +1007,50 @@ async def reset_account_balances(request: Request):
 
 @router.get("/bank-accounts")
 async def list_bank_accounts(include_inactive: bool = False):
-    """List Capital bank and cash accounts."""
+    """List Capital bank and cash accounts.
+
+    Balances are DERIVED from the ledger (single source of truth, like
+    Homes). Each bank also reports the latest uploaded statement's ending
+    balance and the discrepancy vs the ledger."""
     try:
+        from api.services.capital_ledger import get_all_capital_bank_balances
         q = sb.table("capital_bank_accounts").select("*")
         if not include_inactive:
             q = q.eq("is_active", True)
         result = q.order("is_primary", desc=True).order("name").execute()
         banks = result.data or []
-        total_balance = sum(float(b.get("current_balance", 0)) for b in banks)
-        bank_balance = sum(float(b.get("current_balance", 0)) for b in banks
+        derived = get_all_capital_bank_balances()
+
+        # Latest statement per bank (for the discrepancy indicator)
+        latest_stmt: dict = {}
+        try:
+            stmts = sb.table("capital_bank_statements") \
+                .select("bank_account_id, ending_balance, statement_period_end, created_at") \
+                .order("created_at", desc=True).limit(200).execute().data or []
+            for s in stmts:
+                bid = s.get("bank_account_id")
+                if bid and bid not in latest_stmt:
+                    latest_stmt[bid] = s
+        except Exception:
+            pass
+
+        for b in banks:
+            b["derived_balance"] = derived.get(b["id"], 0.0)
+            b["stored_balance"] = b.get("current_balance")
+            b["current_balance"] = b["derived_balance"]
+            stmt = latest_stmt.get(b["id"])
+            if stmt and stmt.get("ending_balance") is not None:
+                b["latest_statement_ending"] = float(stmt["ending_balance"])
+                b["latest_statement_period_end"] = stmt.get("statement_period_end")
+                b["discrepancy"] = round(float(stmt["ending_balance"]) - b["derived_balance"], 2)
+            else:
+                b["latest_statement_ending"] = None
+                b["discrepancy"] = None
+
+        total_balance = sum(float(b.get("derived_balance", 0)) for b in banks)
+        bank_balance = sum(float(b.get("derived_balance", 0)) for b in banks
                            if b.get("account_type") not in ("cash",))
-        cash_on_hand = sum(float(b.get("current_balance", 0)) for b in banks
+        cash_on_hand = sum(float(b.get("derived_balance", 0)) for b in banks
                             if b.get("account_type") == "cash")
         return {
             "ok": True,
@@ -838,6 +1074,12 @@ async def get_bank_account(bank_id: str):
         result = sb.table("capital_bank_accounts").select("*").eq("id", bank_id).single().execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Bank account not found")
+        try:
+            from api.services.capital_ledger import get_capital_bank_balance
+            result.data["derived_balance"] = get_capital_bank_balance(bank_id)
+            result.data["current_balance"] = result.data["derived_balance"]
+        except Exception:
+            pass
 
         # Recent transactions for this bank account
         txns = sb.table("capital_transactions") \
@@ -857,13 +1099,45 @@ async def get_bank_account(bank_id: str):
 
 @router.post("/bank-accounts")
 async def create_bank_account(data: BankAccountCreate):
-    """Create a new bank/cash account for Capital."""
+    """Create a new bank/cash account for Capital.
+
+    Also auto-creates its chart account under '10100 Bank and Cash
+    Equivalents' and links it via accounting_account_id, so the ledger can
+    post against this bank immediately (Homes required a manual link;
+    Capital does it automatically)."""
     try:
         record = {k: v for k, v in data.model_dump().items() if v is not None}
         result = sb.table("capital_bank_accounts").insert(record).execute()
         if not result.data:
             raise HTTPException(status_code=500, detail="Error creating bank account")
-        return {"ok": True, "bank_account": result.data[0]}
+        bank = result.data[0]
+
+        # Auto-provision + link the chart account (best-effort).
+        try:
+            parent = sb.table("capital_accounts").select("id").eq("code", "10100").limit(1).execute()
+            parent_id = parent.data[0]["id"] if parent.data else None
+            # Next free numeric code in the 101xx range
+            existing = sb.table("capital_accounts").select("code").like("code", "101%").execute().data or []
+            nums = [int(a["code"]) for a in existing if (a.get("code") or "").isdigit()]
+            next_code = str(max(nums) + 10 if nums else 10110)
+            acct = sb.table("capital_accounts").insert({
+                "code": next_code,
+                "name": bank["name"],
+                "account_type": "asset",
+                "category": "bank",
+                "is_header": False,
+                "report_section": "balance_sheet",
+                "parent_account_id": parent_id,
+            }).execute()
+            if acct.data:
+                sb.table("capital_bank_accounts").update(
+                    {"accounting_account_id": acct.data[0]["id"]}
+                ).eq("id", bank["id"]).execute()
+                bank["accounting_account_id"] = acct.data[0]["id"]
+        except Exception as e:
+            logger.warning(f"[capital-accounting] Could not auto-link chart account for bank {bank['id']}: {e}")
+
+        return {"ok": True, "bank_account": bank}
     except Exception as e:
         logger.error(f"Error creating capital bank account: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -920,46 +1194,29 @@ async def bank_transfer(bank_id: str, data: dict):
         if not source or not target:
             raise HTTPException(status_code=404, detail="Una o ambas cuentas no existen")
 
-        src_balance = float(source.get("current_balance", 0))
-        tgt_balance = float(target.get("current_balance", 0))
-
-        # Update balances
-        sb.table("capital_bank_accounts") \
-            .update({"current_balance": round(src_balance - amount, 2)}) \
-            .eq("id", bank_id).execute()
-        sb.table("capital_bank_accounts") \
-            .update({"current_balance": round(tgt_balance + amount, 2)}) \
-            .eq("id", target_id).execute()
-
-        # Record two transactions (outgoing + incoming)
-        base_txn = {
-            "transaction_date": date.today().isoformat(),
-            "transaction_type": "transfer",
-            "amount": amount,
-            "status": "confirmed",
-            "created_by": "admin",
-            "payment_method": "bank_transfer",
-        }
-        sb.table("capital_transactions").insert({
-            **base_txn,
-            "bank_account_id": bank_id,
-            "is_income": False,
-            "description": f"Transferencia a {target['name']}: {description}",
-            "counterparty_name": target["name"],
-        }).execute()
-        sb.table("capital_transactions").insert({
-            **base_txn,
-            "bank_account_id": target_id,
-            "is_income": True,
-            "description": f"Transferencia desde {source['name']}: {description}",
-            "counterparty_name": source["name"],
-        }).execute()
+        # Balanced pair via the ledger engine — zero P&L impact, and derived
+        # balances move automatically. No manual current_balance writes.
+        from api.services.capital_ledger import post_to_capital_ledger, get_capital_bank_balance
+        try:
+            post_to_capital_ledger(
+                event_type="bank_transfer",
+                amount=amount,
+                date=data.get("transfer_date") or date.today().isoformat(),
+                bank_account_id_from=bank_id,
+                bank_account_id_to=target_id,
+                description_data={"concept": description},
+                payment_method="bank_transfer",
+                status="confirmed",
+                created_by=data.get("created_by") or "admin",
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"No se puede registrar la transferencia: {e}")
 
         return {
             "ok": True,
             "message": f"Transferencia de ${amount:,.2f} completada",
-            "source_balance": round(src_balance - amount, 2),
-            "target_balance": round(tgt_balance + amount, 2),
+            "source_balance": get_capital_bank_balance(bank_id),
+            "target_balance": get_capital_bank_balance(target_id),
         }
     except HTTPException:
         raise
@@ -2168,7 +2425,23 @@ async def upload_capital_bank_statement(
     statement = result.data[0]
     statement_id = statement["id"]
 
-    # Extract text + parse movements (reuse Homes helpers)
+    # Fire-and-forget the AI parsing (same pattern as Homes) — the endpoint
+    # returns in ~1-2s and the frontend polls GET /bank-statements/{id}
+    # until status is 'parsed'/'review' or 'error'.
+    import asyncio
+    asyncio.create_task(
+        _parse_capital_statement_background(statement_id, file_content, ext, account_key)
+    )
+
+    return {
+        "statement": statement,
+        "movements": [],
+        "message": "Archivo subido. Parseando movimientos en segundo plano…",
+    }
+
+
+async def _parse_capital_statement_background(statement_id: str, file_content: bytes, ext: str, account_key: str):
+    """Background task: extract + parse movements, then auto-classify."""
     try:
         from api.routes.accounting import _extract_and_parse_statement
         raw_text, movements = await _extract_and_parse_statement(file_content, ext, account_key)
@@ -2208,27 +2481,14 @@ async def upload_capital_bank_statement(
         }).eq("id", statement_id).execute()
 
         # ── AUTO-CLASSIFY: AI associates movements to Capital accounts ──
-        classify_message = ""
         try:
             logger.info(f"[CapitalBankStmt] Auto-classifying {len(movements)} movements...")
             sb.table("capital_bank_statements").update({"status": "classifying"}).eq("id", statement_id).execute()
             classify_result = await classify_capital_statement(statement_id)
-            classify_message = f" → AI classified {classify_result.get('classified', 0)} movements"
-            logger.info(f"[CapitalBankStmt] Auto-classify done: {classify_message}")
+            logger.info(f"[CapitalBankStmt] Auto-classify done: {classify_result.get('classified', 0)} movements")
         except Exception as ce:
             logger.warning(f"[CapitalBankStmt] Auto-classify failed (will require manual): {ce}")
             sb.table("capital_bank_statements").update({"status": "parsed"}).eq("id", statement_id).execute()
-            classify_message = " → Auto-clasificación falló, usa el botón 'Clasificar con IA'"
-
-        # Refresh
-        stmt_refresh = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute()
-        mvs = sb.table("capital_statement_movements").select("*").eq("statement_id", statement_id).order("sort_order").execute()
-
-        return {
-            "statement": stmt_refresh.data[0] if stmt_refresh.data else statement,
-            "movements": mvs.data or [],
-            "message": f"Parsed {len(movements)} movements from statement{classify_message}",
-        }
 
     except Exception as e:
         logger.error(f"[CapitalBankStmt] Parse error: {e}")
@@ -2236,7 +2496,6 @@ async def upload_capital_bank_statement(
             "status": "error",
             "error_message": str(e)[:500],
         }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=500, detail=f"Error parsing statement: {str(e)}")
 
 
 @router.post("/bank-statements/{statement_id}/reconcile")
@@ -2277,14 +2536,25 @@ async def reconcile_capital_statement_movements(statement_id: str):
             if t["id"] not in existing_ids:
                 unreconciled_txns.append(t)
 
-    if not unreconciled_txns:
-        return {
-            "matches": [],
-            "unmatched_count": len(movements.data),
-            "message": "No hay transacciones existentes para conciliar",
-        }
+    matches = (_match_capital_movements_to_transactions(movements.data, unreconciled_txns)
+               if unreconciled_txns else [])
 
-    matches = _match_capital_movements_to_transactions(movements.data, unreconciled_txns)
+    # ---- Invoice matching (supports SPLIT / PARTIAL payments) ----
+    # Movements not matched to a transaction get a second pass against open
+    # invoices, whose balance_due can absorb several movements. Runs even if
+    # there were no transactions to match.
+    try:
+        matched_mv_ids = {m["movement_id"] for m in matches}
+        leftover = [mv for mv in movements.data if mv["id"] not in matched_mv_ids]
+        if leftover:
+            open_invoices = sb.table("capital_invoices").select("*") \
+                .in_("status", ["sent", "partial", "overdue"]) \
+                .gt("balance_due", 0) \
+                .execute().data or []
+            if open_invoices:
+                matches.extend(_match_capital_movements_to_invoices(leftover, open_invoices))
+    except Exception as e:
+        logger.warning(f"[capital-reconcile] invoice matching failed: {e}")
 
     unmatched_count = len(movements.data) - len(matches)
     return {
@@ -2415,9 +2685,125 @@ def _match_capital_movements_to_transactions(movements: list, transactions: list
     return matches
 
 
+def _match_capital_movements_to_invoices(movements: list, invoices: list) -> list:
+    """Match Capital statement movements against open invoices (AR or AP),
+    including SPLIT / PARTIAL payments.
+
+    Same algorithm as Homes (_match_movements_to_invoices): each invoice
+    keeps a running `remaining` balance so one factura can absorb several
+    movements ($500 + $500 = a $1,000 factura). Partial matches (movement
+    smaller than the remaining balance) are only offered when corroborated
+    by counterparty-name similarity or the invoice number appearing in the
+    movement text, and carry a `partial` flag so the UI labels them and
+    skips auto-selecting them."""
+    matches: list = []
+    remaining = {inv["id"]: float(inv.get("balance_due") or 0) for inv in invoices}
+
+    for mv in movements:
+        mv_amount = abs(float(mv.get("amount", 0)))
+        if mv_amount <= 0:
+            continue
+        mv_is_credit = mv.get("is_credit", False)  # True=deposit, False=withdrawal
+        mv_date_str = mv.get("movement_date", "")
+        mv_counterparty = mv.get("counterparty") or ""
+        mv_description = mv.get("description") or ""
+
+        best_match = None
+        best_score = 0
+        best_is_partial = False
+
+        for inv in invoices:
+            rem = remaining.get(inv["id"], 0.0)
+            if rem <= 0.01:
+                continue  # already fully allocated by earlier movements
+
+            # Direction must agree: deposit → receivable, withdrawal → payable
+            direction = (inv.get("direction") or "").lower()
+            if mv_is_credit and direction != "receivable":
+                continue
+            if not mv_is_credit and direction != "payable":
+                continue
+
+            # Corroboration signals (name similarity / invoice number in text)
+            inv_counterparty = inv.get("counterparty_name") or ""
+            inv_num = (inv.get("invoice_number") or "").lower()
+            best_name_sim = 0.0
+            for mv_name in (mv_counterparty, mv_description):
+                if mv_name and inv_counterparty:
+                    best_name_sim = max(best_name_sim, _capital_name_similarity(mv_name, inv_counterparty))
+                if inv_num and mv_name and inv_num in mv_name.lower():
+                    best_name_sim = max(best_name_sim, 1.0)
+
+            # ---- Amount scoring against the REMAINING balance ----
+            score = 0
+            is_partial = False
+            diff = abs(mv_amount - rem)
+            diff_pct = diff / max(mv_amount, rem)
+            if diff < 0.01:
+                score += 50            # settles the remaining balance exactly
+            elif diff_pct < 0.01:
+                score += 35
+            elif diff_pct < 0.05:
+                score += 15
+            elif mv_amount < rem:
+                # PARTIAL payment: only when corroborated, so a random small
+                # deposit is never glued onto a large unrelated invoice.
+                if best_name_sim >= 0.5:
+                    score += 25
+                    is_partial = True
+                else:
+                    continue
+            else:
+                continue  # movement bigger than remaining balance → not this invoice
+
+            # ---- Date proximity vs due_date or issue_date (best of the two) ----
+            try:
+                mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
+                for cmp_str in (inv.get("due_date"), inv.get("issue_date")):
+                    if not cmp_str or not mv_date:
+                        continue
+                    cmp_date = datetime.strptime(cmp_str, "%Y-%m-%d").date()
+                    diff_days = abs((mv_date - cmp_date).days)
+                    if diff_days == 0:
+                        score += 30; break
+                    elif diff_days <= 3:
+                        score += 20; break
+                    elif diff_days <= 14:
+                        score += 10; break
+                    elif diff_days <= 30:
+                        score += 5; break
+            except Exception:
+                pass
+
+            score += int(20 * best_name_sim)
+
+            if score > best_score:
+                best_score = score
+                best_match = inv
+                best_is_partial = is_partial
+
+        if best_match and best_score >= 50:
+            rem_before = remaining.get(best_match["id"], 0.0)
+            remaining[best_match["id"]] = rem_before - mv_amount  # allocate this movement
+            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
+            matches.append({
+                "movement_id": mv["id"],
+                "invoice_id": best_match["id"],
+                "target_type": "invoice",
+                "score": best_score,
+                "confidence": confidence,
+                "partial": best_is_partial,
+                "movement": mv,
+                "invoice": best_match,
+            })
+
+    return matches
+
+
 @router.post("/bank-statements/{statement_id}/reconcile/confirm")
 async def confirm_capital_reconciliation(statement_id: str, data: dict):
-    """Confirm matched movement-transaction pairs. Marks both as reconciled."""
+    """Confirm matched pairs. Transaction matches reconcile both ledger legs;
+    invoice matches auto-create the payment + ledger pair (like Homes)."""
     pairs = data.get("pairs", [])
     logger.info(f"[capital-reconcile-confirm] Received {len(pairs)} pairs for statement {statement_id}")
 
@@ -2428,30 +2814,127 @@ async def confirm_capital_reconciliation(statement_id: str, data: dict):
     reconciled = 0
     errors = []
 
+    # Pre-fetch the statement (we need bank_account_id for invoice payments)
+    stmt_row = sb.table("capital_bank_statements").select("*").eq("id", statement_id).execute().data
+    statement_row = stmt_row[0] if stmt_row else {}
+
     for pair in pairs:
         mv_id = pair.get("movement_id")
         txn_id = pair.get("transaction_id")
+        invoice_id = pair.get("invoice_id")
+        target_type = pair.get("target_type") or ("invoice" if invoice_id else "transaction")
 
-        if not mv_id or not txn_id:
-            errors.append(f"Missing mv_id or txn_id in pair: {pair}")
+        if not mv_id:
+            errors.append(f"Missing mv_id in pair: {pair}")
             continue
 
         try:
+            if target_type == "invoice" and invoice_id:
+                # ---- AUTO-COLLECT / AUTO-PAY invoice branch ----
+                mv_row = sb.table("capital_statement_movements").select("*").eq("id", mv_id).single().execute().data
+                if not mv_row:
+                    errors.append(f"Movement {mv_id} not found")
+                    continue
+                inv_row = sb.table("capital_invoices").select("*").eq("id", invoice_id).single().execute().data
+                if not inv_row:
+                    errors.append(f"Invoice {invoice_id} not found")
+                    continue
+
+                amount = abs(float(mv_row.get("amount") or 0))
+                is_receivable = (inv_row.get("direction") or "").lower() == "receivable"
+
+                pay = sb.table("capital_invoice_payments").insert({
+                    "invoice_id": invoice_id,
+                    "payment_date": mv_row.get("movement_date"),
+                    "amount": amount,
+                    "payment_method": mv_row.get("payment_method"),
+                    "payment_reference": mv_row.get("reference"),
+                    "notes": f"Auto-cobrado del estado de cuenta {statement_row.get('id','')[:8]}",
+                }).execute()
+
+                new_paid = float(inv_row.get("amount_paid") or 0) + amount
+                total = float(inv_row.get("total_amount") or 0)
+                new_status = "paid" if new_paid + 0.01 >= total else "partial"
+                sb.table("capital_invoices").update({
+                    "amount_paid": new_paid,
+                    "status": new_status,
+                }).eq("id", invoice_id).execute()
+
+                from api.services.capital_ledger import post_to_capital_ledger
+                extra = {k: v for k, v in {
+                    "client_id": inv_row.get("client_id"),
+                    "investor_id": inv_row.get("investor_id"),
+                    "rto_contract_id": inv_row.get("rto_contract_id"),
+                    "rto_payment_id": inv_row.get("rto_payment_id"),
+                }.items() if v}
+                debit_id, credit_id = post_to_capital_ledger(
+                    event_type=("invoice_paid_in" if is_receivable else "invoice_paid_out"),
+                    amount=amount,
+                    bank_account_id=statement_row.get("bank_account_id"),
+                    date=mv_row.get("movement_date") or now_str[:10],
+                    counterparty_name=inv_row.get("counterparty_name"),
+                    counterparty_type=inv_row.get("counterparty_type"),
+                    entity_type="invoice",
+                    entity_id=invoice_id,
+                    property_id=inv_row.get("property_id"),
+                    description_data={"invoice_number": inv_row.get("invoice_number", "")},
+                    payment_method=mv_row.get("payment_method"),
+                    payment_reference=mv_row.get("reference"),
+                    notes="Auto-cobrado desde estado de cuenta",
+                    status="reconciled",  # pair is born already reconciled
+                    extra_fields=extra or None,
+                )
+
+                bank_leg_id = debit_id if is_receivable else credit_id
+                if pay.data and bank_leg_id:
+                    sb.table("capital_invoice_payments").update({
+                        "transaction_id": bank_leg_id,
+                    }).eq("id", pay.data[0]["id"]).execute()
+
+                sb.table("capital_transactions").update({
+                    "reconciled_at": now_str,
+                }).in_("id", [debit_id, credit_id]).execute()
+
+                sb.table("capital_statement_movements").update({
+                    "status": "reconciled",
+                    "matched_transaction_id": bank_leg_id,
+                }).eq("id", mv_id).execute()
+
+                try:
+                    from api.routes.capital.accounting_invoices import _log_capital_audit
+                    _log_capital_audit("capital_invoices", invoice_id, "auto_paid_from_statement",
+                                       description=f"Pago auto-conciliado: ${amount:,.2f}")
+                except Exception:
+                    pass
+                reconciled += 1
+                continue
+
+            # ---- TRANSACTION branch ----
+            if not txn_id:
+                errors.append(f"Missing txn_id in pair: {pair}")
+                continue
+
             mv_result = sb.table("capital_statement_movements").update({
                 "status": "reconciled",
                 "matched_transaction_id": txn_id,
             }).eq("id", mv_id).execute()
             logger.info(f"[capital-reconcile-confirm] Movement update: {len(mv_result.data or [])} rows, mv={mv_id}")
 
+            # Reconcile the matched txn AND its linked counterpart leg.
+            txn_row = sb.table("capital_transactions").select("id, linked_transaction_id") \
+                       .eq("id", txn_id).single().execute().data or {}
+            ids_to_flip = [txn_id]
+            if txn_row.get("linked_transaction_id"):
+                ids_to_flip.append(txn_row["linked_transaction_id"])
             txn_result = sb.table("capital_transactions").update({
                 "status": "reconciled",
                 "reconciled_at": now_str,
-            }).eq("id", txn_id).execute()
-            logger.info(f"[capital-reconcile-confirm] Transaction update: {len(txn_result.data or [])} rows, txn={txn_id}")
+            }).in_("id", ids_to_flip).execute()
+            logger.info(f"[capital-reconcile-confirm] Reconciled {len(txn_result.data or [])} txn rows (target + pair)")
 
             reconciled += 1
         except Exception as e:
-            err_msg = f"mv={mv_id}, txn={txn_id}: {e}"
+            err_msg = f"mv={mv_id}, target={target_type}: {e}"
             logger.error(f"[capital-reconcile-confirm] Error: {err_msg}")
             errors.append(err_msg)
 
@@ -3182,3 +3665,129 @@ Return a JSON array with one object per movement (in order):
         logger.error(f"[CapitalClassify] Invalid JSON response: {content[:500]}")
         return [{"account_code": "", "confidence": 0, "reasoning": "AI parse error"}] * len(movements)
 
+
+
+# ============================================================================
+# ACCOUNTS SUMMARY + REPORT CSV EXPORTS (Homes parity)
+# ============================================================================
+
+@router.get("/accounts/summary")
+async def get_capital_accounts_summary(
+    period: str = Query("month"),
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+):
+    """Income/expense totals per account for a period."""
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+    start_date, end_date = _get_period_dates(period, y, m)
+
+    txns = sb.table("capital_transactions") \
+        .select("account_id, amount, is_income, status") \
+        .gte("transaction_date", start_date) \
+        .lte("transaction_date", end_date) \
+        .execute().data or []
+
+    accounts = sb.table("capital_accounts").select("id, code, name, account_type").eq("is_active", True).execute().data or []
+    by_id = {a["id"]: a for a in accounts}
+
+    summary: dict = {}
+    for t in txns:
+        if (t.get("status") or "") in ("voided", "pending_confirmation", "draft"):
+            continue
+        aid = t.get("account_id")
+        if not aid or aid not in by_id:
+            continue
+        entry = summary.setdefault(aid, {
+            "account_id": aid,
+            "code": by_id[aid]["code"],
+            "name": by_id[aid]["name"],
+            "account_type": by_id[aid]["account_type"],
+            "income": 0.0, "expense": 0.0,
+        })
+        amt = float(t.get("amount") or 0)
+        if t.get("is_income"):
+            entry["income"] += amt
+        else:
+            entry["expense"] += amt
+
+    rows = sorted(summary.values(), key=lambda r: r["code"])
+    for r in rows:
+        r["income"] = round(r["income"], 2)
+        r["expense"] = round(r["expense"], 2)
+        r["net"] = round(r["income"] - r["expense"], 2)
+    return {"ok": True, "period": {"start": start_date, "end": end_date}, "accounts": rows}
+
+
+def _flatten_tree_to_csv_rows(nodes: list, depth: int = 0) -> list:
+    rows = []
+    for n in nodes or []:
+        indent = "  " * depth
+        rows.append([f"{indent}{n.get('name', '')}", n.get("code", ""),
+                     n.get("balance", 0), n.get("subtotal", n.get("balance", 0))])
+        rows.extend(_flatten_tree_to_csv_rows(n.get("children") or [], depth + 1))
+    return rows
+
+
+@router.get("/reports/income-statement/export-csv")
+async def export_capital_income_statement_csv(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """Export the P&L tree as CSV (hierarchical indentation, like Homes)."""
+    report = await get_profit_loss_tree(start_date=start_date, end_date=end_date)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    period = report.get("period") or {}
+    writer.writerow(["Estado de Resultados — Maninos Capital"])
+    writer.writerow([f"Periodo: {period.get('start', '')} a {period.get('end', '')}"])
+    writer.writerow([])
+    writer.writerow(["Cuenta", "Código", "Balance", "Subtotal"])
+    for section, label in (("income", "INGRESOS"), ("expenses", "GASTOS"),
+                           ("other_income", "OTROS INGRESOS"), ("other_expenses", "OTROS GASTOS")):
+        nodes = report.get(section) or []
+        if not nodes:
+            continue
+        writer.writerow([label])
+        for row in _flatten_tree_to_csv_rows(nodes, 1):
+            writer.writerow(row)
+    writer.writerow([])
+    writer.writerow(["Ingresos totales", "", report.get("total_income", 0)])
+    writer.writerow(["Gastos totales", "", report.get("total_expenses", 0)])
+    writer.writerow(["Utilidad neta", "", report.get("net_income", 0)])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=estado_resultados_capital.csv"},
+    )
+
+
+@router.get("/reports/balance-sheet/export-csv")
+async def export_capital_balance_sheet_csv():
+    """Export the Balance Sheet tree as CSV."""
+    report = await get_balance_sheet_tree()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Balance General — Maninos Capital"])
+    writer.writerow([f"Al: {report.get('date', '')}"])
+    writer.writerow([])
+    writer.writerow(["Cuenta", "Código", "Balance", "Subtotal"])
+    for section, label in (("assets", "ACTIVOS"), ("liabilities", "PASIVOS"), ("equity", "CAPITAL")):
+        nodes = report.get(section) or []
+        if not nodes:
+            continue
+        writer.writerow([label])
+        for row in _flatten_tree_to_csv_rows(nodes, 1):
+            writer.writerow(row)
+    writer.writerow([])
+    writer.writerow(["Activos totales", "", report.get("total_assets", 0)])
+    writer.writerow(["Pasivos totales", "", report.get("total_liabilities", 0)])
+    writer.writerow(["Capital total", "", report.get("total_equity", 0)])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=balance_general_capital.csv"},
+    )

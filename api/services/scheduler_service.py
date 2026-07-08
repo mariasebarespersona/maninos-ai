@@ -163,6 +163,22 @@ def _job_rto_overdue_alerts():
         return {"ok": False, "error": str(e)}
 
 
+def _job_capital_rto_invoices():
+    """Job: Generate Capital receivable invoices for RTO payments due this
+    month (idempotent — one invoice per rto_payment)."""
+    try:
+        from api.routes.capital._rto_invoicing import generate_rto_receivable_invoices
+        result = generate_rto_receivable_invoices()
+        _log_job("capital_rto_invoices", result)
+        if result.get("created"):
+            logger.info(f"[scheduler] Generated {result['created']} Capital RTO invoices")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in capital_rto_invoices: {e}")
+        _log_job("capital_rto_invoices", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def _job_portal_sync():
     """Job: Sync data between portals (Homes ↔ Capital ↔ Clientes)."""
     try:
@@ -574,6 +590,16 @@ def init_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=9, minute=30),
         id="promissory_maturity_alerts",
         name="Promissory Note Maturity Alerts (90/60/30 day)",
+        replace_existing=True,
+    )
+
+    # Job: Capital RTO auto-invoices — daily at 6:30 AM CT
+    # One receivable invoice per RTO payment due this month (idempotent).
+    _scheduler.add_job(
+        _job_capital_rto_invoices,
+        trigger=CronTrigger(hour=6, minute=30),
+        id="capital_rto_invoices",
+        name="Capital: Auto-facturas RTO del mes",
         replace_existing=True,
     )
 

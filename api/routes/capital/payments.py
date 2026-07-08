@@ -47,6 +47,7 @@ class RecordPayment(BaseModel):
     payment_reference: Optional[str] = None
     notes: Optional[str] = None
     recorded_by: Optional[str] = "admin"
+    bank_account_id: Optional[str] = None  # Capital bank that received the money
 
 
 class CommissionCreate(BaseModel):
@@ -358,8 +359,26 @@ async def get_pending_confirmations():
             .order("created_at", desc=True) \
             .execute()
 
+        # Double-entry pairs share linked_transaction_id — show ONE card per
+        # pair (prefer the bank leg, which carries the payment details).
+        # Confirming it confirms both legs.
+        rows = result.data or []
+        by_id = {r["id"]: r for r in rows}
+        seen_pairs = set()
+        deduped = []
+        for t in rows:
+            linked = t.get("linked_transaction_id")
+            if linked and linked in by_id:
+                pair_key = tuple(sorted([t["id"], linked]))
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+                other = by_id[linked]
+                t = t if t.get("bank_account_id") else (other if other.get("bank_account_id") else t)
+            deduped.append(t)
+
         transactions = []
-        for t in (result.data or []):
+        for t in deduped:
             transactions.append({
                 "id": t["id"],
                 "transaction_type": t.get("transaction_type"),
@@ -419,10 +438,15 @@ async def confirm_transaction(transaction_id: str):
                 rate = float(rate_str)
                 _execute_investment_link(investor_id, contract_id, amount, rate, t)
 
-        # Mark as confirmed
+        # Mark as confirmed — BOTH legs when it's a double-entry pair, so
+        # derived bank balances (which ignore pending_confirmation) move.
         sb.table("capital_transactions").update({
             "status": "confirmed",
         }).eq("id", transaction_id).execute()
+        if t.get("linked_transaction_id"):
+            sb.table("capital_transactions").update({
+                "status": "confirmed",
+            }).eq("id", t["linked_transaction_id"]).eq("status", "pending_confirmation").execute()
 
         return {
             "ok": True,
@@ -625,21 +649,41 @@ async def record_payment(payment_id: str, data: RecordPayment):
         except Exception as fe:
             logger.warning(f"Could not record capital_flow for payment: {fe}")
 
-        # 2) Record capital_transaction  (rto_payment)
-        record_txn(
-            txn_type="rto_payment",
-            amount=data.paid_amount,
-            is_income=True,
-            description=f"Pago RTO mensualidad #{p.get('payment_number', '?')}",
-            txn_date=paid_date.isoformat(),
-            rto_contract_id=p["rto_contract_id"],
-            rto_payment_id=payment_id,
-            client_id=contract.get("client_id"),
-            payment_method=data.payment_method,
-            payment_reference=data.payment_reference,
-            notes=data.notes,
-            created_by=data.recorded_by or "admin",
-        )
+        # 2) Settle the auto-invoice for this RTO payment if one exists
+        #    (posts invoice_paid_in, clearing A/R — income was already
+        #    recognized at invoice issuance). Falls back to the direct
+        #    rto_payment posting when there's no invoice.
+        settled_via_invoice = False
+        try:
+            from api.routes.capital._rto_invoicing import settle_rto_invoice
+            settled_via_invoice = settle_rto_invoice(
+                payment_id,
+                data.paid_amount,
+                bank_account_id=data.bank_account_id,
+                payment_method=data.payment_method,
+                payment_reference=data.payment_reference,
+                paid_date=paid_date.isoformat(),
+                created_by=data.recorded_by or "admin",
+            )
+        except Exception as ie:
+            logger.warning(f"Could not settle RTO invoice for payment {payment_id}: {ie}")
+
+        if not settled_via_invoice:
+            record_txn(
+                txn_type="rto_payment",
+                amount=data.paid_amount,
+                is_income=True,
+                description=f"Pago RTO mensualidad #{p.get('payment_number', '?')}",
+                txn_date=paid_date.isoformat(),
+                bank_account_id=data.bank_account_id,
+                rto_contract_id=p["rto_contract_id"],
+                rto_payment_id=payment_id,
+                client_id=contract.get("client_id"),
+                payment_method=data.payment_method,
+                payment_reference=data.payment_reference,
+                notes=data.notes,
+                created_by=data.recorded_by or "admin",
+            )
 
         # 3) If late fee, record separate transaction
         if late_fee > 0:
@@ -649,6 +693,7 @@ async def record_payment(payment_id: str, data: RecordPayment):
                 is_income=True,
                 description=f"Recargo por mora — {days_late} días",
                 txn_date=paid_date.isoformat(),
+                bank_account_id=data.bank_account_id,
                 rto_contract_id=p["rto_contract_id"],
                 rto_payment_id=payment_id,
                 client_id=contract.get("client_id"),
