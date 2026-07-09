@@ -3777,6 +3777,36 @@ def _name_similarity(name1: str, name2: str) -> float:
     return overlap / total if total > 0 else 0.0
 
 
+def _match_signals(name_sim: float, diff_days, partial: bool) -> tuple:
+    """Build the transparency payload for a match: which signals corroborate it
+    (amount / name / date), the name-similarity %, and a short human 'reason' so
+    the reconciliation UI can show WHY it's a match and HOW sure it is — instead
+    of the app matching silently."""
+    name_ok = name_sim >= 0.4
+    date_ok = diff_days is not None and diff_days <= 3
+    signals = {
+        "amount": True,   # amount is a precondition for every match
+        "name": name_ok,
+        "date": date_ok,
+        "name_similarity": round(name_sim * 100),
+        "days_apart": diff_days,
+    }
+    parts = ["monto coincide"]
+    parts.append(f"nombre {round(name_sim*100)}%" if name_ok else "nombre no coincide")
+    if diff_days is not None:
+        parts.append("misma fecha" if diff_days == 0 else f"±{diff_days} días")
+    reason = " · ".join(parts)
+    if partial:
+        reason = "pago parcial · " + reason
+    # A caveat line the UI can surface when it's not a sure thing.
+    caveat = None
+    if not name_ok:
+        caveat = "La app NO está segura: coincide el monto pero el nombre no. Revísalo."
+    elif not date_ok and diff_days is not None:
+        caveat = "Revisa: el nombre coincide pero las fechas están algo separadas."
+    return signals, reason, caveat
+
+
 def _match_movements_to_transactions(movements: list, transactions: list) -> list:
     """Match bank statement movements against existing accounting transactions.
     Returns list of match dicts with scores."""
@@ -3793,6 +3823,8 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
 
         best_match = None
         best_score = 0
+        best_name_sim = 0.0
+        best_diff_days = None
 
         for txn in transactions:
             if txn["id"] in used_txn_ids:
@@ -3806,19 +3838,19 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
             if mv_is_credit != txn_is_income:
                 continue
 
-            # Amount match (exact = 50 pts, within 1% = 35 pts, within 5% = 15 pts)
-            if mv_amount > 0 and txn_amount > 0:
-                diff_pct = abs(mv_amount - txn_amount) / max(mv_amount, txn_amount)
-                if abs(mv_amount - txn_amount) < 0.01:
-                    score += 50
-                elif diff_pct < 0.01:
-                    score += 35
-                elif diff_pct < 0.05:
-                    score += 15
-                else:
-                    continue  # Amount too different, skip
+            # Amount must match within 1% — a bigger gap is not the same payment.
+            if mv_amount <= 0 or txn_amount <= 0:
+                continue
+            diff_pct = abs(mv_amount - txn_amount) / max(mv_amount, txn_amount)
+            if abs(mv_amount - txn_amount) < 0.01:
+                score += 50
+            elif diff_pct < 0.01:
+                score += 35
+            else:
+                continue  # amount too different → not a candidate
 
-            # Date proximity (max 30 pts)
+            # Date proximity
+            diff_days = None
             try:
                 mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
                 txn_date_str = txn.get("transaction_date", "")
@@ -3838,37 +3870,53 @@ def _match_movements_to_transactions(movements: list, transactions: list) -> lis
             except Exception:
                 pass
 
-            # Counterparty similarity (max 20 pts)
+            # Counterparty similarity (name in either field of either side)
             txn_counterparty = txn.get("counterparty_name") or ""
             txn_description = txn.get("description") or ""
-
-            # Try matching movement counterparty against transaction counterparty
-            best_name_sim = 0.0
+            name_sim = 0.0
             for mv_name in [mv_counterparty, mv_description]:
                 for txn_name in [txn_counterparty, txn_description]:
                     if mv_name and txn_name:
-                        sim = _name_similarity(mv_name, txn_name)
-                        best_name_sim = max(best_name_sim, sim)
-
-            score += int(20 * best_name_sim)
+                        name_sim = max(name_sim, _name_similarity(mv_name, txn_name))
+            score += int(20 * name_sim)
 
             if score > best_score:
                 best_score = score
                 best_match = txn
+                best_name_sim = name_sim
+                best_diff_days = diff_days
 
-        # Threshold: amount match (50) alone is enough for a candidate
-        if best_match and best_score >= 50:
-            used_txn_ids.add(best_match["id"])
-            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
-            matches.append({
-                "movement_id": mv["id"],
-                "transaction_id": best_match["id"],
-                "target_type": "transaction",
-                "score": best_score,
-                "confidence": confidence,
-                "movement": mv,
-                "transaction": best_match,
-            })
+        # RELIABILITY RULE: a matching AMOUNT is necessary but NEVER sufficient
+        # on its own (two different payments can share an amount). Require at
+        # least one CORROBORATING signal — the counterparty name is similar, or
+        # the dates are very close. Amount-only "matches" are dropped so the
+        # wizard never proposes a coincidence that isn't a real match.
+        if not best_match:
+            continue
+        name_ok = best_name_sim >= 0.4
+        date_ok = best_diff_days is not None and best_diff_days <= 3
+        if not (name_ok or date_ok):
+            continue  # amount-only → not offered
+
+        used_txn_ids.add(best_match["id"])
+        # High confidence (auto-selectable) only with a STRONG signal: a clear
+        # name match, or a same-day exact-amount hit. Otherwise it's a
+        # suggestion the operator must confirm.
+        strong = best_name_sim >= 0.7 or (best_name_sim >= 0.4 and best_diff_days == 0)
+        confidence = "high" if strong else "medium"
+        signals, reason, caveat = _match_signals(best_name_sim, best_diff_days, False)
+        matches.append({
+            "movement_id": mv["id"],
+            "transaction_id": best_match["id"],
+            "target_type": "transaction",
+            "score": best_score,
+            "confidence": confidence,
+            "signals": signals,
+            "reason": reason,
+            "caveat": caveat,
+            "movement": mv,
+            "transaction": best_match,
+        })
 
     return matches
 
@@ -3912,6 +3960,8 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
         best_match = None
         best_score = 0
         best_is_partial = False
+        best_name_sim_win = 0.0
+        best_diff_days_win = None
 
         for inv in invoices:
             rem = remaining.get(inv["id"], 0.0)
@@ -3960,21 +4010,24 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
                 continue  # movement bigger than the remaining balance → not this invoice
 
             # ---- Date proximity vs due_date or issue_date (best of the two) ----
+            this_diff_days = None
             try:
                 mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
                 for cmp_str in (inv.get("due_date"), inv.get("issue_date")):
                     if not cmp_str or not mv_date:
                         continue
                     cmp_date = datetime.strptime(cmp_str, "%Y-%m-%d").date()
-                    diff_days = abs((mv_date - cmp_date).days)
-                    if diff_days == 0:
-                        score += 30; break
-                    elif diff_days <= 3:
-                        score += 20; break
-                    elif diff_days <= 14:
-                        score += 10; break
-                    elif diff_days <= 30:
-                        score += 5; break
+                    dd = abs((mv_date - cmp_date).days)
+                    this_diff_days = dd if this_diff_days is None else min(this_diff_days, dd)
+                if this_diff_days is not None:
+                    if this_diff_days == 0:
+                        score += 30
+                    elif this_diff_days <= 3:
+                        score += 20
+                    elif this_diff_days <= 14:
+                        score += 10
+                    elif this_diff_days <= 30:
+                        score += 5
             except Exception:
                 pass
 
@@ -3984,11 +4037,28 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
                 best_score = score
                 best_match = inv
                 best_is_partial = is_partial
+                best_name_sim_win = best_name_sim
+                best_diff_days_win = this_diff_days
+
+        # RELIABILITY RULE: never match a movement to an invoice on AMOUNT alone.
+        # Partials already require a name match above; for full/near-full matches
+        # require corroboration too — similar counterparty name, the invoice
+        # number in the movement text, or a date within a few days of the
+        # invoice. Otherwise two unrelated payments of the same amount would be
+        # matched by coincidence.
+        if best_match:
+            name_ok = best_name_sim_win >= 0.4
+            date_ok = best_diff_days_win is not None and best_diff_days_win <= 3
+            if not best_is_partial and not (name_ok or date_ok):
+                best_match = None  # amount-only → not a real match
 
         if best_match and best_score >= 50:
             rem_before = remaining.get(best_match["id"], 0.0)
             remaining[best_match["id"]] = rem_before - mv_amount  # allocate this movement
-            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
+            # High (auto-selectable) only with a strong signal; else a suggestion.
+            strong = best_name_sim_win >= 0.7 or (best_name_sim_win >= 0.4 and best_diff_days_win == 0)
+            confidence = "high" if (strong and not best_is_partial) else "medium"
+            signals, reason, caveat = _match_signals(best_name_sim_win, best_diff_days_win, best_is_partial)
             matches.append({
                 "movement_id": mv["id"],
                 "invoice_id": best_match["id"],
@@ -3996,6 +4066,9 @@ def _match_movements_to_invoices(movements: list, invoices: list) -> list:
                 "score": best_score,
                 "confidence": confidence,
                 "partial": best_is_partial,
+                "signals": signals,
+                "reason": reason,
+                "caveat": caveat,
                 "movement": mv,
                 "invoice": best_match,
             })
@@ -4908,19 +4981,26 @@ async def _extract_and_parse_statement(
 
     raw_text = ""
 
+    # CSV is a STRUCTURED, known format — parse it deterministically (one row =
+    # one movement). Never send it to the LLM, which could invent/drop rows.
+    # This is the fix for "the app added a phantom $0 movement": the extracted
+    # movements are now EXACTLY the file's rows.
+    if file_type == "csv":
+        raw_text, _ = _parse_csv_statement(file_content)  # for the raw-text preview
+        movements = _parse_csv_movements(file_content)
+        return (raw_text, movements)
+
     if file_type == "pdf":
         raw_text = _extract_text_from_pdf(file_content)
     elif file_type in ("png", "jpg", "jpeg"):
         raw_text = await _extract_text_from_image(file_content, file_type)
     elif file_type in ("xlsx", "xls"):
         raw_text, _ = _parse_excel_statement(file_content)
-    elif file_type == "csv":
-        raw_text, _ = _parse_csv_statement(file_content)
 
     if not raw_text or len(raw_text.strip()) < 50:
         raise ValueError("Could not extract meaningful text from the file")
 
-    # Use GPT-4 to parse the raw text into structured movements
+    # PDF/image/Excel are unstructured/scanned → GPT parses the extracted text.
     movements = await _ai_parse_movements(raw_text, account_key)
     return (raw_text, movements)
 
@@ -5026,12 +5106,136 @@ def _parse_excel_statement(file_content: bytes) -> tuple:
 
 
 def _parse_csv_statement(file_content: bytes) -> tuple:
-    """Parse a CSV bank statement."""
+    """Parse a CSV bank statement. Kept for the raw-text preview only."""
     try:
-        text = file_content.decode("utf-8", errors="replace")
-        return (text, [])  # Will be parsed by AI
+        text = file_content.decode("utf-8-sig", errors="replace")
+        return (text, [])
     except Exception as e:
         raise ValueError(f"Could not read CSV file: {e}")
+
+
+def _parse_amount(raw) -> float:
+    """Parse a money cell to a signed float. Handles $, thousands commas,
+    leading +/-, and accounting parentheses for negatives — deterministically."""
+    if raw is None:
+        return 0.0
+    s = str(raw).strip()
+    if not s:
+        return 0.0
+    neg = False
+    if s.startswith("(") and s.endswith(")"):  # (750.00) = -750.00
+        neg = True
+        s = s[1:-1]
+    s = s.replace("$", "").replace(" ", "").replace(",", "")
+    if s.startswith("-"):
+        neg = True
+        s = s[1:]
+    elif s.startswith("+"):
+        s = s[1:]
+    try:
+        val = float(s)
+    except ValueError:
+        return 0.0
+    return -val if neg else val
+
+
+def _parse_csv_movements(file_content: bytes) -> list:
+    """Deterministically parse a CSV bank statement into movements — NO AI, so
+    the extracted movements are EXACTLY the rows in the file (never invented,
+    added, or dropped). One data row = one movement; genuinely empty rows are
+    skipped. Recognizes date/description/amount columns (or separate
+    debit/credit columns) by header, with Spanish/English aliases; falls back
+    to positional columns (date, description, amount) when there's no header.
+    Raises ValueError if it can't find an amount column, so the caller can
+    surface a clear error rather than silently guessing."""
+    import csv as _csv
+    import io as _io
+
+    text = file_content.decode("utf-8-sig", errors="replace")
+    # Detect the delimiter (comma/semicolon/tab) from the header line.
+    sample = text[:4096]
+    try:
+        dialect = _csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        delim = dialect.delimiter
+    except Exception:
+        delim = ";" if sample.count(";") > sample.count(",") else ","
+
+    rows = [r for r in _csv.reader(_io.StringIO(text), delimiter=delim)]
+    # Drop fully-empty rows (every cell blank) — this is where a phantom $0
+    # movement used to come from.
+    rows = [r for r in rows if any((c or "").strip() for c in r)]
+    if not rows:
+        return []
+
+    def norm(h):
+        return (h or "").strip().lower()
+
+    DATE_H = {"date", "fecha", "fecha de operacion", "fecha operación", "trans date", "posting date"}
+    DESC_H = {"description", "descripcion", "descripción", "concepto", "detalle", "memo", "concept"}
+    AMT_H = {"amount", "monto", "importe", "valor", "cantidad"}
+    DEBIT_H = {"debit", "debito", "débito", "cargo", "retiro", "withdrawal", "salida"}
+    CREDIT_H = {"credit", "credito", "crédito", "abono", "deposito", "depósito", "deposit", "entrada"}
+
+    header = rows[0]
+    hnorm = [norm(h) for h in header]
+    has_header = any(h in (DATE_H | DESC_H | AMT_H | DEBIT_H | CREDIT_H) for h in hnorm)
+
+    def find(cands):
+        for i, h in enumerate(hnorm):
+            if h in cands:
+                return i
+        return None
+
+    if has_header:
+        di = find(DATE_H)
+        ci = find(DESC_H)
+        ai = find(AMT_H)
+        dbi = find(DEBIT_H)
+        cri = find(CREDIT_H)
+        data_rows = rows[1:]
+        ncols = len(header)
+        if ai is None and dbi is None and cri is None:
+            raise ValueError("El CSV no tiene una columna de monto (amount/monto) ni débito/crédito reconocible.")
+    else:
+        # Positional: date, description, amount
+        di, ci, ai, dbi, cri = 0, 1, 2, None, None
+        data_rows = rows
+        ncols = 3
+
+    # When the amount is the LAST column and delimiter is comma, an unquoted
+    # thousands separator ("-$25,000.00") gets split into extra trailing cells.
+    # Rejoin them back into the amount so the value isn't mangled.
+    amount_is_last = ai is not None and ai == ncols - 1
+
+    movements = []
+    for r in data_rows:
+        def cell(idx):
+            return r[idx].strip() if (idx is not None and idx < len(r) and r[idx] is not None) else ""
+
+        date_v = cell(di)
+        desc_v = cell(ci)
+        if ai is not None:
+            if amount_is_last and len(r) > ncols:
+                amount = _parse_amount("".join(r[ai:]))
+            else:
+                amount = _parse_amount(cell(ai))
+        else:
+            debit = abs(_parse_amount(cell(dbi))) if dbi is not None else 0.0
+            credit = abs(_parse_amount(cell(cri))) if cri is not None else 0.0
+            amount = credit - debit  # credit positive, debit negative
+
+        # Skip a row that carries no real content (no date, no description, no
+        # amount) — never fabricate a $0 movement.
+        if not date_v and not desc_v and abs(amount) < 0.005:
+            continue
+
+        movements.append({
+            "date": date_v or date.today().isoformat(),
+            "description": desc_v,
+            "amount": amount,
+            "is_credit": amount > 0,
+        })
+    return movements
 
 
 def _coerce_json(content: str):
