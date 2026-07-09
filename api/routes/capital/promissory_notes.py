@@ -39,6 +39,7 @@ class PromissoryNoteCreate(BaseModel):
     lender_representative: Optional[str] = None
     default_interest_rate: float = 12.0
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None  # Capital bank that received the loan
 
 
 class PromissoryNoteUpdate(BaseModel):
@@ -64,6 +65,7 @@ class RecordPaymentRequest(BaseModel):
     payment_method: str = "bank_transfer"  # bank_transfer, check, cash, zelle, wire
     reference: Optional[str] = None
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None  # Capital bank the payment left from
 
 
 # =============================================================================
@@ -338,6 +340,7 @@ async def create_promissory_note(data: PromissoryNoteCreate):
             description=f"Pagaré recibido — {lender_name} — ${data.loan_amount:,.2f} al {data.annual_rate}%",
             investor_id=data.investor_id,
             counterparty_name=lender_name,
+            bank_account_id=data.bank_account_id,
             notes=f"Pagaré {data.term_months} meses, vence {maturity.isoformat()}",
         )
 
@@ -468,7 +471,10 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
         except Exception as pay_err:
             logger.warning(f"Could not record individual payment record: {pay_err}")
         
-        # Record capital flow (outgoing - paying investor back)
+        # Record capital flow (outgoing - paying investor back).
+        # skip_accounting: the record_txn below writes the (single) accounting
+        # entry with full payment details — letting _record_flow also write one
+        # would double-record the same payment in capital_transactions.
         try:
             from api.routes.capital.capital_flows import _record_flow
             _record_flow({
@@ -477,7 +483,7 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
                 "investor_id": n["investor_id"],
                 "description": data.notes or f"Pago de nota promisoria a {n['investors']['name']}",
                 "flow_date": date.today().isoformat(),
-            })
+            }, skip_accounting=True)
         except Exception as flow_err:
             logger.warning(f"Could not record capital flow for note payment: {flow_err}")
 
@@ -491,6 +497,7 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
             counterparty_name=n["investors"]["name"],
             payment_method=data.payment_method,
             payment_reference=data.reference,
+            bank_account_id=data.bank_account_id,
             notes=data.notes,
         )
         

@@ -224,18 +224,31 @@ class BudgetCreate(BaseModel):
 # HELPERS
 # ============================================================================
 
-def _generate_transaction_number() -> str:
-    today = date.today().strftime("%y%m%d")
-    prefix = f"TXN-{today}-"
+def _max_txn_seq(prefix: str) -> int:
+    """Highest sequence number in use today, parsing the numeric part and
+    IGNORING the -D/-C suffix ledger pairs add. Max-based (not count-based)
+    so it never reissues a number when pairs leave the count desynced from
+    the real max — which would violate the UNIQUE index."""
     try:
         existing = sb.table("accounting_transactions") \
             .select("transaction_number") \
             .like("transaction_number", f"{prefix}%") \
-            .execute()
-        count = len(existing.data) if existing.data else 0
+            .execute().data or []
     except Exception:
-        count = 0
-    return f"{prefix}{count + 1:03d}"
+        return 0
+    hi = 0
+    for row in existing:
+        num = row.get("transaction_number") or ""
+        mid = num[len(prefix):].split("-")[0]
+        if mid.isdigit():
+            hi = max(hi, int(mid))
+    return hi
+
+
+def _generate_transaction_number() -> str:
+    today = date.today().strftime("%y%m%d")
+    prefix = f"TXN-{today}-"
+    return f"{prefix}{_max_txn_seq(prefix) + 1:03d}"
 
 
 def _generate_invoice_number(direction: str) -> str:
@@ -907,6 +920,16 @@ async def create_transaction(data: TransactionCreate):
                 sb.table("accounting_transactions").update(
                     {"linked_transaction_id": bank_result.data[0]["id"]}
                 ).eq("id", pnl_txn_id).execute()
+                pnl_txn["linked_transaction_id"] = bank_result.data[0]["id"]
+                # Only the bank leg may carry bank_account_id: with BOTH legs
+                # carrying it (and the same is_income), the derived balance in
+                # get_bank_balance would count the movement TWICE. Verified
+                # 2026-07-08: no such pair exists in production — this is a
+                # preventive fix, no data repair needed.
+                sb.table("accounting_transactions").update(
+                    {"bank_account_id": None}
+                ).eq("id", pnl_txn_id).execute()
+                pnl_txn["bank_account_id"] = None
 
     return pnl_txn
 
@@ -960,10 +983,18 @@ async def split_transaction(transaction_id: str, data: dict):
         sb.table("accounting_transactions").update({"status": "voided"}).eq("id", p["linked_transaction_id"]).execute()
     _log_audit("accounting_transactions", transaction_id, "split", description=f"Split into {len(parts)} parts")
 
-    # Look up bank accounting account for double-entry on children
+    # Look up bank accounting account for double-entry on children. The P&L
+    # leg may not carry the bank id (only the bank leg does) — fall back to
+    # the linked counterpart's bank when splitting from the P&L side.
+    split_bank_id = p.get("bank_account_id")
+    if not split_bank_id and p.get("linked_transaction_id"):
+        linked_row = sb.table("accounting_transactions").select("bank_account_id") \
+            .eq("id", p["linked_transaction_id"]).execute().data
+        if linked_row:
+            split_bank_id = linked_row[0].get("bank_account_id")
     bank_accounting_id = None
-    if p.get("bank_account_id"):
-        ba = sb.table("bank_accounts").select("accounting_account_id").eq("id", p["bank_account_id"]).execute()
+    if split_bank_id:
+        ba = sb.table("bank_accounts").select("accounting_account_id").eq("id", split_bank_id).execute()
         if ba.data and ba.data[0].get("accounting_account_id"):
             bank_accounting_id = ba.data[0]["accounting_account_id"]
 
@@ -978,7 +1009,9 @@ async def split_transaction(transaction_id: str, data: dict):
             "account_id": pt.get("account_id") or p.get("account_id"),
             "description": pt.get("description", p.get("description", ""))[:500],
             "counterparty_name": p.get("counterparty_name"),
-            "bank_account_id": p.get("bank_account_id"),
+            # P&L child carries no bank id when a bank counterpart is created
+            # below — the derived balance must count the movement once.
+            "bank_account_id": None if bank_accounting_id else split_bank_id,
             "property_id": pt.get("property_id") or p.get("property_id"),
             "entity_type": p.get("entity_type"),
             "entity_id": p.get("entity_id"),
@@ -1002,7 +1035,7 @@ async def split_transaction(transaction_id: str, data: dict):
                         "account_id": bank_accounting_id,
                         "linked_transaction_id": pnl_id,
                         "description": pt.get("description", p.get("description", ""))[:500],
-                        "bank_account_id": p.get("bank_account_id"),
+                        "bank_account_id": split_bank_id,
                         "notes": f"Contrapartida bancaria (split)",
                         "status": "confirmed",
                     }

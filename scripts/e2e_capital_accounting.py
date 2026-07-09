@@ -365,7 +365,36 @@ async def main():
     check("recurrente desactivado", row["is_active"] is False)
 
     # ------------------------------------------------------------------
-    print("\n11) Borrado en cascada de factura")
+    print("\n11) Inversionista: depósito ligado a contabilidad (par pendiente → aprobar)")
+    from api.routes.capital.investors import InvestmentCreate, create_investment
+    from api.routes.capital.payments import confirm_transaction
+
+    investor = sb.table("investors").insert({"name": f"{TAG} Inversionista", "status": "active",
+                                             "total_invested": 0, "available_capital": 10000}).execute().data[0]
+    track("investors", investor["id"])
+    bal_before = get_capital_bank_balance(bank_a["id"])
+    inv_res = await create_investment(InvestmentCreate(
+        investor_id=investor["id"], amount=2000, bank_account_id=bank_a["id"],
+        notes=f"{TAG} deposito"))
+    track("investments", inv_res["investment"]["id"])
+    dep_legs = sb.table("capital_transactions").select("*") \
+        .eq("investor_id", investor["id"]).eq("transaction_type", "investor_deposit").execute().data or []
+    for leg in dep_legs:
+        track("capital_transactions", leg["id"])
+    check("depósito crea PAR pendiente", len(dep_legs) == 2
+          and all(l["status"] == "pending_confirmation" for l in dep_legs),
+          f"{len(dep_legs)} piernas")
+    check("pendiente NO afecta saldo", abs(get_capital_bank_balance(bank_a["id"]) - bal_before) < 0.01)
+
+    bank_leg = next((l for l in dep_legs if l.get("bank_account_id")), None)
+    check("pierna banco correcta", bool(bank_leg) and bank_leg["bank_account_id"] == bank_a["id"])
+    await confirm_transaction(bank_leg["id"])
+    dep_after = sb.table("capital_transactions").select("status").in_("id", [l["id"] for l in dep_legs]).execute().data
+    check("aprobar confirma AMBAS piernas", all(l["status"] == "confirmed" for l in dep_after))
+    check("saldo sube 2000 al aprobar", abs(get_capital_bank_balance(bank_a["id"]) - (bal_before + 2000)) < 0.01)
+
+    # ------------------------------------------------------------------
+    print("\n12) Borrado en cascada de factura")
     del_res = await delete_capital_invoice(inv["id"])
     CREATED[:] = [(t_, i_) for (t_, i_) in CREATED if not (t_ == "capital_invoices" and i_ == inv["id"])]
     check("cascada elimina ledger", del_res["deleted_ledger_rows"] >= 2, str(del_res))
@@ -380,7 +409,8 @@ def teardown():
     order = ["capital_invoice_payments", "capital_statement_movements", "capital_bank_statements",
              "capital_transactions", "capital_invoices", "capital_payment_orders",
              "capital_recurring_expenses", "rto_payments", "rto_contracts", "sales",
-             "properties", "clients", "capital_bank_accounts", "capital_accounts"]
+             "properties", "clients", "investments", "investors",
+             "capital_bank_accounts", "capital_accounts"]
     # payments/audit referencing our invoices
     inv_ids = [i for (t, i) in CREATED if t == "capital_invoices"]
     if inv_ids:

@@ -505,18 +505,32 @@ async def list_transactions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _generate_capital_txn_number() -> str:
-    today = date.today().strftime("%y%m%d")
-    prefix = f"TXN-{today}-"
+def _max_capital_txn_seq(prefix: str) -> int:
+    """Highest sequence number in use today, parsing the numeric part and
+    IGNORING the -D/-C suffix that ledger pairs add. Count-based numbering
+    was fragile: post_to_capital_ledger writes two rows (…-D and …-C) per
+    base number, so a plain count desynced from the real max and could
+    reissue a number, violating the UNIQUE index. Max-based never reissues."""
     try:
         existing = sb.table("capital_transactions") \
             .select("transaction_number") \
             .like("transaction_number", f"{prefix}%") \
-            .execute()
-        count = len(existing.data) if existing.data else 0
+            .execute().data or []
     except Exception:
-        count = 0
-    return f"{prefix}{count + 1:03d}"
+        return 0
+    hi = 0
+    for row in existing:
+        num = row.get("transaction_number") or ""
+        mid = num[len(prefix):].split("-")[0]  # strip -D / -C suffix
+        if mid.isdigit():
+            hi = max(hi, int(mid))
+    return hi
+
+
+def _generate_capital_txn_number() -> str:
+    today = date.today().strftime("%y%m%d")
+    prefix = f"TXN-{today}-"
+    return f"{prefix}{_max_capital_txn_seq(prefix) + 1:03d}"
 
 
 @router.post("/transactions")
@@ -702,10 +716,21 @@ async def split_capital_transaction(transaction_id: str, data: dict):
         if ba.data and ba.data[0].get("accounting_account_id"):
             bank_accounting_id = ba.data[0]["accounting_account_id"]
 
+    # Seed the running sequence ONCE and increment locally — re-querying per
+    # insert would race and can reissue a number (UNIQUE violation).
+    today = date.today().strftime("%y%m%d")
+    prefix = f"TXN-{today}-"
+    seq = _max_capital_txn_seq(prefix)
+
+    def _next_number() -> str:
+        nonlocal seq
+        seq += 1
+        return f"{prefix}{seq:03d}"
+
     created = []
     for pt in parts:
         child = {
-            "transaction_number": _generate_capital_txn_number(),
+            "transaction_number": _next_number(),
             "transaction_date": p["transaction_date"],
             "transaction_type": p["transaction_type"],
             "amount": float(pt["amount"]),
@@ -734,7 +759,7 @@ async def split_capital_transaction(transaction_id: str, data: dict):
                 created.append(r.data[0])
                 if bank_accounting_id:
                     bank_child = {
-                        "transaction_number": _generate_capital_txn_number(),
+                        "transaction_number": _next_number(),
                         "transaction_date": p["transaction_date"],
                         "transaction_type": p["transaction_type"],
                         "amount": float(pt["amount"]),
@@ -1112,28 +1137,44 @@ async def create_bank_account(data: BankAccountCreate):
             raise HTTPException(status_code=500, detail="Error creating bank account")
         bank = result.data[0]
 
-        # Auto-provision + link the chart account (best-effort).
+        # Auto-provision + link the chart account. Retry on code collision:
+        # two banks created back-to-back can race on the "next free 101xx code"
+        # (read lag makes both pick the same number → UNIQUE violation), which
+        # previously left the second bank with no chart account and unusable
+        # for ledger postings.
         try:
             parent = sb.table("capital_accounts").select("id").eq("code", "10100").limit(1).execute()
             parent_id = parent.data[0]["id"] if parent.data else None
-            # Next free numeric code in the 101xx range
-            existing = sb.table("capital_accounts").select("code").like("code", "101%").execute().data or []
-            nums = [int(a["code"]) for a in existing if (a.get("code") or "").isdigit()]
-            next_code = str(max(nums) + 10 if nums else 10110)
-            acct = sb.table("capital_accounts").insert({
-                "code": next_code,
-                "name": bank["name"],
-                "account_type": "asset",
-                "category": "bank",
-                "is_header": False,
-                "report_section": "balance_sheet",
-                "parent_account_id": parent_id,
-            }).execute()
-            if acct.data:
+            acct_row = None
+            for attempt in range(6):
+                existing = sb.table("capital_accounts").select("code").like("code", "101%").execute().data or []
+                nums = [int(a["code"]) for a in existing if (a.get("code") or "").isdigit()]
+                next_code = str((max(nums) if nums else 10100) + 10 + attempt * 10)
+                try:
+                    acct = sb.table("capital_accounts").insert({
+                        "code": next_code,
+                        "name": bank["name"],
+                        "account_type": "asset",
+                        "category": "bank",
+                        "is_header": False,
+                        "report_section": "balance_sheet",
+                        "parent_account_id": parent_id,
+                    }).execute()
+                    if acct.data:
+                        acct_row = acct.data[0]
+                        break
+                except Exception as insert_err:
+                    # Likely a duplicate code from a concurrent create — retry
+                    # with a bumped code.
+                    logger.info(f"[capital-accounting] bank chart code {next_code} taken, retrying: {insert_err}")
+                    continue
+            if acct_row:
                 sb.table("capital_bank_accounts").update(
-                    {"accounting_account_id": acct.data[0]["id"]}
+                    {"accounting_account_id": acct_row["id"]}
                 ).eq("id", bank["id"]).execute()
-                bank["accounting_account_id"] = acct.data[0]["id"]
+                bank["accounting_account_id"] = acct_row["id"]
+            else:
+                logger.warning(f"[capital-accounting] Could not provision chart account for bank {bank['id']} after retries")
         except Exception as e:
             logger.warning(f"[capital-accounting] Could not auto-link chart account for bank {bank['id']}: {e}")
 

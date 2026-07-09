@@ -47,6 +47,7 @@ class InvestmentCreate(BaseModel):
     amount: float
     expected_return_rate: Optional[float] = None
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None  # Capital bank that received the money
 
 
 # =============================================================================
@@ -289,6 +290,8 @@ async def create_investment(data: InvestmentCreate):
             investor_id=data.investor_id,
             property_id=data.property_id,
             rto_contract_id=data.rto_contract_id,
+            bank_account_id=data.bank_account_id,
+            counterparty_name=inv_name or None,
             notes=data.notes,
         )
 

@@ -764,37 +764,31 @@ async def pay_homes(application_id: str):
                 "amount_pending": max(0, round(float(sale.get("sale_price", 0)) - current_paid - remaining, 2)),
             }).eq("id", application["sale_id"]).execute()
 
-            # 2. Homes accounting: income from Capital
-            try:
-                sb.table("accounting_transactions").insert({
-                    "property_id": application.get("property_id"),
-                    "transaction_type": "sale_rto_capital",
-                    "is_income": True,
-                    "amount": remaining,
-                    "description": f"Capital paga porción financiada — {prop_addr}",
-                    "counterparty_name": "Maninos Capital LLC",
-                    "entity_type": "sale",
-                    "entity_id": application.get("sale_id"),
-                    "status": "confirmed",
-                    "transaction_date": datetime.utcnow().date().isoformat(),
-                }).execute()
-            except Exception as e:
-                logger.warning(f"[capital] Homes accounting insert error: {e}")
+            # 2. Homes accounting: NO direct insert here. The inbound
+            #    payment_order (pago_capital) created below posts Homes'
+            #    balanced ledger pair when Treasury approves it with the
+            #    receiving bank (Notificaciones flow). A direct row here too
+            #    would double-count the income on the Homes side.
 
-            # 3. Capital accounting: outflow to Homes
+            # 3. Capital accounting: outflow to Homes via the accounting hook
+            #    → double-entry pair against a Capital bank (primary as
+            #    fallback), debiting 14300 RTO Properties. Starts as
+            #    pending_confirmation so it's approved in Capital's
+            #    Notificaciones when the transfer actually executes.
             try:
-                sb.table("capital_transactions").insert({
-                    "property_id": application.get("property_id"),
-                    "transaction_type": "acquisition",
-                    "is_income": False,
-                    "amount": remaining,
-                    "description": f"Pago a Homes por financiamiento — {prop_addr}",
-                    "counterparty_name": "Maninos Homes LLC",
-                    "status": "confirmed",
-                    "transaction_date": datetime.utcnow().date().isoformat(),
-                }).execute()
+                from api.routes.capital._accounting_hooks import record_txn
+                record_txn(
+                    txn_type="acquisition",
+                    amount=remaining,
+                    is_income=False,
+                    description=f"Pago a Homes por financiamiento — {prop_addr}",
+                    property_id=application.get("property_id"),
+                    counterparty_name="Maninos Homes LLC",
+                    payment_method="transferencia",
+                    created_by="capital",
+                )
             except Exception as e:
-                logger.warning(f"[capital] Capital accounting insert error: {e}")
+                logger.warning(f"[capital] Capital accounting hook error: {e}")
 
         # 4. Create payment_order for Homes (appears in Por Aprobar → Recibidos flow)
         try:

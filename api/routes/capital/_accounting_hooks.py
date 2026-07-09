@@ -103,6 +103,20 @@ def record_txn(
     """
     when = txn_date or date.today().isoformat()
 
+    # Callers that don't know the bank yet fall back to the PRIMARY Capital
+    # bank so the entry still lands as a balanced pair (it starts as
+    # pending_confirmation — approval is the safety net, and reconciliation
+    # can re-point the bank). With no banks configured, behavior is the
+    # legacy single-row insert.
+    if not bank_account_id:
+        try:
+            res = sb.table("capital_bank_accounts").select("id").eq("is_active", True) \
+                .eq("is_primary", True).limit(1).execute()
+            if res.data:
+                bank_account_id = res.data[0]["id"]
+        except Exception:
+            pass
+
     # ---- Double-entry path (bank known) -----------------------------------
     if bank_account_id:
         try:

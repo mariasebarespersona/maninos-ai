@@ -30,6 +30,7 @@ class FlowCreate(BaseModel):
     description: Optional[str] = None
     reference: Optional[str] = None
     flow_date: Optional[str] = None  # YYYY-MM-DD
+    bank_account_id: Optional[str] = None  # Capital bank the money moved through
 
 
 class InvestmentLink(BaseModel):
@@ -39,6 +40,7 @@ class InvestmentLink(BaseModel):
     amount: float
     expected_return_rate: float = 12.0  # default 12%
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None
 
 
 class ReturnPayment(BaseModel):
@@ -47,6 +49,7 @@ class ReturnPayment(BaseModel):
     investment_id: str
     amount: float
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None
 
 
 # =============================================================================
@@ -83,6 +86,9 @@ def _record_flow(flow_data: dict, *, skip_accounting: bool = False) -> dict:
     Set ``skip_accounting=True`` if the caller already records its own
     accounting entry (e.g. ``record_payment`` in payments.py).
     """
+    # capital_flows has no bank column — the bank only travels to the
+    # accounting entry below.
+    bank_account_id = flow_data.pop("bank_account_id", None)
     balance = _get_current_balance() + float(flow_data.get("amount", 0))
     flow_data["balance_after"] = balance
     result = sb.table("capital_flows").insert(flow_data).execute()
@@ -104,6 +110,7 @@ def _record_flow(flow_data: dict, *, skip_accounting: bool = False) -> dict:
                 property_id=flow_data.get("property_id"),
                 rto_contract_id=flow_data.get("rto_contract_id"),
                 rto_payment_id=flow_data.get("rto_payment_id"),
+                bank_account_id=bank_account_id,
                 created_by="auto-flow",
             )
 
@@ -217,6 +224,7 @@ async def record_flow(data: FlowCreate):
             "description": data.description,
             "reference": data.reference,
             "flow_date": data.flow_date or date.today().isoformat(),
+            "bank_account_id": data.bank_account_id,
         })
 
         return {"ok": True, "flow": flow, "message": "Flujo de capital registrado."}
@@ -273,6 +281,7 @@ async def link_investment_to_contract(data: InvestmentLink):
             property_id=contract.data[0].get("property_id"),
             rto_contract_id=data.rto_contract_id,
             counterparty_name=inv["name"],
+            bank_account_id=data.bank_account_id,
             notes=f"investment_link|{data.investor_id}|{data.rto_contract_id}|{data.amount}|{data.expected_return_rate}",
             created_by="sistema",
             status="pending_confirmation",
@@ -327,6 +336,7 @@ async def pay_investor_return(data: ReturnPayment):
             property_id=inv.get("property_id"),
             rto_contract_id=inv.get("rto_contract_id"),
             counterparty_name=investor_name,
+            bank_account_id=data.bank_account_id,
             notes=f"return_payment|{data.investor_id}|{data.investment_id}|{data.amount}",
             created_by="sistema",
             status="pending_confirmation",
