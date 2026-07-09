@@ -171,7 +171,10 @@ async def create_capital_invoice(data: CapitalInvoiceCreate):
         "line_items": json.dumps(data.line_items or []),
         "notes": data.notes,
         "payment_terms": data.payment_terms,
-        "status": "draft",
+        # Manual Capital invoices are issued on creation (they record a real
+        # receivable/payable and there is no separate "send" step in the UI),
+        # so they count toward aging / Por Cobrar / Por Pagar immediately.
+        "status": "sent",
     }
     insert_data = {k: v for k, v in insert_data.items() if v is not None}
     result = sb.table("capital_invoices").insert(insert_data).execute()
