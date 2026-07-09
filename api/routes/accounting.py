@@ -434,6 +434,23 @@ async def get_accounting_dashboard(
         .lte("created_at", end_str + "T23:59:59")
     renovations = (reno_q.execute()).data or []
 
+    # Per-house renovation cost is CUMULATIVE (all renovations ever done on the
+    # house, possibly across many periods) — it's part of the house's total
+    # cost basis, not a period metric. The period-filtered `renovations` above
+    # is only for the P&L "total renovaciones" of the selected period. For the
+    # per-house summaries (inventario / property P&L) we sum ALL renovations of
+    # each house, all-time. (Fixes "only shows today's renovations".)
+    reno_sum_by_property: dict = {}
+    try:
+        all_renos = (sb.table("renovations")
+                     .select("property_id, total_cost").execute()).data or []
+        for r in all_renos:
+            rpid = r.get("property_id")
+            if rpid:
+                reno_sum_by_property[rpid] = reno_sum_by_property.get(rpid, 0.0) + float(r.get("total_cost") or 0)
+    except Exception as e:
+        logger.warning(f"[dashboard] all-time renovation sum failed: {e}")
+
     # ---- Financials ----
     # Sales income comes from the LEDGER, not the sales table's status filter
     # (which excluded rto_pending / partially-paid sales, so the Resumen showed
@@ -524,7 +541,8 @@ async def get_accounting_dashboard(
         pid = prop["id"]
         pp = float(prop.get("purchase_price") or 0)
         sp = float(prop.get("sale_price") or 0)
-        reno_cost = sum(float(r.get("total_cost") or 0) for r in renovations if r.get("property_id") == pid)
+        # All-time renovation cost for this house (not period-limited).
+        reno_cost = round(reno_sum_by_property.get(pid, 0.0), 2)
         sale_match = next((s for s in sales if s.get("property_id") == pid and s.get("status") in ("paid", "completed", "rto_approved")), None)
         if sale_match:
             sp = float(sale_match.get("sale_price") or sp)
@@ -580,7 +598,11 @@ async def get_accounting_dashboard(
         for p in all_props:
             code = p.get("property_code") or ""
             compra = _cost("Compra", code, p.get("purchase_price"))
-            reno = _cost("Renovación", code, p.get("renovation_cost"))
+            # All-time renovation total for the house: prefer the per-house
+            # "Renovación <CODE>" COGS account (real posted money), else the sum
+            # of ALL renovation records — NOT the single, overwritten
+            # property.renovation_cost (which only held the latest quote).
+            reno = _cost("Renovación", code, reno_sum_by_property.get(p["id"], 0.0))
             movida = _cost("Movida", code, p.get("move_cost"))
             comision = _cost("Comisión", code, p.get("commission"))
             venta = float(p.get("sale_price") or 0)

@@ -150,11 +150,11 @@ def _calculate_post_renovation_price(property_id: str, purchase_price: float, pr
     else:
         reno_cost = 0.0
         try:
-            reno = sb.table("renovations").select("total_cost, status") \
-                .eq("property_id", property_id) \
-                .order("created_at", desc=True).limit(1).execute()
-            if reno.data:
-                reno_cost = float(reno.data[0].get("total_cost", 0) or 0)
+            # Sum ALL renovations for the house (renovations happen at different
+            # times) — not just the latest one. Renovation cost is cumulative.
+            reno = sb.table("renovations").select("total_cost") \
+                .eq("property_id", property_id).execute()
+            reno_cost = sum(float(r.get("total_cost") or 0) for r in (reno.data or []))
         except Exception as e:
             logger.warning(f"[price_calc] Could not fetch renovation cost: {e}")
 
