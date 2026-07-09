@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors, AlertTriangle
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -85,7 +85,7 @@ interface PropertyPnl {
 }
 
 interface AccountInfo {
-  id: string; code: string; name: string; account_type: string; category: string; is_system: boolean
+  id: string; code: string; name: string; account_type: string; category: string; is_system: boolean; is_header?: boolean
 }
 
 interface Invoice {
@@ -3369,9 +3369,22 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
   }, [])
   const INCOME_T = ['Income', 'Other Income', 'income']
   const EXPENSE_T = ['Expenses', 'Other Expense', 'Cost of Goods Sold', 'expense', 'cogs']
-  const acctOptions = accounts
-    .filter(a => (form.direction === 'receivable' ? INCOME_T : EXPENSE_T).includes(a.account_type) && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  // Show ALL postable accounts from the chart (not just income/expense), so
+  // any account can be assigned. Exclude only group headers and the synthetic
+  // PL_/BS_ placeholder codes. Grouped by type (the "natural" type for the
+  // invoice direction first) so the full list stays navigable.
+  const primaryTypes = form.direction === 'receivable' ? INCOME_T : EXPENSE_T
+  const acctGroups = Object.entries(
+    accounts
+      .filter(a => !a.is_header && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
+      .reduce((acc, a) => { (acc[a.account_type] ||= []).push(a); return acc }, {} as Record<string, AccountInfo[]>)
+  )
+    .map(([type, list]) => ({ type, list: list.sort((x, y) => x.name.localeCompare(y.name)) }))
+    .sort((g1, g2) => {
+      const p1 = primaryTypes.includes(g1.type) ? 0 : 1
+      const p2 = primaryTypes.includes(g2.type) ? 0 : 1
+      return p1 - p2 || g1.type.localeCompare(g2.type)
+    })
   const handleSubmit = async () => {
     if (!form.counterparty_name || !form.total_amount) return alert('Nombre y monto requeridos')
     setSaving(true)
@@ -3415,7 +3428,11 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta contable {form.direction === 'receivable' ? '(ingreso)' : '(gasto)'}</label>
               <select value={form.account_code} onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
                 <option value="">{form.direction === 'receivable' ? 'House Sales (por defecto)' : 'Other Operating Expenses (por defecto)'}</option>
-                {acctOptions.map(a => <option key={a.id} value={a.code}>{a.name}</option>)}
+                {acctGroups.map(g => (
+                  <optgroup key={g.type} label={g.type}>
+                    {g.list.map(a => <option key={a.id} value={a.code}>{a.name}</option>)}
+                  </optgroup>
+                ))}
               </select></div>
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción</label>
@@ -3482,6 +3499,15 @@ interface ReconcileMatch {
   score: number
   confidence: string
   partial?: boolean
+  signals?: {
+    amount?: boolean
+    name?: boolean
+    date?: boolean
+    name_similarity?: number
+    days_apart?: number | null
+  }
+  reason?: string
+  caveat?: string | null
   movement: StatementMovement
   transaction?: Transaction
   invoice?: { id: string; invoice_number?: string; counterparty_name?: string; total_amount?: number; balance_due?: number; direction?: string }
@@ -4375,14 +4401,47 @@ function EstadoCuentaTab() {
                                   </div>
                                 )}
                               </div>
-                              <span className={`flex-shrink-0 px-2 py-1 rounded-full text-[10px] font-bold ${
-                                match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
-                                match.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {match.score}%
-                              </span>
+                              <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${
+                                  match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {match.confidence === 'high' ? 'Coincidencia segura' : 'Revisar'}
+                                </span>
+                                <span className="text-[10px] font-medium text-stone-400">{match.score}%</span>
+                              </div>
                             </div>
+
+                            {/* Why it matched: reason + signal chips */}
+                            {(match.reason || match.signals) && (
+                              <div className="mt-2 pl-7 flex flex-wrap items-center gap-1.5">
+                                {match.signals && (
+                                  <>
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.amount ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                      Monto {match.signals.amount ? '✓' : '✗'}
+                                    </span>
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.name ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                      Nombre {match.signals.name ? '✓' : '✗'}
+                                      {typeof match.signals.name_similarity === 'number' && ` ${match.signals.name_similarity}%`}
+                                    </span>
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.date ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                      Fecha {match.signals.date ? '✓' : (typeof match.signals.days_apart === 'number' ? `±${match.signals.days_apart}d` : '✗')}
+                                    </span>
+                                  </>
+                                )}
+                                {match.reason && (
+                                  <span className="text-[11px]" style={{ color: 'var(--ash)' }}>{match.reason}</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Caveat — the app is NOT sure */}
+                            {match.caveat && (
+                              <div className="mt-2 ml-7 flex items-start gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-medium text-amber-800">{match.caveat}</p>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
