@@ -521,8 +521,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
                   <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Movida</th>
                   <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Comisión</th>
                   <th className="text-right py-2 px-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Invertido</th>
-                  <th className="text-right py-2 px-2 font-medium" style={{ color: 'var(--slate)' }}>Venta</th>
-                  <th className="text-right py-2 pl-2 font-medium" style={{ color: 'var(--slate)' }}>Ganancia</th>
+                  <th className="text-right py-2 pl-2 font-medium" style={{ color: 'var(--slate)' }}>Venta</th>
                 </tr>
               </thead>
               <tbody>
@@ -540,15 +539,14 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
                     <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(p.movida)}</td>
                     <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(p.comision)}</td>
                     <td className="py-2 px-2 text-right tabular-nums font-semibold" style={{ color: 'var(--charcoal)' }}>{fmtFull(p.invertido)}</td>
-                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{p.venta > 0 ? fmtFull(p.venta) : '—'}</td>
-                    <td className="py-2 pl-2 text-right tabular-nums font-semibold" style={{ color: p.ganancia > 0 ? '#059669' : p.ganancia < 0 ? '#dc2626' : 'var(--ash)' }}>{p.venta > 0 ? fmtFull(p.ganancia) : '—'}</td>
+                    <td className="py-2 pl-2 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{p.venta > 0 ? fmtFull(p.venta) : '—'}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2" style={{ borderColor: 'var(--stone)' }}>
                   <td className="py-2 pr-3 font-bold" style={{ color: 'var(--charcoal)' }}>Total ({propertyInventory.length})</td>
                   <td />
-                  {(['compra', 'renovacion', 'movida', 'comision', 'invertido', 'venta', 'ganancia'] as const).map(k => (
-                    <td key={k} className={`py-2 text-right tabular-nums font-bold ${k === 'ganancia' ? 'pl-2' : 'px-2'}`} style={{ color: 'var(--charcoal)' }}>
+                  {(['compra', 'renovacion', 'movida', 'comision', 'invertido', 'venta'] as const).map(k => (
+                    <td key={k} className={`py-2 text-right tabular-nums font-bold ${k === 'venta' ? 'pl-2' : 'px-2'}`} style={{ color: 'var(--charcoal)' }}>
                       {fmtFull(propertyInventory.reduce((sum, p) => sum + (p[k] || 0), 0))}
                     </td>
                   ))}

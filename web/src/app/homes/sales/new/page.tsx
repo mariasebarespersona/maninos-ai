@@ -73,7 +73,7 @@ function calculateCommissionPreview(
   foundById: string | null,
   soldById: string | null
 ) {
-  const total = COMMISSION_CASH
+  const total = saleType === 'rto' ? COMMISSION_RTO : COMMISSION_CASH
 
   if (!foundById && !soldById) {
     return { total, foundBy: 0, soldBy: 0, note: 'Sin asignar — comisión pendiente' }
@@ -128,6 +128,13 @@ function NewSaleContent() {
   // Employee assignment
   const [foundByEmployeeId, setFoundByEmployeeId] = useState<string | null>(null)
   const [soldByEmployeeId, setSoldByEmployeeId] = useState<string | null>(null)
+
+  // Editable commission amounts (prefilled by rule, overridable by user).
+  // Empty string = follow the suggested default; a set value = manual override.
+  const [foundByCommission, setFoundByCommission] = useState<string>('')
+  const [soldByCommission, setSoldByCommission] = useState<string>('')
+  const [foundByEdited, setFoundByEdited] = useState(false)
+  const [soldByEdited, setSoldByEdited] = useState(false)
   
   // New client form
   const [isNewClient, setIsNewClient] = useState(false)
@@ -175,6 +182,20 @@ function NewSaleContent() {
       if (client) setSelectedClient(client)
     }
   }, [preselectedClient, clients])
+
+  // Prefill suggested commission amounts by rule when sale_type or assigned
+  // employees change — but never clobber a value the user manually edited.
+  useEffect(() => {
+    const preview = calculateCommissionPreview(paymentType, foundByEmployeeId, soldByEmployeeId)
+    if (!foundByEdited) {
+      setFoundByCommission(foundByEmployeeId ? String(preview.foundBy) : '')
+    }
+    if (!soldByEdited) {
+      setSoldByCommission(
+        soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId ? String(preview.soldBy) : ''
+      )
+    }
+  }, [paymentType, foundByEmployeeId, soldByEmployeeId, foundByEdited, soldByEdited])
 
   const fetchProperties = async () => {
     try {
@@ -296,6 +317,14 @@ function NewSaleContent() {
         throw new Error('Debe seleccionar o crear un cliente')
       }
 
+      // Commission amounts: only count a person when they're actually assigned.
+      // "No employee → no commission" is enforced by sending 0 in that case.
+      const commissionFoundBy = foundByEmployeeId ? (parseFloat(foundByCommission) || 0) : 0
+      const commissionSoldBy =
+        soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId
+          ? (parseFloat(soldByCommission) || 0)
+          : 0
+
       // Create sale
       const salePayload: any = {
         property_id: selectedProperty.id,
@@ -304,6 +333,9 @@ function NewSaleContent() {
         sale_type: paymentType || 'contado',
         found_by_employee_id: foundByEmployeeId || undefined,
         sold_by_employee_id: soldByEmployeeId || undefined,
+        commission_found_by: commissionFoundBy,
+        commission_sold_by: commissionSoldBy,
+        commission_amount: commissionFoundBy + commissionSoldBy,
       }
       if (paymentType === 'rto') {
         salePayload.rto_down_payment = rtoDownPayment ? parseFloat(rtoDownPayment) : undefined
@@ -354,6 +386,12 @@ function NewSaleContent() {
   const commissionPreview = calculateCommissionPreview(paymentType, foundByEmployeeId, soldByEmployeeId)
   const foundByUser = teamUsers.find(u => u.id === foundByEmployeeId)
   const soldByUser = teamUsers.find(u => u.id === soldByEmployeeId)
+
+  // Effective (possibly user-edited) commission amounts that will be sent.
+  const effectiveFoundByCommission = foundByEmployeeId ? (parseFloat(foundByCommission) || 0) : 0
+  const effectiveSoldByCommission =
+    soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId ? (parseFloat(soldByCommission) || 0) : 0
+  const effectiveTotalCommission = effectiveFoundByCommission + effectiveSoldByCommission
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in">
@@ -633,7 +671,10 @@ function NewSaleContent() {
                 <span className="text-sm font-semibold text-blue-800">🔍 Encontró al cliente</span>
                 <select
                   value={foundByEmployeeId || ''}
-                  onChange={(e) => setFoundByEmployeeId(e.target.value || null)}
+                  onChange={(e) => {
+                    setFoundByEmployeeId(e.target.value || null)
+                    setFoundByEdited(false)
+                  }}
                   className="w-full mt-2 p-2.5 rounded-lg border border-blue-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                 >
                   <option value="">— Sin asignar —</option>
@@ -643,6 +684,23 @@ function NewSaleContent() {
                     </option>
                   ))}
                 </select>
+                {foundByEmployeeId && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-blue-700 mb-1">Comisión ($)</label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400" />
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={foundByCommission}
+                        onChange={(e) => { setFoundByCommission(e.target.value); setFoundByEdited(true) }}
+                        className="w-full pl-8 pr-3 py-2 rounded-lg border border-blue-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Sold By */}
@@ -650,7 +708,10 @@ function NewSaleContent() {
                 <span className="text-sm font-semibold text-emerald-800">🤝 Cerró la venta</span>
                 <select
                   value={soldByEmployeeId || ''}
-                  onChange={(e) => setSoldByEmployeeId(e.target.value || null)}
+                  onChange={(e) => {
+                    setSoldByEmployeeId(e.target.value || null)
+                    setSoldByEdited(false)
+                  }}
                   className="w-full mt-2 p-2.5 rounded-lg border border-emerald-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
                 >
                   <option value="">— Sin asignar —</option>
@@ -660,6 +721,28 @@ function NewSaleContent() {
                     </option>
                   ))}
                 </select>
+                {soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Comisión ($)</label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={soldByCommission}
+                        onChange={(e) => { setSoldByCommission(e.target.value); setSoldByEdited(true) }}
+                        className="w-full pl-8 pr-3 py-2 rounded-lg border border-emerald-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                )}
+                {soldByEmployeeId && soldByEmployeeId === foundByEmployeeId && (
+                  <p className="mt-2 text-xs text-emerald-700">
+                    Misma persona que encontró — comisión asignada arriba (100%).
+                  </p>
+                )}
               </div>
             </div>
 
@@ -674,10 +757,10 @@ function NewSaleContent() {
               }`}>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-navy-700">
-                    Comisión Total (Cash)
+                    Comisión Total ({paymentType === 'rto' ? 'RTO' : 'Cash'})
                   </span>
                   <span className="text-lg font-bold text-navy-900">
-                    ${commissionPreview.total.toLocaleString()}
+                    ${effectiveTotalCommission.toLocaleString()}
                   </span>
                 </div>
 
@@ -689,7 +772,7 @@ function NewSaleContent() {
                           🔍 {foundByUser?.name || 'Empleado'} <span className="text-navy-400">(encontró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
-                          ${commissionPreview.foundBy.toLocaleString()}
+                          ${effectiveFoundByCommission.toLocaleString()}
                         </span>
                       </div>
                     )}
@@ -699,12 +782,12 @@ function NewSaleContent() {
                           🤝 {soldByUser?.name || 'Empleado'} <span className="text-navy-400">(cerró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
-                          ${commissionPreview.soldBy.toLocaleString()}
+                          ${effectiveSoldByCommission.toLocaleString()}
                         </span>
                       </div>
                     )}
                     <div className="text-xs text-navy-500 pt-1 border-t border-navy-100">
-                      {commissionPreview.note}
+                      Sugerido por regla: ${commissionPreview.total.toLocaleString()} · {commissionPreview.note}. Puedes editar los montos.
                     </div>
                   </div>
                 ) : (
@@ -878,7 +961,7 @@ function NewSaleContent() {
                     <span className="font-medium text-navy-900">
                       {foundByUser?.name || '— Sin asignar —'}
                       {foundByEmployeeId && (
-                        <span className="text-emerald-600 ml-2">${commissionPreview.foundBy.toLocaleString()}</span>
+                        <span className="text-emerald-600 ml-2">${effectiveFoundByCommission.toLocaleString()}</span>
                       )}
                     </span>
                   </div>
@@ -889,13 +972,13 @@ function NewSaleContent() {
                     <span className="font-medium text-navy-900">
                       {soldByUser?.name || '— Sin asignar —'}
                       {soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId && (
-                        <span className="text-emerald-600 ml-2">${commissionPreview.soldBy.toLocaleString()}</span>
+                        <span className="text-emerald-600 ml-2">${effectiveSoldByCommission.toLocaleString()}</span>
                       )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-blue-200">
                     <span className="text-sm font-semibold text-navy-800">Comisión Total</span>
-                    <span className="font-bold text-navy-900">${commissionPreview.total.toLocaleString()}</span>
+                    <span className="font-bold text-navy-900">${effectiveTotalCommission.toLocaleString()}</span>
                   </div>
                   <p className="text-xs text-blue-600">{commissionPreview.note}</p>
                 </div>
