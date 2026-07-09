@@ -475,7 +475,9 @@ async def export_capital_invoices_csv(direction: Optional[str] = None):
 async def list_capital_recurring_expenses():
     result = sb.table("capital_recurring_expenses") \
         .select("*").eq("is_active", True).order("next_due_date").execute()
-    return result.data or []
+    # Wrapped envelope to match the frontend (reads d.expenses), consistent
+    # with the other Capital list endpoints.
+    return {"expenses": result.data or []}
 
 
 @router.post("/recurring-expenses")
