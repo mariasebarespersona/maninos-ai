@@ -246,6 +246,22 @@ test('full property lifecycle reality check', async ({ page, browser }) => {
     record('Create sale', true, `saleId=${saleId}, type=contado, price=${SALE_PRICE}`, await ledgerForProperty(api, propertyId));
   }
 
+  async function approveInboundOrderFor(amount: number, label: string) {
+    const ordersRes = await api.get(`${API_URL}/api/payment-orders?status=pending`);
+    const all = (await ordersRes.json()).data || [];
+    const match = all.find((o: any) =>
+      o.direction === 'inbound' && Number(o.amount) === amount && o.property_id === propertyId,
+    );
+    if (!match) {
+      flag(`No pending inbound payment_order found for amount=$${amount} (${label})`);
+      return null;
+    }
+    const apQs = new URLSearchParams({ approved_by: 'e2e-test', bank_account_id: targetBank.id });
+    const apRes = await api.patch(`${API_URL}/api/payment-orders/${match.id}/approve?${apQs.toString()}`);
+    record(`Approve inbound order (${label})`, apRes.ok(), `order=${match.id} via bank=${targetBank.name}`);
+    return match.id;
+  }
+
   // ---- STEP 8: register the down payment from the client ----
   res = await api.post(`${API_URL}/api/sales/${saleId}/payments`, {
     data: {
@@ -255,22 +271,26 @@ test('full property lifecycle reality check', async ({ page, browser }) => {
     },
     headers: { 'Content-Type': 'application/json' },
   });
-  record('Register down payment', res.ok(), `Amount=$${DOWN_PAYMENT}. Status ${res.status()}`, await ledgerForProperty(api, propertyId));
+  record('Register down payment', res.ok(), `Amount=$${DOWN_PAYMENT}. Status ${res.status()}`);
+  await approveInboundOrderFor(DOWN_PAYMENT, 'down payment');
   const ledgerAfterDP = await ledgerForProperty(api, propertyId);
   const dpRow = ledgerAfterDP.find((r: any) => r.amount === DOWN_PAYMENT && r.is_income === true);
-  if (!dpRow) flag(`Down payment $${DOWN_PAYMENT} did NOT produce an income ledger row.`);
-  else if (!dpRow.bank_account_id) flag(`Down payment ledger row created but bank_account_id=NULL — system doesn't know WHICH of the 6 banks received the money.`);
+  if (!dpRow) flag(`Down payment $${DOWN_PAYMENT} produced NO income ledger row after approving the inbound order.`);
+  else if (!dpRow.bank_account_id) flag(`Down payment ledger row exists but bank_account_id=NULL.`);
+  else record('Down payment in ledger', true, `bank_account_id=${dpRow.bank_account_id}`);
 
   // ---- STEP 9: register remaining payment ----
+  const REMAINING = SALE_PRICE - DOWN_PAYMENT;
   res = await api.post(`${API_URL}/api/sales/${saleId}/payments`, {
     data: {
-      payment_type: 'remaining', amount: SALE_PRICE - DOWN_PAYMENT,
+      payment_type: 'remaining', amount: REMAINING,
       payment_method: 'bank_transfer', payment_reference: `E2E-REM-${STAMP}`,
       notes: 'E2E remaining', reported_by: 'staff',
     },
     headers: { 'Content-Type': 'application/json' },
   });
-  record('Register remaining payment', res.ok(), `Amount=$${SALE_PRICE - DOWN_PAYMENT}. Status ${res.status()}`, await ledgerForProperty(api, propertyId));
+  record('Register remaining payment', res.ok(), `Amount=$${REMAINING}. Status ${res.status()}`);
+  await approveInboundOrderFor(REMAINING, 'remaining payment');
 
   // ---- STEP 10: try to create an invoice (factura) tied to this sale ----
   res = await api.post(`${API_URL}/api/accounting/invoices`, {

@@ -42,6 +42,7 @@ interface DashboardData {
     total_income: number; total_expenses: number; net_profit: number; margin_percent: number
     sales_by_type: { contado: number; rto: number }
     total_purchases: number; total_renovations: number; total_commissions: number
+    total_movida: number; total_servicios: number
     manual_income: number; manual_expense: number
     accounts_receivable: number; accounts_receivable_overdue: number
     accounts_payable: number; accounts_payable_overdue: number
@@ -406,7 +407,9 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           <div className="space-y-3">
             <BreakdownRow label="Compra de Casas" amount={s.total_purchases} total={s.total_expenses} color="#dc2626" />
             <BreakdownRow label="Renovaciones" amount={s.total_renovations} total={s.total_expenses} color="#ea580c" />
+            <BreakdownRow label="Movida" amount={s.total_movida} total={s.total_expenses} color="#f59e0b" />
             <BreakdownRow label="Comisiones" amount={s.total_commissions} total={s.total_expenses} color="#d97706" />
+            <BreakdownRow label="Servicios" amount={s.total_servicios} total={s.total_expenses} color="#0891b2" />
             {s.manual_expense > 0 && <BreakdownRow label="Otros Gastos" amount={s.manual_expense} total={s.total_expenses} color="#64748b" />}
           </div>
           <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>

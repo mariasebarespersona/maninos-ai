@@ -176,7 +176,9 @@ EVENT_REGISTRY: dict[str, EventSpec] = {
     ),
     "sale_down_payment_received": EventSpec(
         debit=BANK,
-        credit="House Sales",
+        # RTO enganche → the RTO income account so the desglose shows it under
+        # "Ventas RTO" (not contado). Only RTO sales fire this event.
+        credit="House Sales - RTO",
         transaction_type="sale_cash",
         is_income_on_bank_side=True,
         description_template="Enganche venta {address}: {counterparty}",

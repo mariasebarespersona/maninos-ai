@@ -889,7 +889,7 @@ async def create_sale(data: SaleCreate):
                         counterparty_name="Maninos Capital LLC",
                         counterparty_type="capital",
                         total_amount=financed_remaining,
-                        account_code="House Sales",
+                        account_code="House Sales - RTO",  # financed sale income → Ventas RTO
                         property_id=data.property_id,
                         sale_id=sale_record["id"],
                         description=f"Financiamiento RTO por cobrar a Maninos Capital — {prop_addr}",
@@ -1937,17 +1937,23 @@ def _create_commission_payments(sale: dict):
     if sold_by and comm_sold > 0 and sold_by != found_by:
         rows.append({"sale_id": sale["id"], "employee_id": sold_by, "role": "sold_by", "amount": comm_sold, "status": "pending"})
 
-    # Resolve the commission expense account: prefer the per-property
-    # "Comisión <CODE>" job-costing sub-account (matches the old
-    # commission_paid routing) and fall back to "Commissions & fees".
+    # Resolve the commission expense account: ALWAYS the per-house
+    # "Comisión <CODE>" job-costing sub-account so the commission links to the
+    # house in the P&L (not the generic "Commissions & fees"). If the house
+    # lacks its per-house COGS sub-accounts — e.g. it was sold straight from
+    # consignment and never went through the normal purchase flow — create them
+    # now (idempotent) instead of silently falling back to the generic account.
     comm_account = "Commissions & fees"
-    if prop_code:
+    if prop_code and property_id:
         try:
             acc = sb.table("accounting_accounts").select("code").eq("code", f"Comisión {prop_code}").limit(1).execute()
-            if acc.data:
-                comm_account = f"Comisión {prop_code}"
-        except Exception:
-            pass
+            if not acc.data:
+                from api.routes.properties import _create_inventory_account_for_property
+                _create_inventory_account_for_property({"id": property_id, "property_code": prop_code})
+            comm_account = f"Comisión {prop_code}"
+        except Exception as e:
+            logger.warning(f"[commissions] Could not ensure 'Comisión {prop_code}' account, using generic: {e}")
+            comm_account = "Commissions & fees"
 
     for row in rows:
         cp_id = None

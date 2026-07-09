@@ -457,60 +457,66 @@ async def get_accounting_dashboard(
     # $0 even after money was received). Count the bank leg of each sale entry =
     # money actually received — same cash basis as manual_income and consistent
     # with the P&L. RTO down payments / partial payments show as they arrive.
-    total_sales_income = 0.0
-    sales_by_type = {"contado": 0.0, "rto": 0.0}
+    # ── Income/Expense breakdown ("Desglose") — ACCRUAL, read from the LEDGER
+    # by chart account, so it ALWAYS agrees with the P&L (Estado de Resultados)
+    # and updates automatically on any posting. Each transaction leg that hits
+    # an Income or Expense/COGS account adds its signed amount to a bucket
+    # chosen by the account; Bank/AR/AP/asset legs are ignored (no double
+    # count). This replaced the old cash-basis mix of ledger + `renovations`
+    # table + `sales` table, which never matched the P&L and left RTO at $0.
+    _acct_meta = {a["id"]: a for a in _fetch_all_accounts(active_only=False)}
+
+    def _income_bucket(code: str) -> str:
+        if code == "House Sales - RTO":
+            return "ventas_rto"
+        if code == "House Sales":
+            return "ventas_contado"
+        return "otros_ingresos"
+
+    def _expense_bucket(code: str, atype: str) -> str:
+        first = (code or "").split(" ")[0]
+        if first == "Compra" or code in ("Inventory", "Cost of goods sold", "Cost of Goods Sold-1",
+                                          "House Sales - COGS", "Inventory Shrinkage"):
+            return "compra_casas"
+        if first == "Renovación" or code in ("Supplies & materials", "Supplies", "Purchases",
+                                             "Remodeling", "Supplies & materials - COGS"):
+            return "renovaciones"
+        if first == "Movida" or code in ("Other Contractors", "Equipment rental"):
+            return "movida"
+        if first == "Comisión" or code in ("Commissions & fees", "COMISION DE VENTA"):
+            return "comisiones"
+        if atype in ("Other Expense",) or code in ("Bank fees & service charges",):
+            return "otros_gastos"
+        return "servicios"  # operating / service expenses (e.g. service AP invoices)
+
+    income_b = {"ventas_contado": 0.0, "ventas_rto": 0.0, "otros_ingresos": 0.0}
+    expense_b = {"compra_casas": 0.0, "renovaciones": 0.0, "movida": 0.0,
+                 "comisiones": 0.0, "servicios": 0.0, "otros_gastos": 0.0}
     for t in transactions:
-        tt = t.get("transaction_type")
-        if tt in ("sale_cash", "sale_rto_capital") and t.get("is_income") and t.get("bank_account_id"):
-            amount = float(t.get("amount") or 0)
-            total_sales_income += amount
-            sales_by_type["rto" if tt == "sale_rto_capital" else "contado"] += amount
+        a = _acct_meta.get(t.get("account_id"))
+        if not a:
+            continue
+        atype = a.get("account_type") or ""
+        code = a.get("code") or ""
+        amt = float(t.get("amount") or 0)
+        if atype in INCOME_TYPES:
+            income_b[_income_bucket(code)] += _signed_balance(amt, atype, t.get("is_income"))
+        elif atype in EXPENSE_TYPES:
+            expense_b[_expense_bucket(code, atype)] += _signed_balance(amt, atype, t.get("is_income"))
 
-    # total_purchases sums confirmed (non-voided) purchase_house transactions.
-    # This is the single source of truth — properties.purchase_price is not used
-    # so that "Vaciar Cifras" (which voids transactions) is reflected here.
-    # Each purchase_house transaction is a double-entry pair (inventory debit +
-    # bank/cash-out credit), BOTH rows tagged transaction_type='purchase_house'.
-    # Count only the cash-out leg (is_income=False) so we don't double the total.
-    total_purchases = sum(
-        float(t.get("amount") or 0) for t in transactions
-        if t.get("transaction_type") == "purchase_house" and not t.get("is_income")
-    )
-    total_renovations = sum(float(r.get("total_cost") or 0) for r in renovations)
-    # Commissions only count what is actually ASSIGNED to a person: the finder's
-    # portion only when there's a found_by employee, the closer's portion only
-    # when there's a sold_by employee. An unassigned commission (no name) does
-    # NOT appear in accounting; a half-assigned one only counts that half.
-    total_commissions = sum(
-        (float(s.get("commission_found_by") or 0) if s.get("found_by_employee_id") else 0.0)
-        + (float(s.get("commission_sold_by") or 0) if s.get("sold_by_employee_id") else 0.0)
-        for s in sales
-    )
+    sales_by_type = {"contado": round(income_b["ventas_contado"], 2), "rto": round(income_b["ventas_rto"], 2)}
+    total_sales_income = round(sales_by_type["contado"] + sales_by_type["rto"], 2)
+    manual_income = round(income_b["otros_ingresos"], 2)
+    total_purchases = round(expense_b["compra_casas"], 2)
+    total_renovations = round(expense_b["renovaciones"], 2)
+    total_commissions = round(expense_b["comisiones"], 2)
+    total_movida = round(expense_b["movida"], 2)
+    total_servicios = round(expense_b["servicios"], 2)
+    manual_expense = round(expense_b["otros_gastos"], 2)
 
-    # manual_income / manual_expense are the "Otros" buckets — exclude
-    # transaction types that are already counted in the categorized totals
-    # above (purchases, sales) to prevent double-counting.
-    CATEGORIZED_INCOME_TYPES = {"sale_cash", "sale_rto_capital"}
-    CATEGORIZED_EXPENSE_TYPES = {"purchase_house", "renovation", "commission"}
-    # Count only the bank leg (bank_account_id set) so two-legged transactions
-    # are not double-counted, and exclude balance-sheet movements (opening
-    # balances, transfers between own accounts) which are NOT P&L income/expense.
-    BALANCE_SHEET_ENTITY = {"opening_balance", "bank_transfer"}
-    manual_income = sum(
-        float(t["amount"]) for t in transactions
-        if t["is_income"] and t.get("bank_account_id")
-        and t.get("transaction_type") not in CATEGORIZED_INCOME_TYPES
-        and t.get("entity_type") not in BALANCE_SHEET_ENTITY
-    )
-    manual_expense = sum(
-        float(t["amount"]) for t in transactions
-        if not t["is_income"] and t.get("bank_account_id")
-        and t.get("transaction_type") not in CATEGORIZED_EXPENSE_TYPES
-        and t.get("entity_type") not in BALANCE_SHEET_ENTITY
-    )
-
-    total_income = total_sales_income + manual_income
-    total_expenses = total_purchases + total_renovations + total_commissions + manual_expense
+    total_income = round(total_sales_income + manual_income, 2)
+    total_expenses = round(total_purchases + total_renovations + total_commissions
+                           + total_movida + total_servicios + manual_expense, 2)
     net_profit = total_income - total_expenses
 
     # ---- Yard breakdown ----
@@ -595,6 +601,25 @@ async def get_accounting_dashboard(
             bal = cogs_bal_by_code.get(f"{prefix} {prop_code}")
             return round(bal, 2) if bal is not None else float(fallback or 0)
 
+        # "venta" must be the ACTUAL agreed sale price (from the sales table),
+        # NOT the property's listed sale_price (asking). Build an unfiltered map
+        # property_id -> real sale price from the latest non-cancelled sale, so
+        # sold houses show what they actually sold for (contado = cash price;
+        # RTO = enganche + financiado total).
+        actual_sale_by_property = {}
+        try:
+            sold_rows = (sb.table("sales")
+                         .select("property_id, sale_price, status, created_at")
+                         .neq("status", "cancelled")
+                         .order("created_at", desc=True)
+                         .execute()).data or []
+            for s in sold_rows:
+                pid = s.get("property_id")
+                if pid and pid not in actual_sale_by_property:
+                    actual_sale_by_property[pid] = float(s.get("sale_price") or 0)
+        except Exception as e:
+            logger.warning(f"[dashboard] actual sale price fetch failed: {e}")
+
         for p in all_props:
             code = p.get("property_code") or ""
             compra = _cost("Compra", code, p.get("purchase_price"))
@@ -605,7 +630,7 @@ async def get_accounting_dashboard(
             reno = _cost("Renovación", code, reno_sum_by_property.get(p["id"], 0.0))
             movida = _cost("Movida", code, p.get("move_cost"))
             comision = _cost("Comisión", code, p.get("commission"))
-            venta = float(p.get("sale_price") or 0)
+            venta = actual_sale_by_property.get(p["id"], 0.0)
             invertido = round(compra + reno + movida + comision, 2)
             property_inventory.append({
                 "property_id": p["id"],
@@ -767,6 +792,8 @@ async def get_accounting_dashboard(
             "total_purchases": total_purchases,
             "total_renovations": total_renovations,
             "total_commissions": total_commissions,
+            "total_movida": total_movida,
+            "total_servicios": total_servicios,
             "manual_income": manual_income,
             "manual_expense": manual_expense,
             "accounts_receivable": ar_total,
