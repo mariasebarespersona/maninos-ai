@@ -394,7 +394,69 @@ async def main():
     check("saldo sube 2000 al aprobar", abs(get_capital_bank_balance(bank_a["id"]) - (bal_before + 2000)) < 0.01)
 
     # ------------------------------------------------------------------
-    print("\n12) Borrado en cascada de factura")
+    print("\n12) Orden de pago ENTRANTE (inbound): aprobar con banco → asiento entrante")
+    bal_in_before = get_capital_bank_balance(bank_a["id"])
+    oin = await create_capital_payment_order(CapitalPaymentOrderCreate(
+        payee_name=f"{TAG} Inversionista Dep", amount=300, concept="deposito_inversionista",
+        direction="inbound", notes=f"{TAG} inbound"))
+    order_in = oin["data"]
+    track("capital_payment_orders", order_in["id"])
+    # inbound NO genera factura por pagar
+    inbound_bill = sb.table("capital_invoices").select("id").ilike("notes", f"%[PO:{order_in['id']}]%").execute().data or []
+    check("inbound NO crea factura por pagar", len(inbound_bill) == 0)
+    await approve_capital_payment_order(order_in["id"], approved_by="e2e", bank_account_id=bank_a["id"])
+    track_entity_txns(order_in["id"])
+    in_legs = sb.table("capital_transactions").select("*").eq("entity_type", "payment_order") \
+        .eq("entity_id", order_in["id"]).execute().data or []
+    check("par entrante posteado al aprobar", len(in_legs) == 2)
+    check("saldo sube 300 al aprobar inbound",
+          abs(get_capital_bank_balance(bank_a["id"]) - (bal_in_before + 300)) < 0.01,
+          f"={get_capital_bank_balance(bank_a['id'])}")
+
+    # ------------------------------------------------------------------
+    print("\n13) Conciliación contra TRANSACCIÓN (no factura)")
+    gasto = await create_transaction(TransactionCreate(
+        transaction_date=TODAY, transaction_type="operating_expense", amount=123,
+        is_income=False, bank_account_id=bank_a["id"],
+        description=f"{TAG} gasto conciliar", counterparty_name=f"{TAG} Proveedor Rec"))
+    gasto_txn = gasto["transaction"]
+    track("capital_transactions", gasto_txn["id"])
+    if gasto_txn.get("linked_transaction_id"):
+        track("capital_transactions", gasto_txn["linked_transaction_id"])
+    stmt2 = sb.table("capital_bank_statements").insert({
+        "bank_account_id": bank_a["id"], "account_label": f"{TAG}",
+        "original_filename": "e2e-tx.pdf", "file_type": "pdf", "status": "parsed",
+        "total_movements": 1,
+    }).execute().data[0]
+    track("capital_bank_statements", stmt2["id"])
+    mv2 = sb.table("capital_statement_movements").insert({
+        "statement_id": stmt2["id"], "movement_date": TODAY,
+        "description": f"WITHDRAWAL {TAG} PROVEEDOR REC", "amount": 123,
+        "is_credit": False, "counterparty": f"{TAG} Proveedor Rec",
+        "sort_order": 0, "status": "pending",
+    }).execute().data[0]
+    track("capital_statement_movements", mv2["id"])
+    rec2 = await reconcile_capital_statement_movements(stmt2["id"])
+    # the bank leg of the expense pair is what carries bank_account_id
+    bank_leg_id = gasto_txn.get("linked_transaction_id") or gasto_txn["id"]
+    txn_matches = [m for m in rec2["matches"] if m.get("target_type") != "invoice"
+                   and m.get("transaction_id") in (gasto_txn["id"], bank_leg_id)]
+    check("movimiento matchea la transacción", len(txn_matches) >= 1,
+          f"matches={[(m.get('transaction_id','')[:8], m.get('score')) for m in rec2['matches']]}")
+    if txn_matches:
+        conf2 = await confirm_capital_reconciliation(stmt2["id"], {
+            "pairs": [{"movement_id": txn_matches[0]["movement_id"],
+                       "transaction_id": txn_matches[0]["transaction_id"]}]})
+        check("confirmación de transacción ok", conf2["reconciled"] == 1, str(conf2.get("errors")))
+        mv2b = sb.table("capital_statement_movements").select("status").eq("id", mv2["id"]).execute().data[0]
+        check("movimiento reconciliado", mv2b["status"] == "reconciled")
+        # both legs of the matched pair flip to reconciled
+        legs2 = sb.table("capital_transactions").select("status") \
+            .in_("id", [gasto_txn["id"], bank_leg_id]).execute().data
+        check("par de la transacción reconciliado", all(l["status"] == "reconciled" for l in legs2))
+
+    # ------------------------------------------------------------------
+    print("\n14) Borrado en cascada de factura")
     del_res = await delete_capital_invoice(inv["id"])
     CREATED[:] = [(t_, i_) for (t_, i_) in CREATED if not (t_ == "capital_invoices" and i_ == inv["id"])]
     check("cascada elimina ledger", del_res["deleted_ledger_rows"] >= 2, str(del_res))
