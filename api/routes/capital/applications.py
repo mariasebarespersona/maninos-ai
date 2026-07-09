@@ -31,6 +31,59 @@ class ApplicationReview(BaseModel):
     monthly_rent: Optional[float] = None
     term_months: Optional[int] = None
     down_payment: Optional[float] = None
+    # Affordability gate: approving a monthly ABOVE the client's payment
+    # capacity (40% of disposable income) is blocked unless the reviewer
+    # explicitly overrides with a reason.
+    override_affordability: bool = False
+    override_reason: Optional[str] = None
+
+
+def _affordability_cap(application_id: str) -> dict:
+    """Compute the client's monthly payment capacity from their credit
+    application: 40% of disposable income (income − recurring expenses/debts).
+
+    Returns {has_income_data, total_income, disposable_income, cap} where
+    `cap` is the max sustainable monthly payment (0 when unknown). This is the
+    same rule shown by rto_calculation — enforced here at approval so an
+    unaffordable monthly can't silently become a binding contract.
+    """
+    try:
+        credit = (sb.table("credit_applications").select("*")
+                  .eq("rto_application_id", application_id).execute()).data or []
+        ca = credit[0] if credit else {}
+        monthly_income = float(ca.get("monthly_income") or 0)
+        other = ca.get("other_income_sources") or []
+        other_income = sum(float(s.get("monthly_amount") or 0) for s in other)
+        total_income = monthly_income + other_income
+
+        if total_income > 0:
+            # Full credit application: disposable = income − recurring expenses.
+            expenses = (
+                float(ca.get("monthly_rent") or 0)
+                + float(ca.get("monthly_utilities") or 0)
+                + float(ca.get("monthly_child_support_paid") or 0)
+                + float(ca.get("monthly_other_expenses") or 0)
+                + sum(float(d.get("monthly_payment") or 0) for d in (ca.get("debts") or []))
+            )
+            disposable = total_income - expenses
+            cap = round(disposable * 0.40, 2) if disposable > 0 else 0.0
+            return {"has_income_data": True, "total_income": round(total_income, 2),
+                    "disposable_income": round(disposable, 2), "cap": cap}
+
+        # Fallback: no credit application yet — use the gross monthly income
+        # captured on the RTO application itself. Without expense detail we
+        # cap at 40% of GROSS income (a conservative DTI-style rule).
+        ra = (sb.table("rto_applications").select("monthly_income")
+              .eq("id", application_id).single().execute()).data or {}
+        gross = float(ra.get("monthly_income") or 0)
+        if gross > 0:
+            return {"has_income_data": True, "total_income": round(gross, 2),
+                    "disposable_income": round(gross, 2), "cap": round(gross * 0.40, 2)}
+
+        return {"has_income_data": False, "total_income": 0, "disposable_income": 0, "cap": 0.0}
+    except Exception as e:
+        logger.warning(f"[capital] affordability cap computation failed for {application_id}: {e}")
+        return {"has_income_data": False, "total_income": 0, "disposable_income": 0, "cap": 0.0}
 
 
 # =============================================================================
@@ -137,7 +190,42 @@ async def review_application(application_id: str, review: ApplicationReview):
                     status_code=400,
                     detail=f"El enganche mínimo es 30% del precio de venta (${min_dp:,.2f})"
                 )
-            
+
+            # Affordability gate: the approved monthly cannot exceed the
+            # client's payment capacity (40% of disposable income) unless the
+            # reviewer explicitly overrides with a reason. When income data is
+            # missing we can't compute a cap — we allow but flag it (no silent
+            # pass as "affordable").
+            afford = _affordability_cap(application_id)
+            if afford["has_income_data"] and afford["cap"] > 0 and monthly_rent > afford["cap"]:
+                if not review.override_affordability:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"La mensualidad ${monthly_rent:,.2f} supera la capacidad de pago del "
+                            f"cliente (${afford['cap']:,.2f} = 40% de ${afford['disposable_income']:,.2f} "
+                            f"de ingreso disponible). Baja la mensualidad/alarga el plazo, o aprueba con "
+                            f"override indicando el motivo."
+                        ),
+                    )
+                logger.warning(
+                    f"[capital] AFFORDABILITY OVERRIDE app={application_id}: monthly ${monthly_rent:,.2f} "
+                    f"> cap ${afford['cap']:,.2f}. by={review.reviewed_by} reason={review.override_reason!r}"
+                )
+                update_data["review_notes"] = (
+                    (review.review_notes or "")
+                    + f"\n[OVERRIDE capacidad] mensualidad ${monthly_rent:,.2f} > tope ${afford['cap']:,.2f}. "
+                    + f"Motivo: {review.override_reason or '(sin motivo)'}"
+                ).strip()
+                sb.table("rto_applications").update(
+                    {"review_notes": update_data["review_notes"]}
+                ).eq("id", application_id).execute()
+            elif not afford["has_income_data"]:
+                logger.warning(
+                    f"[capital] Affordability NOT verified for app={application_id} (no income data); "
+                    f"approved monthly ${monthly_rent:,.2f} without a computable cap."
+                )
+
             # Update sale status to rto_approved
             sb.table("sales").update({
                 "status": "rto_approved",

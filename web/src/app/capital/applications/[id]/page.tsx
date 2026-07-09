@@ -739,7 +739,32 @@ export default function ApplicationDetailPage() {
           loadApplication()
         }
       } else {
-        toast.error(data.detail || 'Error al procesar la solicitud')
+        // Affordability gate: the backend blocks a monthly above the client's
+        // payment capacity. Offer an explicit override with a mandatory reason.
+        const detail = typeof data.detail === 'string' ? data.detail : ''
+        if (status === 'approved' && detail.includes('capacidad de pago')) {
+          const reason = window.prompt(
+            `${detail}\n\n¿Aprobar de todos modos? Escribe el motivo del override (obligatorio):`
+          )
+          if (reason && reason.trim()) {
+            const res2 = await fetch(`/api/capital/applications/${id}/review`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...body, override_affordability: true, override_reason: reason.trim() }),
+            })
+            const data2 = await res2.json()
+            if (data2.ok) {
+              toast.success('✅ Aprobada con override de capacidad. Procede a crear el contrato.')
+              router.push('/capital/contracts')
+              return
+            }
+            toast.error(data2.detail || 'Error al aprobar con override')
+          } else {
+            toast.error('Override cancelado — baja la mensualidad o alarga el plazo.')
+          }
+        } else {
+          toast.error(detail || 'Error al procesar la solicitud')
+        }
       }
     } catch (err) {
       toast.error('Error al procesar la solicitud')
