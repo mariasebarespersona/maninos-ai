@@ -1141,14 +1141,30 @@ async def start_renovation(property_id: str, data: RenovationCreate):
         raise HTTPException(status_code=404, detail="Property not found")
     
     current_status = PropertyStatus(current.data["status"])
-    
+
+    # GUARD: never silently flip a house that's committed to a buyer into
+    # 'renovating'. A house reserved/sold for an active sale must not be sent
+    # to renovation (this is how H48 accidentally became 'renovating' while it
+    # was reserved for a pending RTO sale). Require the sale to be cancelled
+    # first.
+    active_sale = (sb.table("sales").select("id, status")
+                   .eq("property_id", property_id)
+                   .in_("status", ["pending", "paid", "rto_pending", "rto_approved", "completed"])
+                   .limit(1).execute()).data
+    if active_sale:
+        raise HTTPException(
+            status_code=400,
+            detail=("Esta casa tiene una venta activa (reservada/vendida). No se puede "
+                    "iniciar una renovación sin cancelar primero la venta."),
+        )
+
     # Validate transition
     is_valid, error = PropertyService.validate_transition(
         current_status, PropertyStatus.RENOVATING
     )
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
-    
+
     # Update property status
     sb.table("properties").update({
         "status": PropertyStatus.RENOVATING.value

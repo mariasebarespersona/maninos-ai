@@ -259,6 +259,12 @@ class SaleCreate(BaseModel):
     sale_type: SaleType = SaleType.CONTADO
     found_by_employee_id: Optional[str] = None  # Employee who found the client
     sold_by_employee_id: Optional[str] = None   # Employee who closed the sale
+    # Commission is DECIDED by the seller: the rule ($1,500 contado / $1,000 RTO)
+    # is only a default the UI prefills. If these are provided they OVERRIDE the
+    # rule (including 0). None → fall back to calculate_commission.
+    commission_amount: Optional[Decimal] = None
+    commission_found_by: Optional[Decimal] = None
+    commission_sold_by: Optional[Decimal] = None
     # Optional initial payment (down payment or full)
     initial_payment_amount: Optional[Decimal] = None
     initial_payment_method: Optional[str] = None

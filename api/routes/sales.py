@@ -767,13 +767,38 @@ async def create_sale(data: SaleCreate):
         PropertyStatus.SOLD,
     )
     
-    # Calculate commission
+    # Commission: the seller (Gabriel) DECIDES it. The rule is only a default
+    # the UI prefills; if the request carries explicit commission values we use
+    # them verbatim (including 0 to waive it). Only fall back to the rule when
+    # nothing was provided.
     from api.utils.commissions import calculate_commission
-    commission = calculate_commission(
-        sale_type=data.sale_type.value,
-        found_by_employee_id=data.found_by_employee_id,
-        sold_by_employee_id=data.sold_by_employee_id,
-    )
+    if data.commission_amount is not None or data.commission_found_by is not None or data.commission_sold_by is not None:
+        found_amt = float(data.commission_found_by or 0)
+        sold_amt = float(data.commission_sold_by or 0)
+        total_amt = float(data.commission_amount) if data.commission_amount is not None else (found_amt + sold_amt)
+        commission = {
+            "commission_amount": total_amt,
+            "commission_found_by": found_amt,
+            "commission_sold_by": sold_amt,
+        }
+    else:
+        commission = calculate_commission(
+            sale_type=data.sale_type.value,
+            found_by_employee_id=data.found_by_employee_id,
+            sold_by_employee_id=data.sold_by_employee_id,
+        )
+
+    # HARD RULE: a commission requires an ASSIGNED person. No name → no
+    # commission, ever (no auto-amount, no phantom). Each half only counts when
+    # its employee is assigned; if neither is assigned the whole commission is 0.
+    if not data.found_by_employee_id:
+        commission["commission_found_by"] = 0.0
+    if not data.sold_by_employee_id:
+        commission["commission_sold_by"] = 0.0
+    if not data.found_by_employee_id and not data.sold_by_employee_id:
+        commission["commission_amount"] = 0.0
+    else:
+        commission["commission_amount"] = float(commission.get("commission_found_by") or 0) + float(commission.get("commission_sold_by") or 0)
     
     # Create sale
     sale_price = float(data.sale_price)
