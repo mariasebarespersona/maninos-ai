@@ -370,35 +370,67 @@ async def approve_payment_order(
         # not, log loud — this is the gap that today leaves saldos stale.
         if bank_account_id:
             try:
-                from api.services.ledger import post_to_ledger
                 concept = (order.get("concept") or "").lower()
-                event_map = {
-                    "enganche": "sale_down_payment_received",
-                    "pago_venta": "sale_contado_received",
-                    "pago_capital": "sale_contado_received",
-                }
-                event_type = event_map.get(concept, "sale_contado_received")
-                debit_id, credit_id = post_to_ledger(
-                    event_type=event_type,
-                    amount=float(order["amount"]),
-                    bank_account_id=bank_account_id,
-                    date=date.today().isoformat(),
-                    counterparty_name=order.get("payee_name") or "Cliente",
-                    counterparty_type="client",
-                    entity_type="payment_order",
-                    entity_id=order_id,
-                    property_id=property_id,
-                    description_data={"address": order.get("property_address") or "—"},
-                    payment_method=order.get("method"),
-                    notes=f"Orden de pago #{order_id[:8]} (aprobada/recibida)",
-                    status="confirmed",
-                    created_by=approved_by,
-                )
-                sb.table("payment_orders").update({
-                    "accounting_transaction_id": debit_id,
-                    "bank_account_id": bank_account_id,
-                }).eq("id", order_id).execute()
-                logger.info(f"[payment_orders] inbound ledger pair=({debit_id},{credit_id}) for order {order_id}")
+
+                # pago_capital SETTLES the Capital accounts-receivable invoice
+                # (bank ← A/R) — the sale income was already recognized ONCE when
+                # that invoice was issued at RTO sale creation. Posting
+                # sale_contado_received here would double-count the income.
+                settled_invoice = False
+                if concept == "pago_capital" and property_id:
+                    inv_q = (sb.table("accounting_invoices").select("*")
+                             .eq("direction", "receivable").eq("property_id", property_id)
+                             .ilike("notes", "%[CAPFIN:%")
+                             .in_("status", ["sent", "partial", "overdue"])
+                             .limit(1).execute())
+                    if inv_q.data:
+                        from api.routes.accounting import record_invoice_payment
+                        res = record_invoice_payment(
+                            inv_q.data[0]["id"], float(order["amount"]),
+                            bank_account_id=bank_account_id,
+                            payment_method=order.get("method"),
+                            notes=f"Pago de Maninos Capital — orden #{order_id[:8]}",
+                            cap_to_balance=True,
+                        )
+                        pay = res.get("payment") or {}
+                        sb.table("payment_orders").update({
+                            "accounting_transaction_id": pay.get("transaction_id"),
+                            "bank_account_id": bank_account_id,
+                        }).eq("id", order_id).execute()
+                        logger.info(f"[payment_orders] pago_capital settled AR invoice {inv_q.data[0].get('invoice_number')} for order {order_id}")
+                        settled_invoice = True
+
+                # enganche / pago_venta (and pago_capital with no AR invoice —
+                # legacy) post income directly.
+                if not settled_invoice:
+                    from api.services.ledger import post_to_ledger
+                    event_map = {
+                        "enganche": "sale_down_payment_received",
+                        "pago_venta": "sale_contado_received",
+                        "pago_capital": "sale_contado_received",
+                    }
+                    event_type = event_map.get(concept, "sale_contado_received")
+                    debit_id, credit_id = post_to_ledger(
+                        event_type=event_type,
+                        amount=float(order["amount"]),
+                        bank_account_id=bank_account_id,
+                        date=date.today().isoformat(),
+                        counterparty_name=order.get("payee_name") or "Cliente",
+                        counterparty_type="client",
+                        entity_type="payment_order",
+                        entity_id=order_id,
+                        property_id=property_id,
+                        description_data={"address": order.get("property_address") or "—"},
+                        payment_method=order.get("method"),
+                        notes=f"Orden de pago #{order_id[:8]} (aprobada/recibida)",
+                        status="confirmed",
+                        created_by=approved_by,
+                    )
+                    sb.table("payment_orders").update({
+                        "accounting_transaction_id": debit_id,
+                        "bank_account_id": bank_account_id,
+                    }).eq("id", order_id).execute()
+                    logger.info(f"[payment_orders] inbound ledger pair=({debit_id},{credit_id}) for order {order_id}")
 
                 # If this inbound payment closes out a contado sale, recognize
                 # COGS now. We can't wait for /confirm-transfer because that

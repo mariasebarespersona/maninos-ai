@@ -92,6 +92,12 @@ interface Invoice {
   id: string; invoice_number: string; direction: string; issue_date: string
   due_date?: string; counterparty_name: string; total_amount: number
   amount_paid: number; balance_due: number; status: string; description?: string
+  notes?: string
+}
+
+interface InvoicePayment {
+  id: string; amount: number; payment_date?: string; created_at?: string
+  payment_method?: string; payment_reference?: string; notes?: string
 }
 
 // ── Helpers ──
@@ -992,11 +998,31 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
 //  INVOICES TAB (AR / AP) — NEW
 // ════════════════════════════════════════════════════════════════════════
 function InvoicesTab() {
+  const toast = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [direction, setDirection] = useState<'' | 'receivable' | 'payable'>('')
   const [aging, setAging] = useState<any>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
+
+  const fetchInvoices = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (direction) params.set('direction', direction)
+      const res = await fetch(`/api/accounting/invoices?${params}`)
+      if (res.ok) { const d = await res.json(); setInvoices(d.invoices || []) }
+      // Fetch aging. The Next proxy at /api/accounting/invoices/aging forwards
+      // to the backend route /api/accounting/invoices/aging/summary, so the
+      // frontend must hit /aging (not /aging/summary — that Next route 404s).
+      const arRes = await fetch('/api/accounting/invoices/aging?direction=receivable')
+      if (arRes.ok) setAging(await arRes.json())
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false) }
+  }, [direction])
 
   const handleDeleteInvoice = async (inv: Invoice) => {
     if (!confirm(`¿Eliminar la factura ${inv.invoice_number} (${fmtFull(inv.total_amount)})?\n\nSe borrarán también sus asientos contables. Esta acción no se puede deshacer.`)) return
@@ -1004,33 +1030,27 @@ function InvoicesTab() {
     try {
       const res = await fetch(`/api/accounting/invoices/${inv.id}`, { method: 'DELETE' })
       if (res.ok) {
+        toast.success('Factura eliminada')
         setInvoices(prev => prev.filter(i => i.id !== inv.id))
       } else {
         const d = await res.json().catch(() => ({}))
-        alert(d.detail || 'No se pudo eliminar la factura')
+        toast.error(d.detail || 'No se pudo eliminar la factura')
       }
     } catch (e) {
-      alert('Error al eliminar la factura')
+      toast.error('Error al eliminar la factura')
     } finally {
       setDeletingId(null)
     }
   }
 
+  useEffect(() => { fetchInvoices() }, [fetchInvoices])
+
   useEffect(() => {
-    (async () => {
-      setLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (direction) params.set('direction', direction)
-        const res = await fetch(`/api/accounting/invoices?${params}`)
-        if (res.ok) { const d = await res.json(); setInvoices(d.invoices || []) }
-        // Fetch aging
-        const arRes = await fetch('/api/accounting/invoices/aging?direction=receivable')
-        if (arRes.ok) setAging(await arRes.json())
-      } catch (e) { /* ignore */ }
-      finally { setLoading(false) }
-    })()
-  }, [direction])
+    fetch('/api/accounting/bank-accounts')
+      .then(r => r.ok ? r.json() : { bank_accounts: [] })
+      .then(d => setBankAccounts(d.bank_accounts || []))
+      .catch(() => {})
+  }, [])
 
   const dirLabel: Record<string, string> = { receivable: 'Por Cobrar', payable: 'Por Pagar' }
   const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', partial: 'Parcial', paid: 'Pagada', overdue: 'Vencida', voided: 'Anulada' }
@@ -1110,13 +1130,27 @@ function InvoicesTab() {
                     <td className="px-4 py-3 text-right font-bold" style={{ color: inv.balance_due > 0 ? '#dc2626' : 'var(--charcoal)' }}>{fmtFull(inv.balance_due)}</td>
                     <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>{statusLabel[inv.status] || inv.status}</span></td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => handleDeleteInvoice(inv)} disabled={deletingId === inv.id}
-                        title="Eliminar factura"
-                        className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
-                        {deletingId === inv.id
-                          ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--danger)' }} />
-                          : <Trash2 className="w-4 h-4" style={{ color: 'var(--danger)' }} />}
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        {inv.balance_due > 0 && inv.status !== 'voided' && (
+                          <button onClick={() => setPayInvoice(inv)}
+                            title="Registrar pago"
+                            className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors">
+                            <CircleDollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                          </button>
+                        )}
+                        <button onClick={() => setDetailId(inv.id)}
+                          title="Ver detalle"
+                          className="p-1.5 rounded-lg hover:bg-navy-50 transition-colors">
+                          <Eye className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
+                        </button>
+                        <button onClick={() => handleDeleteInvoice(inv)} disabled={deletingId === inv.id}
+                          title="Eliminar factura"
+                          className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
+                          {deletingId === inv.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--danger)' }} />
+                            : <Trash2 className="w-4 h-4" style={{ color: 'var(--danger)' }} />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1125,6 +1159,271 @@ function InvoicesTab() {
           </div>
         </div>
       )}
+
+      {/* Detail modal */}
+      {detailId && (
+        <InvoiceDetailModal invoiceId={detailId} bankAccounts={bankAccounts}
+          onClose={() => setDetailId(null)}
+          onChanged={fetchInvoices} />
+      )}
+
+      {/* Register payment modal (row action) */}
+      {payInvoice && (
+        <RegisterInvoicePaymentModal invoice={payInvoice} bankAccounts={bankAccounts}
+          onClose={() => setPayInvoice(null)}
+          onPaid={() => { setPayInvoice(null); fetchInvoices() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Invoice detail + payment history modal ──
+function InvoiceDetailModal({ invoiceId, bankAccounts, onClose, onChanged }: {
+  invoiceId: string; bankAccounts: BankAccount[]; onClose: () => void; onChanged: () => void
+}) {
+  const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [payments, setPayments] = useState<InvoicePayment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showPayModal, setShowPayModal] = useState(false)
+
+  const dirLabel: Record<string, string> = { receivable: 'Por Cobrar', payable: 'Por Pagar' }
+  const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', partial: 'Parcial', paid: 'Pagada', overdue: 'Vencida', voided: 'Anulada' }
+
+  const fetchDetail = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/accounting/invoices/${invoiceId}`)
+      if (res.ok) {
+        const d = await res.json()
+        setInvoice(d.invoice || null)
+        setPayments(d.payments || [])
+      }
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [invoiceId])
+
+  useEffect(() => { fetchDetail() }, [fetchDetail])
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Detalle de Factura</h2>
+          <button onClick={onClose}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+        ) : !invoice ? (
+          <p className="text-sm text-center py-8" style={{ color: 'var(--ash)' }}>No se pudo cargar la factura</p>
+        ) : (
+          <div className="space-y-4">
+            {/* Header info */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold" style={{ color: 'var(--ink)' }}>{invoice.invoice_number}</p>
+                <p className="text-sm" style={{ color: 'var(--slate)' }}>{invoice.counterparty_name}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${invoice.direction === 'receivable' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  {dirLabel[invoice.direction] || invoice.direction}
+                </span>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[invoice.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {statusLabel[invoice.status] || invoice.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Amounts */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg text-center" style={{ backgroundColor: 'var(--ivory)' }}>
+                <p className="text-[10px] uppercase font-medium" style={{ color: 'var(--ash)' }}>Total</p>
+                <p className="font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(invoice.total_amount)}</p>
+              </div>
+              <div className="p-3 rounded-lg text-center bg-emerald-50">
+                <p className="text-[10px] uppercase font-medium text-emerald-600">Pagado</p>
+                <p className="font-bold text-emerald-700">{fmtFull(invoice.amount_paid)}</p>
+              </div>
+              <div className="p-3 rounded-lg text-center" style={{ backgroundColor: invoice.balance_due > 0 ? '#fef2f2' : 'var(--ivory)' }}>
+                <p className="text-[10px] uppercase font-medium" style={{ color: invoice.balance_due > 0 ? '#dc2626' : 'var(--ash)' }}>Pendiente</p>
+                <p className="font-bold" style={{ color: invoice.balance_due > 0 ? '#dc2626' : 'var(--ink)' }}>{fmtFull(invoice.balance_due)}</p>
+              </div>
+            </div>
+
+            {/* Dates + descriptions */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Emisión</p><p style={{ color: 'var(--charcoal)' }}>{invoice.issue_date || '—'}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--ash)' }}>Vencimiento</p><p style={{ color: 'var(--charcoal)' }}>{invoice.due_date || '—'}</p></div>
+              {invoice.description && <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Descripción</p><p style={{ color: 'var(--charcoal)' }}>{invoice.description}</p></div>}
+              {invoice.notes && <div className="col-span-2"><p className="text-xs" style={{ color: 'var(--ash)' }}>Notas</p><p style={{ color: 'var(--charcoal)' }}>{invoice.notes}</p></div>}
+            </div>
+
+            {/* Payment history */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>Historial de Pagos</h4>
+                {invoice.balance_due > 0 && invoice.status !== 'voided' && (
+                  <button onClick={() => setShowPayModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg"
+                    style={{ backgroundColor: 'var(--gold-600)' }}>
+                    <CircleDollarSign className="w-3.5 h-3.5" /> Registrar pago
+                  </button>
+                )}
+              </div>
+              {payments.length === 0 ? (
+                <p className="text-sm text-center py-4" style={{ color: 'var(--ash)' }}>Sin pagos registrados</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {payments.map(p => (
+                    <div key={p.id} className="flex items-center justify-between py-2 px-3 rounded-lg border" style={{ borderColor: 'var(--sand)' }}>
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{p.payment_date || (p.created_at || '').slice(0, 10)}</p>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                          {PAYMENT_LABELS[p.payment_method || ''] || p.payment_method || '—'}
+                          {p.payment_reference && ` · Ref: ${p.payment_reference}`}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-sm text-emerald-600">+{fmtFull(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Register payment modal */}
+      {showPayModal && invoice && (
+        <RegisterInvoicePaymentModal invoice={invoice} bankAccounts={bankAccounts}
+          onClose={() => setShowPayModal(false)}
+          onPaid={() => { setShowPayModal(false); setLoading(true); fetchDetail(); onChanged() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Register invoice payment (partial or full) ──
+function RegisterInvoicePaymentModal({ invoice, bankAccounts, onClose, onPaid }: {
+  invoice: Invoice; bankAccounts: BankAccount[]; onClose: () => void; onPaid: () => void
+}) {
+  const toast = useToast()
+  const [banks, setBanks] = useState<BankAccount[]>(bankAccounts)
+  const [form, setForm] = useState({
+    amount: String(invoice.balance_due || ''),
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'bank_transfer',
+    payment_reference: '',
+    bank_account_id: '',
+    notes: '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (banks.length === 0) {
+      fetch('/api/accounting/bank-accounts')
+        .then(r => r.ok ? r.json() : { bank_accounts: [] })
+        .then(d => setBanks(d.bank_accounts || []))
+        .catch(() => {})
+    }
+  }, [banks.length])
+
+  const handleSubmit = async () => {
+    const amount = parseFloat(form.amount)
+    if (!amount || amount <= 0) { toast.warning('Ingresa un monto válido'); return }
+    if (!form.bank_account_id) { toast.warning('Selecciona la cuenta bancaria (requerido para el ledger)'); return }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/accounting/invoices/${invoice.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_id: invoice.id,
+          amount,
+          payment_date: form.payment_date || undefined,
+          payment_method: form.payment_method || undefined,
+          payment_reference: form.payment_reference || undefined,
+          bank_account_id: form.bank_account_id,
+          notes: form.notes || undefined,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Pago registrado')
+        onPaid()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.detail || 'Error al registrar pago')
+      }
+    } catch { toast.error('Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Registrar Pago</h2>
+          <button onClick={onClose}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--slate)' }}>
+          {invoice.invoice_number} · Pendiente: <strong>{fmtFull(invoice.balance_due)}</strong>
+        </p>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Monto ($) <span className="text-red-500">*</span></label>
+              <input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} />
+            </div>
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Fecha</label>
+              <input type="date" value={form.payment_date} onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Método</label>
+              <select value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+                {Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Referencia</label>
+              <input type="text" value={form.payment_reference} onChange={e => setForm(f => ({ ...f, payment_reference: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="# confirmación" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Bancaria <span className="text-red-500">*</span></label>
+            <select value={form.bank_account_id} onChange={e => setForm(f => ({ ...f, bank_account_id: e.target.value }))}
+              className="w-full px-3 py-2 text-sm rounded-lg border mt-1"
+              style={{ borderColor: form.bank_account_id ? 'var(--stone)' : '#f59e0b' }}>
+              <option value="">Seleccionar cuenta...</option>
+              {banks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.bank_name || b.account_type})</option>)}
+            </select>
+            {!form.bank_account_id && <p className="text-[10px] mt-1 text-amber-600">Requerido — el pago se registra en el ledger de esta cuenta.</p>}
+          </div>
+
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Notas</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} rows={2} />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50"
+            style={{ backgroundColor: 'var(--gold-600)' }}>
+            {saving ? 'Registrando...' : 'Registrar Pago'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

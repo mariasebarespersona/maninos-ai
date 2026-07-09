@@ -395,8 +395,43 @@ async def mark_commission_paid(
         if sale.data.get("properties"):
             prop_address = sale.data["properties"].get("address", "")
 
+    # Find the commission's payable INVOICE (root model). Paying the commission
+    # SETTLES that invoice (invoice_paid_out: A/P→bank) — the accrual was posted
+    # at sale time when the invoice was issued. This avoids the old double-post
+    # (mark_commission_paid AND completing a comision payment_order both posted
+    # commission_paid). Legacy commissions with no invoice fall back to the
+    # direct commission_paid post.
+    inv_row = None
+    try:
+        if payment.data.get("invoice_id"):
+            r = sb.table("accounting_invoices").select("*").eq("id", payment.data["invoice_id"]).execute()
+            inv_row = r.data[0] if r.data else None
+        if not inv_row:
+            r = (sb.table("accounting_invoices").select("*")
+                 .eq("direction", "payable").ilike("notes", f"%[COMM:{payment_id}]%")
+                 .neq("status", "voided").limit(1).execute())
+            inv_row = r.data[0] if r.data else None
+    except Exception as e:
+        logger.warning(f"[commissions] invoice lookup failed for {payment_id}: {e}")
+
     accounting_txn_id = None
-    if bank_account_id:
+    if not bank_account_id:
+        logger.warning(
+            f"[commissions] mark_commission_paid for {payment_id} without bank_account_id — no ledger pair written."
+        )
+    elif inv_row:
+        from api.routes.accounting import record_invoice_payment
+        res = record_invoice_payment(
+            inv_row["id"], float(payment.data["amount"]),
+            bank_account_id=bank_account_id,
+            payment_method="transferencia",
+            notes=f"Pago de comisión — {emp_name}",
+            cap_to_balance=True,
+        )
+        pay = res.get("payment") or {}
+        accounting_txn_id = pay.get("transaction_id")
+    else:
+        # Legacy fallback: no invoice → post the expense directly (old behavior).
         try:
             from api.services.ledger import post_to_ledger
             debit_id, credit_id = post_to_ledger(
@@ -416,18 +451,12 @@ async def mark_commission_paid(
                 status="confirmed",
                 created_by=paid_by,
             )
-            # Bank leg id is what the UI reads for "this was paid out of X"
             accounting_txn_id = credit_id
         except ValueError as e:
             logger.error(f"[commissions] Cannot post commission ledger: {e}")
             raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
         except Exception as e:
             logger.error(f"[commissions] Failed to post commission ledger: {e}")
-    else:
-        logger.warning(
-            f"[commissions] mark_commission_paid called for {payment_id} without "
-            f"bank_account_id — no ledger pair written. Update the UI to pass it."
-        )
 
     now = datetime.utcnow().isoformat()
     update = {
@@ -817,6 +846,33 @@ async def create_sale(data: SaleCreate):
             }
             sb.table("rto_applications").insert(rto_app_data).execute()
             logger.info(f"[sales] RTO application created for sale {sale_record['id']}")
+
+            # ROOT MODEL: an RTO (financed) sale creates a real accounts-
+            # RECEIVABLE invoice to Maninos Capital for the financed remainder
+            # (posts A/R ← House Sales ONCE, at issuance). When Capital pays
+            # Homes (the inbound pago_capital order), that payment SETTLES this
+            # invoice (bank ← A/R) instead of re-recognizing the sale income.
+            # This replaces the ad-hoc sales.amount_pending AR line and makes the
+            # Capital debt a first-class, (partially) collectible invoice.
+            try:
+                financed_remaining = round(sale_price - down_payment, 2)
+                if financed_remaining > 0:
+                    from api.routes.accounting import issue_invoice
+                    prop_addr = prop.get("address", "Propiedad")
+                    inv = issue_invoice(
+                        direction="receivable",
+                        counterparty_name="Maninos Capital LLC",
+                        counterparty_type="capital",
+                        total_amount=financed_remaining,
+                        account_code="House Sales",
+                        property_id=data.property_id,
+                        sale_id=sale_record["id"],
+                        description=f"Financiamiento RTO por cobrar a Maninos Capital — {prop_addr}",
+                        notes=f"[CAPFIN:{sale_record['id']}] Parte financiada de la venta RTO que Capital paga a Homes.",
+                    )
+                    logger.info(f"[sales] Capital AR invoice {inv.get('invoice_number')} created for sale {sale_record['id']}: ${financed_remaining:,.2f}")
+            except Exception as inv_err:
+                logger.warning(f"[sales] Could not create Capital AR invoice: {inv_err}")
 
             # Notify Capital about the pending financed sale
             try:
@@ -1856,48 +1912,54 @@ def _create_commission_payments(sale: dict):
     if sold_by and comm_sold > 0 and sold_by != found_by:
         rows.append({"sale_id": sale["id"], "employee_id": sold_by, "role": "sold_by", "amount": comm_sold, "status": "pending"})
 
-    for row in rows:
+    # Resolve the commission expense account: prefer the per-property
+    # "Comisión <CODE>" job-costing sub-account (matches the old
+    # commission_paid routing) and fall back to "Commissions & fees".
+    comm_account = "Commissions & fees"
+    if prop_code:
         try:
-            sb.table("commission_payments").insert(row).execute()
+            acc = sb.table("accounting_accounts").select("code").eq("code", f"Comisión {prop_code}").limit(1).execute()
+            if acc.data:
+                comm_account = f"Comisión {prop_code}"
+        except Exception:
+            pass
+
+    for row in rows:
+        cp_id = None
+        try:
+            ins = sb.table("commission_payments").insert(row).execute()
+            cp_id = ins.data[0]["id"] if ins.data else None
         except Exception as e:
             logger.warning(f"[commissions] Failed to create commission_payment: {e}")
 
-        # Also create a payment_order so it appears in Notificaciones
+        # ROOT MODEL: a commission is a real payable INVOICE (posts the accrual
+        # Comisión→A/P at sale). It is PAID via invoice payments (partial OK),
+        # which post A/P→bank. This replaces the old payment_order+commission_paid
+        # path — the commission is now represented (and posted) exactly ONCE.
         try:
+            from api.routes.accounting import issue_invoice
             emp_name = _resolve_employee_name(row["employee_id"]) or "Empleado"
             role_label = "encontró al cliente" if row["role"] == "found_by" else "cerró la venta"
             tipo = "RTO" if sale_type == "rto" else "Contado"
             code_str = f" ({prop_code})" if prop_code else ""
-
-            order_data = {
-                "property_id": property_id,
-                "property_address": prop_address,
-                "payee_name": emp_name,
-                "amount": row["amount"],
-                "method": "transferencia",
-                "status": "pending",
-                "concept": "comision",
-                "notes": (
-                    f"Comisión venta {tipo}: ${row['amount']:,.0f} para {emp_name} ({role_label}). "
-                    f"Propiedad: {prop_address}{code_str}. "
-                    f"Precio venta: ${float(sale.get('sale_price', 0)):,.0f}. "
-                    f"Total comisión: ${float(sale.get('commission_amount', 0)):,.0f}."
-                ),
-                "created_by": "sistema_comisiones",
-            }
-            order_result = sb.table("payment_orders").insert(order_data).execute()
-
-            # Create notification for this commission payment order
-            if order_result.data:
-                from api.services.notification_service import notify_payment_order_created
-                notify_payment_order_created(
-                    order_result.data[0]["id"], property_id, row["amount"], emp_name,
-                    property_address=prop_address,
-                    concept=f"Comisión {tipo}: {emp_name} ({role_label}). {prop_address}{code_str}",
-                )
-            logger.info(f"[commissions] Payment order created for {emp_name}: ${row['amount']:,.0f}")
+            tag = f"[COMM:{cp_id}]" if cp_id else ""
+            inv = issue_invoice(
+                direction="payable",
+                counterparty_name=emp_name,
+                counterparty_type="employee",
+                total_amount=float(row["amount"]),
+                account_code=comm_account,
+                property_id=property_id,
+                sale_id=sale["id"],
+                description=f"Comisión venta {tipo}: {emp_name} ({role_label}){code_str}",
+                notes=f"{tag} Comisión {tipo} ${float(row['amount']):,.0f} — {emp_name} ({role_label}). {prop_address}",
+            )
+            # The commission_payment ↔ invoice link is the [COMM:<cp_id>] tag in
+            # the invoice notes (consistent with [PO:]/[CAPFIN:]/[CONSIGN:]);
+            # mark_commission_paid resolves it to settle the right invoice.
+            logger.info(f"[commissions] Payable invoice {inv.get('invoice_number')} created for {emp_name}: ${float(row['amount']):,.0f}")
         except Exception as e:
-            logger.warning(f"[commissions] Failed to create payment_order for commission: {e}")
+            logger.warning(f"[commissions] Failed to create payable invoice for commission: {e}")
 
 
 

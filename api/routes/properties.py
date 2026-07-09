@@ -691,19 +691,36 @@ async def create_property(data: PropertyCreate):
             amount = float(prop.get("purchase_price") or 0)
             if amount > 0:
                 payee = (prop.get("seller_name") or "").strip() or f"Dueño anterior — {prop.get('property_code', '')}".strip()
-                order = sb.table("payment_orders").insert({
-                    "property_id": prop["id"],
-                    "property_address": prop.get("address"),
-                    "payee_name": payee,
-                    "amount": amount,
-                    "status": "approved",  # committed consignment debt, awaiting payment
-                    "concept": "compra",
-                    "notes": "Consignación — pago pendiente al dueño anterior",
-                }).execute().data
-                if order:
-                    from api.routes.payment_orders import _sync_payable_invoice
-                    _sync_payable_invoice(order[0], "open")
-                    logger.info(f"[properties] Consignment payable created for {prop['id']}: ${amount:,.2f} to {payee}")
+                code = prop.get("property_code") or ""
+                # Debit the per-property "Compra <CODE>" inventory sub-account if
+                # it exists (job-costing), else the generic Inventory account —
+                # matching how property_purchase_paid routes.
+                compra_account = "Inventory"
+                if code:
+                    try:
+                        acc = sb.table("accounting_accounts").select("code").eq("code", f"Compra {code}").limit(1).execute()
+                        if acc.data:
+                            compra_account = f"Compra {code}"
+                    except Exception:
+                        pass
+                # ROOT MODEL: consignment intake creates a real payable INVOICE
+                # (posts the accrual Inventory→A/P immediately, so the debt to the
+                # previous owner is visible from day 1). It is PAID via invoice
+                # payments (partial OK, A/P→bank); paying it fully stamps
+                # consignment_paid_at (see record_invoice_payment). Replaces the
+                # old payment_order + document-only [PO:] bill.
+                from api.routes.accounting import issue_invoice
+                inv = issue_invoice(
+                    direction="payable",
+                    counterparty_name=payee,
+                    counterparty_type="seller",
+                    total_amount=amount,
+                    account_code=compra_account,
+                    property_id=prop["id"],
+                    description=f"Compra en consignación — {prop.get('address') or code}",
+                    notes=f"[CONSIGN:{prop['id']}] Consignación — pago pendiente al dueño anterior ({payee})",
+                )
+                logger.info(f"[properties] Consignment payable INVOICE {inv.get('invoice_number')} created for {prop['id']}: ${amount:,.2f} to {payee}")
         except Exception as e:
             logger.warning(f"[properties] Could not create consignment payable for {prop['id']}: {e}")
 
