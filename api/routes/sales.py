@@ -902,23 +902,13 @@ async def create_sale(data: SaleCreate):
                 except Exception:
                     pass
 
-                # Register down payment in Homes accounting
-                try:
-                    sb.table("accounting_transactions").insert({
-                        "property_id": data.property_id,
-                        "transaction_type": "deposit_received",
-                        "is_income": True,
-                        "amount": down_payment,
-                        "description": f"Enganche de {client_name} — venta financiada",
-                        "counterparty_name": client_name,
-                        "entity_type": "sale",
-                        "entity_id": sale_record["id"],
-                        "status": "confirmed",
-                        "transaction_date": datetime.utcnow().date().isoformat(),
-                    }).execute()
-                    logger.info(f"[sales] Down payment ${down_payment:,.0f} recorded in Homes accounting")
-                except Exception as dp_err:
-                    logger.warning(f"[sales] Could not create down payment notification/accounting: {dp_err}")
+                # NOTE: the enganche income is posted ONCE — by the 'enganche'
+                # inbound payment_order above, when Treasury approves it with a
+                # receiving bank (event sale_down_payment_received: bank + income
+                # pair). We must NOT ALSO insert a direct 'deposit_received' row
+                # here — that double-counted the enganche in Homes' P&L (income
+                # 2×, bank 1×). Per the RTO money model: enganche → Homes once;
+                # the financed remainder is recorded via Capital's pago_capital.
 
         except Exception as e:
             logger.error(f"[sales] Failed to create RTO application: {e}")

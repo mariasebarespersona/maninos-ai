@@ -285,7 +285,14 @@ async def approve_capital_transaction(transaction_id: str, approved_by: Optional
 async def confirm_dp_installment(installment_id: str):
     """
     Confirm a client-reported down payment installment.
-    Sets status to 'paid', records date, and creates a capital_transaction for reconciliation.
+    Sets status to 'paid' and records the date.
+
+    IMPORTANT (RTO money model): the enganche (down payment) is income of
+    MANINOS HOMES, not Capital. Homes records it once via the 'enganche'
+    inbound payment_order (event sale_down_payment_received). Capital only
+    TRACKS that the client paid their down-payment installment; it must NOT
+    book it as Capital income — doing so overstated Capital's P&L with money
+    that belongs to Homes. So no capital_transaction is created here.
     """
     try:
         inst_result = sb.table("capital_down_payment_installments") \
@@ -301,12 +308,9 @@ async def confirm_dp_installment(installment_id: str):
         if inst["status"] != "client_reported":
             raise HTTPException(status_code=400, detail=f"Estado inválido: {inst['status']}")
 
-        contract = inst.get("rto_contracts", {}) or {}
-        client_name = (contract.get("clients", {}) or {}).get("name", "Cliente")
-        prop_address = (contract.get("properties", {}) or {}).get("address", "")
         amount = float(inst["amount"])
 
-        # Mark as paid
+        # Mark as paid (tracking only — no Capital income entry, see docstring)
         now = datetime.utcnow().isoformat()
         sb.table("capital_down_payment_installments").update({
             "status": "paid",
@@ -314,29 +318,6 @@ async def confirm_dp_installment(installment_id: str):
             "payment_method": inst.get("client_payment_method", "bank_transfer"),
             "updated_at": now,
         }).eq("id", installment_id).execute()
-
-        # Create capital_transaction for reconciliation with bank statements
-        txn_data = {
-            "transaction_date": date.today().isoformat(),
-            "description": f"Enganche cuota #{inst['installment_number']} - {client_name} - {prop_address}".strip(),
-            "amount": amount,
-            "transaction_type": "down_payment",
-            "is_income": True,
-            "source": "down_payment",
-            "status": "confirmed",
-            "client_id": contract.get("client_id"),
-            "rto_contract_id": contract.get("id"),
-            "payment_method": inst.get("client_payment_method", "bank_transfer"),
-            "notes": f"Confirmado desde reporte de cliente. Método: {inst.get('client_payment_method', 'N/A')}",
-            "created_by": "treasury",
-        }
-        txn_result = sb.table("capital_transactions").insert(txn_data).execute()
-
-        # Link transaction to installment
-        if txn_result.data:
-            sb.table("capital_down_payment_installments").update({
-                "transaction_id": txn_result.data[0]["id"],
-            }).eq("id", installment_id).execute()
 
         return {
             "ok": True,
