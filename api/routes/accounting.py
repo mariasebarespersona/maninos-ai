@@ -1541,6 +1541,31 @@ async def list_invoices(
     return {"invoices": result.data or []}
 
 
+def _validate_postable_account(code: Optional[str], direction: str) -> Optional[str]:
+    """An invoice's income/expense line must post to a REAL, specific P&L leaf
+    account — never a section HEADER (you don't post to 'Cost of Goods Sold' or
+    'Other Operating Expenses' themselves; those are groupers) and never to the
+    wrong side (a payable can't credit an income account). This is the root
+    guard that keeps every invoice linked to the correct account so the P&L
+    always adds up. Returns the validated code, or raises 400 with a clear
+    message. `None`/missing is left for the caller's leaf default."""
+    if not code:
+        return None
+    accts = {a["name"]: a for a in _fetch_all_accounts(active_only=False)}
+    a = accts.get(code)
+    if not a:
+        raise HTTPException(status_code=400, detail=f"La cuenta contable '{code}' no existe en el plan de cuentas.")
+    if a.get("is_header"):
+        raise HTTPException(status_code=400,
+            detail=f"'{code}' es una cuenta de encabezado (agrupador); selecciona una cuenta contable específica, no un grupo.")
+    want = INCOME_TYPES if direction == "receivable" else EXPENSE_TYPES
+    if a.get("account_type") not in want:
+        side = "ingreso" if direction == "receivable" else "gasto"
+        raise HTTPException(status_code=400,
+            detail=f"'{code}' no es una cuenta de {side}; una factura {'por cobrar' if direction=='receivable' else 'por pagar'} debe usar una cuenta de {side}.")
+    return code
+
+
 @router.post("/invoices")
 def issue_invoice(
     *,
@@ -1570,6 +1595,13 @@ def issue_invoice(
 
     status defaults to 'sent' (issued/outstanding) so it counts in aging /
     Por Pagar / Por Cobrar immediately."""
+    # Root guard FIRST (before we create anything): the P&L line must target a
+    # specific non-header account on the correct side, so the invoice is always
+    # linked to the right place and the statements add up. Raises 400 otherwise.
+    _pl_code = _validate_postable_account(
+        account_code if direction == "receivable" else (account_code or expense_account_code),
+        direction,
+    )
     inv_number = _generate_invoice_number(direction)
     total = float(total_amount or 0)
     insert_data = {
@@ -1608,7 +1640,7 @@ def issue_invoice(
         if total > 0 and direction == "receivable":
             post_to_ledger(
                 event_type="invoice_issued_ar",
-                income_account_code=account_code or "House Sales",
+                income_account_code=_pl_code or "House Sales",
                 amount=total,
                 date=invoice_row.get("issue_date") or date.today().isoformat(),
                 counterparty_name=counterparty_name,
@@ -1633,12 +1665,32 @@ def issue_invoice(
                 property_id=property_id,
                 yard_id=yard_id,
                 description_data={"invoice_number": inv_number},
-                expense_account_code=account_code or expense_account_code or "Other Operating Expenses",
+                # Last-resort default is the QB catch-all LEAF "Uncategorized
+                # Expense" (never the "Other Operating Expenses" HEADER), so an
+                # unspecified bill is visibly flagged for re-categorization
+                # instead of silently inflating a grouper.
+                expense_account_code=_pl_code or "Uncategorized Expense",
                 notes=notes,
                 status="confirmed",
             )
+    except HTTPException:
+        # Bad account etc. — roll back the invoice we just created so we never
+        # leave an invoice without its accrual.
+        sb.table("accounting_invoices").delete().eq("id", invoice_row["id"]).execute()
+        raise
     except Exception as e:
-        logger.warning(f"[accounting] Could not post AR/AP ledger pair for invoice {inv_number}: {e}")
+        # ATOMICITY: an invoice MUST post its accrual pair, or it must not exist.
+        # Previously this only logged a warning, which silently created invoices
+        # with NO ledger legs (money that never reached the P&L — a real source
+        # of "cuentas que no cuadran"). Now we roll back the invoice and fail
+        # loudly so the caller sees the problem instead of a phantom invoice.
+        logger.error(f"[accounting] Accrual post FAILED for invoice {inv_number}, rolling back: {e}")
+        try:
+            sb.table("accounting_invoices").delete().eq("id", invoice_row["id"]).execute()
+        except Exception as del_err:
+            logger.error(f"[accounting] Could not roll back invoice {inv_number}: {del_err}")
+        raise HTTPException(status_code=500,
+            detail=f"No se pudo registrar el asiento contable de la factura ({e}). La factura no se creó para evitar descuadres.")
 
     return invoice_row
 

@@ -692,17 +692,19 @@ async def create_property(data: PropertyCreate):
             if amount > 0:
                 payee = (prop.get("seller_name") or "").strip() or f"Dueño anterior — {prop.get('property_code', '')}".strip()
                 code = prop.get("property_code") or ""
-                # Debit the per-property "Compra <CODE>" inventory sub-account if
-                # it exists (job-costing), else the generic Inventory account —
-                # matching how property_purchase_paid routes.
-                compra_account = "Inventory"
+                # Debit the per-property "Compra <CODE>" COGS sub-account
+                # (job-costing, COGS-at-payment policy). Ensure it exists —
+                # create the house's sub-accounts if missing — so the purchase
+                # always links to the house instead of falling into a generic
+                # account (which is what left H48's consignment unlinked).
+                compra_account = f"Compra {code}" if code else "Purchases"
                 if code:
                     try:
                         acc = sb.table("accounting_accounts").select("code").eq("code", f"Compra {code}").limit(1).execute()
-                        if acc.data:
-                            compra_account = f"Compra {code}"
-                    except Exception:
-                        pass
+                        if not acc.data:
+                            _create_inventory_account_for_property({"id": prop["id"], "property_code": code})
+                    except Exception as e:
+                        logger.warning(f"[properties] Could not ensure 'Compra {code}' account: {e}")
                 # ROOT MODEL: consignment intake creates a real payable INVOICE
                 # (posts the accrual Inventory→A/P immediately, so the debt to the
                 # previous owner is visible from day 1). It is PAID via invoice
