@@ -159,9 +159,13 @@ def record_txn(
                 logger.info(f"[accounting-hook] recorded PAIR {txn_type} ${abs(amount):,.2f} (income={is_income})")
                 return row.data[0] if row.data else None
         except Exception as exc:
-            logger.warning(f"[accounting-hook] pair post failed for {txn_type}, falling back to single row: {exc}")
+            # A balanced pair could NOT be posted. Do NOT fall through to a
+            # single-row insert — a one-sided leg silently skews the derived
+            # bank balance. Fail cleanly (non-blocking) without writing anything.
+            logger.error(f"[accounting-hook] pair post FAILED for {txn_type} (no row written): {exc}")
+            return None
 
-    # ---- Legacy single-row path (no bank / pair failed) --------------------
+    # ---- Legacy single-row path (no bank configured at all) ----------------
     try:
         if account_id is None:
             try:
@@ -180,9 +184,11 @@ def record_txn(
             "created_by": created_by,
         }
 
+        # NOTE: no bank_account_id here — the legacy single-row path is only a
+        # P&L/balance leg. Attaching a bank id without a matching bank leg would
+        # be an unbalanced entry that skews the derived bank balance.
         optional = {
             "account_id": account_id,
-            "bank_account_id": bank_account_id,
             "investor_id": investor_id,
             "property_id": property_id,
             "rto_contract_id": rto_contract_id,

@@ -119,7 +119,10 @@ def generate_rto_receivable_invoices() -> dict:
                     continue
                 invoice = res.data[0]
 
-                # AR pair at issuance (income recognized once, here)
+                # AR pair at issuance (income recognized once, here). Must be
+                # ATOMIC with the invoice row: if the accrual can't be posted,
+                # roll back the just-created invoice so we never end up with an
+                # invoice that has no accrual behind it.
                 try:
                     post_to_capital_ledger(
                         event_type="invoice_issued_ar",
@@ -140,7 +143,14 @@ def generate_rto_receivable_invoices() -> dict:
                         }.items() if v},
                     )
                 except Exception as le:
-                    logger.warning(f"[rto-invoicing] AR pair failed for invoice {inv_number}: {le}")
+                    # Roll back the orphaned invoice — no accrual, no invoice.
+                    try:
+                        sb.table("capital_invoices").delete().eq("id", invoice["id"]).execute()
+                    except Exception as de:
+                        logger.error(f"[rto-invoicing] AR accrual failed AND rollback failed "
+                                     f"for invoice {inv_number}: post={le} rollback={de}")
+                    errors.append(f"{p['id']}: AR accrual failed, invoice {inv_number} rolled back: {le}")
+                    continue
 
                 created += 1
             except Exception as e:
@@ -189,23 +199,14 @@ def settle_rto_invoice(
         when = paid_date or date.today().isoformat()
         amount = abs(float(amount))
 
-        pay = sb.table("capital_invoice_payments").insert({
-            "invoice_id": invoice["id"],
-            "payment_date": when,
-            "amount": amount,
-            "payment_method": payment_method,
-            "payment_reference": payment_reference,
-            "notes": "Registrado desde pago RTO",
-        }).execute()
-
-        new_paid = float(invoice.get("amount_paid") or 0) + amount
-        total = float(invoice.get("total_amount") or 0)
-        sb.table("capital_invoices").update({
-            "amount_paid": new_paid,
-            "status": "paid" if new_paid + 0.01 >= total else "partial",
-        }).eq("id", invoice["id"]).execute()
-
         bank = bank_account_id or _primary_capital_bank_id()
+
+        # POST THE LEDGER PAIR FIRST. Only if it succeeds do we register the
+        # payment row and bump amount_paid/status. This prevents an invoice
+        # being marked paid with no ledger pair behind it — if the post fails
+        # we return False so the caller runs its fallback (direct rto_payment
+        # posting) and the collection is not lost.
+        debit_id = None
         if bank:
             try:
                 from api.services.capital_ledger import post_to_capital_ledger
@@ -230,17 +231,37 @@ def settle_rto_invoice(
                         "rto_payment_id": rto_payment_id,
                     }.items() if v},
                 )
-                if pay.data:
-                    sb.table("capital_invoice_payments").update({
-                        "transaction_id": debit_id,   # bank leg
-                    }).eq("id", pay.data[0]["id"]).execute()
             except Exception as le:
-                logger.warning(f"[rto-invoicing] invoice_paid_in failed for {invoice.get('invoice_number')}: {le}")
+                # Ledger post failed — do NOT mark the invoice paid. Signal the
+                # caller (return False) so its fallback posting runs.
+                logger.error(f"[rto-invoicing] invoice_paid_in FAILED for "
+                             f"{invoice.get('invoice_number')} — settle aborted, caller falls back: {le}")
+                return False
         else:
             logger.warning(
                 f"[rto-invoicing] No bank for RTO payment {rto_payment_id} and no primary Capital bank — "
                 f"invoice settled as document only (no ledger pair)."
             )
+
+        # Ledger pair is safely posted (or no bank at all → document-only by
+        # design). Now register the payment and update the invoice.
+        pay = sb.table("capital_invoice_payments").insert({
+            "invoice_id": invoice["id"],
+            "payment_date": when,
+            "amount": amount,
+            "payment_method": payment_method,
+            "payment_reference": payment_reference,
+            "notes": "Registrado desde pago RTO",
+            **({"transaction_id": debit_id} if debit_id else {}),
+        }).execute()
+
+        new_paid = float(invoice.get("amount_paid") or 0) + amount
+        total = float(invoice.get("total_amount") or 0)
+        sb.table("capital_invoices").update({
+            "amount_paid": new_paid,
+            "status": "paid" if new_paid + 0.01 >= total else "partial",
+        }).eq("id", invoice["id"]).execute()
+
         return True
     except Exception as e:
         logger.warning(f"[rto-invoicing] settle failed for {rto_payment_id}: {e}")

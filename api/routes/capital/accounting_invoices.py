@@ -307,20 +307,12 @@ async def add_capital_invoice_payment(invoice_id: str, data: CapitalInvoicePayme
         "notes": data.notes,
     }
     payment_data = {k: v for k, v in payment_data.items() if v is not None}
-    pay_result = sb.table("capital_invoice_payments").insert(payment_data).execute()
 
-    new_paid = float(invoice.get("amount_paid") or 0) + data.amount
-    total = float(invoice.get("total_amount") or 0)
-    new_status = "paid" if new_paid >= total else "partial"
-
-    sb.table("capital_invoices").update({
-        "amount_paid": new_paid,
-        "status": new_status,
-    }).eq("id", invoice_id).execute()
-
-    # Cash pair via the unified writer: clears AR (receivable) or AP
-    # (payable) and lands money in the named Capital bank.
     is_income = invoice["direction"] == "receivable"
+
+    # POST THE LEDGER PAIR FIRST. Only if the cash pair posts do we register
+    # the payment row and mark the invoice paid — otherwise a swallowed post
+    # would leave the invoice marked paid with no ledger pair behind it.
     bank_txn_id = None
     if data.bank_account_id:
         try:
@@ -356,17 +348,30 @@ async def add_capital_invoice_payment(invoice_id: str, data: CapitalInvoicePayme
             logger.error(f"[capital-accounting] Cannot post invoice payment ledger: {e}")
             raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
         except Exception as e:
-            logger.warning(f"[capital-accounting] Invoice payment ledger post failed: {e}")
+            # Do NOT mark the invoice paid without its pair — fail loudly so
+            # the payment can be retried instead of silently lost.
+            logger.error(f"[capital-accounting] Invoice payment ledger post FAILED (nothing marked paid): {e}")
+            raise HTTPException(status_code=500, detail=f"No se pudo registrar el pago en contabilidad: {e}")
     else:
         logger.warning(
             f"[capital-accounting] Invoice payment for {invoice_id} registered WITHOUT "
             f"bank_account_id — no ledger pair written."
         )
 
-    if bank_txn_id and pay_result.data:
-        sb.table("capital_invoice_payments").update({
-            "transaction_id": bank_txn_id
-        }).eq("id", pay_result.data[0]["id"]).execute()
+    # Ledger pair is safely posted (or no bank at all → document-only by
+    # design). Now register the payment and mark the invoice paid.
+    if bank_txn_id:
+        payment_data["transaction_id"] = bank_txn_id
+    pay_result = sb.table("capital_invoice_payments").insert(payment_data).execute()
+
+    new_paid = float(invoice.get("amount_paid") or 0) + data.amount
+    total = float(invoice.get("total_amount") or 0)
+    new_status = "paid" if new_paid >= total else "partial"
+
+    sb.table("capital_invoices").update({
+        "amount_paid": new_paid,
+        "status": new_status,
+    }).eq("id", invoice_id).execute()
 
     _log_capital_audit("capital_invoices", invoice_id, "update",
                        description=f"Payment of ${data.amount} on invoice {invoice.get('invoice_number')}")

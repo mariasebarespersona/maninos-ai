@@ -583,11 +583,22 @@ async def create_transaction(data: TransactionCreate):
             pass
 
         # Double-entry: bank-side counterpart when the bank is chart-linked.
+        # This must be ATOMIC with the P&L leg: if the bank leg cannot be
+        # written (no accounting_account_id, or the insert throws), we roll
+        # back (delete) the P&L leg and raise — a lone P&L row that still
+        # carries a bank_account_id is an unbalanced single leg that skews the
+        # derived bank balance.
         if data.bank_account_id:
-            ba = sb.table("capital_bank_accounts").select("accounting_account_id") \
-                .eq("id", data.bank_account_id).execute()
-            bank_accounting_id = ba.data[0].get("accounting_account_id") if ba.data else None
-            if bank_accounting_id:
+            try:
+                ba = sb.table("capital_bank_accounts").select("accounting_account_id") \
+                    .eq("id", data.bank_account_id).execute()
+                bank_accounting_id = ba.data[0].get("accounting_account_id") if ba.data else None
+                if not bank_accounting_id:
+                    raise ValueError(
+                        f"Bank account {data.bank_account_id} has no accounting_account_id — "
+                        f"cannot post a balanced pair"
+                    )
+
                 bank_data = {
                     "transaction_number": _generate_capital_txn_number(),
                     "transaction_date": data.transaction_date,
@@ -604,17 +615,31 @@ async def create_transaction(data: TransactionCreate):
                 }
                 bank_data = {k: v for k, v in bank_data.items() if v is not None}
                 bank_result = sb.table("capital_transactions").insert(bank_data).execute()
-                if bank_result.data:
-                    sb.table("capital_transactions").update(
-                        {"linked_transaction_id": bank_result.data[0]["id"]}
-                    ).eq("id", pnl_txn["id"]).execute()
-                    pnl_txn["linked_transaction_id"] = bank_result.data[0]["id"]
+                if not bank_result.data:
+                    raise RuntimeError("Bank leg insert returned no data")
+
+                sb.table("capital_transactions").update(
+                    {"linked_transaction_id": bank_result.data[0]["id"]}
+                ).eq("id", pnl_txn["id"]).execute()
+                pnl_txn["linked_transaction_id"] = bank_result.data[0]["id"]
                 # The P&L leg keeps bank_account_id=None so derived balances
                 # only count the bank leg once.
                 sb.table("capital_transactions").update(
                     {"bank_account_id": None}
                 ).eq("id", pnl_txn["id"]).execute()
                 pnl_txn["bank_account_id"] = None
+            except Exception as be:
+                # Roll back the orphaned P&L leg so we never persist an
+                # unbalanced single row, then surface the error.
+                try:
+                    sb.table("capital_transactions").delete().eq("id", pnl_txn["id"]).execute()
+                except Exception as de:
+                    logger.error(f"Bank leg failed AND P&L rollback failed for {txn_number}: "
+                                 f"bank={be} rollback={de}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se pudo registrar la contrapartida bancaria (transacción revertida): {be}",
+                )
 
         return {"ok": True, "transaction": pnl_txn}
     except HTTPException:
@@ -2881,26 +2906,19 @@ async def confirm_capital_reconciliation(statement_id: str, data: dict):
                     errors.append(f"Invoice {invoice_id} not found")
                     continue
 
+                # Idempotency guard: if this movement was already reconciled
+                # (same movement/payment submitted twice), skip — re-posting
+                # would double-count the collection and the ledger pair.
+                if (mv_row.get("status") == "reconciled") or mv_row.get("matched_transaction_id"):
+                    errors.append(f"Movement {mv_id} already reconciled — skipped (idempotent)")
+                    continue
+
                 amount = abs(float(mv_row.get("amount") or 0))
                 is_receivable = (inv_row.get("direction") or "").lower() == "receivable"
 
-                pay = sb.table("capital_invoice_payments").insert({
-                    "invoice_id": invoice_id,
-                    "payment_date": mv_row.get("movement_date"),
-                    "amount": amount,
-                    "payment_method": mv_row.get("payment_method"),
-                    "payment_reference": mv_row.get("reference"),
-                    "notes": f"Auto-cobrado del estado de cuenta {statement_row.get('id','')[:8]}",
-                }).execute()
-
-                new_paid = float(inv_row.get("amount_paid") or 0) + amount
-                total = float(inv_row.get("total_amount") or 0)
-                new_status = "paid" if new_paid + 0.01 >= total else "partial"
-                sb.table("capital_invoices").update({
-                    "amount_paid": new_paid,
-                    "status": new_status,
-                }).eq("id", invoice_id).execute()
-
+                # POST THE LEDGER PAIR FIRST. Only after it succeeds do we
+                # register the payment and mark the invoice paid — otherwise a
+                # swallowed post would leave the invoice paid with no pair.
                 from api.services.capital_ledger import post_to_capital_ledger
                 extra = {k: v for k, v in {
                     "client_id": inv_row.get("client_id"),
@@ -2925,6 +2943,24 @@ async def confirm_capital_reconciliation(statement_id: str, data: dict):
                     status="reconciled",  # pair is born already reconciled
                     extra_fields=extra or None,
                 )
+
+                # Pair posted OK — now register the payment and mark paid.
+                pay = sb.table("capital_invoice_payments").insert({
+                    "invoice_id": invoice_id,
+                    "payment_date": mv_row.get("movement_date"),
+                    "amount": amount,
+                    "payment_method": mv_row.get("payment_method"),
+                    "payment_reference": mv_row.get("reference"),
+                    "notes": f"Auto-cobrado del estado de cuenta {statement_row.get('id','')[:8]}",
+                }).execute()
+
+                new_paid = float(inv_row.get("amount_paid") or 0) + amount
+                total = float(inv_row.get("total_amount") or 0)
+                new_status = "paid" if new_paid + 0.01 >= total else "partial"
+                sb.table("capital_invoices").update({
+                    "amount_paid": new_paid,
+                    "status": new_status,
+                }).eq("id", invoice_id).execute()
 
                 bank_leg_id = debit_id if is_receivable else credit_id
                 if pay.data and bank_leg_id:
