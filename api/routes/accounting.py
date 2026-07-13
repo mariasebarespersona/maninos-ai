@@ -812,6 +812,13 @@ async def get_accounting_dashboard(
     # Sales receivables add to the A/R total so the "Por Cobrar" KPI reflects them.
     ar_total += sum(r["amount"] for r in sales_receivables)
 
+    # Gabriel's view — current inventory: money tied up in UNSOLD houses + count.
+    inventory_value = round(sum((p.get("invertido") or 0) for p in property_inventory
+                                if (p.get("venta") or 0) <= 0), 2)
+    houses_in_inventory = sum(1 for p in property_inventory
+                              if (p.get("invertido") or 0) > 0 and (p.get("venta") or 0) <= 0)
+    houses_sold_count = sum(1 for p in property_inventory if (p.get("venta") or 0) > 0)
+
     return {
         "period": {"type": period, "start_date": start_str, "end_date": end_str,
                    "year": target_year, "month": target_month},
@@ -832,6 +839,9 @@ async def get_accounting_dashboard(
             "houses_bought_period": houses_bought_period,
             "houses_bought_count": houses_bought_count,
             "inventory_invested_period": inventory_invested_period,
+            "inventory_value": inventory_value,
+            "houses_in_inventory": houses_in_inventory,
+            "houses_sold_count": houses_sold_count,
             "accounts_receivable": ar_total,
             "accounts_receivable_overdue": ar_overdue,
             "accounts_payable": ap_total,
