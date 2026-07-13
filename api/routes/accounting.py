@@ -368,6 +368,30 @@ def _log_audit(table_name: str, record_id: str, action: str, changes: dict = Non
 # DASHBOARD
 # ============================================================================
 
+def _period_range(period: str, year: Optional[int], month: Optional[int]):
+    """Resolve a period selector into (year, month, start_date, end_date)."""
+    now = date.today()
+    ty = year or now.year
+    tm = month or now.month
+    if period == "month":
+        start_date = date(ty, tm, 1)
+        end_date = date(ty + (1 if tm == 12 else 0),
+                        1 if tm == 12 else tm + 1, 1) - timedelta(days=1)
+    elif period == "quarter":
+        q = (tm - 1) // 3
+        start_date = date(ty, q * 3 + 1, 1)
+        em = q * 3 + 4
+        end_date = date(ty + (1 if em > 12 else 0),
+                        1 if em > 12 else em, 1) - timedelta(days=1)
+    elif period == "year":
+        start_date = date(ty, 1, 1)
+        end_date = date(ty, 12, 31)
+    else:
+        start_date = date(2020, 1, 1)
+        end_date = date(2030, 12, 31)
+    return ty, tm, start_date, end_date
+
+
 @router.get("/dashboard")
 async def get_accounting_dashboard(
     period: str = Query("month", description="month, quarter, year, all"),
@@ -376,27 +400,7 @@ async def get_accounting_dashboard(
     yard_id: Optional[str] = None,
 ):
     now = date.today()
-    target_year = year or now.year
-    target_month = month or now.month
-
-    # Date range
-    if period == "month":
-        start_date = date(target_year, target_month, 1)
-        end_date = date(target_year + (1 if target_month == 12 else 0),
-                        1 if target_month == 12 else target_month + 1, 1) - timedelta(days=1)
-    elif period == "quarter":
-        q = (target_month - 1) // 3
-        start_date = date(target_year, q * 3 + 1, 1)
-        em = q * 3 + 4
-        end_date = date(target_year + (1 if em > 12 else 0),
-                        1 if em > 12 else em, 1) - timedelta(days=1)
-    elif period == "year":
-        start_date = date(target_year, 1, 1)
-        end_date = date(target_year, 12, 31)
-    else:
-        start_date = date(2020, 1, 1)
-        end_date = date(2030, 12, 31)
-
+    target_year, target_month, start_date, end_date = _period_range(period, year, month)
     start_str = start_date.isoformat()
     end_str = end_date.isoformat()
 
@@ -874,6 +878,190 @@ async def get_accounting_dashboard(
             "renovations_count": len(renovations),
             "transactions_count": len(transactions),
         },
+    }
+
+
+@router.get("/dashboard/drilldown")
+async def dashboard_drilldown(
+    metric: str = Query(..., description="cash|inventory|houses_bought|houses_sold|inventory_invested|net_profit|receivable|payable"),
+    period: str = Query("month"),
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    yard_id: Optional[str] = None,
+):
+    """Breakdown of a single Gabriel dashboard metric into the rows that
+    compose its total, so any figure on the panel can be opened and explained.
+    Reuses the dashboard's own computation for aggregate metrics (so totals
+    always reconcile) and queries transaction-level detail for the rest."""
+    ty, tm, start_date, end_date = _period_range(period, year, month)
+    start_str, end_str = start_date.isoformat(), end_date.isoformat()
+    now = date.today()
+
+    # Same computation the cards use → the drilldown total always matches.
+    dash = await get_accounting_dashboard(period=period, year=year, month=month, yard_id=yard_id)
+    s = dash["summary"]
+
+    rows: list = []
+    title = ""
+    note = ""
+    total = 0.0
+
+    if metric == "cash":
+        title = "Efectivo en bancos — saldo por cuenta"
+        note = "Saldo de cada cuenta, derivado de todos los movimientos del libro."
+        for b in dash["bank_accounts"]:
+            rows.append({
+                "label": b.get("name") or b.get("bank_name") or "Cuenta",
+                "sublabel": b.get("bank_name") or b.get("account_number") or "",
+                "amount": round(float(b.get("current_balance") or 0), 2),
+            })
+        total = s["total_bank_balance"]
+
+    elif metric == "inventory":
+        title = "Casas en inventario (sin vender)"
+        note = "Cada casa con lo invertido = compra + renovación + movida."
+        for p in dash["property_inventory"]:
+            if (p.get("venta") or 0) <= 0 and (p.get("invertido") or 0) > 0:
+                parts = []
+                if p.get("compra"):
+                    parts.append(f"compra ${p['compra']:,.0f}")
+                if p.get("renovacion"):
+                    parts.append(f"reno ${p['renovacion']:,.0f}")
+                if p.get("movida"):
+                    parts.append(f"movida ${p['movida']:,.0f}")
+                rows.append({
+                    "label": p.get("code"),
+                    "sublabel": " · ".join([p.get("address") or ""] + parts).strip(" ·"),
+                    "amount": round(float(p.get("invertido") or 0), 2),
+                    "property_id": p.get("property_id"),
+                })
+        total = s["inventory_value"]
+
+    elif metric in ("houses_bought", "inventory_invested"):
+        _acct_meta = {a["id"]: a for a in _fetch_all_accounts(active_only=False)}
+        txq = (sb.table("accounting_transactions").select("*")
+               .gte("transaction_date", start_str).lte("transaction_date", end_str)
+               .neq("status", "voided").execute()).data or []
+        if metric == "houses_bought":
+            title = "Compras de casas del período"
+            note = "Precio de compra registrado al aprobar la orden de pago (inventario, no gasto)."
+            prefixes, tts, total = ("Compra",), {"purchase_house"}, s["houses_bought_period"]
+        else:
+            title = "Inversión en inventario del período"
+            note = "Compra + renovación + movida cargadas al inventario en el período."
+            prefixes = ("Compra", "Renovación", "Movida")
+            tts, total = {"purchase_house", "renovation", "moving_transport"}, s["inventory_invested_period"]
+        for t in txq:
+            a = _acct_meta.get(t.get("account_id"))
+            if not a:
+                continue
+            code = a.get("code") or ""
+            if code.split(" ")[0] in prefixes and t.get("transaction_type") in tts:
+                rows.append({
+                    "label": code,
+                    "sublabel": (t.get("description") or t.get("transaction_type") or ""),
+                    "amount": round(_signed_balance(float(t.get("amount") or 0), a["account_type"], t.get("is_income")), 2),
+                    "date": t.get("transaction_date"),
+                })
+        rows.sort(key=lambda r: r.get("date") or "")
+
+    elif metric == "houses_sold":
+        title = "Casas vendidas del período"
+        note = "Precio de venta de cada casa vendida (contado y RTO)."
+        sq = (sb.table("sales")
+              .select("id, sale_price, sale_type, status, created_at, property_id, "
+                      "clients(name), properties(property_code, address)")
+              .gte("created_at", start_str).lte("created_at", end_str + "T23:59:59")
+              .neq("status", "cancelled").execute()).data or []
+        for x in sq:
+            if float(x.get("sale_price") or 0) <= 0:
+                continue
+            prop = x.get("properties") or {}
+            cli = x.get("clients") or {}
+            stype = (x.get("sale_type") or "").upper() or "—"
+            rows.append({
+                "label": prop.get("property_code") or "Venta",
+                "sublabel": f"{stype} · {cli.get('name') or 'Cliente'} · {(x.get('created_at') or '')[:10]}",
+                "amount": round(float(x.get("sale_price") or 0), 2),
+                "property_id": x.get("property_id"),
+            })
+        rows.sort(key=lambda r: r.get("sublabel") or "")
+        total = s["houses_sold_revenue"]
+
+    elif metric == "net_profit":
+        title = "Ganancia neta = ingresos − gastos"
+        note = "Ingresos en verde, gastos en rojo. El costo de una casa entra solo al venderse."
+        income_rows = [
+            ("Ventas contado", s["sales_by_type"]["contado"]),
+            ("Ventas RTO (Capital)", s["sales_by_type"]["rto"]),
+            ("Otros ingresos", s["manual_income"]),
+        ]
+        expense_rows = [
+            ("Compra de casas vendidas (COGS)", s["total_purchases"]),
+            ("Renovaciones (de casas vendidas)", s["total_renovations"]),
+            ("Comisiones", s["total_commissions"]),
+            ("Movida (de casas vendidas)", s["total_movida"]),
+            ("Servicios / operativos", s["total_servicios"]),
+            ("Otros gastos", s["manual_expense"]),
+        ]
+        for label, amt in income_rows:
+            if amt:
+                rows.append({"label": label, "sublabel": "ingreso", "amount": round(amt, 2)})
+        for label, amt in expense_rows:
+            if amt:
+                rows.append({"label": label, "sublabel": "gasto", "amount": round(-amt, 2)})
+        total = s["net_profit"]
+
+    elif metric in ("receivable", "payable"):
+        direction = "receivable" if metric == "receivable" else "payable"
+        title = "Por cobrar — detalle" if direction == "receivable" else "Por pagar — detalle"
+        note = ("Facturas por cobrar + saldos pendientes de ventas."
+                if direction == "receivable" else "Facturas por pagar a proveedores, comisiones y consignaciones.")
+        try:
+            inv = (sb.table("accounting_invoices")
+                   .select("invoice_number, counterparty_name, balance_due, due_date, status, description")
+                   .eq("direction", direction)
+                   .in_("status", ["draft", "sent", "partial", "overdue"]).execute()).data or []
+        except Exception:
+            inv = []
+        for i in inv:
+            bal = round(float(i.get("balance_due") or 0), 2)
+            if abs(bal) < 0.01:
+                continue
+            od = i.get("due_date") and i["due_date"] < now.isoformat()
+            rows.append({
+                "label": i.get("counterparty_name") or i.get("invoice_number") or "Factura",
+                "sublabel": (i.get("description") or i.get("invoice_number") or "")
+                            + (f" · vence {i.get('due_date')}" if i.get("due_date") else "")
+                            + (" · VENCIDA" if od else ""),
+                "amount": bal,
+            })
+        if direction == "receivable":
+            for r in dash.get("sales_receivables", []):
+                rows.append({
+                    "label": f"{r.get('property_code') or 'Venta'} — {r.get('counterparty') or ''}".strip(" —"),
+                    "sublabel": f"venta {r.get('sale_type') or ''} · pendiente de cobro",
+                    "amount": round(float(r.get("amount") or 0), 2),
+                    "property_id": r.get("property_id"),
+                })
+        rows.sort(key=lambda r: -abs(r.get("amount") or 0))
+        total = s["accounts_receivable"] if direction == "receivable" else s["accounts_payable"]
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown metric: {metric}")
+
+    rows_sum = round(sum(float(r.get("amount") or 0) for r in rows), 2)
+    return {
+        "metric": metric,
+        "title": title,
+        "note": note,
+        "period": {"type": period, "start_date": start_str, "end_date": end_str,
+                   "year": ty, "month": tm},
+        "rows": rows,
+        "total": round(float(total), 2),
+        "rows_sum": rows_sum,
+        # True when the listed rows add up to the card total (they should).
+        "reconciles": abs(rows_sum - round(float(total), 2)) < 1.0,
     }
 
 

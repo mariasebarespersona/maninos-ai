@@ -369,7 +369,7 @@ export default function AccountingPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} salesReceivables={dashboard?.sales_receivables || []} />}
+      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} salesReceivables={dashboard?.sales_receivables || []} period={period} year={selectedYear} month={selectedMonth} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
       {activeTab === 'statements' && <StatementsTab />}
@@ -392,14 +392,93 @@ export default function AccountingPage() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// Drill-down modal — lists the transactions that compose a Gabriel metric
+// ════════════════════════════════════════════════════════════════════════
+interface DrilldownRow { label: string; sublabel?: string; amount: number; date?: string; property_id?: string }
+interface DrilldownData { title: string; note?: string; rows: DrilldownRow[]; total: number; rows_sum: number; reconciles: boolean }
+
+function DrilldownModal({ metric, label, periodLabel, period, year, month, onClose }: {
+  metric: string; label: string; periodLabel: string; period: string; year: number; month: number; onClose: () => void
+}) {
+  const [data, setData] = useState<DrilldownData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams({ metric, period, year: String(year), month: String(month) })
+    fetch(`/api/accounting/dashboard/drilldown?${params}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d?.detail) setError(d.detail); else setData(d) })
+      .catch(() => setError('No se pudo cargar el detalle'))
+      .finally(() => setLoading(false))
+  }, [metric, period, year, month])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b" style={{ borderColor: 'var(--stone)' }}>
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>{data?.title || label}</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Período: {periodLabel}</p>
+            {data?.note && <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>{data.note}</p>}
+          </div>
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 hover:bg-sand/50" aria-label="Cerrar">
+            <X className="w-5 h-5" style={{ color: 'var(--slate)' }} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-2">
+          {loading && <p className="text-sm text-center py-8" style={{ color: 'var(--ash)' }}>Cargando…</p>}
+          {error && <p className="text-sm text-center py-8" style={{ color: '#dc2626' }}>{error}</p>}
+          {data && data.rows.length === 0 && (
+            <p className="text-sm text-center py-8" style={{ color: 'var(--ash)' }}>No hay transacciones en este período.</p>
+          )}
+          {data && data.rows.map((r, i) => (
+            <div key={i} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-sand/40">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{r.label}</p>
+                {r.sublabel && <p className="text-xs truncate" style={{ color: 'var(--ash)' }}>{r.sublabel}</p>}
+              </div>
+              <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: r.amount < 0 ? '#dc2626' : '#059669' }}>
+                {fmtFull(r.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {data && (
+          <div className="p-5 border-t" style={{ borderColor: 'var(--stone)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold" style={{ color: 'var(--slate)' }}>Total ({data.rows.length} {data.rows.length === 1 ? 'partida' : 'partidas'})</span>
+              <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--ink)' }}>{fmtFull(data.total)}</span>
+            </div>
+            {!data.reconciles && (
+              <p className="text-xs mt-2" style={{ color: '#b45309' }}>
+                ⚠️ Las partidas suman {fmtFull(data.rows_sum)}, que no coincide con el total. Avísame para revisarlo.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  OVERVIEW TAB
 // ════════════════════════════════════════════════════════════════════════
-function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals, propertyInventory, salesReceivables }: {
+function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTransactions, bankAccounts, totals, propertyInventory, salesReceivables, period, year: selectedYear, month: selectedMonth }: {
   summary: DashboardData['summary']; cashFlow: DashboardData['cash_flow']; maxCf: number
   yardBreakdown: YardBreakdown[]; recentTransactions: Transaction[]; bankAccounts: BankAccount[]
   totals: DashboardData['totals']; propertyInventory: PropertyInventoryRow[]; salesReceivables: SalesReceivable[]
+  period: string; year: number; month: number
 }) {
   const [showGabrielExplainer, setShowGabrielExplainer] = useState(false)
+  const [drilldown, setDrilldown] = useState<{ metric: string; label: string } | null>(null)
+  const periodLabel = period === 'all' ? 'Todo el histórico'
+    : period === 'year' ? `Año ${selectedYear}`
+    : period === 'quarter' ? `Trimestre ${Math.floor((selectedMonth - 1) / 3) + 1} · ${selectedYear}`
+    : `${MONTH_NAMES[selectedMonth]} ${selectedYear}`
   return (
     <div className="space-y-6">
       {/* KPI Cards — 6 cards now */}
@@ -421,21 +500,25 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
             <Sparkles className="w-5 h-5" style={{ color: '#b45309' }} />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold" style={{ color: '#92400e' }}>Para Gabriel — Vista de negocio</h2>
-            <p className="text-xs" style={{ color: '#a16207' }}>Lo que Gabriel quiere ver de un vistazo (no es contabilidad formal)</p>
+            <p className="text-xs" style={{ color: '#a16207' }}>Lo que Gabriel quiere ver de un vistazo (no es contabilidad formal). Haz clic en cualquier cifra para ver sus transacciones.</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-[11px] uppercase tracking-wide" style={{ color: '#a16207' }}>Período</p>
+            <p className="text-sm font-bold" style={{ color: '#92400e' }}>{periodLabel}</p>
           </div>
         </div>
 
         {/* Stat cards de negocio */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <BizStatCard icon={Wallet} iconColor="#2563eb" iconBg="#eff6ff" emoji="💵" label="Efectivo en bancos" value={fmt(s.total_bank_balance)} hint="Suma del saldo de las 6 cuentas bancarias, calculado de todos los movimientos del libro. Hasta cargar los saldos iniciales de QuickBooks puede salir bajo o negativo." />
-          <BizStatCard icon={Home} iconColor="#7c3aed" iconBg="#f5f3ff" emoji="🏠" label="Casas en inventario" value={`${s.houses_in_inventory || 0} ${(s.houses_in_inventory || 0) === 1 ? 'casa' : 'casas'}`} sub={`valor ${fmt(s.inventory_value || 0)}`} hint="Casas compradas y aún NO vendidas. El valor = lo invertido en cada una (compra + renovación + movida). Al venderse, sale de aquí y pasa a costo." />
-          <BizStatCard icon={Package} iconColor="#b45309" iconBg="#fef3c7" emoji="🛒" label="Compras del período" value={fmt(s.houses_bought_period || 0)} sub={`${s.houses_bought_count || 0} ${(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'}`} hint="Precio de compra de las casas adquiridas en el período (al aprobar su orden de pago). Es inversión en inventario, NO un gasto." />
-          <BizStatCard icon={Banknote} iconColor="#059669" iconBg="#ecfdf5" emoji="💰" label="Ventas del período" value={fmt(s.houses_sold_revenue || 0)} sub={`${s.houses_sold_count || 0} ${(s.houses_sold_count || 0) === 1 ? 'casa vendida' : 'casas vendidas'}`} hint="Precio de venta de las casas vendidas en el período (contado y RTO). El monto y el número de casas salen de la misma fuente: las ventas registradas." />
-          <BizStatCard icon={TrendingUp} iconColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} iconBg={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} emoji="📈" label="Ganancia neta" value={fmt(s.net_profit)} valueColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} hint="Ingresos − gastos del período. El costo de una casa entra aquí solo cuando se vende (no al comprarla). Ver el desglose completo abajo, en la zona de Abby." />
-          <BizStatCard icon={ArrowUpRight} iconColor="#8b5cf6" iconBg="#f5f3ff" emoji="📥" label="Por cobrar" value={fmt(s.accounts_receivable)} hint="Lo que le deben a Maninos: facturas por cobrar + saldos pendientes de ventas (incluye lo financiado en RTO que debe Capital)." />
-          <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} hint="Lo que Maninos debe: facturas por pagar a proveedores, comisiones y consignaciones pendientes." />
+          <BizStatCard icon={Wallet} iconColor="#2563eb" iconBg="#eff6ff" emoji="💵" label="Efectivo en bancos" value={fmt(s.total_bank_balance)} hint="Suma del saldo de las 6 cuentas bancarias, calculado de todos los movimientos del libro. Hasta cargar los saldos iniciales de QuickBooks puede salir bajo o negativo." onClick={() => setDrilldown({ metric: 'cash', label: 'Efectivo en bancos' })} />
+          <BizStatCard icon={Home} iconColor="#7c3aed" iconBg="#f5f3ff" emoji="🏠" label="Casas en inventario" value={`${s.houses_in_inventory || 0} ${(s.houses_in_inventory || 0) === 1 ? 'casa' : 'casas'}`} sub={`valor ${fmt(s.inventory_value || 0)}`} hint="Casas compradas y aún NO vendidas. El valor = lo invertido en cada una (compra + renovación + movida). Al venderse, sale de aquí y pasa a costo." onClick={() => setDrilldown({ metric: 'inventory', label: 'Casas en inventario' })} />
+          <BizStatCard icon={Package} iconColor="#b45309" iconBg="#fef3c7" emoji="🛒" label="Compras del período" value={fmt(s.houses_bought_period || 0)} sub={`${s.houses_bought_count || 0} ${(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'}`} hint="Precio de compra de las casas adquiridas en el período (al aprobar su orden de pago). Es inversión en inventario, NO un gasto." onClick={() => setDrilldown({ metric: 'houses_bought', label: 'Compras del período' })} />
+          <BizStatCard icon={Banknote} iconColor="#059669" iconBg="#ecfdf5" emoji="💰" label="Ventas del período" value={fmt(s.houses_sold_revenue || 0)} sub={`${s.houses_sold_count || 0} ${(s.houses_sold_count || 0) === 1 ? 'casa vendida' : 'casas vendidas'}`} hint="Precio de venta de las casas vendidas en el período (contado y RTO). El monto y el número de casas salen de la misma fuente: las ventas registradas." onClick={() => setDrilldown({ metric: 'houses_sold', label: 'Ventas del período' })} />
+          <BizStatCard icon={TrendingUp} iconColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} iconBg={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} emoji="📈" label="Ganancia neta" value={fmt(s.net_profit)} valueColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} hint="Ingresos − gastos del período. El costo de una casa entra aquí solo cuando se vende (no al comprarla). Ver el desglose completo abajo, en la zona de Abby." onClick={() => setDrilldown({ metric: 'net_profit', label: 'Ganancia neta' })} />
+          <BizStatCard icon={ArrowUpRight} iconColor="#8b5cf6" iconBg="#f5f3ff" emoji="📥" label="Por cobrar" value={fmt(s.accounts_receivable)} hint="Lo que le deben a Maninos: facturas por cobrar + saldos pendientes de ventas (incluye lo financiado en RTO que debe Capital)." onClick={() => setDrilldown({ metric: 'receivable', label: 'Por cobrar' })} />
+          <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} hint="Lo que Maninos debe: facturas por pagar a proveedores, comisiones y consignaciones pendientes." onClick={() => setDrilldown({ metric: 'payable', label: 'Por pagar' })} />
         </div>
 
         {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
@@ -453,6 +536,10 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
               <p className="mt-1 text-xs" style={{ color: '#92400e' }}>
                 Inversión total en inventario (compra + renovación + movida): {fmt(s.inventory_invested_period || 0)}
               </p>
+              <button onClick={() => setDrilldown({ metric: 'inventory_invested', label: 'Inversión en inventario del período' })}
+                className="mt-1.5 text-xs font-medium flex items-center gap-1 hover:underline" style={{ color: '#b45309' }}>
+                <Search className="w-3 h-3" /> Ver transacciones (compra, renovación, movida)
+              </button>
               <p className="mt-2 text-xs" style={{ color: 'var(--ash)' }}>
                 Esto va a INVENTARIO (un activo), NO a gastos. Se convierte en costo cuando la casa se vende — por eso no suma al total de gastos.
               </p>
@@ -741,6 +828,8 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           )}
         </div>
       </div>
+
+      {drilldown && <DrilldownModal metric={drilldown.metric} label={drilldown.label} periodLabel={periodLabel} period={period} year={selectedYear} month={selectedMonth} onClose={() => setDrilldown(null)} />}
     </div>
   )
 }
@@ -3498,12 +3587,20 @@ function KPICard({ label, value, sublabel, icon: Icon, color, bgColor }: { label
   )
 }
 
-function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, valueColor, hint }: {
+function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, valueColor, hint, onClick }: {
   icon: React.ElementType; iconColor: string; iconBg: string; emoji: string
-  label: string; value: string; sub?: string; valueColor?: string; hint?: string
+  label: string; value: string; sub?: string; valueColor?: string; hint?: string; onClick?: () => void
 }) {
+  const clickable = !!onClick
   return (
-    <div className="rounded-xl border p-4 flex flex-col" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--porcelain, #fff)' }}>
+    <div
+      onClick={onClick}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!() } } : undefined}
+      className={`rounded-xl border p-4 flex flex-col transition-shadow ${clickable ? 'cursor-pointer hover:shadow-md hover:border-amber-300' : ''}`}
+      style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--porcelain, #fff)' }}
+    >
       <div className="flex items-center gap-2 mb-2">
         <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg }}>
           <Icon className="w-4 h-4" style={{ color: iconColor }} />
@@ -3513,6 +3610,11 @@ function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, 
       <p className="text-2xl font-bold" style={{ color: valueColor || 'var(--ink)' }}>{value}</p>
       {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>{sub}</p>}
       {hint && <p className="text-[11px] leading-snug mt-2 pt-2 border-t" style={{ color: 'var(--ash)', borderColor: 'var(--stone)' }}>{hint}</p>}
+      {clickable && (
+        <p className="text-[11px] font-medium mt-2 flex items-center gap-1" style={{ color: '#b45309' }}>
+          <Search className="w-3 h-3" /> Ver transacciones
+        </p>
+      )}
     </div>
   )
 }
