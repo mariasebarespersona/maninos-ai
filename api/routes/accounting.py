@@ -475,8 +475,12 @@ async def get_accounting_dashboard(
 
     def _expense_bucket(code: str, atype: str) -> str:
         first = (code or "").split(" ")[0]
-        if first == "Compra" or code in ("Inventory", "Cost of goods sold", "Cost of Goods Sold-1",
-                                          "House Sales - COGS", "Inventory Shrinkage"):
+        # Inventory→COGS model: a SOLD house's cost lives in "COGS House <CODE>"
+        # (the sale-time transfer from Inventory). "Compra <CODE>" is now an
+        # asset (unsold inventory) and never reaches here. So the "cost of houses
+        # sold" bucket is the COGS House accounts (plus legacy generic COGS).
+        if first in ("Compra", "COGS") or code in ("Inventory", "Cost of goods sold", "Cost of Goods Sold-1",
+                                                    "House Sales - COGS", "Inventory Shrinkage"):
             return "compra_casas"
         if first == "Renovación" or code in ("Supplies & materials", "Supplies", "Purchases",
                                              "Remodeling", "Supplies & materials - COGS"):
