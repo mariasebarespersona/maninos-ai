@@ -160,6 +160,10 @@ export default function AccountingPage() {
   const [showNewBankModal, setShowNewBankModal] = useState(false)
   const [showNewRecurringModal, setShowNewRecurringModal] = useState(false)
   const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false)
+  const [showMovementModal, setShowMovementModal] = useState(false)
+  // Full chart of accounts (flat list: code/name/account_type/is_header/parent_account_id).
+  // Used by the "Registrar movimiento" modal to build its account pickers.
+  const [allAccounts, setAllAccounts] = useState<any[]>([])
   const [syncing, setSyncing] = useState(false)
 
   const fetchDashboard = useCallback(async () => {
@@ -177,6 +181,14 @@ export default function AccountingPage() {
     try {
       const res = await fetch('/api/accounting/accounts')
       if (res.ok) { const data = await res.json(); setAccounts(data.accounts || []) }
+    } catch (e) { /* ignore */ }
+  }, [])
+
+  // Load the full chart of accounts (flat) for the movement modal's pickers.
+  const fetchAllAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/accounting/accounts/tree')
+      if (res.ok) { const data = await res.json(); setAllAccounts(data.flat || []) }
     } catch (e) { /* ignore */ }
   }, [])
 
@@ -201,7 +213,7 @@ export default function AccountingPage() {
     finally { setTxnLoading(false) }
   }, [txnPage, txnSearch, txnTypeFilter, txnFlowFilter, selectedYard])
 
-  useEffect(() => { fetchDashboard(); fetchAccounts() }, [fetchDashboard, fetchAccounts])
+  useEffect(() => { fetchDashboard(); fetchAccounts(); fetchAllAccounts() }, [fetchDashboard, fetchAccounts, fetchAllAccounts])
   useEffect(() => { if (activeTab === 'transactions') fetchTransactions() }, [activeTab, fetchTransactions])
 
   const handleSync = async () => {
@@ -288,6 +300,12 @@ export default function AccountingPage() {
             style={{ backgroundColor: 'var(--navy-800)' }}>
             <Plus className="w-4 h-4" /> Transacción
           </button>
+          <button onClick={() => setShowMovementModal(true)}
+            title="Registrar préstamos, aportaciones, dividendos, activos fijos o saldos iniciales sin saber débitos/créditos"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            <ArrowRightLeft className="w-4 h-4" /> Registrar movimiento
+          </button>
           <button onClick={() => setShowNewInvoiceModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
             style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
@@ -358,6 +376,7 @@ export default function AccountingPage() {
 
       {/* Modals */}
       {showNewTxnModal && <NewTransactionModal accounts={accounts} bankAccounts={dashboard?.bank_accounts || []} yards={dashboard?.yard_breakdown || []} onClose={() => setShowNewTxnModal(false)} onCreated={() => { setShowNewTxnModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
+      {showMovementModal && <RegisterMovementModal allAccounts={allAccounts} onClose={() => setShowMovementModal(false)} onCreated={() => { setShowMovementModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
       {showNewBankModal && <NewBankAccountModal onClose={() => setShowNewBankModal(false)} onCreated={() => { setShowNewBankModal(false); fetchDashboard() }} />}
       {showNewRecurringModal && <NewRecurringExpenseModal accounts={accounts} onClose={() => setShowNewRecurringModal(false)} onCreated={() => setShowNewRecurringModal(false)} />}
       {showNewInvoiceModal && <NewInvoiceModal onClose={() => setShowNewInvoiceModal(false)} onCreated={() => { setShowNewInvoiceModal(false); fetchDashboard() }} />}
@@ -3556,6 +3575,281 @@ function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── "Registrar movimiento" modal ──────────────────────────────────────────
+// Lets the accountant record balance-sheet movements the operational flows
+// don't cover (loans, member contributions, dividends, fixed-asset purchases,
+// opening balances) WITHOUT knowing debits/credits. Each preset fixes which
+// side is debit vs credit and filters the account pickers by account_type, so
+// the user just picks plain-language accounts. Posts to the general
+// /api/accounting/journal-entry endpoint.
+type MovementSide =
+  | { kind: 'pick'; label: string; filter: (a: any) => boolean }
+  | { kind: 'fixed'; label: string; code: string }
+
+interface MovementPreset {
+  id: string
+  label: string
+  helper: string   // plain-language "what will happen"
+  debit: MovementSide
+  credit: MovementSide
+}
+
+function RegisterMovementModal({ allAccounts, onClose, onCreated }: {
+  allAccounts: any[]; onClose: () => void; onCreated: () => void
+}) {
+  const toast = useToast()
+
+  // Every picker also excludes headers and the synthetic PL_/BS_ roots, on top
+  // of the preset's own account_type filter.
+  const postable = (a: any) =>
+    !a.is_header && !String(a.code).startsWith('PL_') && !String(a.code).startsWith('BS_')
+  const byType = (...types: string[]) => (a: any) => postable(a) && types.includes(a.account_type)
+
+  const PRESETS: MovementPreset[] = [
+    {
+      id: 'loan_received',
+      label: 'Préstamo recibido',
+      helper: 'Entra dinero al banco y se registra la deuda.',
+      debit: { kind: 'pick', label: 'Banco que recibe', filter: byType('Bank') },
+      credit: { kind: 'pick', label: 'De quién / cuenta de deuda', filter: byType('Other Current Liabilities', 'Long Term Liabilities') },
+    },
+    {
+      id: 'loan_given',
+      label: 'Préstamo dado',
+      helper: 'Sale dinero del banco y se registra lo que te deben.',
+      debit: { kind: 'pick', label: 'A quién (cuenta de préstamo)', filter: byType('Other Current Assets') },
+      credit: { kind: 'pick', label: 'Banco que paga', filter: byType('Bank') },
+    },
+    {
+      id: 'member_contribution',
+      label: 'Aportación de socio',
+      helper: 'Un socio aporta dinero; entra al banco y sube su capital.',
+      debit: { kind: 'pick', label: 'Banco que recibe', filter: byType('Bank') },
+      credit: { kind: 'pick', label: 'Socio', filter: byType('Equity') },
+    },
+    {
+      id: 'dividend_paid',
+      label: 'Dividendo pagado',
+      helper: 'Se reparte utilidad a los socios y sale dinero del banco.',
+      debit: { kind: 'fixed', label: 'Dividendos pagados', code: 'Dividends paid' },
+      credit: { kind: 'pick', label: 'Banco que paga', filter: byType('Bank') },
+    },
+    {
+      id: 'fixed_asset',
+      label: 'Compra de activo fijo',
+      helper: 'Se compra un activo (vehículo, terreno…) y sale dinero del banco.',
+      debit: { kind: 'pick', label: 'Activo fijo (vehículo/terreno…)', filter: byType('Fixed Assets') },
+      credit: { kind: 'pick', label: 'Banco que paga', filter: byType('Bank') },
+    },
+    {
+      id: 'opening_balance',
+      label: 'Saldo inicial',
+      helper: 'Para cargar el saldo de arranque de una cuenta.',
+      debit: { kind: 'pick', label: 'Cuenta', filter: (a: any) => postable(a) },
+      credit: { kind: 'fixed', label: 'Capital de saldo inicial', code: 'Opening balance equity' },
+    },
+    {
+      id: 'manual',
+      label: 'Otro (asiento manual)',
+      helper: 'Asiento libre: elige la cuenta que aumenta y la que disminuye.',
+      debit: { kind: 'pick', label: 'Débito (la cuenta que aumenta)', filter: (a: any) => postable(a) },
+      credit: { kind: 'pick', label: 'Crédito (origen / la que disminuye)', filter: (a: any) => postable(a) },
+    },
+  ]
+
+  const [presetId, setPresetId] = useState(PRESETS[0].id)
+  const preset = PRESETS.find(p => p.id === presetId)!
+  const [debitAccount, setDebitAccount] = useState<any | null>(null)
+  const [creditAccount, setCreditAccount] = useState<any | null>(null)
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Resolve the code for a side: fixed → its literal code; pick → chosen account's code.
+  const resolveCode = (side: MovementSide, chosen: any | null): string =>
+    side.kind === 'fixed' ? side.code : (chosen?.code || '')
+
+  const amountNum = parseFloat(amount)
+  const debitCode = resolveCode(preset.debit, debitAccount)
+  const creditCode = resolveCode(preset.credit, creditAccount)
+  const canSubmit = !!debitCode && !!creditCode && amountNum > 0
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/accounting/journal-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          debit_account_code: debitCode,
+          credit_account_code: creditCode,
+          amount: amountNum,
+          date,
+          description: description || undefined,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.ok !== false) {
+        toast.success('Movimiento registrado')
+        onCreated()
+      } else {
+        toast.error(data.detail || 'No se pudo registrar el movimiento')
+      }
+    } catch (e) { toast.error('Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+          <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>Registrar movimiento</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-sand/50"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          {/* Tipo de movimiento */}
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Tipo de movimiento</label>
+            <select
+              value={presetId}
+              onChange={e => { setPresetId(e.target.value); setDebitAccount(null); setCreditAccount(null) }}
+              className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
+              {PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <p className="text-xs mt-1.5 flex items-start gap-1.5" style={{ color: 'var(--slate)' }}>
+              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold shrink-0 mt-0.5">i</span>
+              {preset.helper}
+            </p>
+          </div>
+
+          {/* Débito / Crédito pickers */}
+          <MovementAccountField
+            label={preset.debit.label}
+            side={preset.debit}
+            accounts={allAccounts}
+            value={debitAccount}
+            onChange={setDebitAccount}
+          />
+          <MovementAccountField
+            label={preset.credit.label}
+            side={preset.credit}
+            accounts={allAccounts}
+            value={creditAccount}
+            onChange={setCreditAccount}
+          />
+
+          {/* Monto / Fecha */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($)</label>
+              <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Fecha</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} />
+            </div>
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción (opcional)</label>
+            <input type="text" value={description} onChange={e => setDescription(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Ej: Préstamo de socio para operación" />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--sand)' }}>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={!canSubmit || saving}
+            className="px-6 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
+            style={{ backgroundColor: 'var(--navy-800)' }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Registrando...' : 'Registrar movimiento'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Single account field for the movement modal. For a `fixed` side it renders a
+// read-only label; for a `pick` side it renders the searchable account picker
+// (same pattern as MovementRow / the invoice pickers).
+function MovementAccountField({ label, side, accounts, value, onChange }: {
+  label: string
+  side: MovementSide
+  accounts: any[]
+  value: any | null
+  onChange: (a: any | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+
+  if (side.kind === 'fixed') {
+    return (
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>{label}</label>
+        <div className="w-full px-3 py-2 rounded-lg border text-sm bg-stone-50 flex items-center gap-2" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+          <Lock className="w-3.5 h-3.5 text-stone-400" />
+          <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-stone-100 text-stone-500">{side.code}</span>
+          <span>{label}</span>
+        </div>
+      </div>
+    )
+  }
+
+  const filtered = accounts
+    .filter(side.filter)
+    .filter(a => {
+      const q = search.trim().toLowerCase()
+      if (!q) return true
+      return String(a.code).toLowerCase().includes(q) || String(a.name).toLowerCase().includes(q)
+    })
+
+  return (
+    <div className="relative">
+      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>{label}</label>
+      {open ? (
+        <div className="absolute z-20 top-full left-0 w-full mt-1 bg-white border rounded-lg shadow-xl p-2" style={{ borderColor: 'var(--stone)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Search className="w-3.5 h-3.5 text-stone-400" />
+            <input autoFocus type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar cuenta..." className="flex-1 text-xs outline-none" />
+            <button onClick={() => { setOpen(false); setSearch('') }}><X className="w-3.5 h-3.5 text-stone-400" /></button>
+          </div>
+          <div className="max-h-48 overflow-y-auto space-y-0.5">
+            {filtered.map(a => (
+              <button key={a.id} onClick={() => { onChange(a); setOpen(false); setSearch('') }}
+                className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2">
+                <span className="font-mono text-[10px] text-stone-400 w-14 shrink-0">{a.code}</span>
+                <span style={{ color: 'var(--charcoal)' }}>{a.name}</span>
+                <span className="ml-auto text-[10px] text-stone-400">{a.account_type}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <p className="text-xs text-center py-2" style={{ color: 'var(--ash)' }}>Sin resultados</p>}
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setOpen(true)}
+          className="w-full px-3 py-2 rounded-lg border text-sm text-left flex items-center gap-2 hover:bg-sand/30 transition-colors" style={{ borderColor: 'var(--stone)' }}>
+          {value ? (
+            <>
+              <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-stone-100 text-stone-500">{value.code}</span>
+              <span style={{ color: 'var(--charcoal)' }}>{value.name}</span>
+            </>
+          ) : (
+            <span style={{ color: 'var(--ash)' }}>Seleccionar cuenta…</span>
+          )}
+          <ChevronDown className="w-4 h-4 ml-auto text-stone-400" />
+        </button>
+      )}
     </div>
   )
 }
