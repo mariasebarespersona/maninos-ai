@@ -4438,7 +4438,6 @@ function EstadoCuentaTab() {
 
   // ── Step 1 "Ligado manual" (game-like manual movement↔transaction linking) ──
   // Toggle between the AI-suggestions list (default) and the two-panel manual view.
-  const [manualLinkMode, setManualLinkMode] = useState(false)
   // Candidate ledger transactions to link against (from /reconciliation/unreconciled).
   const [linkCandidates, setLinkCandidates] = useState<Transaction[]>([])
   const [loadingCandidates, setLoadingCandidates] = useState(false)
@@ -4508,14 +4507,14 @@ function EstadoCuentaTab() {
   // active statement changes while it's open). Candidates are the ledger
   // transactions for the active statement's bank account.
   useEffect(() => {
-    if (manualLinkMode && activeStatement) {
+    if (activeStatement) {
       const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
       setSelectedMovementId(null)
       setCandidateSearch('')
       fetchLinkCandidates(stmt?.bank_account_id)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualLinkMode, activeStatement, fetchLinkCandidates])
+  }, [activeStatement, fetchLinkCandidates])
 
   const createBankAccount = async () => {
     if (!newAccountName.trim()) return alert('Nombre de cuenta requerido')
@@ -5250,26 +5249,21 @@ function EstadoCuentaTab() {
               {/* STEP 1: Conciliar */}
               {wizardStep === 1 && (
                 <div className="p-5 space-y-4">
-                  {/* View toggle: Sugerencias IA (default) ↔ Ligado manual */}
-                  <div className="flex rounded-lg overflow-hidden border w-fit" style={{ borderColor: 'var(--stone)' }}>
-                    <button
-                      onClick={() => setManualLinkMode(false)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${!manualLinkMode ? 'text-white' : 'text-stone-500 hover:bg-stone-50'}`}
-                      style={!manualLinkMode ? { backgroundColor: '#0d9488' } : {}}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" /> Sugerencias IA
-                    </button>
-                    <button
-                      onClick={() => setManualLinkMode(true)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${manualLinkMode ? 'text-white' : 'text-stone-500 hover:bg-stone-50'}`}
-                      style={manualLinkMode ? { backgroundColor: '#7c3aed' } : {}}
-                    >
-                      <ArrowRightLeft className="w-3.5 h-3.5" /> Ligado manual
-                    </button>
+                  {/* Unified reconciliation: AI suggestions + manual linking together */}
+                  <div className="rounded-lg bg-stone-50 border px-3 py-2" style={{ borderColor: 'var(--stone)' }}>
+                    <p className="text-xs font-medium" style={{ color: 'var(--slate)' }}>
+                      Las dos formas están juntas: <strong>abajo, "Sugerencias de la IA"</strong> — acepta las que te gusten;
+                      y <strong>aquí, "Ligar a mano"</strong> — empareja lo que falte. Todo se concilia en el mismo lote.
+                    </p>
                   </div>
 
-                  {/* ── LIGADO MANUAL: two-panel, game-like manual linking ── */}
-                  {manualLinkMode ? (
+                  {/* ── LIGAR A MANO: two-panel manual linking ── */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-600 text-white text-[11px] font-bold">1</span>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Ligar a mano</p>
+                      <span className="text-xs" style={{ color: 'var(--ash)' }}>— empareja un movimiento con su transacción</span>
+                    </div>
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2">
                         <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0" />
@@ -5409,8 +5403,14 @@ function EstadoCuentaTab() {
                         </div>
                       </div>
                     </div>
-                  ) : (
-                  <>
+                  </div>
+
+                  {/* ── 2) Sugerencias de la IA ── */}
+                  <div className="flex items-center gap-2 pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-teal-600 text-white text-[11px] font-bold">2</span>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Sugerencias de la IA</p>
+                    <span className="text-xs" style={{ color: 'var(--ash)' }}>— acepta las coincidencias que la IA encontró</span>
+                  </div>
                   {/* App transactions available for reconciliation */}
                   {appTransactions.length > 0 && (
                     <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0f9ff' }}>
@@ -5622,8 +5622,6 @@ function EstadoCuentaTab() {
                     </div>
                   )}
 
-                  </>
-                  )}
 
                   {/* Next step button — ALWAYS visible while in step 1
                       (just disabled while a reconcile call is in flight) so
