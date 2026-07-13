@@ -10,7 +10,7 @@ import {
   CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
-  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors, AlertTriangle
+  ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors, AlertTriangle, Package
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -47,6 +47,7 @@ interface DashboardData {
     accounts_receivable: number; accounts_receivable_overdue: number
     accounts_payable: number; accounts_payable_overdue: number
     total_bank_balance: number
+    houses_bought_period?: number; houses_bought_count?: number; inventory_invested_period?: number
   }
   cash_flow: { month: string; label: string; income: number; expense: number; net: number }[]
   bank_accounts: BankAccount[]
@@ -372,6 +373,7 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
   yardBreakdown: YardBreakdown[]; recentTransactions: Transaction[]; bankAccounts: BankAccount[]
   totals: DashboardData['totals']; propertyInventory: PropertyInventoryRow[]; salesReceivables: SalesReceivable[]
 }) {
+  const [showGabrielExplainer, setShowGabrielExplainer] = useState(false)
   return (
     <div className="space-y-6">
       {/* KPI Cards — 6 cards now */}
@@ -416,6 +418,55 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
             <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
             <span className="text-lg font-bold text-red-600">{fmtFull(s.total_expenses)}</span>
           </div>
+
+          {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
+          <div className="mt-5 rounded-xl border p-4" style={{ borderColor: '#fbbf24', backgroundColor: '#fffbeb' }}>
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
+                <Package className="w-5 h-5" style={{ color: '#b45309' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: '#92400e' }}>📦 Inversión en casas este período</p>
+                <p className="mt-1.5 text-sm font-medium" style={{ color: '#78350f' }}>
+                  Compra de casas: {fmt(s.houses_bought_period || 0)}{' '}
+                  ({s.houses_bought_count || 0} {(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'})
+                </p>
+                <p className="mt-1 text-xs" style={{ color: '#92400e' }}>
+                  Inversión total en inventario (compra + renovación + movida): {fmt(s.inventory_invested_period || 0)}
+                </p>
+                <p className="mt-2 text-xs" style={{ color: 'var(--ash)' }}>
+                  Esto va a INVENTARIO (un activo), NO a gastos. Se convierte en costo cuando la casa se vende — por eso no suma al total de gastos.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Explicación colapsable para Gabriel */}
+          <button
+            onClick={() => setShowGabrielExplainer(v => !v)}
+            className="mt-3 flex items-center gap-1.5 text-xs font-medium"
+            style={{ color: 'var(--navy-700)' }}
+          >
+            {showGabrielExplainer ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            ¿Cómo funciona esto? (explicación para Gabriel)
+          </button>
+          {showGabrielExplainer && (
+            <div className="mt-2 rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--sand)' }}>
+              <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>¿Por qué una casa comprada no aparece en gastos?</p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--slate)' }}>
+                Cuando compras una casa, tu dinero no se &apos;gasta&apos; — solo cambia de forma: pasa del banco a la casa. Sigues teniendo ese valor, ahora como INVENTARIO (un activo). Por eso una casa comprada aparece en el Balance Sheet (activos), no en los gastos.
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--slate)' }}>
+                ¿Cuándo se vuelve costo? Cuando VENDES la casa. Ahí su costo (compra + renovación + movida) se resta del ingreso de la venta — eso es el &apos;costo de venta&apos; (COGS) — y así ves la GANANCIA REAL de cada casa (venta − costo). El costo se registra justo cuando entra el ingreso, para que cada casa muestre su ganancia limpia.
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--slate)' }}>
+                Esta línea de &apos;Compra de casas este período&apos; es cuánto invertiste en casas este período, para que lo veas conforme compras. Es informativa: NO es un gasto, por eso está aparte y no suma al total de gastos. Es dinero tuyo, ahora en forma de casas.
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--slate)' }}>
+                En resumen: comprar casa → Inventario (activo). Vender casa → su costo pasa a gastos (COGS) contra el ingreso de la venta; ahí ves la ganancia. Los gastos de verdad (comisiones, servicios, gasolina, renta, etc.) sí aparecen en el desglose porque no son inventario: es dinero que sale y no vuelve como activo.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2407,6 +2458,7 @@ function ChartOfAccountsTab() {
   const [editAccount, setEditAccount] = useState<any>(null)
   const [allAccounts, setAllAccounts] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
   const [form, setForm] = useState({ code: '', name: '', account_type: 'expense', category: 'general', parent_account_id: '', is_header: false })
   // "Nueva casa" — one-field modal that creates the House COGS mother account + its 4 sub-accounts
   const [showAddHouse, setShowAddHouse] = useState(false)
@@ -2530,9 +2582,9 @@ function ChartOfAccountsTab() {
   )
 
   // Render tree rows with edit buttons
-  function renderEditableRow(node: QBTreeNode, depth: number = 0) {
+  function renderEditableRow(node: QBTreeNode, depth: number = 0, forceOpen: boolean = false) {
     const hasChildren = node.children && node.children.length > 0
-    const isExpanded = expanded[node.id] !== false
+    const isExpanded = forceOpen ? true : expanded[node.id] !== false
     const indent = depth * 24
 
     return (
@@ -2570,7 +2622,7 @@ function ChartOfAccountsTab() {
             </div>
           </td>
         </tr>
-        {hasChildren && isExpanded && node.children.map(c => renderEditableRow(c, depth + 1))}
+        {hasChildren && isExpanded && node.children.map(c => renderEditableRow(c, depth + 1, forceOpen))}
       </React.Fragment>
     )
   }
@@ -2580,6 +2632,25 @@ function ChartOfAccountsTab() {
     { value: 'equity', label: 'Capital' }, { value: 'income', label: 'Ingreso' },
     { value: 'cogs', label: 'Costo de Ventas' }, { value: 'expense', label: 'Gasto' },
   ]
+
+  // Lupita — filtra el árbol por código/nombre (case-insensitive), manteniendo la cadena
+  // de ancestros visible: un nodo se conserva si él coincide o si algún descendiente coincide.
+  // Si el propio nodo coincide, se conserva su subárbol completo (para ver sus hijos).
+  const query = search.trim().toLowerCase()
+  const nodeMatches = (n: QBTreeNode) =>
+    (n.code || '').toLowerCase().includes(query) || (n.name || '').toLowerCase().includes(query)
+  const filterNode = (n: QBTreeNode): QBTreeNode | null => {
+    if (nodeMatches(n)) return n // keep full subtree so descendants show
+    const kids = (n.children || []).map(filterNode).filter(Boolean) as QBTreeNode[]
+    if (kids.length > 0) return { ...n, children: kids }
+    return null
+  }
+  const displayTree = query
+    ? (tree.map(filterNode).filter(Boolean) as QBTreeNode[])
+    : tree
+  // When searching, force ancestor headers open so matches are visible.
+  const renderRow = (node: QBTreeNode) =>
+    query ? renderEditableRow(node, 0, true) : renderEditableRow(node)
 
   return (
     <div className="space-y-4">
@@ -2602,6 +2673,24 @@ function ChartOfAccountsTab() {
         </div>
       </div>
 
+      {/* Lupita — buscar cuenta / casa */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--ash)' }} />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar cuenta o casa por código/nombre (ej. H53)…"
+          className="w-full pl-9 pr-9 py-2 rounded-lg border text-sm"
+          style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-stone-100" title="Limpiar">
+            <X className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-navy-600" /></div>
       ) : (
@@ -2617,9 +2706,12 @@ function ChartOfAccountsTab() {
               </tr>
             </thead>
             <tbody>
-              {tree.map(node => renderEditableRow(node))}
+              {displayTree.map(node => renderRow(node))}
             </tbody>
           </table>
+          {query && displayTree.length === 0 && (
+            <p className="text-xs py-6 text-center" style={{ color: 'var(--ash)' }}>Sin resultados para “{search}”</p>
+          )}
         </div>
       )}
 
