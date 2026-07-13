@@ -4656,6 +4656,28 @@ async def update_movement_classification(movement_id: str, data: dict):
     return result.data[0]
 
 
+@router.patch("/bank-statements/movements/{movement_id}/match")
+async def match_movement(movement_id: str, data: dict):
+    """Manually LINK (or UNLINK) a bank-statement movement to an existing ledger
+    transaction — the manual override for when the accountant doesn't like the
+    automatic suggestion and pairs it herself. Body: {"transaction_id": <id>}
+    to link, or {"transaction_id": null} to unlink. Only sets the match; the
+    actual posting still happens on reconcile/confirm."""
+    txn_id = data.get("transaction_id")
+    mv = sb.table("statement_movements").select("id").eq("id", movement_id).execute().data
+    if not mv:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    if txn_id:
+        t = sb.table("accounting_transactions").select("id").eq("id", txn_id).execute().data
+        if not t:
+            raise HTTPException(status_code=400, detail="Transacción no encontrada")
+        upd = {"matched_transaction_id": txn_id, "status": "matched"}
+    else:
+        upd = {"matched_transaction_id": None, "status": "pending"}
+    res = sb.table("statement_movements").update(upd).eq("id", movement_id).execute()
+    return res.data[0]
+
+
 @router.post("/bank-statements/movements/{movement_id}/split")
 async def split_movement(movement_id: str, data: dict):
     """Split a bank-statement movement into multiple child parts.
