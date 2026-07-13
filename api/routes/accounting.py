@@ -1718,6 +1718,67 @@ async def create_invoice(data: InvoiceCreate):
     )
 
 
+@router.patch("/invoices/{invoice_id}/reclassify")
+async def reclassify_invoice(invoice_id: str, data: dict):
+    """Re-categorize an invoice's P&L account WITHOUT re-issuing it: re-points
+    its income/expense accrual leg(s) to a new (non-header, correct-side) leaf
+    account, optionally links it to a property. This is how Abby fixes a bill
+    booked to the wrong account so the P&L lands where it should — no double
+    posting; the A/R, A/P and payment legs are left intact. Body:
+    {account_code?, property_id?}."""
+    new_code = (data.get("account_code") or "").strip()
+    has_prop = "property_id" in data
+    new_prop = data.get("property_id") or None
+    inv = sb.table("accounting_invoices").select("*").eq("id", invoice_id).single().execute().data
+    if not inv:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+
+    legs_updated = 0
+    if new_code:
+        _validate_postable_account(new_code, inv["direction"])
+        acct = sb.table("accounting_accounts").select("id").eq("code", new_code).single().execute().data
+        pl_ids = {a["id"] for a in _fetch_all_accounts(active_only=False) if a.get("account_type") in PL_TYPES}
+        legs = sb.table("accounting_transactions").select("id,account_id").eq("entity_id", invoice_id).eq("entity_type", "invoice").execute().data or []
+        for l in legs:
+            if l["account_id"] in pl_ids:
+                sb.table("accounting_transactions").update({"account_id": acct["id"]}).eq("id", l["id"]).execute()
+                legs_updated += 1
+        if legs_updated == 0:
+            raise HTTPException(status_code=400,
+                detail="La factura no tiene asiento de P&L para re-categorizar (posible factura sin asiento).")
+
+    if has_prop:
+        sb.table("accounting_invoices").update({"property_id": new_prop}).eq("id", invoice_id).execute()
+        sb.table("accounting_transactions").update({"property_id": new_prop}).eq("entity_id", invoice_id).execute()
+
+    _log_audit("accounting_invoices", invoice_id, "update",
+               description=f"Reclasificada a '{new_code}'" + (f", casa={new_prop}" if has_prop else ""))
+    return {"ok": True, "account_code": new_code or None, "legs_updated": legs_updated, "property_id": new_prop if has_prop else inv.get("property_id")}
+
+
+@router.patch("/transactions/{transaction_id}/reclassify")
+async def reclassify_transaction(transaction_id: str, data: dict):
+    """Re-point a single transaction to a different account (e.g. an adjustment
+    booked to the wrong account, or a loan receipt mis-booked as income that
+    belongs in a liability). Target must be a real, non-header account. Allows
+    moving across sections; the sign convention (is_income) is preserved, which
+    is correct: a credit that increased income will, on a liability account,
+    increase the liability. Body: {account_code}."""
+    new_code = (data.get("account_code") or "").strip()
+    if not new_code:
+        raise HTTPException(status_code=400, detail="account_code requerido")
+    acct = sb.table("accounting_accounts").select("id,is_header").eq("code", new_code).single().execute().data
+    if not acct:
+        raise HTTPException(status_code=400, detail=f"La cuenta '{new_code}' no existe en el plan de cuentas.")
+    if acct.get("is_header"):
+        raise HTTPException(status_code=400, detail=f"'{new_code}' es una cuenta de encabezado; elige una cuenta específica.")
+    res = sb.table("accounting_transactions").update({"account_id": acct["id"]}).eq("id", transaction_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    _log_audit("accounting_transactions", transaction_id, "update", description=f"Reclasificada a '{new_code}'")
+    return {"ok": True, "account_code": new_code}
+
+
 @router.patch("/invoices/{invoice_id}")
 async def update_invoice(invoice_id: str, data: dict):
     allowed = {"status", "due_date", "notes", "description", "payment_terms",

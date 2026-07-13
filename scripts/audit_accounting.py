@@ -136,13 +136,18 @@ except Exception as e:
 try:
     from api.routes.accounting import get_balance_sheet
     bs = loop.run_until_complete(get_balance_sheet())
-    ta = bs.get("total_assets") or bs.get("sections", {}).get("total_assets")
-    tl = bs.get("total_liabilities") or bs.get("sections", {}).get("total_liabilities")
-    te = bs.get("total_equity") or bs.get("sections", {}).get("total_equity")
-    if None not in (ta, tl, te):
-        diff = ta - (tl + te)
+    sec = bs.get("sections", {})
+    ta = sec.get("total_assets")
+    tl = sec.get("total_liabilities")
+    te = sec.get("total_equity")
+    ni = sec.get("net_income", 0)
+    # Equity side includes current-period net income as its own line
+    # (retained/current earnings), so the balance check is A == L + E + NI.
+    tle = sec.get("total_liabilities_and_equity", (tl or 0) + (te or 0) + (ni or 0))
+    if ta is not None:
+        diff = ta - tle
         sev = "OK" if abs(diff) < 1 else "HIGH"
-        flag(sev, f"Balance sheet: A ${ta:,.2f} = L ${tl:,.2f} + E ${te:,.2f}  (diff ${diff:,.2f})", "")
+        flag(sev, f"Balance sheet {'balances' if abs(diff)<1 else 'OUT OF BALANCE'}: A ${ta:,.2f} = L ${tl:,.2f} + E ${te:,.2f} + NI ${ni:,.2f}  (diff ${diff:,.2f})", "")
 except Exception as e:
     flag("INFO", "Balance sheet check skipped", str(e)[:100])
 
