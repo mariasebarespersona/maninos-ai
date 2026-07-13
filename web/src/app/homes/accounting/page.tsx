@@ -84,6 +84,7 @@ interface YardBreakdown {
 interface PropertyPnl {
   property_id: string; address: string; city: string; status: string
   purchase_price: number; renovation_cost: number; total_cost: number
+  movida_cost?: number; commission_cost?: number
   sale_price: number; profit: number; margin: number
 }
 
@@ -3230,6 +3231,8 @@ function PropertiesTab({ properties }: { properties: PropertyPnl[] }) {
             <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs mb-3">
               <div><span style={{ color: 'var(--ash)' }}>Compra</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(p.purchase_price)}</p></div>
               <div><span style={{ color: 'var(--ash)' }}>Renovación</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(p.renovation_cost)}</p></div>
+              {(p.movida_cost || 0) > 0 && <div><span style={{ color: 'var(--ash)' }}>Movida</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(p.movida_cost || 0)}</p></div>}
+              {(p.commission_cost || 0) > 0 && <div><span style={{ color: 'var(--ash)' }}>Comisión</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(p.commission_cost || 0)}</p></div>}
               <div><span style={{ color: 'var(--ash)' }}>Inversión Total</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(p.total_cost)}</p></div>
               <div><span style={{ color: 'var(--ash)' }}>Venta</span><p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{p.sale_price > 0 ? fmt(p.sale_price) : '—'}</p></div>
             </div>

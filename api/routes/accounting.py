@@ -427,7 +427,7 @@ async def get_accounting_dashboard(
     sales = (sales_q.execute()).data or []
 
     props_q = sb.table("properties") \
-        .select("id, address, city, purchase_price, sale_price, status, yard_id, created_at") \
+        .select("id, property_code, address, city, purchase_price, sale_price, status, yard_id, created_at") \
         .gte("created_at", start_str) \
         .lte("created_at", end_str + "T23:59:59")
     properties = (props_q.execute()).data or []
@@ -578,23 +578,80 @@ async def get_accounting_dashboard(
                                "houses": yh, "profit": yi - ye}
 
     # ---- Property P&L ----
+    # Per-house REAL cost by concept, from the ledger. We sum the ORIGINAL cost
+    # postings (purchase_house / renovation / moving_transport) on each house's
+    # Compra/Renovación/Movida <CODE> account, plus the Comisión <CODE> balance.
+    # Using the original postings (not the account balance) makes this work for
+    # SOLD houses too: once sold, the inventory accounts net to $0 (their cost
+    # was transferred to COGS House <CODE>), but the original purchase/reno/move
+    # rows persist — so the true cost basis is still recoverable here, aligned
+    # with the P&L's COGS. (Fixes the "Rentabilidad por casa" table using the
+    # renovation ESTIMATE instead of the real cost — e.g. H53 showing $4,217
+    # profit off a $25,783 estimate instead of ~$21,000 off the real $59,000.)
+    cost_components: dict = {}
+    try:
+        concept_acct = {}  # account_id -> (house_code, concept, account_type)
+        for a in _acct_meta.values():
+            code = a.get("code") or ""
+            first = code.split(" ")[0]
+            if first in ("Compra", "Renovación", "Movida", "Comisión") and " " in code:
+                concept_acct[a["id"]] = (code.split(" ", 1)[1], first, a.get("account_type", ""))
+        if concept_acct:
+            crows = (sb.table("accounting_transactions")
+                     .select("account_id, amount, is_income, status, transaction_type")
+                     .in_("account_id", list(concept_acct.keys()))
+                     .neq("status", "voided").execute()).data or []
+            _want_tt = {"Compra": "purchase_house", "Renovación": "renovation", "Movida": "moving_transport"}
+            for r in crows:
+                hc, concept, atype = concept_acct[r["account_id"]]
+                comp = cost_components.setdefault(hc, {"compra": 0.0, "reno": 0.0, "movida": 0.0, "comision": 0.0})
+                signed = _signed_balance(float(r.get("amount") or 0), atype, r.get("is_income", False))
+                if concept == "Comisión":
+                    comp["comision"] += signed
+                elif r.get("transaction_type") == _want_tt.get(concept):
+                    comp[{"Compra": "compra", "Renovación": "reno", "Movida": "movida"}[concept]] += signed
+    except Exception as e:
+        logger.warning(f"[dashboard] property P&L real-cost fetch failed: {e}")
+
     property_pnl = []
     for prop in properties:
         pid = prop["id"]
         pp = float(prop.get("purchase_price") or 0)
         sp = float(prop.get("sale_price") or 0)
-        # All-time renovation cost for this house (not period-limited).
-        reno_cost = round(reno_sum_by_property.get(pid, 0.0), 2)
-        sale_match = next((s for s in sales if s.get("property_id") == pid and s.get("status") in ("paid", "completed", "rto_approved")), None)
+        code = prop.get("property_code") or ""
+        # Actual agreed sale price from the sale record (covers RTO still pending
+        # completion, so a sold-but-not-yet-closed house shows its real price).
+        sale_match = next((s for s in sales if s.get("property_id") == pid
+                           and s.get("status") in ("paid", "completed", "rto_approved",
+                                                    "rto_pending", "rto_active")), None)
         if sale_match:
             sp = float(sale_match.get("sale_price") or sp)
-        total_cost = pp + reno_cost
-        profit = sp - total_cost if sp > 0 else 0
+        comp = cost_components.get(code)
+        if comp:
+            # Real per-concept cost from the ledger (compra + reno + movida + comisión).
+            compra = round(comp["compra"], 2)
+            reno = round(comp["reno"], 2)
+            movida = round(comp["movida"], 2)
+            comision = round(comp["comision"], 2)
+            # Migrated house: has per-house accounts but its purchase was never
+            # posted to "Compra <CODE>" (only e.g. commission). Fall back to the
+            # property's purchase_price so its cost isn't understated to ~$0.
+            if compra <= 0:
+                compra = round(pp, 2)
+        else:
+            # Legacy house without any per-house accounts → fall back to estimate.
+            compra = round(pp, 2)
+            reno = round(reno_sum_by_property.get(pid, 0.0), 2)
+            movida = 0.0
+            comision = 0.0
+        total_cost = round(compra + reno + movida + comision, 2)
+        profit = round(sp - total_cost, 2) if sp > 0 else 0
         margin = (profit / sp * 100) if sp > 0 else 0
         property_pnl.append({"property_id": pid, "address": prop.get("address", "?"),
                              "city": prop.get("city", "?"), "status": prop.get("status", "?"),
-                             "yard_id": prop.get("yard_id"), "purchase_price": pp,
-                             "renovation_cost": reno_cost, "total_cost": total_cost,
+                             "yard_id": prop.get("yard_id"), "purchase_price": compra,
+                             "renovation_cost": reno, "movida_cost": movida,
+                             "commission_cost": comision, "total_cost": total_cost,
                              "sale_price": sp, "profit": profit, "margin": round(margin, 1)})
     property_pnl.sort(key=lambda x: x["profit"], reverse=True)
 
