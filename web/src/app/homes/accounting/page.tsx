@@ -2399,6 +2399,7 @@ function CashFlowStatement({ data }: { data: any }) {
 // ════════════════════════════════════════════════════════════════════════
 
 function ChartOfAccountsTab() {
+  const toast = useToast()
   const [tree, setTree] = useState<QBTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -2407,6 +2408,10 @@ function ChartOfAccountsTab() {
   const [allAccounts, setAllAccounts] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ code: '', name: '', account_type: 'expense', category: 'general', parent_account_id: '', is_header: false })
+  // "Nueva casa" — one-field modal that creates the House COGS mother account + its 4 sub-accounts
+  const [showAddHouse, setShowAddHouse] = useState(false)
+  const [houseCode, setHouseCode] = useState('')
+  const [savingHouse, setSavingHouse] = useState(false)
 
   const fetchTree = useCallback(async () => {
     setLoading(true)
@@ -2458,6 +2463,32 @@ function ChartOfAccountsTab() {
       }
     } catch (e) { alert('Error guardando cuenta') }
     finally { setSaving(false) }
+  }
+
+  const handleCreateHouse = async () => {
+    const code = houseCode.trim()
+    if (!code) return
+    setSavingHouse(true)
+    try {
+      const res = await fetch('/api/accounting/accounts/house', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setShowAddHouse(false)
+        setHouseCode('')
+        toast.success(`Casa ${d.code || code} creada con sus 4 sub-cuentas`)
+        fetchTree()
+      } else {
+        toast.error(d.detail || 'Error al crear la casa')
+      }
+    } catch (e) {
+      toast.error('Error de conexión')
+    } finally {
+      setSavingHouse(false)
+    }
   }
 
   const handleDelete = async (id: string, name: string) => {
@@ -2538,11 +2569,18 @@ function ChartOfAccountsTab() {
           <h2 className="font-serif text-lg font-bold" style={{ color: 'var(--ink)' }}>Plan de Cuentas</h2>
           <p className="text-xs" style={{ color: 'var(--ash)' }}>Administra las cuentas contables. Haz clic en una cuenta para editarla.</p>
         </div>
-        <button onClick={() => { setShowAdd(true); setEditAccount(null); setForm({ code: '', name: '', account_type: 'expense', category: 'general', parent_account_id: '', is_header: false }) }}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-          style={{ backgroundColor: 'var(--navy-800)' }}>
-          <Plus className="w-4 h-4" /> Nueva Cuenta
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setShowAddHouse(true); setHouseCode('') }}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
+            style={{ borderColor: 'var(--navy-800)', color: 'var(--navy-800)' }}>
+            <Home className="w-4 h-4" /> Nueva casa
+          </button>
+          <button onClick={() => { setShowAdd(true); setEditAccount(null); setForm({ code: '', name: '', account_type: 'expense', category: 'general', parent_account_id: '', is_header: false }) }}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ backgroundColor: 'var(--navy-800)' }}>
+            <Plus className="w-4 h-4" /> Nueva Cuenta
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -2575,10 +2613,10 @@ function ChartOfAccountsTab() {
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Código *</label>
+                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Código (opcional)</label>
                 <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
                   className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
-                  placeholder="Ej: 60900" />
+                  placeholder="Se genera del nombre si lo dejas vacío" />
               </div>
               <div>
                 <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Nombre *</label>
@@ -2617,10 +2655,47 @@ function ChartOfAccountsTab() {
                 className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
                 Cancelar
               </button>
-              <button onClick={handleSave} disabled={saving || !form.code || !form.name}
+              <button onClick={handleSave} disabled={saving || !form.name || (!!editAccount && !form.code)}
                 className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: 'var(--navy-800)' }}>
                 {saving ? 'Guardando...' : editAccount ? 'Actualizar' : 'Crear Cuenta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nueva Casa Modal — one field, creates House COGS account + 4 sub-accounts */}
+      {showAddHouse && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => { if (!savingHouse) setShowAddHouse(false) }}>
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <Home className="w-5 h-5" style={{ color: 'var(--navy-800)' }} />
+              <h3 className="font-serif text-lg font-bold" style={{ color: 'var(--ink)' }}>Nueva casa</h3>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Número de la casa</label>
+                <input value={houseCode} autoFocus
+                  onChange={e => setHouseCode(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && houseCode.trim() && !savingHouse) handleCreateHouse() }}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
+                  placeholder="Ej: H60" />
+              </div>
+              <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                Crea la cuenta de la casa y sus 4 sub-cuentas (Compra, Renovación, Movida, Comisión). Aparecerá en el plan y en los estados financieros automáticamente.
+              </p>
+            </div>
+            <div className="flex gap-3 mt-6 justify-end">
+              <button onClick={() => setShowAddHouse(false)} disabled={savingHouse}
+                className="px-4 py-2 text-sm rounded-lg border disabled:opacity-50" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
+                Cancelar
+              </button>
+              <button onClick={handleCreateHouse} disabled={savingHouse || !houseCode.trim()}
+                className="px-4 py-2 text-sm rounded-lg text-white font-medium flex items-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: 'var(--navy-800)' }}>
+                {savingHouse ? <Loader2 className="w-4 h-4 animate-spin" /> : <Home className="w-4 h-4" />}
+                {savingHouse ? 'Creando...' : 'Crear casa'}
               </button>
             </div>
           </div>
