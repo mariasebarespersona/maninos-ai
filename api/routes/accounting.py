@@ -523,6 +523,34 @@ async def get_accounting_dashboard(
                            + total_movida + total_servicios + manual_expense, 2)
     net_profit = total_income - total_expenses
 
+    # ── Gabriel's management view (DISPLAY-ONLY — does NOT alter any accounting)
+    # Money invested into HOUSES this period. A house purchase/renovation is an
+    # ASSET (Inventory), NOT an expense — it only becomes a cost (COGS) when the
+    # house sells. So it never appears in the expense total above. This shows
+    # Gabriel his purchases as they happen, WITHOUT touching the P&L (the numbers
+    # come straight from the same ledger postings that already hit Inventory).
+    houses_bought_period = 0.0
+    inventory_invested_period = 0.0
+    houses_bought_codes = set()
+    for t in transactions:
+        a = _acct_meta.get(t.get("account_id"))
+        if not a or a.get("account_type") not in BS_TYPES:
+            continue
+        code = a.get("code") or ""
+        first = code.split(" ")[0]
+        tt = t.get("transaction_type")
+        if first == "Compra" and tt == "purchase_house":
+            contrib = _signed_balance(float(t.get("amount") or 0), a["account_type"], t.get("is_income"))
+            houses_bought_period += contrib
+            inventory_invested_period += contrib
+            if contrib > 0 and " " in code:
+                houses_bought_codes.add(code.split(" ", 1)[1])
+        elif first in ("Renovación", "Movida") and tt in ("renovation", "moving_transport"):
+            inventory_invested_period += _signed_balance(float(t.get("amount") or 0), a["account_type"], t.get("is_income"))
+    houses_bought_period = round(houses_bought_period, 2)
+    inventory_invested_period = round(inventory_invested_period, 2)
+    houses_bought_count = len(houses_bought_codes)
+
     # ---- Yard breakdown ----
     yard_breakdown = {}
     try:
@@ -800,6 +828,10 @@ async def get_accounting_dashboard(
             "total_servicios": total_servicios,
             "manual_income": manual_income,
             "manual_expense": manual_expense,
+            # Gabriel's view — house purchases this period (inventory, NOT expense)
+            "houses_bought_period": houses_bought_period,
+            "houses_bought_count": houses_bought_count,
+            "inventory_invested_period": inventory_invested_period,
             "accounts_receivable": ar_total,
             "accounts_receivable_overdue": ar_overdue,
             "accounts_payable": ap_total,
