@@ -1128,13 +1128,17 @@ async def void_transaction(transaction_id: str):
 # ============================================================================
 
 class AccountCreate(BaseModel):
-    code: str
+    code: Optional[str] = None      # optional — auto-derived from name when blank
     name: str
     account_type: str
     category: str = "general"
     parent_account_id: Optional[str] = None
     is_header: bool = False
     description: Optional[str] = None
+
+
+class HouseAccountCreate(BaseModel):
+    code: str        # the house number, e.g. "H60" — the only thing needed
 
 
 class AccountUpdate(BaseModel):
@@ -1226,11 +1230,42 @@ async def get_accounts_tree(
     return {"tree": roots, "flat": list(by_id.values())}
 
 
+@router.post("/accounts/house")
+async def create_house_account(data: HouseAccountCreate):
+    """Create a house's whole chart-of-accounts structure from just its number:
+    the "House <CODE>" COGS mother account + its 4 concept sub-accounts
+    (Compra / Renovación / Movida / Comisión). No account-type or code to type
+    in — a house's cost group is always Cost of Goods Sold. Idempotent and keyed
+    by the house code, so it CONVERGES with the automatic creation done when a
+    property is uploaded (same builder, no duplicates). It then shows up in the
+    chart and in the P&L (under Cost of Goods Sold) automatically."""
+    code = (data.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="El número de la casa es obligatorio.")
+    from api.routes.properties import _create_inventory_account_for_property
+    # If a property with this code already exists, tag the accounts with its
+    # real id; otherwise create them keyed purely by code (a later property
+    # upload converges idempotently onto the same accounts).
+    prop = sb.table("properties").select("id").eq("property_code", code).limit(1).execute().data
+    prop_id = prop[0]["id"] if prop else f"manual:{code}"
+    header_id = _create_inventory_account_for_property({"id": prop_id, "property_code": code})
+    if not header_id:
+        raise HTTPException(status_code=500, detail="No se pudo crear la cuenta de la casa.")
+    _log_audit("accounting_accounts", header_id, "create", description=f"Casa creada en el plan: House {code}")
+    return {"ok": True, "code": code, "header": f"House {code}",
+            "sub_accounts": [f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]}
+
+
 @router.post("/accounts")
 async def create_account(data: AccountCreate):
-    """Create a new account in the chart of accounts."""
+    """Create a new account in the chart of accounts. `code` is optional — when
+    left blank it defaults to the account name (the chart identifies accounts by
+    their name), so the user doesn't have to invent a code."""
+    code = (data.code or data.name or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="El nombre de la cuenta es obligatorio.")
     insert_data = {
-        "code": data.code, "name": data.name, "account_type": data.account_type,
+        "code": code, "name": data.name, "account_type": data.account_type,
         "category": data.category, "is_header": data.is_header,
         "parent_account_id": data.parent_account_id, "description": data.description,
         "is_system": False, "is_active": True,
