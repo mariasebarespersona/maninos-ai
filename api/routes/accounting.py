@@ -1243,6 +1243,14 @@ async def create_house_account(data: HouseAccountCreate):
     if not code:
         raise HTTPException(status_code=400, detail="El número de la casa es obligatorio.")
     from api.routes.properties import _create_inventory_account_for_property
+    # Detect whether this house is ALREADY in the chart BEFORE (re-)running the
+    # idempotent builder, so we can tell Abby "ya existe" instead of a misleading
+    # "creada" (e.g. the house was uploaded first and its accounts auto-created).
+    wanted = [f"House {code}", f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]
+    before = sb.table("accounting_accounts").select("code").in_("code", wanted).execute().data or []
+    existed_before = {a["code"] for a in before}
+    header_existed = f"House {code}" in existed_before
+
     # If a property with this code already exists, tag the accounts with its
     # real id; otherwise create them keyed purely by code (a later property
     # upload converges idempotently onto the same accounts).
@@ -1251,8 +1259,16 @@ async def create_house_account(data: HouseAccountCreate):
     header_id = _create_inventory_account_for_property({"id": prop_id, "property_code": code})
     if not header_id:
         raise HTTPException(status_code=500, detail="No se pudo crear la cuenta de la casa.")
-    _log_audit("accounting_accounts", header_id, "create", description=f"Casa creada en el plan: House {code}")
+
+    created = [c for c in wanted if c not in existed_before]
+    already_existed = header_existed and not created
+    if not already_existed:
+        _log_audit("accounting_accounts", header_id, "create",
+                   description=f"Casa en el plan: House {code} ({len(created)} cuenta(s) nueva(s))")
     return {"ok": True, "code": code, "header": f"House {code}",
+            "already_existed": already_existed,
+            "created_count": len(created),
+            "created": created,
             "sub_accounts": [f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]}
 
 
