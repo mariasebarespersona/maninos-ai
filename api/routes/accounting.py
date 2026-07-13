@@ -608,26 +608,32 @@ async def get_accounting_dashboard(
                      .neq("status", "sold")
                      .order("property_code").execute()).data or []
 
-        # Per-house COGS account balances (actual money spent), keyed by code.
+        # Per-house cost balances = ACTUAL money posted to the ledger (NOT the
+        # renovation-table estimate). The Compra/Renovación/Movida accounts are
+        # now asset (Inventory) type and Comisión is COGS, so fetch them by code
+        # prefix regardless of type and sign each with _signed_balance per its
+        # own type. (Before, this only looked at COGS-typed accounts, so it
+        # missed the now-asset ones and fell back to the renovation ESTIMATE —
+        # e.g. showing a $25,333 scope estimate instead of the $2,200 paid.)
         cogs_bal_by_code: dict = {}
         try:
-            cogs_accts = (sb.table("accounting_accounts").select("id, code")
-                          .eq("account_type", "Cost of Goods Sold").execute()).data or []
-            id_to_code = {a["id"]: a["code"] for a in cogs_accts
-                          if (a.get("code") or "").split(" ")[0] in ("Compra", "Renovación", "Movida", "Comisión")}
-            if id_to_code:
+            id_to = {a["id"]: (a["code"], a.get("account_type", ""))
+                     for a in _acct_meta.values()
+                     if (a.get("code") or "").split(" ")[0] in ("Compra", "Renovación", "Movida", "Comisión")}
+            if id_to:
                 rows = (sb.table("accounting_transactions")
                         .select("account_id, amount, is_income, status")
-                        .in_("account_id", list(id_to_code.keys()))
+                        .in_("account_id", list(id_to.keys()))
                         .neq("status", "voided").execute()).data or []
                 for r in rows:
-                    code = id_to_code.get(r.get("account_id"))
-                    if not code:
+                    meta = id_to.get(r.get("account_id"))
+                    if not meta:
                         continue
-                    amt = float(r.get("amount") or 0)
-                    cogs_bal_by_code[code] = cogs_bal_by_code.get(code, 0.0) + (amt if not r.get("is_income") else -amt)
+                    code, atype = meta
+                    cogs_bal_by_code[code] = cogs_bal_by_code.get(code, 0.0) + _signed_balance(
+                        float(r.get("amount") or 0), atype, r.get("is_income", False))
         except Exception as e:
-            logger.warning(f"[dashboard] per-house COGS fetch failed: {e}")
+            logger.warning(f"[dashboard] per-house cost fetch failed: {e}")
 
         def _cost(prefix, prop_code, fallback):
             bal = cogs_bal_by_code.get(f"{prefix} {prop_code}")
