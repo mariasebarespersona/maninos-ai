@@ -263,6 +263,30 @@ async def financial_summary():
 
         prop_ids = [p["id"] for p in properties]
 
+        # Per-house cost from the LEDGER (real money posted), keyed by account
+        # code (Renovación/Movida/Comisión <CODE>). Same source as the accounting
+        # and the property Financiero, so the Resumen de Casas is CONSISTENT:
+        # it shows what was actually paid, not the renovation ESTIMATE nor a
+        # default commission. (The renovation estimate stays a planning guide.)
+        ledger_cost_by_code = {}
+        try:
+            per_house = sb.table("accounting_accounts").select("id, code, account_type") \
+                .or_("code.like.Renovación %,code.like.Movida %,code.like.Comisión %").execute().data or []
+            id_meta = {a["id"]: (a["code"], a.get("account_type", "")) for a in per_house}
+            if id_meta:
+                ids = list(id_meta.keys())
+                for i in range(0, len(ids), 200):
+                    rows = sb.table("accounting_transactions").select("account_id, amount, is_income") \
+                        .in_("account_id", ids[i:i + 200]).neq("status", "voided").execute().data or []
+                    for r in rows:
+                        code, atype = id_meta[r["account_id"]]
+                        exp = atype in ("Expenses", "Other Expense", "Cost of Goods Sold")
+                        val = (float(r.get("amount") or 0) if ((not r.get("is_income")) if exp else r.get("is_income"))
+                               else -float(r.get("amount") or 0))
+                        ledger_cost_by_code[code] = ledger_cost_by_code.get(code, 0.0) + val
+        except Exception as e:
+            logger.warning(f"[financial-summary] ledger cost error: {e}")
+
         # 2. Renovation costs (latest per property)
         reno_map = {}
         try:
@@ -360,12 +384,14 @@ async def financial_summary():
         for p in properties:
             pid = p["id"]
             pp = float(p.get("purchase_price") or 0)
-            # Use manual overrides if set, otherwise fall back to computed values
-            reno = float(p["renovation_cost"]) if p.get("renovation_cost") is not None else reno_map.get(pid, 0)
-            move = float(p["move_cost"]) if p.get("move_cost") is not None else move_map.get(pid, 0)
+            _code = p.get("property_code") or ""
+            # Real costs from the LEDGER by default (paid money), manual override
+            # wins if set. NOT the renovation estimate / default commission.
+            reno = float(p["renovation_cost"]) if p.get("renovation_cost") is not None else round(ledger_cost_by_code.get(f"Renovación {_code}", 0.0), 2)
+            move = float(p["move_cost"]) if p.get("move_cost") is not None else round(ledger_cost_by_code.get(f"Movida {_code}", 0.0), 2)
             sale = sale_map.get(pid, {})
             sp = sale.get("sale_price") or float(p.get("sale_price") or 0)
-            commission = float(p["commission"]) if p.get("commission") is not None else sale.get("commission", COMMISSION_MAX)
+            commission = float(p["commission"]) if p.get("commission") is not None else round(ledger_cost_by_code.get(f"Comisión {_code}", 0.0), 2)
             margin = float(p["margin"]) if p.get("margin") is not None else MARGIN_FIXED
             total_inv = pp + reno + move
             profit = sp - total_inv - commission - margin if sp > 0 else 0
