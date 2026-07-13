@@ -1060,6 +1060,24 @@ async def create_sale(data: SaleCreate):
     # Auto-generate commission_payments rows
     _create_commission_payments(sale_record)
 
+    # COGS recognition (policy confirmed with Abby): a house is SOLD the moment
+    # the sale is recorded, even if part of the price is still owed. For an
+    # RTO/financed sale the revenue is already recognized here at creation (the
+    # financed A/R invoice to Capital above + the enganche), so we recognize its
+    # full cost (Inventory → COGS) NOW too, keeping revenue and cost in the same
+    # period (matching principle). This moves Compra/Renovación/Movida <CODE>
+    # out of Inventory (Balance Sheet) into COGS House <CODE> (P&L); the seller
+    # commission is already booked to its own COGS account. Idempotent, so the
+    # later completion step (confirm-transfer) sweeps $0 — no double count.
+    # Contado sales recognize COGS when paid (see the payment flow), which is
+    # where their revenue posts.
+    if data.sale_type == SaleType.RTO:
+        try:
+            _recognize_house_cogs(data.property_id, sale_record["id"],
+                                  datetime.utcnow().date().isoformat())
+        except Exception as cogs_err:
+            logger.warning(f"[sales] Could not recognize COGS at RTO sale creation: {cogs_err}")
+
     # Register initial payment if provided
     if data.initial_payment_amount and float(data.initial_payment_amount) > 0:
         try:
