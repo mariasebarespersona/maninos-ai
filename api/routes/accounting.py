@@ -5112,18 +5112,41 @@ async def match_movement(movement_id: str, data: dict):
     to link, or {"transaction_id": null} to unlink. Only sets the match; the
     actual posting still happens on reconcile/confirm."""
     txn_id = data.get("transaction_id")
-    mv = sb.table("statement_movements").select("id").eq("id", movement_id).execute().data
+    mv = sb.table("statement_movements").select("id, matched_transaction_id").eq("id", movement_id).execute().data
     if not mv:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    now_str = datetime.utcnow().isoformat()
+
+    def _flip_txn(tid: Optional[str], new_status: str):
+        """Flip a ledger transaction AND its double-entry counterpart leg."""
+        if not tid:
+            return
+        row = (sb.table("accounting_transactions").select("id, linked_transaction_id")
+               .eq("id", tid).execute().data or [])
+        if not row:
+            return
+        ids = [tid] + ([row[0]["linked_transaction_id"]] if row[0].get("linked_transaction_id") else [])
+        sb.table("accounting_transactions").update({
+            "status": new_status,
+            "reconciled_at": now_str if new_status == "reconciled" else None,
+        }).in_("id", ids).execute()
+
     if txn_id:
         t = sb.table("accounting_transactions").select("id").eq("id", txn_id).execute().data
         if not t:
             raise HTTPException(status_code=400, detail="Transacción no encontrada")
-        upd = {"matched_transaction_id": txn_id, "status": "matched"}
+        # Manually pairing a movement to an existing ledger transaction reconciles
+        # the pair immediately (valid status is 'reconciled' — 'matched' is not in
+        # the statement_movements status CHECK constraint, which is what raised the
+        # 500 "API error"). Also flip the matched transaction + its counterpart leg.
+        upd = {"matched_transaction_id": txn_id, "status": "reconciled"}
+        _flip_txn(txn_id, "reconciled")
     else:
+        # Unlink: revert the previously matched transaction back to confirmed.
+        _flip_txn((mv[0] or {}).get("matched_transaction_id"), "confirmed")
         upd = {"matched_transaction_id": None, "status": "pending"}
     res = sb.table("statement_movements").update(upd).eq("id", movement_id).execute()
-    return res.data[0]
+    return res.data[0] if res.data else {"id": movement_id, **upd}
 
 
 @router.post("/bank-statements/movements/{movement_id}/split")

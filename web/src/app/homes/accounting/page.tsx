@@ -4364,7 +4364,7 @@ interface StatementMovement {
   suggested_account_name?: string; suggested_transaction_type?: string
   ai_confidence?: number; ai_reasoning?: string; needs_subcategory?: boolean
   final_account_id?: string; final_transaction_type?: string; final_notes?: string
-  status: string; transaction_id?: string
+  status: string; transaction_id?: string; matched_transaction_id?: string
   parent_movement_id?: string; is_split_parent?: boolean
   accounting_accounts?: { code: string; name: string; account_type: string; category: string }
 }
@@ -5287,7 +5287,7 @@ function EstadoCuentaTab() {
                           </div>
                           <div className="max-h-[420px] overflow-y-auto p-2 space-y-1.5">
                             {activeMovements.filter(m => !m.is_split_parent).map(m => {
-                              const linkedTxnId = m.transaction_id
+                              const linkedTxnId = m.matched_transaction_id || m.transaction_id
                               const isLinked = !!linkedTxnId
                               const isSelected = selectedMovementId === m.id
                               const linkedTxn = linkCandidates.find(t => t.id === linkedTxnId)
