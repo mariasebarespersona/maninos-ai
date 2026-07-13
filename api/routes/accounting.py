@@ -2602,7 +2602,16 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
     bs_account_ids = set(a["id"] for a in accounts if a.get("account_type") in BS_TYPES)
 
+    # property_id → yard location (same derivation as the P&L: from the
+    # property_code prefix) so the Balance Sheet can show per-yard columns.
+    try:
+        _props = sb.table("properties").select("id, property_code").execute().data or []
+    except Exception:
+        _props = []
+    loc_by_prop = {p["id"]: _location_for_code(p.get("property_code")) for p in _props}
+
     balances = {}
+    bal_by_loc = {loc: {} for loc in PL_LOCATIONS}
     net_income = 0
     try:
         filters = {"lte_date": as_of}
@@ -2616,64 +2625,102 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             amt = float(t["amount"])
             atype = acct_type_by_id.get(aid, "")
             is_inc = t.get("is_income", False)
-            # BS accounts: add to balances
             if aid in bs_account_ids:
-                balances[aid] = balances.get(aid, 0) + _signed_balance(amt, atype, is_inc)
-            # P&L accounts: contribute to net income
+                sval = _signed_balance(amt, atype, is_inc)
+                balances[aid] = balances.get(aid, 0) + sval
+                loc = loc_by_prop.get(t.get("property_id")) or "Not specified"
+                bal_by_loc[loc][aid] = bal_by_loc[loc].get(aid, 0) + sval
             net_income += _net_income_sign(amt, atype, is_inc)
     except Exception as e:
         logger.warning(f"[balance-sheet] Error fetching transactions: {e}")
+    net_income = round(net_income, 2)
 
-    # Build trees
+    # Build the raw trees per BS section root and attach per-yard totals to
+    # every node (PART 3 — yard columns, same machinery as the P&L).
     assets_tree = _build_report_tree(accounts, balances, ["BS_ASSETS"])
     liabilities_tree = _build_report_tree(accounts, balances, ["BS_LIABILITIES"])
     equity_tree = _build_report_tree(accounts, balances, ["BS_EQUITY"])
+    _roots = ["BS_ASSETS", "BS_LIABILITIES", "BS_EQUITY"]
+    _loc_totals = {loc: _tree_totals(accounts, bal_by_loc[loc], _roots) for loc in PL_LOCATIONS}
 
-    total_assets = sum(n["total"] for n in assets_tree)
-    total_liabilities = sum(n["total"] for n in liabilities_tree)
-    raw_total_equity = sum(n["total"] for n in equity_tree)
+    def _attach_loc(nodes):
+        for n in nodes:
+            n["by_location"] = {loc: round(_loc_totals[loc].get(n["id"], 0.0), 2) for loc in PL_LOCATIONS}
+            _attach_loc(n.get("children", []))
+    for _t in (assets_tree, liabilities_tree, equity_tree):
+        _attach_loc(_t)
 
-    # Equity sign normalization. Migrations 090 / 092 seeded opening
-    # balances with is_income=FALSE on the equity contra side, which
-    # _signed_balance interprets as a DEBIT to equity (decrease). The
-    # rest of the ledger writes equity credits as is_income=TRUE
-    # (post_to_ledger), so equity computed off the raw rows can land
-    # with the sign flipped depending on the data mix.
-    #
-    # The accounting equation A = L + E + NI must always hold for a
-    # balanced double-entry ledger, so we derive the displayed equity
-    # total from the OTHER three quantities — that's the single source
-    # of truth and guarantees the Balance Sheet balances on screen no
-    # matter what historical convention each row was written with.
-    # If the raw equity total has the wrong sign (its absolute value
-    # matches the expected E = A - L - NI but with opposite sign), we
-    # flip the sign on every equity tree node so the detail rows match
-    # the total — otherwise leave the nodes as-is.
-    expected_equity = total_assets - total_liabilities - net_income
-    if abs(raw_total_equity + expected_equity) < 0.01 and abs(raw_total_equity - expected_equity) > 0.01:
-        # raw is exactly the negative of expected → legacy-sign data;
-        # flip the tree so the displayed numbers match the equation.
-        def _flip(nodes):
-            for n in nodes:
-                n["balance"] = -n.get("balance", 0)
-                n["total"] = -n.get("total", 0)
-                if n.get("children"):
-                    _flip(n["children"])
-        _flip(equity_tree)
-    total_equity = expected_equity
+    def _loc_sum(nodes):
+        return {loc: round(sum(n.get("by_location", {}).get(loc, 0.0) for n in nodes), 2) for loc in PL_LOCATIONS}
+
+    def _section(name, nodes):
+        return {"name": name, "is_section": True,
+                "total": round(sum(n["total"] for n in nodes), 2),
+                "by_location": _loc_sum(nodes), "children": nodes}
+
+    # PART 1 — group Assets → Current / Fixed / Other; Liabilities → Current /
+    # Long-term (by the account_type that's already set on each account).
+    asset_children = assets_tree[0]["children"] if assets_tree else []
+    cur_a, fix_a, oth_a = [], [], []
+    for c in asset_children:
+        at = c.get("account_type")
+        (fix_a if at == "Fixed Assets" else oth_a if at == "Other Assets" else cur_a).append(c)
+    assets_sections = [s for s in (_section("Current Assets", cur_a),
+                                   _section("Fixed Assets", fix_a),
+                                   _section("Other Assets", oth_a)) if s["children"]]
+    total_assets = round(sum(s["total"] for s in assets_sections), 2)
+
+    liab_children = liabilities_tree[0]["children"] if liabilities_tree else []
+    cur_l, lt_l = [], []
+    for c in liab_children:
+        (lt_l if c.get("account_type") == "Long Term Liabilities" else cur_l).append(c)
+    liab_sections = [s for s in (_section("Current Liabilities", cur_l),
+                                 _section("Long-term Liabilities", lt_l)) if s["children"]]
+    total_liabilities = round(sum(s["total"] for s in liab_sections), 2)
+
+    # PART 2 — real Equity accounts (Member's contributions, Dividends paid,
+    # Retained Earnings…) + Net Income shown as distinct lines. "Opening balance
+    # equity" is the balancing plug (holds the not-yet-loaded opening equity,
+    # exactly like QB's Opening Balance Equity) so the statement still balances.
+    equity_nodes = equity_tree[0]["children"] if equity_tree else []
+    non_obe = [n for n in equity_nodes if n.get("code") != "Opening balance equity"]
+    obe_plug = round((total_assets - total_liabilities) - net_income
+                     - round(sum(n["total"] for n in non_obe), 2), 2)
+    _zero_loc = {loc: 0.0 for loc in PL_LOCATIONS}
+    obe_node = next((n for n in equity_nodes if n.get("code") == "Opening balance equity"), None)
+    if obe_node is not None:
+        obe_node["balance"] = obe_plug
+        obe_node["total"] = obe_plug
+    else:
+        equity_nodes.append({"id": "OBE", "code": "Opening balance equity",
+                             "name": "Opening balance equity", "account_type": "Equity",
+                             "is_header": False, "balance": obe_plug, "total": obe_plug,
+                             "children": [], "by_location": dict(_zero_loc)})
+    equity_display = equity_nodes + [{
+        "id": "NET_INCOME", "code": "NET_INCOME", "name": "Net Income (período)",
+        "account_type": "Equity", "is_header": False,
+        "balance": net_income, "total": net_income, "children": [], "by_location": dict(_zero_loc),
+    }]
+    total_equity = round(sum(n["total"] for n in equity_display), 2)
 
     return {
         "format": "quickbooks",
         "as_of_date": as_of,
+        "locations": PL_LOCATIONS,
         "sections": {
-            "assets": assets_tree,
+            "assets": assets_sections,
             "total_assets": total_assets,
-            "liabilities": liabilities_tree,
+            "liabilities": liab_sections,
             "total_liabilities": total_liabilities,
-            "equity": equity_tree,
+            "equity": equity_display,
             "total_equity": total_equity,
             "net_income": net_income,
-            "total_liabilities_and_equity": total_liabilities + total_equity + net_income,
+            "total_liabilities_and_equity": round(total_liabilities + total_equity, 2),
+            "by_location": {
+                "total_assets": _loc_sum(assets_sections),
+                "total_liabilities": _loc_sum(liab_sections),
+                "total_equity": _loc_sum(equity_display),
+            },
         },
     }
 
