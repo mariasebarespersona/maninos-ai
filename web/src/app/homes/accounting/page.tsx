@@ -4644,6 +4644,11 @@ function EstadoCuentaTab() {
     setWizardStep(1)
     setReconcileMatches([])
     setReconcileDone(false)
+    // Load the manual-link candidates for this statement's bank account right
+    // away (don't rely on the effect firing) so the "Ligar a mano" panel is
+    // never empty when there are unreconciled transactions to pick from.
+    const openedStmt = Object.values(statements).flat().find(s => s.id === stmtId)
+    fetchLinkCandidates(openedStmt?.bank_account_id)
     try {
       const [mvRes, txnRes] = await Promise.all([
         fetch(`/api/accounting/bank-statements/${stmtId}`),
@@ -4859,6 +4864,8 @@ function EstadoCuentaTab() {
         setReconcileDone(true)
         // Reload movements without resetting wizard state
         await reloadMovements(stmtId)
+        const stmt = Object.values(statements).flat().find(s => s.id === stmtId)
+        fetchLinkCandidates(stmt?.bank_account_id)  // drop AI-reconciled txns from the manual panel
         fetchStatements()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -4888,7 +4895,11 @@ function EstadoCuentaTab() {
         body: JSON.stringify({ transaction_id: transactionId }),
       })
       if (res.ok) {
-        if (activeStatement) await reloadMovements(activeStatement)
+        if (activeStatement) {
+          await reloadMovements(activeStatement)
+          const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
+          fetchLinkCandidates(stmt?.bank_account_id)  // drop the now-reconciled txn from candidates
+        }
         setSelectedMovementId(null)
         toast.success('Movimiento ligado a la transacción')
       } else {
@@ -4909,7 +4920,11 @@ function EstadoCuentaTab() {
         body: JSON.stringify({ transaction_id: null }),
       })
       if (res.ok) {
-        if (activeStatement) await reloadMovements(activeStatement)
+        if (activeStatement) {
+          await reloadMovements(activeStatement)
+          const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
+          fetchLinkCandidates(stmt?.bank_account_id)  // the un-reconciled txn returns to candidates
+        }
         toast.success('Liga eliminada')
       } else {
         const err = await res.json().catch(() => ({}))
