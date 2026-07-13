@@ -4645,10 +4645,12 @@ function EstadoCuentaTab() {
     setReconcileMatches([])
     setReconcileDone(false)
     // Load the manual-link candidates for this statement's bank account right
-    // away (don't rely on the effect firing) so the "Ligar a mano" panel is
-    // never empty when there are unreconciled transactions to pick from.
+    // away (don't rely on the effect firing) so the panel is never empty when
+    // there are unreconciled transactions to pick from.
     const openedStmt = Object.values(statements).flat().find(s => s.id === stmtId)
     fetchLinkCandidates(openedStmt?.bank_account_id)
+    // Auto-run the AI matcher so each movement shows its suggestion inline.
+    reconcileMovements(stmtId)
     try {
       const [mvRes, txnRes] = await Promise.all([
         fetch(`/api/accounting/bank-statements/${stmtId}`),
@@ -4835,10 +4837,9 @@ function EstadoCuentaTab() {
     finally { setReconciling(false) }
   }
 
-  const confirmReconciliation = async (stmtId: string) => {
-    const pairs = reconcileMatches
-      .filter(m => selectedMatches.has(m.movement_id))
-      .map(m => ({
+  const confirmReconciliation = async (stmtId: string, explicitMatches?: ReconcileMatch[]) => {
+    const src = explicitMatches || reconcileMatches.filter(m => selectedMatches.has(m.movement_id))
+    const pairs = src.map(m => ({
         movement_id: m.movement_id,
         transaction_id: m.transaction_id || null,
         invoice_id: m.invoice_id || null,
@@ -4932,6 +4933,34 @@ function EstadoCuentaTab() {
       }
     } catch (e) { console.error(e); toast.error('Error de conexión al desligar') }
     finally { setLinkingMovementId(null) }
+  }
+
+  // Accept ONE AI suggestion inline. Transaction matches reconcile immediately
+  // (same as a manual link); invoice matches go through reconcile/confirm so the
+  // auto-cobro/pago (record_invoice_payment) fires.
+  const acceptAiMatch = async (m: StatementMovement, match: ReconcileMatch) => {
+    if (match.target_type === 'invoice' && match.invoice?.id) {
+      setLinkingMovementId(m.id)
+      try {
+        const res = await fetch(`/api/accounting/bank-statements/${activeStatement}/reconcile/confirm`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairs: [{ movement_id: m.id, invoice_id: match.invoice.id, target_type: 'invoice' }] }),
+        })
+        if (res.ok) {
+          if (activeStatement) {
+            await reloadMovements(activeStatement)
+            const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
+            fetchLinkCandidates(stmt?.bank_account_id)
+          }
+          toast.success('Conciliado con la factura sugerida')
+        } else {
+          const e = await res.json().catch(() => ({})); toast.error(`Error: ${e.detail || 'No se pudo aceptar'}`)
+        }
+      } catch (e) { console.error(e); toast.error('Error de conexión') }
+      finally { setLinkingMovementId(null) }
+    } else if (match.transaction?.id) {
+      await linkMovementToTransaction(m.id, match.transaction.id)
+    }
   }
 
   const pendingCount = activeMovements.filter(m => m.status === 'pending' || m.status === 'suggested').length
@@ -5264,28 +5293,32 @@ function EstadoCuentaTab() {
               {/* STEP 1: Conciliar */}
               {wizardStep === 1 && (
                 <div className="p-5 space-y-4">
-                  {/* Unified reconciliation: AI suggestions + manual linking together */}
-                  <div className="rounded-lg bg-stone-50 border px-3 py-2" style={{ borderColor: 'var(--stone)' }}>
-                    <p className="text-xs font-medium" style={{ color: 'var(--slate)' }}>
-                      Las dos formas están juntas: <strong>abajo, "Sugerencias de la IA"</strong> — acepta las que te gusten;
-                      y <strong>aquí, "Ligar a mano"</strong> — empareja lo que falte. Todo se concilia en el mismo lote.
-                    </p>
+                  {/* Fused reconciliation: AI suggestion + manual override, per movement */}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
+                      <p className="text-xs font-medium" style={{ color: 'var(--slate)' }}>
+                        La IA sugiere una coincidencia por movimiento. <strong>Acéptala</strong>, o selecciónalo y <strong>elige otra a mano</strong> (derecha).
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => { setReconcileDone(false); reconcileMovements(activeStatement) }} disabled={reconciling}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg border flex items-center gap-1.5 disabled:opacity-50" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                        {reconciling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        {reconciling ? 'Buscando…' : 'Volver a buscar'}
+                      </button>
+                      {reconcileMatches.length > 0 && (
+                        <button onClick={() => confirmReconciliation(activeStatement, reconcileMatches)} disabled={confirmingReconcile}
+                          className="px-3 py-1.5 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50">
+                          {confirmingReconcile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          Aceptar todas las sugerencias ({reconcileMatches.length})
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* ── LIGAR A MANO: two-panel manual linking ── */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-600 text-white text-[11px] font-bold">1</span>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Ligar a mano</p>
-                      <span className="text-xs" style={{ color: 'var(--ash)' }}>— empareja un movimiento con su transacción</span>
-                    </div>
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2">
-                        <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0" />
-                        <p className="text-xs font-medium text-violet-800">
-                          Selecciona un movimiento y luego una transacción para ligarlos.
-                        </p>
-                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* LEFT: all movements of the active statement */}
                         <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
@@ -5301,6 +5334,7 @@ function EstadoCuentaTab() {
                               const isSelected = selectedMovementId === m.id
                               const linkedTxn = linkCandidates.find(t => t.id === linkedTxnId)
                               const busy = linkingMovementId === m.id
+                              const aiMatch = reconcileMatches.find(rm => rm.movement_id === m.id)
                               return (
                                 <div
                                   key={m.id}
@@ -5339,9 +5373,37 @@ function EstadoCuentaTab() {
                                         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                                       </button>
                                     </div>
-                                  ) : isSelected ? (
-                                    <p className="mt-1.5 text-[10px] font-medium text-violet-600">Elige una transacción a la derecha →</p>
-                                  ) : null}
+                                  ) : (
+                                    <div className="mt-1.5 space-y-1">
+                                      {aiMatch && (
+                                        <div className="flex items-center gap-1.5 rounded-md bg-teal-50 border border-teal-200 px-1.5 py-1">
+                                          <Sparkles className="w-3 h-3 text-teal-600 shrink-0" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-medium text-teal-800 truncate">
+                                              IA: {aiMatch.target_type === 'invoice'
+                                                ? `Factura ${aiMatch.invoice?.invoice_number || ''}`
+                                                : (aiMatch.transaction?.description || aiMatch.transaction?.transaction_type || '')}
+                                            </p>
+                                            {typeof aiMatch.score === 'number' && (
+                                              <p className="text-[9px] text-teal-600">{aiMatch.score}% de coincidencia</p>
+                                            )}
+                                          </div>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); if (!busy) acceptAiMatch(m, aiMatch) }}
+                                            disabled={busy}
+                                            className="px-1.5 py-0.5 rounded bg-teal-600 text-white text-[10px] font-bold hover:bg-teal-700 disabled:opacity-50 shrink-0"
+                                          >
+                                            {busy ? '…' : 'Aceptar'}
+                                          </button>
+                                        </div>
+                                      )}
+                                      <p className="text-[10px] font-medium" style={{ color: isSelected ? '#7c3aed' : 'var(--ash)' }}>
+                                        {isSelected
+                                          ? '→ Elige la transacción a la derecha'
+                                          : (aiMatch ? 'o toca para elegir otra a mano' : 'Toca para ligar a mano →')}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}
@@ -5420,222 +5482,6 @@ function EstadoCuentaTab() {
                     </div>
                   </div>
 
-                  {/* ── 2) Sugerencias de la IA ── */}
-                  <div className="flex items-center gap-2 pt-3 border-t" style={{ borderColor: 'var(--sand)' }}>
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-teal-600 text-white text-[11px] font-bold">2</span>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Sugerencias de la IA</p>
-                    <span className="text-xs" style={{ color: 'var(--ash)' }}>— acepta las coincidencias que la IA encontró</span>
-                  </div>
-                  {/* App transactions available for reconciliation */}
-                  {appTransactions.length > 0 && (
-                    <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0f9ff' }}>
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700">
-                          Transacciones de la App ({appTransactions.length} pendientes de conciliar)
-                        </h4>
-                      </div>
-                      <div className="max-h-[200px] overflow-y-auto space-y-1">
-                        {appTransactions.slice(0, 20).map((t: any) => (
-                          <div key={t.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-white border" style={{ borderColor: '#e0e7ff' }}>
-                            <span className={`font-bold ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {t.is_income ? '+' : '-'}${Number(t.amount).toLocaleString()}
-                            </span>
-                            {t.properties?.property_code && (
-                              <span className="text-[10px] bg-navy-100 text-navy-700 px-1.5 py-0.5 rounded font-bold flex-shrink-0">
-                                {t.properties.property_code}
-                              </span>
-                            )}
-                            <span className="text-navy-600 truncate flex-1" title={t.description}>{t.description || t.transaction_type}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{t.transaction_type}</span>
-                            <span className="text-[10px] text-gray-400">{t.transaction_date ? new Date(t.transaction_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : ''}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.status === 'confirmed' ? 'bg-amber-100 text-amber-700' : t.status === 'reconciled' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {t.status === 'confirmed' ? 'Sin conciliar' : t.status === 'reconciled' ? 'Conciliado' : t.status}
-                            </span>
-                          </div>
-                        ))}
-                        {appTransactions.length > 20 && (
-                          <p className="text-[10px] text-gray-400 text-center">+{appTransactions.length - 20} más</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      Busca coincidencias entre los movimientos del estado de cuenta y las transacciones de la app.
-                    </p>
-                    <button
-                      onClick={() => { setReconcileDone(false); reconcileMovements(activeStatement) }}
-                      disabled={reconciling}
-                      className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors"
-                      style={{ backgroundColor: reconciling ? '#9ca3af' : '#0d9488' }}
-                    >
-                      {reconciling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                      {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
-                    </button>
-                  </div>
-
-                  {/* Matches List */}
-                  {reconcileMatches.length > 0 && !reconcileDone && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-                          {reconcileMatches.length} coincidencia{reconcileMatches.length !== 1 ? 's' : ''} encontrada{reconcileMatches.length !== 1 ? 's' : ''}
-                        </p>
-                        <button
-                          onClick={() => setSelectedMatches(
-                            selectedMatches.size === reconcileMatches.length
-                              ? new Set()
-                              : new Set(reconcileMatches.map(m => m.movement_id))
-                          )}
-                          className="text-xs font-medium px-3 py-1 rounded border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
-                        >
-                          {selectedMatches.size === reconcileMatches.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
-                        </button>
-                      </div>
-
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {reconcileMatches.map(match => (
-                          <div
-                            key={match.movement_id}
-                            onClick={() => toggleMatchSelect(match.movement_id)}
-                            className={`rounded-lg border p-3 cursor-pointer transition-all ${selectedMatches.has(match.movement_id) ? 'border-teal-400 bg-teal-50/50' : 'border-stone-200 hover:border-stone-300'}`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <input type="checkbox" checked={selectedMatches.has(match.movement_id)} onChange={() => {}} className="mt-1 w-4 h-4 rounded" />
-                              <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {/* Movement (from bank statement) */}
-                                <div className="rounded-lg bg-stone-50 p-2.5">
-                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 mb-1">Estado de Cuenta</p>
-                                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.movement.description}</p>
-                                  <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                                    {match.movement.movement_date} · {match.movement.counterparty || '—'}
-                                  </p>
-                                  <p className={`text-sm font-bold mt-1 ${match.movement.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
-                                    {match.movement.is_credit ? '+' : '-'}${Math.abs(match.movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                  </p>
-                                </div>
-                                {/* Match target — Transacción de la app o Factura por cobrar/pagar */}
-                                {match.target_type === 'invoice' && match.invoice ? (
-                                  <div className="rounded-lg bg-violet-50 p-2.5">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500 mb-1 flex items-center gap-1.5">
-                                      Factura {match.invoice.direction === 'receivable' ? '(Por Cobrar)' : '(Por Pagar)'}
-                                      {match.partial && (
-                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 text-[9px] font-bold normal-case tracking-normal">Pago parcial</span>
-                                      )}
-                                    </p>
-                                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
-                                      {match.invoice.invoice_number || '—'}: {match.invoice.counterparty_name || '—'}
-                                    </p>
-                                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                                      Balance: ${Number(match.invoice.balance_due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} de ${Number(match.invoice.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                    </p>
-                                    {match.partial ? (
-                                      <p className="text-xs mt-1 text-amber-700 font-medium">
-                                        Aplica ${Math.abs(match.movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} · quedarían ${Math.max(0, Number(match.invoice.balance_due || 0) - Math.abs(match.movement.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                      </p>
-                                    ) : (
-                                      <p className="text-xs mt-1 text-violet-700 font-medium">
-                                        Al confirmar: se cobra/paga automáticamente
-                                      </p>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="rounded-lg bg-blue-50 p-2.5">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-1">Transacción App</p>
-                                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{match.transaction?.description}</p>
-                                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>
-                                      {match.transaction?.transaction_date} · {match.transaction?.counterparty_name || '—'}
-                                    </p>
-                                    <p className={`text-sm font-bold mt-1 ${match.transaction?.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                                      {match.transaction?.is_income ? '+' : '-'}${Number(match.transaction?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${
-                                  match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
-                                  'bg-amber-100 text-amber-700'
-                                }`}>
-                                  {match.confidence === 'high' ? 'Coincidencia segura' : 'Revisar'}
-                                </span>
-                                <span className="text-[10px] font-medium text-stone-400">{match.score}%</span>
-                              </div>
-                            </div>
-
-                            {/* Why it matched: reason + signal chips */}
-                            {(match.reason || match.signals) && (
-                              <div className="mt-2 pl-7 flex flex-wrap items-center gap-1.5">
-                                {match.signals && (
-                                  <>
-                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.amount ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                      Monto {match.signals.amount ? '✓' : '✗'}
-                                    </span>
-                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.name ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                      Nombre {match.signals.name ? '✓' : '✗'}
-                                      {typeof match.signals.name_similarity === 'number' && ` ${match.signals.name_similarity}%`}
-                                    </span>
-                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${match.signals.date ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                      Fecha {match.signals.date ? '✓' : (typeof match.signals.days_apart === 'number' ? `±${match.signals.days_apart}d` : '✗')}
-                                    </span>
-                                  </>
-                                )}
-                                {match.reason && (
-                                  <span className="text-[11px]" style={{ color: 'var(--ash)' }}>{match.reason}</span>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Caveat — the app is NOT sure */}
-                            {match.caveat && (
-                              <div className="mt-2 ml-7 flex items-start gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                                <p className="text-[11px] font-medium text-amber-800">{match.caveat}</p>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Confirm button */}
-                      <div className="flex items-center justify-between pt-2">
-                        <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                          {selectedMatches.size} seleccionada{selectedMatches.size !== 1 ? 's' : ''} de {reconcileMatches.length}
-                        </p>
-                        <button
-                          onClick={() => confirmReconciliation(activeStatement)}
-                          disabled={confirmingReconcile}
-                          className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 bg-teal-600 hover:bg-teal-700 transition-colors disabled:opacity-50"
-                        >
-                          {confirmingReconcile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                          {confirmingReconcile ? 'Confirmando...' : `Confirmar ${selectedMatches.size} coincidencias`}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* No matches found */}
-                  {!reconciling && reconcileMatches.length === 0 && reconcileDone && (
-                    <div className="text-center py-8 rounded-lg bg-stone-50">
-                      <ClipboardCheck className="w-8 h-8 mx-auto mb-2 text-stone-300" />
-                      <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No se encontraron coincidencias</p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Todos los movimientos pasarán a clasificación con IA</p>
-                    </div>
-                  )}
-
-                  {/* After confirmation done */}
-                  {reconcileDone && reconcileMatches.length > 0 && (
-                    <div className="text-center py-6 rounded-lg bg-teal-50">
-                      <Check className="w-8 h-8 mx-auto mb-2 text-teal-500" />
-                      <p className="text-sm font-medium text-teal-700">Conciliación completada</p>
-                      <p className="text-xs mt-1 text-teal-600">
-                        {pendingCount > 0
-                          ? `${pendingCount} movimientos sin conciliar pasarán a clasificación`
-                          : 'Todos los movimientos han sido conciliados'}
-                      </p>
-                    </div>
-                  )}
 
 
                   {/* Next step button — ALWAYS visible while in step 1
