@@ -5307,13 +5307,21 @@ function EstadoCuentaTab() {
                         {reconciling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                         {reconciling ? 'Buscando…' : 'Volver a buscar'}
                       </button>
-                      {reconcileMatches.length > 0 && (
-                        <button onClick={() => confirmReconciliation(activeStatement, reconcileMatches)} disabled={confirmingReconcile}
-                          className="px-3 py-1.5 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50">
-                          {confirmingReconcile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                          Aceptar todas las sugerencias ({reconcileMatches.length})
-                        </button>
-                      )}
+                      {(() => {
+                        // Only count suggestions whose movement isn't already linked,
+                        // so the button (and its count) reflects what's actually left.
+                        const pending = reconcileMatches.filter(rm => {
+                          const mv = activeMovements.find(m => m.id === rm.movement_id)
+                          return mv && !(mv.matched_transaction_id || mv.transaction_id)
+                        })
+                        return pending.length > 0 ? (
+                          <button onClick={() => confirmReconciliation(activeStatement, pending)} disabled={confirmingReconcile}
+                            className="px-3 py-1.5 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50">
+                            {confirmingReconcile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            Aceptar todas las sugerencias ({pending.length})
+                          </button>
+                        ) : null
+                      })()}
                     </div>
                   </div>
 
