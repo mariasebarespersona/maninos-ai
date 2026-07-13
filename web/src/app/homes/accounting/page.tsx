@@ -2479,7 +2479,11 @@ function ChartOfAccountsTab() {
       if (res.ok) {
         setShowAddHouse(false)
         setHouseCode('')
-        toast.success(`Casa ${d.code || code} creada con sus 4 sub-cuentas`)
+        if (d.already_existed === true) {
+          toast.error(`La casa ${d.code || code} ya existía en el plan de cuentas (no se creó nada nuevo).`)
+        } else {
+          toast.success(`Casa ${d.code || code} creada con sus 4 sub-cuentas.`)
+        }
         fetchTree()
       } else {
         toast.error(d.detail || 'Error al crear la casa')
@@ -2509,6 +2513,21 @@ function ChartOfAccountsTab() {
       is_header: acc.is_header || false,
     })
   }
+
+  // Inline check: does a "House <input>" account already exist in the loaded chart?
+  // Uses the flat accounts list from fetchTree() — falls back to flattening the tree.
+  const flatAccounts: any[] = allAccounts.length > 0
+    ? allAccounts
+    : (() => {
+        const out: any[] = []
+        const walk = (nodes: QBTreeNode[]) => nodes.forEach(n => { out.push(n); if (n.children) walk(n.children) })
+        walk(tree)
+        return out
+      })()
+  const houseNeedle = houseCode.trim() ? `House ${houseCode.trim()}`.toLowerCase() : ''
+  const houseAlreadyExists = !!houseNeedle && flatAccounts.some(a =>
+    (a.name || '').toLowerCase() === houseNeedle || (a.code || '').toLowerCase() === houseNeedle
+  )
 
   // Render tree rows with edit buttons
   function renderEditableRow(node: QBTreeNode, depth: number = 0) {
@@ -2681,6 +2700,11 @@ function ChartOfAccountsTab() {
                   onKeyDown={e => { if (e.key === 'Enter' && houseCode.trim() && !savingHouse) handleCreateHouse() }}
                   className="w-full mt-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}
                   placeholder="Ej: H60" />
+                {houseAlreadyExists && (
+                  <p className="text-xs mt-1 text-amber-600">
+                    ⚠️ La casa {houseCode.trim()} ya existe en el plan de cuentas.
+                  </p>
+                )}
               </div>
               <p className="text-xs" style={{ color: 'var(--ash)' }}>
                 Crea la cuenta de la casa y sus 4 sub-cuentas (Compra, Renovación, Movida, Comisión). Aparecerá en el plan y en los estados financieros automáticamente.
