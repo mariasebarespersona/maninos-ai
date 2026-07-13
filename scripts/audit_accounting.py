@@ -161,6 +161,30 @@ if loan_income:
     flag("HIGH", f"{len(loan_income)} 'PRESTAMO/loan' lines booked as INCOME (${tot:,.2f})",
          "a loan is a liability, not revenue — inflates income")
 
+# ---- 8: payment orders whose ledger transaction was deleted -------------
+# An approved/posted payment order stores its accounting_transaction_id. If a
+# later cleanup ("Vaciar Cifras") HARD-DELETES that transaction without
+# resetting the order, the money silently vanishes from accounting while the
+# order still looks approved+posted (this is exactly what hid H48's $10,500
+# enganche). Flag any order pointing to a non-existent transaction.
+try:
+    porders = fetch_all("payment_orders", "id,amount,status,concept,accounting_transaction_id")
+    linked = [o for o in porders if o.get("accounting_transaction_id")]
+    tids = list({o["accounting_transaction_id"] for o in linked})
+    present = set()
+    for i in range(0, len(tids), 200):
+        rows = sb.table("accounting_transactions").select("id").in_("id", tids[i:i + 200]).execute().data or []
+        present.update(r["id"] for r in rows)
+    dangling = [o for o in linked if o["accounting_transaction_id"] not in present]
+    if dangling:
+        tot = sum(float(o.get("amount") or 0) for o in dangling)
+        flag("HIGH", f"{len(dangling)} payment order(s) point to a DELETED ledger transaction (${tot:,.2f} vanished)",
+             "approved/posted orders whose transaction was hard-deleted — money missing from accounting")
+    else:
+        flag("OK", "No payment orders point to deleted transactions", f"{len(linked)} linked orders")
+except Exception as e:
+    flag("INFO", "Payment-order integrity check skipped", str(e)[:100])
+
 # ---- report -------------------------------------------------------------
 order = {"HIGH": 0, "MED": 1, "LOW": 2, "ERR": 3, "INFO": 4, "OK": 5}
 print("\n" + "=" * 70)
