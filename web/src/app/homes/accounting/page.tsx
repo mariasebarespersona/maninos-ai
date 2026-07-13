@@ -3547,6 +3547,7 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
 }) {
   const [accounts, setAccounts] = useState<AccountInfo[]>([])
   const [accountCode, setAccountCode] = useState('')
+  const [accountSearch, setAccountSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -3555,9 +3556,13 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
   const INCOME_T = ['Income', 'Other Income', 'income']
   const EXPENSE_T = ['Expenses', 'Other Expense', 'Cost of Goods Sold', 'expense', 'cogs']
   const primaryTypes = direction === 'receivable' ? INCOME_T : direction === 'payable' ? EXPENSE_T : []
+  const q = accountSearch.trim().toLowerCase()
   const acctGroups = Object.entries(
     accounts
       .filter(a => !a.is_header && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
+      // "Lupita" keyword filter — match by name OR code (case-insensitive).
+      // Never hide the currently-selected account so the picker still shows it.
+      .filter(a => !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q) || a.code === accountCode)
       .reduce((acc, a) => { (acc[a.account_type] ||= []).push(a); return acc }, {} as Record<string, AccountInfo[]>)
   )
     .map(([type, list]) => ({ type, list: list.sort((x, y) => x.name.localeCompare(y.name)) }))
@@ -3597,6 +3602,19 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
           )}
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nueva cuenta contable</label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm mb-2 bg-white" style={{ borderColor: 'var(--stone)' }}>
+              <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+              <input
+                type="text"
+                value={accountSearch}
+                onChange={e => setAccountSearch(e.target.value)}
+                placeholder="Buscar cuenta por nombre o código…"
+                className="flex-1 text-sm outline-none bg-transparent"
+              />
+              {accountSearch && (
+                <button onClick={() => setAccountSearch('')}><X className="w-3.5 h-3.5 text-stone-400" /></button>
+              )}
+            </div>
             <select value={accountCode} onChange={e => { setAccountCode(e.target.value); setError(null) }} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
               <option value="">Selecciona una cuenta…</option>
               {acctGroups.map(g => (
@@ -3605,6 +3623,9 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
                 </optgroup>
               ))}
             </select>
+            {q && acctGroups.length === 0 && (
+              <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Sin resultados para “{accountSearch}”</p>
+            )}
           </div>
           {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
@@ -3623,6 +3644,7 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
 function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({ direction: 'receivable', counterparty_name: '', total_amount: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', description: '', payment_terms: 'Due on receipt', account_code: '' })
   const [accounts, setAccounts] = useState<AccountInfo[]>([])
+  const [accountSearch, setAccountSearch] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     fetch('/api/accounting/accounts').then(r => r.ok ? r.json() : { accounts: [] }).then(d => setAccounts(d.accounts || [])).catch(() => {})
@@ -3634,9 +3656,13 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
   // PL_/BS_ placeholder codes. Grouped by type (the "natural" type for the
   // invoice direction first) so the full list stays navigable.
   const primaryTypes = form.direction === 'receivable' ? INCOME_T : EXPENSE_T
+  const q = accountSearch.trim().toLowerCase()
   const acctGroups = Object.entries(
     accounts
       .filter(a => !a.is_header && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
+      // "Lupita" keyword filter — match by name OR code (case-insensitive).
+      // Never hide the currently-selected account so the picker still shows it.
+      .filter(a => !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q) || a.code === form.account_code)
       .reduce((acc, a) => { (acc[a.account_type] ||= []).push(a); return acc }, {} as Record<string, AccountInfo[]>)
   )
     .map(([type, list]) => ({ type, list: list.sort((x, y) => x.name.localeCompare(y.name)) }))
@@ -3686,14 +3712,31 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Vencimiento</label>
               <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} /></div>
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Cuenta contable {form.direction === 'receivable' ? '(ingreso)' : '(gasto)'}</label>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm mb-2 bg-white" style={{ borderColor: 'var(--stone)' }}>
+                <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <input
+                  type="text"
+                  value={accountSearch}
+                  onChange={e => setAccountSearch(e.target.value)}
+                  placeholder="Buscar cuenta por nombre o código…"
+                  className="flex-1 text-sm outline-none bg-transparent"
+                />
+                {accountSearch && (
+                  <button onClick={() => setAccountSearch('')}><X className="w-3.5 h-3.5 text-stone-400" /></button>
+                )}
+              </div>
               <select value={form.account_code} onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
                 <option value="">{form.direction === 'receivable' ? 'House Sales (por defecto)' : 'Other Operating Expenses (por defecto)'}</option>
                 {acctGroups.map(g => (
                   <optgroup key={g.type} label={g.type}>
-                    {g.list.map(a => <option key={a.id} value={a.code}>{a.name}</option>)}
+                    {g.list.map(a => <option key={a.id} value={a.code}>{a.code} — {a.name}</option>)}
                   </optgroup>
                 ))}
-              </select></div>
+              </select>
+              {q && acctGroups.length === 0 && (
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Sin resultados para “{accountSearch}”</p>
+              )}
+              </div>
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción</label>
             <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Concepto de la factura" /></div>
@@ -3802,6 +3845,17 @@ function EstadoCuentaTab() {
   const [confirmingReconcile, setConfirmingReconcile] = useState(false)
   const [reconcileDone, setReconcileDone] = useState(false)
 
+  // ── Step 1 "Ligado manual" (game-like manual movement↔transaction linking) ──
+  // Toggle between the AI-suggestions list (default) and the two-panel manual view.
+  const [manualLinkMode, setManualLinkMode] = useState(false)
+  // Candidate ledger transactions to link against (from /reconciliation/unreconciled).
+  const [linkCandidates, setLinkCandidates] = useState<Transaction[]>([])
+  const [loadingCandidates, setLoadingCandidates] = useState(false)
+  // The movement the operator has picked (left column) — next candidate click links it.
+  const [selectedMovementId, setSelectedMovementId] = useState<string | null>(null)
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [linkingMovementId, setLinkingMovementId] = useState<string | null>(null)
+
   const fetchBankAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/accounting/bank-accounts')
@@ -3841,7 +3895,36 @@ function EstadoCuentaTab() {
     } catch (e) { /* ignore */ }
   }, [])
 
+  // Load candidate ledger transactions for the active statement's bank account.
+  const fetchLinkCandidates = useCallback(async (bankAccountId?: string | null) => {
+    if (!bankAccountId) { setLinkCandidates([]); return }
+    setLoadingCandidates(true)
+    try {
+      const res = await fetch(`/api/accounting/reconciliation/unreconciled?bank_account_id=${bankAccountId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setLinkCandidates(data.transactions || [])
+      } else {
+        setLinkCandidates([])
+      }
+    } catch (e) { console.error(e); setLinkCandidates([]) }
+    finally { setLoadingCandidates(false) }
+  }, [])
+
   useEffect(() => { fetchBankAccounts(); fetchStatements(); fetchAccounts() }, [fetchBankAccounts, fetchStatements, fetchAccounts])
+
+  // Load link candidates when entering the "Ligado manual" view (or when the
+  // active statement changes while it's open). Candidates are the ledger
+  // transactions for the active statement's bank account.
+  useEffect(() => {
+    if (manualLinkMode && activeStatement) {
+      const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
+      setSelectedMovementId(null)
+      setCandidateSearch('')
+      fetchLinkCandidates(stmt?.bank_account_id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualLinkMode, activeStatement, fetchLinkCandidates])
 
   const createBankAccount = async () => {
     if (!newAccountName.trim()) return alert('Nombre de cuenta requerido')
@@ -4204,6 +4287,48 @@ function EstadoCuentaTab() {
     })
   }
 
+  // ── Manual linking helpers ──
+  // Link the currently-selected movement to a chosen ledger transaction.
+  const linkMovementToTransaction = async (movementId: string, transactionId: string) => {
+    setLinkingMovementId(movementId)
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/movements/${movementId}/match`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: transactionId }),
+      })
+      if (res.ok) {
+        if (activeStatement) await reloadMovements(activeStatement)
+        setSelectedMovementId(null)
+        toast.success('Movimiento ligado a la transacción')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(`Error: ${err.detail || 'No se pudo ligar'}`)
+      }
+    } catch (e) { console.error(e); toast.error('Error de conexión al ligar') }
+    finally { setLinkingMovementId(null) }
+  }
+
+  // Unlink a movement (clear its transaction_id).
+  const unlinkMovement = async (movementId: string) => {
+    setLinkingMovementId(movementId)
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/movements/${movementId}/match`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: null }),
+      })
+      if (res.ok) {
+        if (activeStatement) await reloadMovements(activeStatement)
+        toast.success('Liga eliminada')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(`Error: ${err.detail || 'No se pudo desligar'}`)
+      }
+    } catch (e) { console.error(e); toast.error('Error de conexión al desligar') }
+    finally { setLinkingMovementId(null) }
+  }
+
   const pendingCount = activeMovements.filter(m => m.status === 'pending' || m.status === 'suggested').length
   const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
   const postedCount = activeMovements.filter(m => m.status === 'posted').length
@@ -4534,6 +4659,167 @@ function EstadoCuentaTab() {
               {/* STEP 1: Conciliar */}
               {wizardStep === 1 && (
                 <div className="p-5 space-y-4">
+                  {/* View toggle: Sugerencias IA (default) ↔ Ligado manual */}
+                  <div className="flex rounded-lg overflow-hidden border w-fit" style={{ borderColor: 'var(--stone)' }}>
+                    <button
+                      onClick={() => setManualLinkMode(false)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${!manualLinkMode ? 'text-white' : 'text-stone-500 hover:bg-stone-50'}`}
+                      style={!manualLinkMode ? { backgroundColor: '#0d9488' } : {}}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Sugerencias IA
+                    </button>
+                    <button
+                      onClick={() => setManualLinkMode(true)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${manualLinkMode ? 'text-white' : 'text-stone-500 hover:bg-stone-50'}`}
+                      style={manualLinkMode ? { backgroundColor: '#7c3aed' } : {}}
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" /> Ligado manual
+                    </button>
+                  </div>
+
+                  {/* ── LIGADO MANUAL: two-panel, game-like manual linking ── */}
+                  {manualLinkMode ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2">
+                        <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0" />
+                        <p className="text-xs font-medium text-violet-800">
+                          Selecciona un movimiento y luego una transacción para ligarlos.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* LEFT: all movements of the active statement */}
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+                          <div className="px-3 py-2 border-b bg-stone-50" style={{ borderColor: 'var(--sand)' }}>
+                            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>
+                              Movimientos del estado ({activeMovements.filter(m => !m.is_split_parent).length})
+                            </p>
+                          </div>
+                          <div className="max-h-[420px] overflow-y-auto p-2 space-y-1.5">
+                            {activeMovements.filter(m => !m.is_split_parent).map(m => {
+                              const linkedTxnId = m.transaction_id
+                              const isLinked = !!linkedTxnId
+                              const isSelected = selectedMovementId === m.id
+                              const linkedTxn = linkCandidates.find(t => t.id === linkedTxnId)
+                              const busy = linkingMovementId === m.id
+                              return (
+                                <div
+                                  key={m.id}
+                                  onClick={() => { if (!isLinked && !busy) setSelectedMovementId(isSelected ? null : m.id) }}
+                                  className={`rounded-lg border p-2.5 transition-all ${
+                                    isLinked
+                                      ? 'border-emerald-300 bg-emerald-50/60'
+                                      : isSelected
+                                      ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-200 cursor-pointer'
+                                      : 'border-stone-200 hover:border-stone-300 cursor-pointer'
+                                  } ${busy ? 'opacity-60' : ''}`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{m.description}</p>
+                                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                                        {m.movement_date}{m.counterparty ? ` · ${m.counterparty}` : ''}
+                                      </p>
+                                    </div>
+                                    <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${m.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
+                                      {m.is_credit ? '+' : '-'}${Math.abs(m.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                  {isLinked ? (
+                                    <div className="mt-1.5 flex items-center gap-1.5">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                                        <Check className="w-3 h-3" /> Ligado
+                                        {linkedTxn && <span className="font-normal truncate max-w-[120px]">· {linkedTxn.description || linkedTxn.transaction_type}</span>}
+                                      </span>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); if (!busy) unlinkMovement(m.id) }}
+                                        disabled={busy}
+                                        title="Desligar"
+                                        className="ml-auto p-0.5 rounded hover:bg-emerald-100 text-emerald-600 disabled:opacity-50"
+                                      >
+                                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                      </button>
+                                    </div>
+                                  ) : isSelected ? (
+                                    <p className="mt-1.5 text-[10px] font-medium text-violet-600">Elige una transacción a la derecha →</p>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                            {activeMovements.filter(m => !m.is_split_parent).length === 0 && (
+                              <p className="text-xs text-center py-6" style={{ color: 'var(--ash)' }}>Sin movimientos</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* RIGHT: candidate ledger transactions */}
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+                          <div className="px-3 py-2 border-b bg-stone-50 space-y-2" style={{ borderColor: 'var(--sand)' }}>
+                            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>
+                              Transacciones candidatas ({linkCandidates.length})
+                            </p>
+                            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: 'var(--stone)' }}>
+                              <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                              <input
+                                type="text"
+                                value={candidateSearch}
+                                onChange={e => setCandidateSearch(e.target.value)}
+                                placeholder="Buscar por descripción, monto o contraparte…"
+                                className="flex-1 text-xs outline-none bg-transparent"
+                              />
+                              {candidateSearch && (
+                                <button onClick={() => setCandidateSearch('')}><X className="w-3.5 h-3.5 text-stone-400" /></button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="max-h-[420px] overflow-y-auto p-2 space-y-1.5">
+                            {loadingCandidates ? (
+                              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-stone-400" /></div>
+                            ) : (() => {
+                              const cq = candidateSearch.trim().toLowerCase()
+                              const filtered = cq
+                                ? linkCandidates.filter(t =>
+                                    (t.description || '').toLowerCase().includes(cq) ||
+                                    (t.counterparty_name || '').toLowerCase().includes(cq) ||
+                                    String(t.amount).includes(cq)
+                                  )
+                                : linkCandidates
+                              if (filtered.length === 0) {
+                                return <p className="text-xs text-center py-6" style={{ color: 'var(--ash)' }}>Sin transacciones candidatas</p>
+                              }
+                              return filtered.map(t => (
+                                <button
+                                  key={t.id}
+                                  disabled={!selectedMovementId || !!linkingMovementId}
+                                  onClick={() => selectedMovementId && linkMovementToTransaction(selectedMovementId, t.id)}
+                                  className={`w-full text-left rounded-lg border p-2.5 transition-all ${
+                                    selectedMovementId
+                                      ? 'border-stone-200 hover:border-violet-400 hover:bg-violet-50 cursor-pointer'
+                                      : 'border-stone-200 opacity-60 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{t.description || t.transaction_type}</p>
+                                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                                        {t.transaction_date}{t.counterparty_name ? ` · ${t.counterparty_name}` : ''}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                                      <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {t.is_income ? '+' : '-'}${Math.abs(Number(t.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{t.transaction_type}</span>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
                   {/* App transactions available for reconciliation */}
                   {appTransactions.length > 0 && (
                     <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0f9ff' }}>
@@ -4743,6 +5029,9 @@ function EstadoCuentaTab() {
                           : 'Todos los movimientos han sido conciliados'}
                       </p>
                     </div>
+                  )}
+
+                  </>
                   )}
 
                   {/* Next step button — ALWAYS visible while in step 1
@@ -5069,7 +5358,7 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
               </button>
             </div>
             <div className="max-h-48 overflow-y-auto space-y-0.5">
-              {filteredAccounts.slice(0, 30).map((a: any) => (
+              {filteredAccounts.map((a: any) => (
                 <button
                   key={a.id}
                   onClick={() => handleSelectAccount(a)}
