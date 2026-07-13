@@ -2754,6 +2754,24 @@ async def get_unreconciled(
     return {"transactions": result.data or []}
 
 
+@router.get("/reconciliation/open-invoices")
+async def get_open_invoices(direction: Optional[str] = None):
+    """All OPEN invoices (por cobrar / por pagar with a balance still due), so
+    the reconciliation panel can list them ALL and let the accountant link a
+    bank movement to a factura by hand (not only when the AI suggests it).
+    Accepting a movement↔factura records the cobro/pago automatically."""
+    q = (sb.table("accounting_invoices")
+         .select("id, invoice_number, direction, counterparty_name, total_amount, "
+                 "amount_paid, balance_due, status, due_date, description, property_id")
+         .in_("status", ["draft", "sent", "partial", "overdue"])
+         .order("due_date", desc=False))
+    if direction in ("receivable", "payable"):
+        q = q.eq("direction", direction)
+    rows = q.execute().data or []
+    rows = [r for r in rows if float(r.get("balance_due") or 0) > 0.01]
+    return {"invoices": rows}
+
+
 # ============================================================================
 # FINANCIAL STATEMENTS
 # ============================================================================

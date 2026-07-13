@@ -4348,6 +4348,10 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
 //  ESTADO DE CUENTA TAB — Bank Statement Import & AI Classification
 // ════════════════════════════════════════════════════════════════════════
 
+interface OpenInvoiceRow {
+  id: string; invoice_number?: string; direction: string; counterparty_name?: string
+  total_amount?: number; balance_due?: number; status?: string; due_date?: string; description?: string
+}
 interface BankStatement {
   id: string; account_key: string; account_label: string; bank_account_id?: string; original_filename: string
   file_type: string; file_url?: string; bank_name?: string; account_number_last4?: string
@@ -4441,6 +4445,9 @@ function EstadoCuentaTab() {
   // Candidate ledger transactions to link against (from /reconciliation/unreconciled).
   const [linkCandidates, setLinkCandidates] = useState<Transaction[]>([])
   const [loadingCandidates, setLoadingCandidates] = useState(false)
+  // ALL open invoices (por cobrar/pagar) — so Abby can link a movement to a
+  // factura by hand, not only when the AI suggests it (Abby request #6).
+  const [openInvoices, setOpenInvoices] = useState<OpenInvoiceRow[]>([])
   // The movement the operator has picked (left column) — next candidate click links it.
   const [selectedMovementId, setSelectedMovementId] = useState<string | null>(null)
   const [candidateSearch, setCandidateSearch] = useState('')
@@ -4499,6 +4506,16 @@ function EstadoCuentaTab() {
       }
     } catch (e) { console.error(e); setLinkCandidates([]) }
     finally { setLoadingCandidates(false) }
+  }, [])
+
+  // ALL open invoices (independent of the bank account) so any movement can be
+  // hand-linked to a factura por cobrar/pagar.
+  const fetchOpenInvoices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/accounting/reconciliation/open-invoices')
+      if (res.ok) setOpenInvoices((await res.json()).invoices || [])
+      else setOpenInvoices([])
+    } catch (e) { console.error(e); setOpenInvoices([]) }
   }, [])
 
   useEffect(() => { fetchBankAccounts(); fetchStatements(); fetchAccounts() }, [fetchBankAccounts, fetchStatements, fetchAccounts])
@@ -4649,6 +4666,7 @@ function EstadoCuentaTab() {
     // there are unreconciled transactions to pick from.
     const openedStmt = Object.values(statements).flat().find(s => s.id === stmtId)
     fetchLinkCandidates(openedStmt?.bank_account_id)
+    fetchOpenInvoices()  // load ALL open invoices so they can be hand-linked
     // Auto-run the AI matcher so each movement shows its suggestion inline.
     reconcileMovements(stmtId)
     try {
@@ -4935,29 +4953,37 @@ function EstadoCuentaTab() {
     finally { setLinkingMovementId(null) }
   }
 
+  // Link a movement to an INVOICE (por cobrar/pagar) — reconciles via
+  // reconcile/confirm so record_invoice_payment fires (the cobro/pago). Used by
+  // both the AI "Aceptar" (invoice suggestion) and Abby's manual invoice pick.
+  const linkMovementToInvoice = async (movementId: string, invoiceId: string) => {
+    setLinkingMovementId(movementId)
+    try {
+      const res = await fetch(`/api/accounting/bank-statements/${activeStatement}/reconcile/confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs: [{ movement_id: movementId, invoice_id: invoiceId, target_type: 'invoice' }] }),
+      })
+      if (res.ok) {
+        if (activeStatement) {
+          await reloadMovements(activeStatement)
+          const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
+          fetchLinkCandidates(stmt?.bank_account_id)
+          fetchOpenInvoices()  // the now-(partly)paid invoice drops or updates its balance
+        }
+        setSelectedMovementId(null)
+        toast.success('Movimiento ligado a la factura — cobro/pago registrado')
+      } else {
+        const e = await res.json().catch(() => ({})); toast.error(`Error: ${e.detail || 'No se pudo ligar la factura'}`)
+      }
+    } catch (e) { console.error(e); toast.error('Error de conexión') }
+    finally { setLinkingMovementId(null) }
+  }
+
   // Accept ONE AI suggestion inline. Transaction matches reconcile immediately
-  // (same as a manual link); invoice matches go through reconcile/confirm so the
-  // auto-cobro/pago (record_invoice_payment) fires.
+  // (same as a manual link); invoice matches record the cobro/pago.
   const acceptAiMatch = async (m: StatementMovement, match: ReconcileMatch) => {
     if (match.target_type === 'invoice' && match.invoice?.id) {
-      setLinkingMovementId(m.id)
-      try {
-        const res = await fetch(`/api/accounting/bank-statements/${activeStatement}/reconcile/confirm`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pairs: [{ movement_id: m.id, invoice_id: match.invoice.id, target_type: 'invoice' }] }),
-        })
-        if (res.ok) {
-          if (activeStatement) {
-            await reloadMovements(activeStatement)
-            const stmt = Object.values(statements).flat().find(s => s.id === activeStatement)
-            fetchLinkCandidates(stmt?.bank_account_id)
-          }
-          toast.success('Conciliado con la factura sugerida')
-        } else {
-          const e = await res.json().catch(() => ({})); toast.error(`Error: ${e.detail || 'No se pudo aceptar'}`)
-        }
-      } catch (e) { console.error(e); toast.error('Error de conexión') }
-      finally { setLinkingMovementId(null) }
+      await linkMovementToInvoice(m.id, match.invoice.id)
     } else if (match.transaction?.id) {
       await linkMovementToTransaction(m.id, match.transaction.id)
     }
@@ -5440,7 +5466,7 @@ function EstadoCuentaTab() {
                         <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
                           <div className="px-3 py-2 border-b bg-stone-50 space-y-2" style={{ borderColor: 'var(--sand)' }}>
                             <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>
-                              Transacciones candidatas ({linkCandidates.length})
+                              Candidatas: {linkCandidates.length} transacc. · {openInvoices.length} facturas
                             </p>
                             <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: 'var(--stone)' }}>
                               <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
@@ -5498,6 +5524,52 @@ function EstadoCuentaTab() {
                                   </div>
                                 </button>
                               ))
+                            })()}
+                            {/* Open invoices — hand-link a movement to a factura (Abby #6) */}
+                            {openInvoices.length > 0 && (() => {
+                              const cq = candidateSearch.trim().toLowerCase()
+                              const invs = cq
+                                ? openInvoices.filter(i =>
+                                    (i.invoice_number || '').toLowerCase().includes(cq) ||
+                                    (i.counterparty_name || '').toLowerCase().includes(cq) ||
+                                    (i.description || '').toLowerCase().includes(cq) ||
+                                    String(i.balance_due).includes(cq))
+                                : openInvoices
+                              return (
+                                <>
+                                  <div className="flex items-center gap-1.5 px-1 pt-3 pb-1 mt-1 border-t" style={{ borderColor: 'var(--sand)' }}>
+                                    <FileText className="w-3 h-3 text-violet-500" />
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Facturas abiertas ({invs.length})</p>
+                                  </div>
+                                  {invs.map(inv => (
+                                    <button
+                                      key={inv.id}
+                                      disabled={!selectedMovementId || !!linkingMovementId}
+                                      onClick={() => selectedMovementId && linkMovementToInvoice(selectedMovementId, inv.id)}
+                                      className={`w-full text-left rounded-lg border p-2.5 transition-all ${
+                                        selectedMovementId
+                                          ? 'border-violet-200 hover:border-violet-400 hover:bg-violet-50 cursor-pointer'
+                                          : 'border-stone-200 opacity-60 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{inv.invoice_number} · {inv.counterparty_name || '—'}</p>
+                                          <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                                            {inv.direction === 'receivable' ? 'Por cobrar' : 'Por pagar'}{inv.description ? ` · ${inv.description}` : ''}
+                                          </p>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                                          <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${inv.direction === 'receivable' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {inv.direction === 'receivable' ? '+' : '-'}${Math.abs(Number(inv.balance_due || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                          </span>
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">factura</span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </>
+                              )
                             })()}
                           </div>
                         </div>
