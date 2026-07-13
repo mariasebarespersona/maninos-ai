@@ -5592,14 +5592,18 @@ function EstadoCuentaTab() {
                       variants) end up showing one of these two buttons. */}
                   <div className="flex justify-end pt-2">
                     <button
-                      onClick={() => setWizardStep(needsClassifyCount > 0 ? 2 : 3)}
+                      onClick={() => setWizardStep(2)}
                       disabled={reconciling}
                       className="px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
-                      style={{ backgroundColor: needsClassifyCount > 0 ? '#7c3aed' : '#059669' }}
+                      style={{ backgroundColor: '#7c3aed' }}
                     >
+                      {/* Always go to step 2 so the accountant can REVIEW each
+                          movement's real account (and override it) — reconciled
+                          movements already carry the right one, but they're still
+                          shown here for confirmation. */}
                       {needsClassifyCount > 0
-                        ? <>Siguiente: Clasificar con IA <ArrowRight className="w-4 h-4" /></>
-                        : <>Siguiente: Revisar y Publicar <ArrowRight className="w-4 h-4" /></>}
+                        ? <>Siguiente: Clasificar y revisar cuentas <ArrowRight className="w-4 h-4" /></>
+                        : <>Siguiente: Revisar cuentas <ArrowRight className="w-4 h-4" /></>}
                     </button>
                   </div>
                 </div>
