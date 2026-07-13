@@ -639,6 +639,8 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
   const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([{ amount: '', description: '' }, { amount: '', description: '' }])
   const [leadershipFilter, setLeadershipFilter] = useState<'' | 'dallas' | 'houston' | 'conroe' | 'unassigned'>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [reclassTxn, setReclassTxn] = useState<Transaction | null>(null)
+  const toast = useToast()
 
   const handleEditSave = async (id: string) => {
     try {
@@ -889,6 +891,12 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                             </button>
                           )}
                           {t.status !== 'voided' && (
+                            <button onClick={() => setReclassTxn(t)}
+                              className="text-navy-500 hover:text-navy-700 transition-colors" title="Cambiar cuenta">
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {t.status !== 'voided' && (
                             <button onClick={() => { setSplitTxnId(splitTxnId === t.id ? null : t.id); setSplitParts([{ amount: '', description: '' }, { amount: '', description: '' }]) }}
                               className="text-amber-500 hover:text-amber-700 transition-colors" title="Dividir">
                               <Scissors className="w-3.5 h-3.5" />
@@ -991,6 +999,31 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
 
       {/* Attachment modal */}
       {attachTxnId && <TransactionAttachments transactionId={attachTxnId} onClose={() => { setAttachTxnId(null); onRefresh() }} />}
+
+      {/* Re-categorize (reclassify) modal (row action) */}
+      {reclassTxn && (
+        <ReclassifyAccountModal
+          title="Cambiar cuenta"
+          subtitle={`${reclassTxn.transaction_number} · ${reclassTxn.description || (TYPE_LABELS[reclassTxn.transaction_type] || reclassTxn.transaction_type)}`}
+          currentLabel={reclassTxn.accounting_accounts ? `${reclassTxn.accounting_accounts.code} — ${reclassTxn.accounting_accounts.name}` : undefined}
+          direction={reclassTxn.is_income ? 'receivable' : 'payable'}
+          onClose={() => setReclassTxn(null)}
+          onSubmit={async (accountCode) => {
+            const res = await fetch(`/api/accounting/transactions/${reclassTxn.id}/reclassify`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ account_code: accountCode }),
+            })
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}))
+              throw new Error(d.detail || 'No se pudo cambiar la cuenta de la transacción')
+            }
+            toast.success('Cuenta de la transacción actualizada')
+            setReclassTxn(null)
+            onRefresh()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1008,6 +1041,7 @@ function InvoicesTab() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
+  const [reclassInvoice, setReclassInvoice] = useState<Invoice | null>(null)
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true)
@@ -1139,6 +1173,13 @@ function InvoicesTab() {
                             <CircleDollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
                           </button>
                         )}
+                        {inv.status !== 'voided' && (
+                          <button onClick={() => setReclassInvoice(inv)}
+                            title="Cambiar cuenta contable"
+                            className="p-1.5 rounded-lg hover:bg-navy-50 transition-colors">
+                            <ArrowRightLeft className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
+                          </button>
+                        )}
                         <button onClick={() => setDetailId(inv.id)}
                           title="Ver detalle"
                           className="p-1.5 rounded-lg hover:bg-navy-50 transition-colors">
@@ -1173,6 +1214,30 @@ function InvoicesTab() {
         <RegisterInvoicePaymentModal invoice={payInvoice} bankAccounts={bankAccounts}
           onClose={() => setPayInvoice(null)}
           onPaid={() => { setPayInvoice(null); fetchInvoices() }} />
+      )}
+
+      {/* Re-categorize (reclassify) modal (row action) */}
+      {reclassInvoice && (
+        <ReclassifyAccountModal
+          title="Cambiar cuenta contable"
+          subtitle={`Factura ${reclassInvoice.invoice_number} · ${reclassInvoice.counterparty_name}`}
+          direction={reclassInvoice.direction === 'receivable' || reclassInvoice.direction === 'payable' ? reclassInvoice.direction : undefined}
+          onClose={() => setReclassInvoice(null)}
+          onSubmit={async (accountCode) => {
+            const res = await fetch(`/api/accounting/invoices/${reclassInvoice.id}/reclassify`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ account_code: accountCode }),
+            })
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}))
+              throw new Error(d.detail || 'No se pudo cambiar la cuenta de la factura')
+            }
+            toast.success('Cuenta de la factura actualizada')
+            setReclassInvoice(null)
+            fetchInvoices()
+          }}
+        />
       )}
     </div>
   )
@@ -3356,6 +3421,99 @@ function NewRecurringExpenseModal({ accounts, onClose, onCreated }: { accounts: 
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Cancelar</button>
           <button onClick={handleSubmit} disabled={saving} className="px-6 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2" style={{ backgroundColor: 'var(--navy-800)' }}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Repeat className="w-4 h-4" />} {saving ? 'Guardando...' : 'Crear'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Shared re-categorize (reclassify) modal ──
+// Used by both the Facturas tab (re-point an invoice's P&L accrual leg to a
+// different account) and the Transacciones tab (re-point a single transaction).
+// The account picker reuses the EXACT same option list as NewInvoiceModal:
+// all postable accounts from the chart, grouped by account_type via <optgroup>,
+// EXCLUDING group headers and the synthetic PL_/BS_ placeholder codes — so Abby
+// can only pick a real, specific (non-header) account.
+function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onClose, onSubmit }: {
+  title: string
+  subtitle?: string
+  currentLabel?: string
+  // When known, order the "natural" side first (income for receivable/ingreso,
+  // expense for payable/gasto). Optional — falls back to alphabetical grouping.
+  direction?: 'receivable' | 'payable'
+  onClose: () => void
+  // Return a rejection reason string to surface an inline error; resolve void on success.
+  onSubmit: (accountCode: string) => Promise<void>
+}) {
+  const [accounts, setAccounts] = useState<AccountInfo[]>([])
+  const [accountCode, setAccountCode] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/accounting/accounts').then(r => r.ok ? r.json() : { accounts: [] }).then(d => setAccounts(d.accounts || [])).catch(() => {})
+  }, [])
+  const INCOME_T = ['Income', 'Other Income', 'income']
+  const EXPENSE_T = ['Expenses', 'Other Expense', 'Cost of Goods Sold', 'expense', 'cogs']
+  const primaryTypes = direction === 'receivable' ? INCOME_T : direction === 'payable' ? EXPENSE_T : []
+  const acctGroups = Object.entries(
+    accounts
+      .filter(a => !a.is_header && !a.code.startsWith('PL_') && !a.code.startsWith('BS_'))
+      .reduce((acc, a) => { (acc[a.account_type] ||= []).push(a); return acc }, {} as Record<string, AccountInfo[]>)
+  )
+    .map(([type, list]) => ({ type, list: list.sort((x, y) => x.name.localeCompare(y.name)) }))
+    .sort((g1, g2) => {
+      const p1 = primaryTypes.includes(g1.type) ? 0 : 1
+      const p2 = primaryTypes.includes(g2.type) ? 0 : 1
+      return p1 - p2 || g1.type.localeCompare(g2.type)
+    })
+
+  const handleSubmit = async () => {
+    if (!accountCode) { setError('Selecciona una cuenta contable'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSubmit(accountCode)
+      // onSubmit resolves on success; caller closes the modal + refreshes.
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo cambiar la cuenta')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--sand)' }}>
+          <div>
+            <h2 className="font-serif font-semibold text-lg" style={{ color: 'var(--ink)' }}>{title}</h2>
+            {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-sand/50"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          {currentLabel && (
+            <p className="text-xs" style={{ color: 'var(--slate)' }}>Cuenta actual: <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{currentLabel}</span></p>
+          )}
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Nueva cuenta contable</label>
+            <select value={accountCode} onChange={e => { setAccountCode(e.target.value); setError(null) }} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Selecciona una cuenta…</option>
+              {acctGroups.map(g => (
+                <optgroup key={g.type} label={g.type}>
+                  {g.list.map(a => <option key={a.id} value={a.code}>{a.code} — {a.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--sand)' }}>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving || !accountCode} className="px-6 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: 'var(--navy-800)' }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+            {saving ? 'Guardando...' : 'Cambiar cuenta'}
           </button>
         </div>
       </div>
