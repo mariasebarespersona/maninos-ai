@@ -4369,6 +4369,7 @@ interface StatementMovement {
   ai_confidence?: number; ai_reasoning?: string; needs_subcategory?: boolean
   final_account_id?: string; final_transaction_type?: string; final_notes?: string
   status: string; transaction_id?: string; matched_transaction_id?: string
+  matched_account_id?: string; matched_account_code?: string; matched_account_name?: string
   parent_movement_id?: string; is_split_parent?: boolean
   accounting_accounts?: { code: string; name: string; account_type: string; category: string }
 }
@@ -4993,10 +4994,12 @@ function EstadoCuentaTab() {
   const confirmedCount = activeMovements.filter(m => m.status === 'confirmed').length
   const postedCount = activeMovements.filter(m => m.status === 'posted').length
   const reconciledCount = activeMovements.filter(m => m.status === 'reconciled').length
-  // Movements needing classification: pending, suggested, OR reconciled without a confirmed account
+  // Movements needing classification: only UNreconciled ones (pending/suggested).
+  // Reconciled movements already carry their real account (their matched asiento),
+  // so they never "need" classification — the account can be overridden but isn't
+  // required.
   const needsClassifyCount = activeMovements.filter(m =>
-    m.status === 'pending' || m.status === 'suggested' ||
-    (m.status === 'reconciled' && !m.final_account_id)
+    m.status === 'pending' || m.status === 'suggested'
   ).length
   const activeStmt = activeStatement ? Object.values(statements).flat().find(s => s.id === activeStatement) : null
 
@@ -5615,8 +5618,11 @@ function EstadoCuentaTab() {
                       // 'reconciled' status (instead of flipping to
                       // 'confirmed') is the post endpoint's signal to update
                       // the existing ledger txn rather than create a new one.
+                      // A reconciled movement is ALREADY ready: it went to a real
+                      // account (its matched asiento). final_account_id is only an
+                      // OPTIONAL override, not a requirement.
                       const reconciledReady = activeMovements.filter(
-                        m => m.status === 'reconciled' && m.final_account_id,
+                        m => m.status === 'reconciled',
                       ).length
                       const readyCount = confirmedCount + reconciledReady
                       return (
@@ -5655,18 +5661,16 @@ function EstadoCuentaTab() {
                     })()}
                   </div>
 
-                  {/* Reconciled-still-needing-account banner */}
+                  {/* Reconciled movements are already accounted — informational */}
                   {(() => {
-                    const reconciledMissingAccount = activeMovements.filter(
-                      m => m.status === 'reconciled' && !m.final_account_id,
-                    ).length
-                    if (reconciledMissingAccount === 0) return null
+                    const reconciledCount = activeMovements.filter(m => m.status === 'reconciled').length
+                    if (reconciledCount === 0) return null
                     return (
-                      <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: '#fefce8' }}>
-                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                      <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--sand)', backgroundColor: '#f0fdfa' }}>
+                        <ShieldCheck className="w-4 h-4 text-teal-600" />
                         <div className="flex-1">
-                          <p className="text-xs font-medium text-amber-800">
-                            {reconciledMissingAccount} movimiento{reconciledMissingAccount !== 1 ? 's' : ''} conciliado{reconciledMissingAccount !== 1 ? 's' : ''} — aún necesitan cuenta contable
+                          <p className="text-xs font-medium text-teal-800">
+                            {reconciledCount} movimiento{reconciledCount !== 1 ? 's' : ''} conciliado{reconciledCount !== 1 ? 's' : ''} — ya tienen su cuenta real (mostrada abajo). Solo cámbiala si no estás de acuerdo.
                           </p>
                         </div>
                       </div>
@@ -5688,7 +5692,7 @@ function EstadoCuentaTab() {
                       </thead>
                       <tbody>
                         {activeMovements.map((mv) => (
-                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => ['Income', 'Other Income', 'Cost of Goods Sold', 'Expenses', 'Other Expense', 'income', 'expense', 'cogs'].includes(a.account_type) && !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
                         ))}
                       </tbody>
                     </table>
@@ -5776,8 +5780,16 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
   // dropdown.
   const suggestionResolved = !!mv.suggested_account_id
   const aiHallucinated = !!mv.suggested_account_name && !mv.suggested_account_id
+  // A RECONCILED movement already went to a real account (the matched asiento).
+  // Show THAT — not an AI guess — so Abby sees the truth. She can still pick a
+  // different one, which reclassifies the asiento on post.
+  const reconciledAccount = mv.matched_account_id
+    ? { code: mv.matched_account_code, name: mv.matched_account_name }
+    : null
   const displayAccount = mv.final_account_id
     ? accounts.find((a: any) => a.id === mv.final_account_id)
+    : mv.status === 'reconciled' && reconciledAccount
+    ? reconciledAccount
     : suggestionResolved
     ? { code: mv.suggested_account_code, name: mv.suggested_account_name }
     : null
@@ -5836,7 +5848,9 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
 
   const confirmSuggestion = () => {
     onUpdate(mv.id, {
-      final_account_id: mv.suggested_account_id,
+      // Reconciled → confirm the REAL account it already has (no reclassify);
+      // non-reconciled → confirm the AI suggestion.
+      final_account_id: isReconciled ? (mv.matched_account_id || mv.suggested_account_id) : mv.suggested_account_id,
       final_transaction_type: mv.suggested_transaction_type,
       // Keep 'reconciled' status for reconciled movements
       status: isReconciled ? 'reconciled' : 'confirmed',

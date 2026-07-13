@@ -4200,10 +4200,49 @@ async def get_bank_statement(statement_id: str):
                  .eq("statement_id", statement_id)
                  .order("sort_order").order("movement_date")
                  .execute())
+    mv_rows = movements.data or []
+
+    # Enrich RECONCILED movements with the REAL account the money went to, so the
+    # "Clasificar" step shows the truth (Compra/Inventory, House Sales, …) instead
+    # of an AI guess. The matched transaction is the BANK leg of a double-entry
+    # pair; the meaningful account lives on the OTHER leg (linked_transaction_id).
+    # We surface that leg's account + its id (matched_pnl_transaction_id) so the
+    # post step can reclassify the correct leg if the accountant picks another.
+    matched_ids = [m["matched_transaction_id"] for m in mv_rows
+                   if m.get("status") == "reconciled" and m.get("matched_transaction_id")]
+    if matched_ids:
+        try:
+            bank_legs = (sb.table("accounting_transactions")
+                         .select("id, account_id, bank_account_id, linked_transaction_id")
+                         .in_("id", matched_ids).execute()).data or []
+            bank_by_id = {t["id"]: t for t in bank_legs}
+            linked_ids = [t["linked_transaction_id"] for t in bank_legs if t.get("linked_transaction_id")]
+            linked_by_id = {t["id"]: t for t in ((sb.table("accounting_transactions")
+                            .select("id, account_id").in_("id", linked_ids).execute()).data or [])} if linked_ids else {}
+            all_acct_ids = list({*(t.get("account_id") for t in bank_legs if t.get("account_id")),
+                                 *(t.get("account_id") for t in linked_by_id.values() if t.get("account_id"))})
+            accts = {a["id"]: a for a in ((sb.table("accounting_accounts")
+                     .select("id, code, name, account_type").in_("id", all_acct_ids).execute()).data or [])} if all_acct_ids else {}
+            for m in mv_rows:
+                bank = bank_by_id.get(m.get("matched_transaction_id"))
+                if not bank:
+                    continue
+                # Prefer the non-bank (P&L/inventory) leg; fall back to the matched leg.
+                pnl_txn_id = bank.get("linked_transaction_id") or bank["id"]
+                pnl_acct_id = (linked_by_id.get(bank.get("linked_transaction_id"), {}).get("account_id")
+                               if bank.get("linked_transaction_id") else bank.get("account_id"))
+                a = accts.get(pnl_acct_id) if pnl_acct_id else None
+                if a:
+                    m["matched_pnl_transaction_id"] = pnl_txn_id
+                    m["matched_account_id"] = a["id"]
+                    m["matched_account_code"] = a.get("code")
+                    m["matched_account_name"] = a.get("name")
+        except Exception as e:
+            logger.warning(f"[bank-stmt] could not enrich matched accounts: {e}")
 
     return {
         "statement": stmt.data[0],
-        "movements": movements.data or [],
+        "movements": mv_rows,
     }
 
 
@@ -5348,10 +5387,28 @@ async def post_confirmed_movements(statement_id: str):
                 # deletes (which key off source='bank_statement') would wrongly
                 # DELETE it — reopening the H48 vanish-bug through another door.
                 # The statement link already lives in statement_movements.
+                matched_id = mv["matched_transaction_id"]
                 sb.table("accounting_transactions").update({
                     "reconciled_at": mv.get("movement_date") or date.today().isoformat(),
-                }).eq("id", mv["matched_transaction_id"]).execute()
-                pnl_txn_id = mv["matched_transaction_id"]
+                }).eq("id", matched_id).execute()
+                pnl_txn_id = matched_id
+                # OPT-IN reclassify: only when the accountant EXPLICITLY picked a
+                # different account for this reconciled movement do we move the
+                # P&L/inventory leg (the non-bank leg) to her choice. Confirming
+                # the account it already had is a no-op (chosen == current).
+                chosen = mv.get("final_account_id")
+                if chosen:
+                    bank_leg = (sb.table("accounting_transactions")
+                                .select("id, linked_transaction_id")
+                                .eq("id", matched_id).single().execute().data or {})
+                    target_leg = bank_leg.get("linked_transaction_id") or matched_id
+                    cur = (sb.table("accounting_transactions").select("account_id")
+                           .eq("id", target_leg).single().execute().data or {})
+                    if cur.get("account_id") and cur["account_id"] != chosen:
+                        sb.table("accounting_transactions").update({"account_id": chosen}).eq("id", target_leg).execute()
+                        _log_audit("accounting_transactions", target_leg, "update",
+                                   description="Reclasificada por Abby desde conciliación")
+                        logger.info(f"[bank-stmt] reclassified leg {target_leg} → account {chosen} (reconciled override)")
             else:
                 # Non-reconciled: create new P&L transaction
                 txn_data = {
