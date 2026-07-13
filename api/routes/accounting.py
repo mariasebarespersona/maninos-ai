@@ -1114,13 +1114,87 @@ async def split_transaction(transaction_id: str, data: dict):
     return {"ok": True, "message": f"Split into {len(created)} parts", "children": created}
 
 
+def _resolve_transaction_legs(txn_id: str, db=sb) -> list:
+    """All leg ids of the same double-entry pair as txn_id: the row itself, its
+    linked partner, and any rows that link back to it. So voiding/deleting one
+    leg always takes its counterpart with it (never leaves an unbalanced half)."""
+    ids = {txn_id}
+    row = db.table("accounting_transactions").select("linked_transaction_id").eq("id", txn_id).execute().data
+    if row and row[0].get("linked_transaction_id"):
+        ids.add(row[0]["linked_transaction_id"])
+    for b in (db.table("accounting_transactions").select("id").eq("linked_transaction_id", txn_id).execute().data or []):
+        ids.add(b["id"])
+    return list(ids)
+
+
+def _purge_transaction_refs(leg_ids: list, db=sb):
+    """Clear EVERY reference pointing at these transaction legs, so removing a
+    ledger entry never leaves a dangling reference (the H48 failure class):
+    payment_orders, commission_payments, statement_movements links, and the
+    invoice_payments (reversing the invoice's amount_paid so an invoice never
+    reads 'paid' by a payment whose ledger leg is gone)."""
+    if not leg_ids:
+        return
+    for tbl, col in (("payment_orders", "accounting_transaction_id"),
+                     ("commission_payments", "accounting_transaction_id"),
+                     ("statement_movements", "transaction_id"),
+                     ("statement_movements", "matched_transaction_id"),
+                     ("accounting_transactions", "linked_transaction_id")):
+        try:
+            db.table(tbl).update({col: None}).in_(col, leg_ids).execute()
+        except Exception as e:
+            logger.warning(f"[purge] {tbl}.{col}: {e}")
+    try:
+        pays = db.table("accounting_invoice_payments").select("id,invoice_id,amount").in_("transaction_id", leg_ids).execute().data or []
+        for p in pays:
+            inv = db.table("accounting_invoices").select("amount_paid,total_amount").eq("id", p["invoice_id"]).execute().data
+            if inv:
+                new_paid = max(0.0, float(inv[0].get("amount_paid") or 0) - float(p.get("amount") or 0))
+                total = float(inv[0].get("total_amount") or 0)
+                status = "paid" if total > 0 and new_paid >= total - 0.01 else ("partial" if new_paid > 0 else "sent")
+                db.table("accounting_invoices").update({"amount_paid": new_paid, "status": status}).eq("id", p["invoice_id"]).execute()
+            db.table("accounting_invoice_payments").delete().eq("id", p["id"]).execute()
+    except Exception as e:
+        logger.warning(f"[purge] invoice_payments: {e}")
+
+
+def void_ledger_entry(txn_id: str, db=sb, reason: str = "") -> list:
+    """Void BOTH legs of a double-entry entry and purge all references to them.
+    Reversible (status='voided', reports exclude it), leaves nothing dangling —
+    the safe way to remove a ledger entry."""
+    legs = _resolve_transaction_legs(txn_id, db)
+    if not legs:
+        return []
+    _purge_transaction_refs(legs, db)
+    db.table("accounting_transactions").update({"status": "voided"}).in_("id", legs).execute()
+    for lid in legs:
+        _log_audit("accounting_transactions", lid, "void", description=f"Voided (ambas piernas){': ' + reason if reason else ''}")
+    return legs
+
+
+def delete_ledger_entries(txn_ids: list, db=sb) -> int:
+    """Hard-delete transaction legs AND their partners, purging references
+    first. Use only where a hard delete is required (e.g. property purge);
+    prefer void_ledger_entry elsewhere."""
+    all_legs = set()
+    for tid in txn_ids:
+        all_legs.update(_resolve_transaction_legs(tid, db))
+    all_legs = list(all_legs)
+    if not all_legs:
+        return 0
+    _purge_transaction_refs(all_legs, db)
+    db.table("accounting_transactions").update({"linked_transaction_id": None}).in_("id", all_legs).execute()
+    db.table("accounting_transactions").delete().in_("id", all_legs).execute()
+    return len(all_legs)
+
+
 @router.delete("/transactions/{transaction_id}")
 async def void_transaction(transaction_id: str):
-    result = sb.table("accounting_transactions").update({"status": "voided"}).eq("id", transaction_id).execute()
-    if not result.data:
+    exists = sb.table("accounting_transactions").select("id").eq("id", transaction_id).execute().data
+    if not exists:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    _log_audit("accounting_transactions", transaction_id, "void", description="Transaction voided")
-    return {"message": "Transaction voided", "id": transaction_id}
+    legs = void_ledger_entry(transaction_id, reason="void manual")
+    return {"message": "Transaction voided", "id": transaction_id, "legs_voided": len(legs)}
 
 
 # ============================================================================
@@ -2679,6 +2753,13 @@ async def save_financial_statement(data: SaveStatementRequest):
                 .update({"posted_movements": 0, "status": "review"}) \
                 .in_("status", ["completed", "partial"]) \
                 .execute()
+            # Purge ALL references to these legs first (payment_orders,
+            # commission_payments, invoice_payments — reversing amount_paid) so
+            # this reset can never leave an invoice reading 'paid' or an order
+            # 'posted' while its ledger leg is gone (the H48 failure class).
+            bs_legs = [t["id"] for t in (sb.table("accounting_transactions")
+                       .select("id").eq("source", "bank_statement").execute().data or [])]
+            _purge_transaction_refs(bs_legs)
             # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
             sb.table("accounting_transactions") \
                 .update({"linked_transaction_id": None}) \
@@ -4769,10 +4850,15 @@ async def post_confirmed_movements(statement_id: str):
                 # wizard's classification — doing that previously caused
                 # purchases to silently move to "Cost of Goods Sold-1"
                 # and renovations to "Labor Costs" in the user's reports.
-                # We only stamp source='bank_statement' so the audit
-                # trail shows this transaction now has a statement match.
+                # Record the statement match via reconciled_at — do NOT stamp
+                # source='bank_statement' on a PRE-EXISTING transaction. That
+                # overload made a real purchase/sale look "born from the
+                # statement", so the save-report reset and statement-rollback
+                # deletes (which key off source='bank_statement') would wrongly
+                # DELETE it — reopening the H48 vanish-bug through another door.
+                # The statement link already lives in statement_movements.
                 sb.table("accounting_transactions").update({
-                    "source": "bank_statement",
+                    "reconciled_at": mv.get("movement_date") or date.today().isoformat(),
                 }).eq("id", mv["matched_transaction_id"]).execute()
                 pnl_txn_id = mv["matched_transaction_id"]
             else:
@@ -5033,6 +5119,10 @@ async def delete_bank_statement(statement_id: str):
                 ids_to_delete = [target_txn_id]
                 if linked:
                     ids_to_delete.append(linked)
+                # Purge references (orders / invoice payments / matches) before
+                # deleting so nothing is left dangling to a removed leg.
+                _purge_transaction_refs(ids_to_delete)
+                sb.table("accounting_transactions").update({"linked_transaction_id": None}).in_("id", ids_to_delete).execute()
                 sb.table("accounting_transactions").delete().in_("id", ids_to_delete).execute()
                 deleted_new_pairs += 1
         except Exception as e:

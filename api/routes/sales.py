@@ -1721,57 +1721,14 @@ async def complete_rto_contract(sale_id: str):
         except Exception as schedule_error:
             logger.warning(f"Failed to schedule post-sale emails for RTO: {schedule_error}")
 
-        # 12. Create accounting transaction
-        try:
-            from datetime import date as date_type
-            today = date_type.today()
-            prefix = f"TXN-{today.strftime('%y%m%d')}-"
-            existing_txns = sb.table("accounting_transactions") \
-                .select("transaction_number") \
-                .like("transaction_number", f"{prefix}%") \
-                .execute()
-            txn_count = len(existing_txns.data) if existing_txns.data else 0
-            txn_number = f"{prefix}{txn_count + 1:03d}"
-
-            # Resolve account_id from category "ventas_rto"
-            acct_result = sb.table("accounting_accounts") \
-                .select("id") \
-                .eq("category", "ventas_rto") \
-                .eq("is_active", True) \
-                .limit(1) \
-                .execute()
-            account_id = acct_result.data[0]["id"] if acct_result.data else None
-
-            # Get property yard_id
-            prop_yard = sb.table("properties") \
-                .select("yard_id") \
-                .eq("id", sale["property_id"]) \
-                .single() \
-                .execute()
-            yard_id = prop_yard.data.get("yard_id") if prop_yard.data else None
-
-            txn_insert = {
-                "transaction_number": txn_number,
-                "transaction_date": today.isoformat(),
-                "transaction_type": "sale_rto",
-                "amount": float(sale["sale_price"]),
-                "is_income": True,
-                "account_id": account_id,
-                "entity_type": "sale",
-                "entity_id": sale_id,
-                "property_id": sale["property_id"],
-                "yard_id": yard_id,
-                "payment_method": "rto",
-                "counterparty_name": sale["clients"]["name"],
-                "counterparty_type": "client",
-                "description": f"Venta RTO completada - {sale['properties']['address']} - {sale['clients']['name']}",
-                "status": "confirmed",
-            }
-            txn_insert = {k: v for k, v in txn_insert.items() if v is not None}
-            sb.table("accounting_transactions").insert(txn_insert).execute()
-            logger.info(f"[sales] Accounting transaction {txn_number} created for RTO sale {sale_id}")
-        except Exception as acct_error:
-            logger.warning(f"Failed to create accounting transaction for RTO sale: {acct_error}")
+        # 12. (removed) — do NOT post a sale_rto income leg here. It was a raw
+        # SINGLE-SIDED insert (full sale_price, is_income=True, no bank leg, no
+        # linked pair) that both UNBALANCED the ledger and DOUBLE-COUNTED the
+        # RTO income. RTO income is already recognized correctly at the sale:
+        # the enganche via sale_down_payment_received (→ House Sales - RTO) and
+        # the financed portion via the [CAPFIN:] receivable invoice to Maninos
+        # Capital (→ House Sales - RTO). Completion only recognizes COGS
+        # (Inventory → COGS), already handled above via _recognize_house_cogs.
 
         return {
             "ok": True,

@@ -870,10 +870,16 @@ async def delete_property(property_id: str):
         except Exception as e:
             logger.warning(f"Could not delete payment_orders: {e}")
 
-        # 6. Delete accounting_transactions
+        # 6. Delete accounting_transactions — via the safe helper so BOTH legs
+        # of each pair are removed (the bank leg carries no property_id, so a
+        # naive delete-by-property_id would orphan it and unbalance the books)
+        # and every reference (payment orders, invoice payments, statement
+        # matches) is cleared instead of left dangling.
         try:
-            sb.table("accounting_transactions").delete().eq("property_id", property_id).execute()
-            deleted_records.append("accounting_transactions")
+            from api.routes.accounting import delete_ledger_entries
+            pl_legs = sb.table("accounting_transactions").select("id").eq("property_id", property_id).execute().data or []
+            n = delete_ledger_entries([t["id"] for t in pl_legs])
+            deleted_records.append(f"accounting_transactions({n})")
         except Exception as e:
             logger.warning(f"Could not delete accounting_transactions: {e}")
 
