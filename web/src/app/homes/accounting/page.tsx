@@ -5375,7 +5375,15 @@ function EstadoCuentaTab() {
                                     </div>
                                   ) : (
                                     <div className="mt-1.5 space-y-1">
-                                      {aiMatch && (
+                                      {aiMatch && (() => {
+                                        const aiAmt = aiMatch.target_type === 'invoice'
+                                          ? Number(aiMatch.invoice?.balance_due ?? aiMatch.invoice?.total_amount ?? 0)
+                                          : Number(aiMatch.transaction?.amount ?? 0)
+                                        const aiIncome = aiMatch.target_type === 'invoice'
+                                          ? (aiMatch.invoice?.direction === 'receivable')
+                                          : !!aiMatch.transaction?.is_income
+                                        const amtMatches = Math.abs(aiAmt - Math.abs(m.amount)) < 0.01
+                                        return (
                                         <div className="flex items-center gap-1.5 rounded-md bg-teal-50 border border-teal-200 px-1.5 py-1">
                                           <Sparkles className="w-3 h-3 text-teal-600 shrink-0" />
                                           <div className="min-w-0 flex-1">
@@ -5384,9 +5392,15 @@ function EstadoCuentaTab() {
                                                 ? `Factura ${aiMatch.invoice?.invoice_number || ''}`
                                                 : (aiMatch.transaction?.description || aiMatch.transaction?.transaction_type || '')}
                                             </p>
-                                            {typeof aiMatch.score === 'number' && (
-                                              <p className="text-[9px] text-teal-600">{aiMatch.score}% de coincidencia</p>
-                                            )}
+                                            <p className="text-[9px] flex items-center gap-1.5">
+                                              <span className={`font-bold tabular-nums ${aiIncome ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                {aiIncome ? '+' : '-'}${Math.abs(aiAmt).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                              </span>
+                                              <span className={amtMatches ? 'text-teal-600' : 'text-amber-600 font-medium'}>
+                                                {amtMatches ? 'monto ✓' : 'monto ✗'}
+                                              </span>
+                                              {typeof aiMatch.score === 'number' && <span className="text-teal-600">· {aiMatch.score}%</span>}
+                                            </p>
                                           </div>
                                           <button
                                             onClick={(e) => { e.stopPropagation(); if (!busy) acceptAiMatch(m, aiMatch) }}
@@ -5396,7 +5410,8 @@ function EstadoCuentaTab() {
                                             {busy ? '…' : 'Aceptar'}
                                           </button>
                                         </div>
-                                      )}
+                                        )
+                                      })()}
                                       <p className="text-[10px] font-medium" style={{ color: isSelected ? '#7c3aed' : 'var(--ash)' }}>
                                         {isSelected
                                           ? '→ Elige la transacción a la derecha'
