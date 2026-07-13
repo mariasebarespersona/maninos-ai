@@ -823,7 +823,13 @@ async def get_accounting_dashboard(
                                 if (p.get("venta") or 0) <= 0), 2)
     houses_in_inventory = sum(1 for p in property_inventory
                               if (p.get("invertido") or 0) > 0 and (p.get("venta") or 0) <= 0)
-    houses_sold_count = sum(1 for p in property_inventory if (p.get("venta") or 0) > 0)
+    # Houses SOLD in the period + their revenue — from the sales table (sold
+    # houses are NOT in property_inventory, which only holds current inventory),
+    # so "ventas del período" and "vendidas" are consistent with each other.
+    _sold_real = [s for s in sales if (s.get("status") or "") != "cancelled"
+                  and float(s.get("sale_price") or 0) > 0]
+    houses_sold_count = len(_sold_real)
+    houses_sold_revenue = round(sum(float(s.get("sale_price") or 0) for s in _sold_real), 2)
 
     return {
         "period": {"type": period, "start_date": start_str, "end_date": end_str,
@@ -848,6 +854,7 @@ async def get_accounting_dashboard(
             "inventory_value": inventory_value,
             "houses_in_inventory": houses_in_inventory,
             "houses_sold_count": houses_sold_count,
+            "houses_sold_revenue": houses_sold_revenue,
             "accounts_receivable": ar_total,
             "accounts_receivable_overdue": ar_overdue,
             "accounts_payable": ap_total,

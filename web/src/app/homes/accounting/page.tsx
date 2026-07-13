@@ -48,7 +48,7 @@ interface DashboardData {
     accounts_payable: number; accounts_payable_overdue: number
     total_bank_balance: number
     houses_bought_period?: number; houses_bought_count?: number; inventory_invested_period?: number
-    inventory_value?: number; houses_in_inventory?: number; houses_sold_count?: number
+    inventory_value?: number; houses_in_inventory?: number; houses_sold_count?: number; houses_sold_revenue?: number
   }
   cash_flow: { month: string; label: string; income: number; expense: number; net: number }[]
   bank_accounts: BankAccount[]
@@ -429,13 +429,13 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
 
         {/* Stat cards de negocio */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <BizStatCard icon={Wallet} iconColor="#2563eb" iconBg="#eff6ff" emoji="💵" label="Efectivo en bancos" value={fmt(s.total_bank_balance)} />
-          <BizStatCard icon={Home} iconColor="#7c3aed" iconBg="#f5f3ff" emoji="🏠" label="Casas en inventario" value={`${s.houses_in_inventory || 0} ${(s.houses_in_inventory || 0) === 1 ? 'casa' : 'casas'}`} sub={`valor ${fmt(s.inventory_value || 0)}`} />
-          <BizStatCard icon={Package} iconColor="#b45309" iconBg="#fef3c7" emoji="🛒" label="Compras del período" value={fmt(s.houses_bought_period || 0)} sub={`${s.houses_bought_count || 0} ${(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'}`} />
-          <BizStatCard icon={Banknote} iconColor="#059669" iconBg="#ecfdf5" emoji="💰" label="Ventas del período" value={fmt((s.sales_by_type.contado || 0) + (s.sales_by_type.rto || 0))} sub={`${s.houses_sold_count || 0} vendidas`} />
-          <BizStatCard icon={TrendingUp} iconColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} iconBg={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} emoji="📈" label="Ganancia neta" value={fmt(s.net_profit)} valueColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} />
-          <BizStatCard icon={ArrowUpRight} iconColor="#8b5cf6" iconBg="#f5f3ff" emoji="📥" label="Por cobrar" value={fmt(s.accounts_receivable)} />
-          <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} />
+          <BizStatCard icon={Wallet} iconColor="#2563eb" iconBg="#eff6ff" emoji="💵" label="Efectivo en bancos" value={fmt(s.total_bank_balance)} hint="Suma del saldo de las 6 cuentas bancarias, calculado de todos los movimientos del libro. Hasta cargar los saldos iniciales de QuickBooks puede salir bajo o negativo." />
+          <BizStatCard icon={Home} iconColor="#7c3aed" iconBg="#f5f3ff" emoji="🏠" label="Casas en inventario" value={`${s.houses_in_inventory || 0} ${(s.houses_in_inventory || 0) === 1 ? 'casa' : 'casas'}`} sub={`valor ${fmt(s.inventory_value || 0)}`} hint="Casas compradas y aún NO vendidas. El valor = lo invertido en cada una (compra + renovación + movida). Al venderse, sale de aquí y pasa a costo." />
+          <BizStatCard icon={Package} iconColor="#b45309" iconBg="#fef3c7" emoji="🛒" label="Compras del período" value={fmt(s.houses_bought_period || 0)} sub={`${s.houses_bought_count || 0} ${(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'}`} hint="Precio de compra de las casas adquiridas en el período (al aprobar su orden de pago). Es inversión en inventario, NO un gasto." />
+          <BizStatCard icon={Banknote} iconColor="#059669" iconBg="#ecfdf5" emoji="💰" label="Ventas del período" value={fmt(s.houses_sold_revenue || 0)} sub={`${s.houses_sold_count || 0} ${(s.houses_sold_count || 0) === 1 ? 'casa vendida' : 'casas vendidas'}`} hint="Precio de venta de las casas vendidas en el período (contado y RTO). El monto y el número de casas salen de la misma fuente: las ventas registradas." />
+          <BizStatCard icon={TrendingUp} iconColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} iconBg={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} emoji="📈" label="Ganancia neta" value={fmt(s.net_profit)} valueColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} hint="Ingresos − gastos del período. El costo de una casa entra aquí solo cuando se vende (no al comprarla). Ver el desglose completo abajo, en la zona de Abby." />
+          <BizStatCard icon={ArrowUpRight} iconColor="#8b5cf6" iconBg="#f5f3ff" emoji="📥" label="Por cobrar" value={fmt(s.accounts_receivable)} hint="Lo que le deben a Maninos: facturas por cobrar + saldos pendientes de ventas (incluye lo financiado en RTO que debe Capital)." />
+          <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} hint="Lo que Maninos debe: facturas por pagar a proveedores, comisiones y consignaciones pendientes." />
         </div>
 
         {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
@@ -3498,12 +3498,12 @@ function KPICard({ label, value, sublabel, icon: Icon, color, bgColor }: { label
   )
 }
 
-function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, valueColor }: {
+function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, valueColor, hint }: {
   icon: React.ElementType; iconColor: string; iconBg: string; emoji: string
-  label: string; value: string; sub?: string; valueColor?: string
+  label: string; value: string; sub?: string; valueColor?: string; hint?: string
 }) {
   return (
-    <div className="rounded-xl border p-4" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--porcelain, #fff)' }}>
+    <div className="rounded-xl border p-4 flex flex-col" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--porcelain, #fff)' }}>
       <div className="flex items-center gap-2 mb-2">
         <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg }}>
           <Icon className="w-4 h-4" style={{ color: iconColor }} />
@@ -3512,6 +3512,7 @@ function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, 
       </div>
       <p className="text-2xl font-bold" style={{ color: valueColor || 'var(--ink)' }}>{value}</p>
       {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>{sub}</p>}
+      {hint && <p className="text-[11px] leading-snug mt-2 pt-2 border-t" style={{ color: 'var(--ash)', borderColor: 'var(--stone)' }}>{hint}</p>}
     </div>
   )
 }
