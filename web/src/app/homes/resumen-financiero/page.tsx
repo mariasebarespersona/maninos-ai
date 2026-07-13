@@ -362,7 +362,7 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
             <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center"><span className="text-white text-[8px] font-bold">2</span></div>
             {tl('Renovación', 'text-amber-600')}
             <div className="text-xs text-navy-700 space-y-0.5 mt-0.5">
-              <p><strong>{fmt(reno.total_cost)}</strong> — {reno.items_summary || 'Sin detalle'} — Responsable: {reno.responsable || 'N/A'} {badge(reno.approval_status || reno.status)}</p>
+              <p><span className="text-navy-400">Presupuesto (estimado):</span> <strong>{fmt(reno.total_cost)}</strong> — {reno.items_summary || 'Sin detalle'} — Responsable: {reno.responsable || 'N/A'} {badge(reno.approval_status || reno.status)}</p>
               {reno.fecha_inicio && <p className="text-[10px] text-navy-400">Inicio: {reno.fecha_inicio} {reno.fecha_fin ? `→ Fin: ${reno.fecha_fin}` : ''}</p>}
               {payment_orders && payment_orders.filter((o: any) => o.concept === 'comision').length > 0 && (
                 <div className="text-[10px] text-navy-500 mt-1">
