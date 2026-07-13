@@ -2009,25 +2009,13 @@ def record_invoice_payment(
         return {"payment": None, "invoice_status": invoice.get("status"),
                 "new_amount_paid": already, "skipped": True}
 
-    payment_data = {
-        "invoice_id": invoice_id,
-        "payment_date": payment_date or date.today().isoformat(),
-        "amount": amt,
-        "payment_method": payment_method,
-        "payment_reference": payment_reference,
-        "notes": notes,
-    }
-    payment_data = {k: v for k, v in payment_data.items() if v is not None}
-    pay_result = sb.table("accounting_invoice_payments").insert(payment_data).execute()
-
-    new_paid = round(already + amt, 2)
-    new_status = "paid" if new_paid + 0.01 >= total else "partial"
-    sb.table("accounting_invoices").update({
-        "amount_paid": new_paid,
-        "status": new_status,
-    }).eq("id", invoice_id).execute()
-
     is_income = invoice["direction"] == "receivable"
+
+    # ATOMICITY: post the cash leg FIRST. Only if it succeeds do we record the
+    # payment row and bump amount_paid — so an invoice can never read 'paid'
+    # (or partially paid) while its bank leg is missing. Previously the payment
+    # + amount_paid were written first and a failed post was swallowed, leaving
+    # invoices "paid" with no cash movement.
     bank_txn_id = None
     if bank_account_id:
         try:
@@ -2055,17 +2043,32 @@ def record_invoice_payment(
             logger.error(f"[accounting] Cannot post invoice payment ledger: {e}")
             raise HTTPException(status_code=400, detail=f"No se puede registrar en contabilidad: {e}")
         except Exception as e:
-            logger.warning(f"[accounting] Invoice payment ledger post failed: {e}")
+            logger.error(f"[accounting] Invoice payment ledger post failed, NOT recording payment: {e}")
+            raise HTTPException(status_code=500,
+                detail=f"No se pudo registrar el pago en contabilidad ({e}). No se marcó como pagado para evitar descuadres.")
     elif raise_on_missing_bank:
-        logger.warning(
-            f"[accounting] Invoice payment for {invoice_id} registered WITHOUT "
-            f"bank_account_id — no ledger pair written."
-        )
+        raise HTTPException(status_code=400,
+            detail="Falta la cuenta bancaria para registrar el pago (evita marcar pagado sin asiento).")
 
-    if bank_txn_id and pay_result.data:
-        sb.table("accounting_invoice_payments").update({
-            "transaction_id": bank_txn_id
-        }).eq("id", pay_result.data[0]["id"]).execute()
+    # Ledger is posted (or intentionally accrual-only) — now record the payment.
+    payment_data = {
+        "invoice_id": invoice_id,
+        "payment_date": payment_date or date.today().isoformat(),
+        "amount": amt,
+        "payment_method": payment_method,
+        "payment_reference": payment_reference,
+        "notes": notes,
+        "transaction_id": bank_txn_id,
+    }
+    payment_data = {k: v for k, v in payment_data.items() if v is not None}
+    pay_result = sb.table("accounting_invoice_payments").insert(payment_data).execute()
+
+    new_paid = round(already + amt, 2)
+    new_status = "paid" if new_paid + 0.01 >= total else "partial"
+    sb.table("accounting_invoices").update({
+        "amount_paid": new_paid,
+        "status": new_status,
+    }).eq("id", invoice_id).execute()
 
     # Consignment: when the consignment purchase invoice is fully paid, the
     # previous owner has been settled → stamp consignment_paid_at (the flag the
@@ -4389,61 +4392,38 @@ async def confirm_reconciliation(statement_id: str, data: dict):
                     errors.append(f"Invoice {invoice_id} not found")
                     continue
 
+                # IDEMPOTENCY: if this movement is already reconciled, a re-submit
+                # (double-click / retry) must NOT create a second payment + second
+                # ledger pair. Skip it.
+                if (mv_row.get("status") or "") == "reconciled":
+                    logger.info(f"[reconcile-confirm] movement {mv_id} already reconciled — skipping (idempotent)")
+                    continue
+
                 amount = abs(float(mv_row.get("amount") or 0))
-                is_receivable = (inv_row.get("direction") or "").lower() == "receivable"
 
-                # Create accounting_invoice_payments row
-                pay = sb.table("accounting_invoice_payments").insert({
-                    "invoice_id": invoice_id,
-                    "payment_date": mv_row.get("movement_date"),
-                    "amount": amount,
-                    "payment_method": mv_row.get("payment_method"),
-                    "payment_reference": mv_row.get("reference"),
-                    "notes": f"Auto-cobrado del estado de cuenta {statement.get('id','')[:8]}",
-                }).execute()
-
-                # Update invoice balance + status
-                new_paid = float(inv_row.get("amount_paid") or 0) + amount
-                total = float(inv_row.get("total_amount") or 0)
-                new_status = "paid" if new_paid + 0.01 >= total else "partial"
-                sb.table("accounting_invoices").update({
-                    "amount_paid": new_paid,
-                    "status": new_status,
-                }).eq("id", invoice_id).execute()
-
-                # Post the double-entry pair via the unified writer
-                from api.services.ledger import post_to_ledger
-                debit_id, credit_id = post_to_ledger(
-                    event_type=("invoice_paid_in" if is_receivable else "invoice_paid_out"),
+                # Record the payment via the shared, ATOMIC helper: it posts the
+                # cash pair FIRST (rolls back / raises on failure — no phantom
+                # "paid"), and cap_to_balance clamps the amount to the invoice's
+                # remaining balance so we never over-collect A/R.
+                res = record_invoice_payment(
+                    invoice_id=invoice_id,
                     amount=amount,
                     bank_account_id=statement.get("bank_account_id"),
-                    date=mv_row.get("movement_date") or now_str[:10],
-                    counterparty_name=inv_row.get("counterparty_name"),
-                    counterparty_type=inv_row.get("counterparty_type"),
-                    entity_type="invoice",
-                    entity_id=invoice_id,
-                    property_id=inv_row.get("property_id"),
-                    yard_id=inv_row.get("yard_id"),
-                    description_data={"invoice_number": inv_row.get("invoice_number", "")},
+                    payment_date=mv_row.get("movement_date") or now_str[:10],
                     payment_method=mv_row.get("payment_method"),
                     payment_reference=mv_row.get("reference"),
-                    notes=f"Auto-cobrado desde estado de cuenta",
-                    status="reconciled",  # pair is born already reconciled
+                    notes=f"Auto-cobrado del estado de cuenta {statement.get('id','')[:8]}",
+                    cap_to_balance=True,
+                    raise_on_missing_bank=True,
                 )
-
-                # Link the invoice_payment to the bank leg of the pair
-                bank_leg_id = debit_id if is_receivable else credit_id
-                if pay.data and bank_leg_id:
-                    sb.table("accounting_invoice_payments").update({
-                        "transaction_id": bank_leg_id,
-                    }).eq("id", pay.data[0]["id"]).execute()
-
-                # Stamp reconciled_at on both legs
-                sb.table("accounting_transactions").update({
-                    "reconciled_at": now_str,
-                }).in_("id", [debit_id, credit_id]).execute()
-
-                # Mark the movement as reconciled + link it to the bank leg
+                pay = res.get("payment") or {}
+                bank_leg_id = pay.get("transaction_id")
+                # Mark both legs + the movement reconciled.
+                if bank_leg_id:
+                    legs = _resolve_transaction_legs(bank_leg_id)
+                    sb.table("accounting_transactions").update({
+                        "status": "reconciled", "reconciled_at": now_str,
+                    }).in_("id", legs).execute()
                 sb.table("statement_movements").update({
                     "status": "reconciled",
                     "matched_transaction_id": bank_leg_id,
