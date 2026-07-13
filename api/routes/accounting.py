@@ -915,6 +915,103 @@ async def list_transactions(
     return {"transactions": result.data or [], "pagination": {"page": page, "per_page": per_page, "total": total}}
 
 
+def _acct_is_asset_like(at: str) -> bool:
+    return (at or "").strip().lower() in (
+        "asset", "bank", "other current assets", "fixed assets",
+        "other assets", "accounts receivable (a/r)")
+
+
+def _post_journal_entry(*, debit_account_id: str, credit_account_id: str, amount: float,
+                        date_str: str, description: str = "", notes: str = "",
+                        property_id: Optional[str] = None, counterparty_name: Optional[str] = None,
+                        debit_bank_id: Optional[str] = None, credit_bank_id: Optional[str] = None) -> tuple:
+    """Post a BALANCED double-entry pair between ANY two accounts (the primitive
+    behind loans, member contributions, dividends, fixed assets, opening
+    balances…). is_income per leg follows the same convention as post_to_ledger
+    (asset debit / non-asset credit → is_income=True). Atomic: if the 2nd leg
+    fails, the 1st is removed."""
+    da = sb.table("accounting_accounts").select("account_type").eq("id", debit_account_id).single().execute().data
+    ca = sb.table("accounting_accounts").select("account_type").eq("id", credit_account_id).single().execute().data
+    debit_is_income = _acct_is_asset_like(da["account_type"])       # DEBIT grows an asset → is_income=True
+    credit_is_income = not _acct_is_asset_like(ca["account_type"])  # CREDIT grows income/liab/equity → True
+    amt = round(float(amount), 2)
+    # "adjustment" is the allowed generic transaction_type for a manual journal
+    # entry (the check constraint rejects arbitrary values).
+    common = {"transaction_date": date_str, "amount": amt, "transaction_type": "adjustment",
+              "status": "confirmed"}
+    for k, v in (("description", description), ("notes", notes),
+                 ("property_id", property_id), ("counterparty_name", counterparty_name)):
+        if v:
+            common[k] = v
+    d = sb.table("accounting_transactions").insert({
+        **common, "transaction_number": _generate_transaction_number(),
+        "account_id": debit_account_id, "is_income": debit_is_income,
+        "bank_account_id": debit_bank_id}).execute()
+    if not d.data:
+        raise HTTPException(status_code=500, detail="No se pudo registrar el asiento (débito).")
+    debit_id = d.data[0]["id"]
+    try:
+        c = sb.table("accounting_transactions").insert({
+            **common, "transaction_number": _generate_transaction_number(),
+            "account_id": credit_account_id, "is_income": credit_is_income,
+            "bank_account_id": credit_bank_id, "linked_transaction_id": debit_id}).execute()
+        if not c.data:
+            raise RuntimeError("credit leg returned no data")
+    except Exception as e:
+        sb.table("accounting_transactions").delete().eq("id", debit_id).execute()
+        raise HTTPException(status_code=500, detail=f"No se pudo registrar el asiento (crédito): {e}")
+    credit_id = c.data[0]["id"]
+    sb.table("accounting_transactions").update({"linked_transaction_id": credit_id}).eq("id", debit_id).execute()
+    _log_audit("accounting_transactions", debit_id, "create", description=f"Asiento manual: {description or 'movimiento'}")
+    return debit_id, credit_id
+
+
+@router.post("/journal-entry")
+async def create_journal_entry(data: dict):
+    """General balanced journal entry between two accounts — the foundation for
+    recording things the operational flows don't cover: préstamos recibidos
+    (banco→Debt Securities), préstamos dados (Loans to others→banco),
+    aportaciones de socios (banco→Member's contributions), dividendos
+    (Dividends paid→banco), activos fijos (Vehicles→banco), saldos iniciales
+    (cuenta↔Opening balance equity). Body: {debit_account_code, credit_account_code,
+    amount, date?, description?, notes?, property_id?, counterparty_name?}. A leg
+    that is a Bank account is auto-linked to its bank so the saldo updates."""
+    dcode = (data.get("debit_account_code") or "").strip()
+    ccode = (data.get("credit_account_code") or "").strip()
+    amount = float(data.get("amount") or 0)
+    if not dcode or not ccode:
+        raise HTTPException(status_code=400, detail="Faltan las cuentas de débito y crédito.")
+    if dcode == ccode:
+        raise HTTPException(status_code=400, detail="El débito y el crédito no pueden ser la misma cuenta.")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0.")
+
+    def _resolve(code):
+        a = sb.table("accounting_accounts").select("id,account_type,is_header").eq("code", code).execute().data
+        if not a:
+            raise HTTPException(status_code=400, detail=f"La cuenta '{code}' no existe.")
+        if a[0].get("is_header"):
+            raise HTTPException(status_code=400, detail=f"'{code}' es un encabezado; elige una cuenta específica.")
+        return a[0]
+    da, ca = _resolve(dcode), _resolve(ccode)
+
+    def _bank_id(acct):
+        if acct["account_type"] != "Bank":
+            return None
+        b = sb.table("bank_accounts").select("id").eq("accounting_account_id", acct["id"]).execute().data
+        return b[0]["id"] if b else None
+
+    debit_id, credit_id = _post_journal_entry(
+        debit_account_id=da["id"], credit_account_id=ca["id"], amount=amount,
+        date_str=data.get("date") or date.today().isoformat(),
+        description=data.get("description") or "", notes=data.get("notes") or "",
+        property_id=data.get("property_id"), counterparty_name=data.get("counterparty_name"),
+        debit_bank_id=_bank_id(da), credit_bank_id=_bank_id(ca),
+    )
+    return {"ok": True, "debit_transaction_id": debit_id, "credit_transaction_id": credit_id,
+            "debit_account": dcode, "credit_account": ccode, "amount": round(amount, 2)}
+
+
 @router.post("/transactions")
 async def create_transaction(data: TransactionCreate):
     txn_number = _generate_transaction_number()
