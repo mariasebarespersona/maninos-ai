@@ -2344,9 +2344,40 @@ function QBIncomeStatement({ data, expanded, toggleExpand, onDrilldown, hideZero
   )
 }
 
+// Balance-sheet response shape (grouped sections + per-yard columns).
+type QBBSSection = { name: string; is_section: true; total: number; by_location?: Record<string, number>; children: QBTreeNode[] }
+
 function QBBalanceSheet({ data, expanded, toggleExpand, onDrilldown, hideZeros = false }: { data: any; expanded: Record<string, boolean>; toggleExpand: (id: string) => void; onDrilldown?: (node: QBTreeNode) => void; hideZeros?: boolean }) {
   const sec = data.sections || {}
+  const locations: string[] = data.locations || []
+  const byLoc = sec.by_location || {}
+  const locLabel = (l: string) => l === 'Not specified' ? 'Not Specified' : l
   const today = new Date()
+
+  // Renders a grouped section (e.g. "Current Assets"): a sub-header row with the
+  // section's per-yard totals, then its children as normal tree rows. A Section
+  // has no `id`, so we render the header row ourselves and only tree-render its children.
+  const renderSectionGroup = (section: QBBSSection, key: string) => (
+    <React.Fragment key={key}>
+      <tr className="bg-stone-50 border-b" style={{ borderColor: '#ddd' }}>
+        <td className="py-1.5 pr-4" style={{ paddingLeft: `${12 + 24}px` }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{section.name}</span>
+        </td>
+        {locations.map(loc => (
+          <td key={loc} className="py-1.5 text-right pr-4">
+            <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{fmtFull(section.by_location?.[loc] || 0)}</span>
+          </td>
+        ))}
+        <td className="py-1.5 text-right pr-4">
+          <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{fmtFull(section.total || 0)}</span>
+        </td>
+      </tr>
+      {(section.children || []).map(child => (
+        <QBTreeRow key={child.id} node={child} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
+      ))}
+    </React.Fragment>
+  )
+
   return (
     <div className="card-luxury overflow-hidden">
       {/* Header */}
@@ -2362,46 +2393,44 @@ function QBBalanceSheet({ data, expanded, toggleExpand, onDrilldown, hideZeros =
         <thead>
           <tr className="border-b-2" style={{ borderColor: 'var(--stone)' }}>
             <th className="text-left text-xs font-semibold py-2 pl-3 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Account</th>
+            {locations.map(loc => (
+              <th key={loc} className="text-right text-xs font-semibold py-2 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>{locLabel(loc)}</th>
+            ))}
             <th className="text-right text-xs font-semibold py-2 pr-4 uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Total</th>
           </tr>
         </thead>
         <tbody>
-          {/* Assets */}
-          {(sec.assets || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={0} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
-          ))}
-          <QBComputedLine label="Total for Assets" amount={sec.total_assets || 0} bold thick  hideZeros={hideZeros} />
-
-          {/* Liabilities and Equity header */}
+          {/* ── Assets ── */}
           <tr className="bg-stone-100 border-b" style={{ borderColor: '#ddd' }}>
-            <td colSpan={2} className="py-2 pl-3">
-              <span className="text-sm font-bold" style={{ color: 'var(--navy-800)' }}>Liabilities and Equity</span>
+            <td colSpan={locations.length + 2} className="py-2 pl-3">
+              <span className="text-sm font-bold" style={{ color: 'var(--navy-800)' }}>Activos / Assets</span>
             </td>
           </tr>
+          {(sec.assets || []).map((section: QBBSSection, i: number) => renderSectionGroup(section, `asset-${i}`))}
+          <QBComputedLine label="Total Assets" amount={sec.total_assets || 0} bold thick hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_assets} />
 
-          {/* Liabilities */}
-          {(sec.liabilities || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
-          ))}
-          <QBComputedLine label="Total for Liabilities" amount={sec.total_liabilities || 0} bold  hideZeros={hideZeros} />
+          {/* ── Liabilities ── */}
+          <tr className="bg-stone-100 border-b" style={{ borderColor: '#ddd' }}>
+            <td colSpan={locations.length + 2} className="py-2 pl-3">
+              <span className="text-sm font-bold" style={{ color: 'var(--navy-800)' }}>Pasivos / Liabilities</span>
+            </td>
+          </tr>
+          {(sec.liabilities || []).map((section: QBBSSection, i: number) => renderSectionGroup(section, `liab-${i}`))}
+          <QBComputedLine label="Total Liabilities" amount={sec.total_liabilities || 0} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_liabilities} />
 
-          {/* Equity */}
+          {/* ── Equity ── */}
+          <tr className="bg-stone-100 border-b" style={{ borderColor: '#ddd' }}>
+            <td colSpan={locations.length + 2} className="py-2 pl-3">
+              <span className="text-sm font-bold" style={{ color: 'var(--navy-800)' }}>Capital / Equity</span>
+            </td>
+          </tr>
           {(sec.equity || []).map((node: QBTreeNode) => (
-            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} />
+            <QBTreeRow key={node.id} node={node} depth={1} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={onDrilldown} hideZeros={hideZeros} locations={locations} />
           ))}
-          {sec.net_income !== undefined && sec.net_income !== 0 && (
-            <tr className="border-b" style={{ borderColor: '#ddd' }}>
-              <td className="py-1.5 pr-4" style={{ paddingLeft: `${12 + 48}px` }}>
-                <span className="text-sm" style={{ color: 'var(--slate)' }}>Net Income</span>
-              </td>
-              <td className="py-1.5 text-right pr-4">
-                <span className="text-sm tabular-nums" style={{ color: 'var(--charcoal)' }}>{fmtFull(sec.net_income)}</span>
-              </td>
-            </tr>
-          )}
-          <QBComputedLine label="Total for Equity" amount={(sec.total_equity || 0) + (sec.net_income || 0)} bold  hideZeros={hideZeros} />
+          <QBComputedLine label="Total Equity" amount={sec.total_equity || 0} bold hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_equity} />
 
-          <QBComputedLine label="Total for Liabilities and Equity" amount={sec.total_liabilities_and_equity || 0} bold thick highlight  hideZeros={hideZeros} />
+          {/* Liabilities + Equity must equal Assets — mirror the assets by_location so the totals line up visually. */}
+          <QBComputedLine label="Total Pasivos + Capital / Total Liabilities & Equity" amount={sec.total_liabilities_and_equity || 0} bold thick highlight hideZeros={hideZeros} locations={locations} byLocation={byLoc.total_assets} />
         </tbody>
       </table>
 
