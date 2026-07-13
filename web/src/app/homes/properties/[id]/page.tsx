@@ -1666,8 +1666,8 @@ ${price}
                   const purchase = Math.round(Number(property.purchase_price || 0));
                   const reno = Math.round(Number(costBreakdown?.renovation_cost || 0));
                   const move = Math.round(Number(costBreakdown?.move_cost || 0));
-                  const commission = Math.round(Number(costBreakdown?.commission || 1500));
-                  const margin = Math.round(Number(costBreakdown?.margin || 9500));
+                  const commission = Math.round(Number(costBreakdown?.commission ?? 0));
+                  const margin = Math.round(Number(costBreakdown?.margin ?? 9500));
                   const totalInversion = purchase + reno + move;
                   const precioMinimo = totalInversion + commission + margin;
                   const salePrice = Math.round(Number(property.sale_price || 0));
