@@ -5326,7 +5326,13 @@ async def post_confirmed_movements(statement_id: str):
         # Normalize to valid type
         txn_type = raw_txn_type if raw_txn_type in VALID_TXN_TYPES else TXN_TYPE_MAP.get(raw_txn_type, "adjustment")
 
-        if not account_id:
+        # A RECONCILED movement already points to a real ledger transaction with
+        # its own correct account — it does NOT need a classified account to be
+        # published (publishing just stamps it reconciled, and optionally
+        # reclassifies if the accountant explicitly picked another). Only
+        # UNRECONCILED movements (which create a new transaction) require one.
+        is_reconciled = mv.get("status") == "reconciled" and mv.get("matched_transaction_id")
+        if not account_id and not is_reconciled:
             skipped += 1
             desc = mv.get("description", "")[:60]
             errors.append(f"'{desc}' — sin cuenta contable asignada")
