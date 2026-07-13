@@ -3941,7 +3941,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
               <button onClick={() => { setShowAccountPicker(false); setAccountSearch('') }}><X className="w-3.5 h-3.5 text-stone-400" /></button>
             </div>
             <div className="max-h-48 overflow-y-auto space-y-0.5">
-              {filteredAccounts.slice(0, 30).map((a: any) => (
+              {filteredAccounts.map((a: any) => (
                 <button key={a.id} onClick={() => handleSelectAccount(a)}
                   className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-100 transition-colors flex items-center gap-2 ${a.is_header ? 'font-semibold bg-stone-50' : ''}`}>
                   <span className="font-mono text-[10px] text-stone-400 w-14 shrink-0">{a.code}</span>
