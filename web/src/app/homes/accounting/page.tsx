@@ -48,6 +48,7 @@ interface DashboardData {
     accounts_payable: number; accounts_payable_overdue: number
     total_bank_balance: number
     houses_bought_period?: number; houses_bought_count?: number; inventory_invested_period?: number
+    inventory_value?: number; houses_in_inventory?: number; houses_sold_count?: number
   }
   cash_flow: { month: string; label: string; income: number; expense: number; net: number }[]
   bank_accounts: BankAccount[]
@@ -288,6 +289,11 @@ export default function AccountingPage() {
               pipeline and break double-entry balances. Every event now posts
               to the ledger automatically when a payment_order or sale flow
               completes — no manual sync needed. */}
+          {/* "Mapear Cuentas" button hidden from the UI: it's a rarely-needed
+              maintenance action (POST /api/accounting/backfill-accounts) that
+              only assigns accounting accounts to legacy transactions without one.
+              It confused users who clicked it by mistake. The handleBackfillAccounts
+              function and endpoint are intentionally kept for occasional manual use.
           <button onClick={handleBackfillAccounts} disabled={syncing}
             title="Asignar cuentas contables a transacciones sin cuenta"
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
@@ -295,6 +301,7 @@ export default function AccountingPage() {
             <ArrowRightLeft className="w-4 h-4" />
             Mapear Cuentas
           </button>
+          */}
           <button onClick={() => setShowNewTxnModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
             style={{ backgroundColor: 'var(--navy-800)' }}>
@@ -405,65 +412,59 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
         <KPICard label="Por Pagar" value={fmt(s.accounts_payable)} sublabel={s.accounts_payable_overdue > 0 ? `${fmt(s.accounts_payable_overdue)} vencido` : 'Al día'} icon={ArrowDownRight} color="#ea580c" bgColor="#fff7ed" />
       </div>
 
-      {/* Income / Expense Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card-luxury p-6">
-          <h3 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-            <ArrowUpRight className="w-5 h-5 text-emerald-500" /> Desglose de Ingresos
-          </h3>
-          <div className="space-y-3">
-            <BreakdownRow label="Ventas Contado" amount={s.sales_by_type.contado || 0} total={s.total_income} color="#059669" />
-            <BreakdownRow label="Ventas Capital (RTO)" amount={s.sales_by_type.rto || 0} total={s.total_income} color="#0891b2" />
-            {s.manual_income > 0 && <BreakdownRow label="Otros Ingresos" amount={s.manual_income} total={s.total_income} color="#8b5cf6" />}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ZONA 1 — PARA GABRIEL · VISTA DE NEGOCIO                        */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <div className="space-y-4">
+        {/* Banner de zona (Gabriel) */}
+        <div className="rounded-xl border-l-4 p-4 flex items-center gap-3" style={{ borderColor: '#d97706', backgroundColor: '#fffbeb' }}>
+          <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
+            <Sparkles className="w-5 h-5" style={{ color: '#b45309' }} />
           </div>
-          <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
-            <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
-            <span className="text-lg font-bold text-emerald-600">{fmtFull(s.total_income)}</span>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold" style={{ color: '#92400e' }}>Para Gabriel — Vista de negocio</h2>
+            <p className="text-xs" style={{ color: '#a16207' }}>Lo que Gabriel quiere ver de un vistazo (no es contabilidad formal)</p>
           </div>
         </div>
-        <div className="card-luxury p-6">
-          <h3 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-            <ArrowDownRight className="w-5 h-5 text-red-500" /> Desglose de Gastos
-          </h3>
-          <div className="space-y-3">
-            <BreakdownRow label="Compra de Casas" amount={s.total_purchases} total={s.total_expenses} color="#dc2626" />
-            <BreakdownRow label="Renovaciones" amount={s.total_renovations} total={s.total_expenses} color="#ea580c" />
-            <BreakdownRow label="Movida" amount={s.total_movida} total={s.total_expenses} color="#f59e0b" />
-            <BreakdownRow label="Comisiones" amount={s.total_commissions} total={s.total_expenses} color="#d97706" />
-            <BreakdownRow label="Servicios" amount={s.total_servicios} total={s.total_expenses} color="#0891b2" />
-            {s.manual_expense > 0 && <BreakdownRow label="Otros Gastos" amount={s.manual_expense} total={s.total_expenses} color="#64748b" />}
-          </div>
-          <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
-            <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
-            <span className="text-lg font-bold text-red-600">{fmtFull(s.total_expenses)}</span>
-          </div>
 
-          {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
-          <div className="mt-5 rounded-xl border p-4" style={{ borderColor: '#fbbf24', backgroundColor: '#fffbeb' }}>
-            <div className="flex items-start gap-3">
-              <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
-                <Package className="w-5 h-5" style={{ color: '#b45309' }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: '#92400e' }}>📦 Inversión en casas este período</p>
-                <p className="mt-1.5 text-sm font-medium" style={{ color: '#78350f' }}>
-                  Compra de casas: {fmt(s.houses_bought_period || 0)}{' '}
-                  ({s.houses_bought_count || 0} {(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'})
-                </p>
-                <p className="mt-1 text-xs" style={{ color: '#92400e' }}>
-                  Inversión total en inventario (compra + renovación + movida): {fmt(s.inventory_invested_period || 0)}
-                </p>
-                <p className="mt-2 text-xs" style={{ color: 'var(--ash)' }}>
-                  Esto va a INVENTARIO (un activo), NO a gastos. Se convierte en costo cuando la casa se vende — por eso no suma al total de gastos.
-                </p>
-              </div>
+        {/* Stat cards de negocio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <BizStatCard icon={Wallet} iconColor="#2563eb" iconBg="#eff6ff" emoji="💵" label="Efectivo en bancos" value={fmt(s.total_bank_balance)} />
+          <BizStatCard icon={Home} iconColor="#7c3aed" iconBg="#f5f3ff" emoji="🏠" label="Casas en inventario" value={`${s.houses_in_inventory || 0} ${(s.houses_in_inventory || 0) === 1 ? 'casa' : 'casas'}`} sub={`valor ${fmt(s.inventory_value || 0)}`} />
+          <BizStatCard icon={Package} iconColor="#b45309" iconBg="#fef3c7" emoji="🛒" label="Compras del período" value={fmt(s.houses_bought_period || 0)} sub={`${s.houses_bought_count || 0} ${(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'}`} />
+          <BizStatCard icon={Banknote} iconColor="#059669" iconBg="#ecfdf5" emoji="💰" label="Ventas del período" value={fmt((s.sales_by_type.contado || 0) + (s.sales_by_type.rto || 0))} sub={`${s.houses_sold_count || 0} vendidas`} />
+          <BizStatCard icon={TrendingUp} iconColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} iconBg={s.net_profit >= 0 ? '#ecfdf5' : '#fef2f2'} emoji="📈" label="Ganancia neta" value={fmt(s.net_profit)} valueColor={s.net_profit >= 0 ? '#059669' : '#dc2626'} />
+          <BizStatCard icon={ArrowUpRight} iconColor="#8b5cf6" iconBg="#f5f3ff" emoji="📥" label="Por cobrar" value={fmt(s.accounts_receivable)} />
+          <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} />
+        </div>
+
+        {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
+        <div className="rounded-xl border p-4" style={{ borderColor: '#fbbf24', backgroundColor: '#fffbeb' }}>
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
+              <Package className="w-5 h-5" style={{ color: '#b45309' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>📦 Inversión en casas este período</p>
+              <p className="mt-1.5 text-sm font-medium" style={{ color: '#78350f' }}>
+                Compra de casas: {fmt(s.houses_bought_period || 0)}{' '}
+                ({s.houses_bought_count || 0} {(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'})
+              </p>
+              <p className="mt-1 text-xs" style={{ color: '#92400e' }}>
+                Inversión total en inventario (compra + renovación + movida): {fmt(s.inventory_invested_period || 0)}
+              </p>
+              <p className="mt-2 text-xs" style={{ color: 'var(--ash)' }}>
+                Esto va a INVENTARIO (un activo), NO a gastos. Se convierte en costo cuando la casa se vende — por eso no suma al total de gastos.
+              </p>
             </div>
           </div>
+        </div>
 
-          {/* Explicación colapsable para Gabriel */}
+        {/* Explicación colapsable para Gabriel */}
+        <div>
           <button
             onClick={() => setShowGabrielExplainer(v => !v)}
-            className="mt-3 flex items-center gap-1.5 text-xs font-medium"
+            className="flex items-center gap-1.5 text-xs font-medium"
             style={{ color: 'var(--navy-700)' }}
           >
             {showGabrielExplainer ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -486,6 +487,57 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
               </p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ZONA 2 — PARA ABBY · CONTABILIDAD                              */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <div className="space-y-4">
+        {/* Banner de zona (Abby) */}
+        <div className="rounded-xl border-l-4 p-4 flex items-center gap-3" style={{ borderColor: '#2563eb', backgroundColor: '#eff6ff' }}>
+          <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#dbeafe' }}>
+            <Scale className="w-5 h-5" style={{ color: '#1d4ed8' }} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold" style={{ color: '#1e3a8a' }}>Para Abby — Contabilidad</h2>
+            <p className="text-xs" style={{ color: '#2563eb' }}>Desglose contable formal (cuadra con el P&amp;L y el Balance Sheet)</p>
+          </div>
+        </div>
+
+        {/* Income / Expense Breakdown */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card-luxury p-6">
+            <h3 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              <ArrowUpRight className="w-5 h-5 text-emerald-500" /> Desglose de Ingresos
+            </h3>
+            <div className="space-y-3">
+              <BreakdownRow label="Ventas Contado" amount={s.sales_by_type.contado || 0} total={s.total_income} color="#059669" />
+              <BreakdownRow label="Ventas Capital (RTO)" amount={s.sales_by_type.rto || 0} total={s.total_income} color="#0891b2" />
+              {s.manual_income > 0 && <BreakdownRow label="Otros Ingresos" amount={s.manual_income} total={s.total_income} color="#8b5cf6" />}
+            </div>
+            <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
+              <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
+              <span className="text-lg font-bold text-emerald-600">{fmtFull(s.total_income)}</span>
+            </div>
+          </div>
+          <div className="card-luxury p-6">
+            <h3 className="font-semibold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              <ArrowDownRight className="w-5 h-5 text-red-500" /> Desglose de Gastos
+            </h3>
+            <div className="space-y-3">
+              <BreakdownRow label="Compra de Casas" amount={s.total_purchases} total={s.total_expenses} color="#dc2626" />
+              <BreakdownRow label="Renovaciones" amount={s.total_renovations} total={s.total_expenses} color="#ea580c" />
+              <BreakdownRow label="Movida" amount={s.total_movida} total={s.total_expenses} color="#f59e0b" />
+              <BreakdownRow label="Comisiones" amount={s.total_commissions} total={s.total_expenses} color="#d97706" />
+              <BreakdownRow label="Servicios" amount={s.total_servicios} total={s.total_expenses} color="#0891b2" />
+              {s.manual_expense > 0 && <BreakdownRow label="Otros Gastos" amount={s.manual_expense} total={s.total_expenses} color="#64748b" />}
+            </div>
+            <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: 'var(--sand)' }}>
+              <span className="text-sm font-medium" style={{ color: 'var(--slate)' }}>Total</span>
+              <span className="text-lg font-bold text-red-600">{fmtFull(s.total_expenses)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3442,6 +3494,24 @@ function KPICard({ label, value, sublabel, icon: Icon, color, bgColor }: { label
       </div>
       <p className="text-xl font-bold" style={{ color: 'var(--ink)' }}>{value}</p>
       {sublabel && <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>{sublabel}</p>}
+    </div>
+  )
+}
+
+function BizStatCard({ icon: Icon, iconColor, iconBg, emoji, label, value, sub, valueColor }: {
+  icon: React.ElementType; iconColor: string; iconBg: string; emoji: string
+  label: string; value: string; sub?: string; valueColor?: string
+}) {
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--porcelain, #fff)' }}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg }}>
+          <Icon className="w-4 h-4" style={{ color: iconColor }} />
+        </div>
+        <span className="text-xs font-semibold" style={{ color: 'var(--slate)' }}>{emoji} {label}</span>
+      </div>
+      <p className="text-2xl font-bold" style={{ color: valueColor || 'var(--ink)' }}>{value}</p>
+      {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>{sub}</p>}
     </div>
   )
 }
