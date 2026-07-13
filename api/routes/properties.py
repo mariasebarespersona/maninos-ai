@@ -162,36 +162,42 @@ def _calculate_post_renovation_price(property_id: str, purchase_price: float, pr
     """
     overrides = property_overrides or {}
 
-    # Renovation cost — use override if set, otherwise calculate from renovations table
-    if overrides.get("renovation_cost") is not None:
-        reno_cost = float(overrides["renovation_cost"])
-    else:
-        reno_cost = 0.0
-        try:
-            # Sum ALL renovations for the house (renovations happen at different
-            # times) — not just the latest one. Renovation cost is cumulative.
-            reno = sb.table("renovations").select("total_cost") \
-                .eq("property_id", property_id).execute()
-            reno_cost = sum(float(r.get("total_cost") or 0) for r in (reno.data or []))
-        except Exception as e:
-            logger.warning(f"[price_calc] Could not fetch renovation cost: {e}")
+    # Per-house cost = REAL money posted to the ledger (the Compra/Renovación/
+    # Movida/Comisión <CODE> accounts), NOT the renovation SCOPE estimate nor a
+    # default commission. So "Financiero" is consistent with the accounting: it
+    # starts at $0 and each APPROVED payment sums in automatically. The
+    # renovation scope/estimate stays a separate planning guide on the property,
+    # never counted as a real cost. An explicit override still wins if set.
+    code = ""
+    try:
+        _pr = sb.table("properties").select("property_code").eq("id", property_id).single().execute()
+        code = (_pr.data or {}).get("property_code") or ""
+    except Exception:
+        pass
 
-    # Move cost — use override if set, otherwise calculate from moves table
-    if overrides.get("move_cost") is not None:
-        move_cost = float(overrides["move_cost"])
-    else:
-        move_cost = 0.0
+    def _ledger_cost(prefix: str) -> float:
+        if not code:
+            return 0.0
         try:
-            moves = sb.table("moves").select("quoted_cost, final_cost, status") \
-                .eq("property_id", property_id).execute()
-            for m in (moves.data or []):
-                cost = float(m.get("final_cost") or m.get("quoted_cost") or 0)
-                if cost > 0:
-                    move_cost += cost
+            acc = sb.table("accounting_accounts").select("id, account_type") \
+                .eq("code", f"{prefix} {code}").limit(1).execute().data
+            if not acc:
+                return 0.0
+            txns = sb.table("accounting_transactions").select("amount, is_income") \
+                .eq("account_id", acc[0]["id"]).neq("status", "voided").execute().data or []
+            exp = acc[0].get("account_type") in ("Expenses", "Other Expense", "Cost of Goods Sold")
+            # cost magnitude = the account's natural balance (positive as it grows)
+            return round(sum(
+                (float(t.get("amount") or 0) if ((not t.get("is_income")) if exp else t.get("is_income"))
+                 else -float(t.get("amount") or 0))
+                for t in txns), 2)
         except Exception as e:
-            logger.warning(f"[price_calc] Could not fetch move cost: {e}")
+            logger.warning(f"[price_calc] ledger cost {prefix} {code}: {e}")
+            return 0.0
 
-    commission = float(overrides["commission"]) if overrides.get("commission") is not None else COMMISSION_MAX
+    reno_cost = float(overrides["renovation_cost"]) if overrides.get("renovation_cost") is not None else _ledger_cost("Renovación")
+    move_cost = float(overrides["move_cost"]) if overrides.get("move_cost") is not None else _ledger_cost("Movida")
+    commission = float(overrides["commission"]) if overrides.get("commission") is not None else _ledger_cost("Comisión")
     margin = float(overrides["margin"]) if overrides.get("margin") is not None else MARGIN_FIXED
     total = margin + purchase_price + commission + reno_cost + move_cost
 
