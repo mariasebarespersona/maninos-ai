@@ -42,29 +42,30 @@ COMMISSION_MAX = 1500  # Max commission (contado = $1500, RTO = $1000)
 
 # Inventory parent account ID from QuickBooks chart of accounts
 INVENTORY_PARENT_ID = "8f1096b1-7c74-4a31-a27d-5bf7cce66e6a"
-# Cost of Goods Sold root — per-house cost buckets live here so every house's
-# costs (compra/renovación/movida/comisión) hit COGS per the client's policy:
-# costs are expensed to COGS per-house as they're paid (not capitalized).
+# Cost of Goods Sold root — a house's cost lands here only when it SELLS.
 COGS_PARENT_ID = "ef884059-a5f3-497d-91d2-4bdfcf76cb50"
+# "House Sales - COGS" header (under COGS): where each house's cost is
+# recognized at sale, and where its commission lives (a selling cost).
+HOUSE_SALES_COGS_ID = "b16c83e6-0f1b-4bcc-917b-055c8d5d75de"
 
 
 def _create_inventory_account_for_property(prop: dict):
-    """Create per-house COST sub-accounts under Cost of Goods Sold:
-      Cost of Goods Sold
-        └── House <CODE>      (header)
-             ├── Compra <CODE>
-             ├── Renovación <CODE>
-             ├── Movida <CODE>
-             └── Comisión <CODE>
+    """Create a house's per-cost sub-accounts on the INVENTORY→COGS model:
 
-    Per client policy, every cost attributable to a house (purchase, renovation,
-    moving, commission) is expensed to COGS per-house as it is paid — so the P&L
-    shows each house's cost under Cost of Goods Sold with its own code.
+      Balance Sheet → Inventory
+        └── House <CODE>            (asset header)
+             ├── Compra <CODE>       (asset)
+             ├── Renovación <CODE>   (asset)
+             └── Movida <CODE>       (asset)
 
-    The header label is intentionally just "House <CODE>" — short, scannable,
-    and matches how operators talk about houses in the rest of the app (the
-    property_code is the universal identifier). Children keep the operation
-    name so the cost categories are obvious when drilling in.
+      P&L → Cost of Goods Sold → House Sales - COGS
+             └── Comisión <CODE>     (COGS)
+
+    A house's acquisition + improvement costs (compra/renovación/movida) are
+    CAPITALIZED to Inventory (an asset) while it is UNSOLD, and only move to
+    COGS when the house sells (matching principle — see sale_contado_cogs).
+    Commission is a selling cost incurred at sale, so it goes to COGS directly
+    (never capitalized to inventory). Idempotent; keyed by the property_code.
     """
     code = prop.get("property_code", "")
     prop_id = prop["id"]
@@ -86,16 +87,16 @@ def _create_inventory_account_for_property(prop: dict):
     else:
         # Get next display_order
         max_order = sb.table("accounting_accounts").select("display_order") \
-            .eq("parent_account_id", COGS_PARENT_ID) \
+            .eq("parent_account_id", INVENTORY_PARENT_ID) \
             .order("display_order", desc=True).limit(1).execute()
         next_order = (max_order.data[0]["display_order"] + 1) if max_order.data else 1000
 
         header = sb.table("accounting_accounts").insert({
             "code": label,
             "name": label,
-            "account_type": "Cost of Goods Sold",
-            "category": "COGS",
-            "parent_account_id": COGS_PARENT_ID,
+            "account_type": "Other Current Assets",
+            "category": "Inventory",
+            "parent_account_id": INVENTORY_PARENT_ID,
             "is_header": True,
             "is_active": True,
             "display_order": next_order,
@@ -112,17 +113,17 @@ def _create_inventory_account_for_property(prop: dict):
     # Movida/Comisión) are COGS accounts: each cost hits the house's COGS
     # bucket directly when paid, so per-house profitability reads straight
     # off the P&L (no inventory capitalization, no sweep at sale).
-    subs = [f"Compra {code}", f"Renovación {code}", f"Movida {code}", f"Comisión {code}"]
     created = 0
-    for i, name in enumerate(subs):
-        already = sb.table("accounting_accounts").select("id").eq("code", name).execute()
-        if already.data:
+    # Inventory (asset) cost buckets under the house header — capitalized while
+    # the house is unsold; they show in Balance Sheet → Inventory.
+    for i, name in enumerate([f"Compra {code}", f"Renovación {code}", f"Movida {code}"]):
+        if sb.table("accounting_accounts").select("id").eq("code", name).execute().data:
             continue
         sb.table("accounting_accounts").insert({
             "code": name,
             "name": name,
-            "account_type": "Cost of Goods Sold",
-            "category": "COGS",
+            "account_type": "Other Current Assets",
+            "category": "Inventory",
             "parent_account_id": header_id,
             "is_header": False,
             "is_active": True,
@@ -131,7 +132,24 @@ def _create_inventory_account_for_property(prop: dict):
         }).execute()
         created += 1
 
-    logger.info(f"[inventory] Ensured '{label}' with 3 sub-accounts ({created} newly created)")
+    # Commission (COGS) — a selling cost recognized at sale, under
+    # "House Sales - COGS" in the P&L (never capitalized to inventory).
+    comm = f"Comisión {code}"
+    if not sb.table("accounting_accounts").select("id").eq("code", comm).execute().data:
+        sb.table("accounting_accounts").insert({
+            "code": comm,
+            "name": comm,
+            "account_type": "Cost of Goods Sold",
+            "category": "COGS",
+            "parent_account_id": HOUSE_SALES_COGS_ID,
+            "is_header": False,
+            "is_active": True,
+            "display_order": 900,
+            "description": f"property_id:{prop_id}",
+        }).execute()
+        created += 1
+
+    logger.info(f"[inventory] Ensured '{label}' (Inventory) + commission COGS ({created} new)")
     return header_id
 
 

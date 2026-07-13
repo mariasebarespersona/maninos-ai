@@ -27,6 +27,68 @@ from tools.supabase_client import sb
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# "House Sales - COGS" header — where a sold house's cost is recognized.
+_HOUSE_SALES_COGS_ID = "b16c83e6-0f1b-4bcc-917b-055c8d5d75de"
+
+
+def _recognize_house_cogs(property_id: str, sale_id: str, ledger_date: str) -> float:
+    """When a house SELLS, move its capitalized cost from Inventory (Balance
+    Sheet) to COGS (P&L), so the cost matches the sale revenue in the period of
+    the sale (matching principle). Transfers each concept balance
+    (Compra/Renovación/Movida <CODE>) from its inventory asset account to the
+    house's COGS account "COGS House <CODE>" (created on demand under
+    "House Sales - COGS"), tagging each transfer with the concept for the P&L
+    drill-down. Idempotent: it only moves whatever inventory balance currently
+    remains, so re-running transfers $0."""
+    from api.services.ledger import post_to_ledger
+    prop = sb.table("properties").select("property_code").eq("id", property_id).single().execute().data
+    code = (prop or {}).get("property_code") or ""
+    if not code:
+        return 0.0
+
+    def _bal(account_id: str) -> float:
+        rows = sb.table("accounting_transactions").select("amount,is_income") \
+            .eq("account_id", account_id).neq("status", "voided").execute().data or []
+        return sum((float(r["amount"]) if r["is_income"] else -float(r["amount"])) for r in rows)
+
+    cogs = sb.table("accounting_accounts").select("id").eq("code", f"COGS House {code}").execute().data
+    if cogs:
+        cogs_id = cogs[0]["id"]
+    else:
+        cogs_id = sb.table("accounting_accounts").insert({
+            "code": f"COGS House {code}", "name": f"COGS House {code}",
+            "account_type": "Cost of Goods Sold", "category": "COGS",
+            "parent_account_id": _HOUSE_SALES_COGS_ID, "is_header": False,
+            "is_active": True, "display_order": 500,
+            "description": f"property_id:{property_id}",
+        }).execute().data[0]["id"]
+
+    total = 0.0
+    for concept in ("Compra", "Renovación", "Movida"):
+        acc = sb.table("accounting_accounts").select("id").eq("code", f"{concept} {code}").execute().data
+        if not acc:
+            continue
+        inv_id = acc[0]["id"]
+        bal = round(_bal(inv_id), 2)
+        if bal <= 0:
+            continue
+        post_to_ledger(
+            event_type="sale_contado_cogs",
+            amount=bal,
+            date=ledger_date,
+            property_id=property_id,
+            entity_type="sale",
+            entity_id=sale_id,
+            debit_account_id_override=cogs_id,     # DR COGS House <CODE> (P&L)
+            credit_account_id_override=inv_id,     # CR inventory concept (Balance Sheet)
+            description_override=f"COGS {concept} {code} (inventario → costo de venta)",
+            status="confirmed",
+        )
+        total += bal
+    if total:
+        logger.info(f"[sales] Recognized COGS ${total:,.2f} for sold house {code} (sale {sale_id})")
+    return total
+
 
 def _get_purchase_serial_label(property_id: str) -> dict:
     """Look up the purchase title_transfer for a property and return its
@@ -1266,23 +1328,10 @@ async def confirm_transfer(sale_id: str, body: Optional[ConfirmTransferBody] = N
                     payment_reference=body.payment_reference,
                     status="confirmed",
                 )
-                # (b) COGS recognition at sale is DISABLED: property costs are
-                # now expensed to each house's per-house COGS bucket when PAID
-                # (not capitalized to inventory), so posting COGS here would
-                # double-count. Kept dead-coded for traceability.
-                if False and inventory_cost > 0:
-                    post_to_ledger(
-                        event_type="sale_contado_cogs",
-                        amount=inventory_cost,
-                        date=ledger_date,
-                        counterparty_name=sale["clients"]["name"],
-                        entity_type="sale",
-                        entity_id=sale_id,
-                        property_id=sale["property_id"],
-                        yard_id=yard_id,
-                        description_data={"address": sale["properties"]["address"]},
-                        status="confirmed",
-                    )
+                # (b) COGS recognition at sale: move this house's capitalized
+                # cost from Inventory (Balance Sheet) to COGS (P&L), per concept,
+                # so the cost matches the sale revenue. Idempotent.
+                _recognize_house_cogs(sale["property_id"], sale_id, ledger_date)
                 logger.info(f"[sales] Posted sale + COGS ledger pairs for sale {sale_id}")
             else:
                 logger.warning(
@@ -1354,6 +1403,12 @@ async def complete_sale(sale_id: str):
         "status": PropertyStatus.SOLD.value,
     }).eq("id", sale.data["property_id"]).execute()
     logger.info(f"[sales] Property {sale.data['property_id']} marked SOLD (sale {sale_id} completed)")
+
+    # Recognize this house's cost as COGS (Inventory → COGS) now that it's sold.
+    try:
+        _recognize_house_cogs(sale.data["property_id"], sale_id, datetime.utcnow().date().isoformat())
+    except Exception as e:
+        logger.warning(f"[sales] COGS recognition failed for sale {sale_id}: {e}")
     
     # Update client to completed
     sb.table("clients").update({
@@ -1592,6 +1647,12 @@ async def complete_rto_contract(sale_id: str):
             "status": PropertyStatus.SOLD.value,
         }).eq("id", sale["property_id"]).execute()
         logger.info(f"[sales] Property {sale['property_id']} marked SOLD (RTO completed, sale {sale_id})")
+
+        # Recognize the house's cost as COGS (Inventory → COGS) now that it's sold.
+        try:
+            _recognize_house_cogs(sale["property_id"], sale_id, datetime.utcnow().date().isoformat())
+        except Exception as e:
+            logger.warning(f"[sales] COGS recognition failed for RTO sale {sale_id}: {e}")
 
         # 7. Update clients.status = 'completed'
         sb.table("clients").update({
