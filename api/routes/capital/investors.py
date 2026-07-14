@@ -50,6 +50,20 @@ class InvestmentCreate(BaseModel):
     bank_account_id: Optional[str] = None  # Capital bank that received the money
 
 
+class RenegotiateRequest(BaseModel):
+    """Renegotiate a ticket at a new rate — closes the old one, opens a linked new one."""
+    new_rate: float
+    notes: Optional[str] = None
+
+
+class TransferDebtRequest(BaseModel):
+    """One investor buys another's debt (ticket). Cash passes through Capital."""
+    to_investor_id: str
+    bank_account_id: str            # Capital bank the money passes through
+    purchase_price: Optional[float] = None  # what the buyer pays; defaults to the ticket's face amount
+    notes: Optional[str] = None
+
+
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
@@ -113,7 +127,7 @@ async def get_investor(investor_id: str):
             raise HTTPException(status_code=404, detail="Inversionista no encontrado")
         
         investments = sb.table("investments") \
-            .select("*, properties(address, city, property_code), rto_contracts(client_id, clients(name)), promissory_notes(id, loan_amount, status, maturity_date)") \
+            .select("*, properties(address, city, property_code), rto_contracts(client_id, clients(name)), promissory_notes(id, loan_amount, status, maturity_date, paid_amount, annual_rate, total_due, total_interest)") \
             .eq("investor_id", investor_id) \
             .order("invested_at", desc=True) \
             .execute()
@@ -127,9 +141,24 @@ async def get_investor(investor_id: str):
         
         # Calculate ROI metrics
         inv_data = investments.data or []
-        total_invested = sum(float(i.get("amount", 0)) for i in inv_data)
-        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in inv_data)
-        active_investments = [i for i in inv_data if i.get("status") == "active"]
+
+        # Enrich transfer lineage with the seller's name (for "comprada a …" display)
+        from_ids = list({i.get("transferred_from_investor_id") for i in inv_data if i.get("transferred_from_investor_id")})
+        if from_ids:
+            names = sb.table("investors").select("id, name").in_("id", from_ids).execute().data or []
+            name_map = {n["id"]: n["name"] for n in names}
+            for i in inv_data:
+                fid = i.get("transferred_from_investor_id")
+                if fid:
+                    i["transferred_from_name"] = name_map.get(fid)
+
+        # Superseded tickets (renegotiated/transferred away) are kept for history
+        # but must NOT count as live deployed capital, or totals would double-count.
+        SUPERSEDED = ("renegotiated", "transferred")
+        live = [i for i in inv_data if i.get("status") not in SUPERSEDED]
+        total_invested = sum(float(i.get("amount", 0)) for i in live)
+        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in live)
+        active_investments = [i for i in live if i.get("status") == "active"]
 
         # Expected returns from active investments
         expected_returns = 0.0
@@ -245,59 +274,220 @@ async def update_investor(investor_id: str, data: InvestorUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _active_rto_contract_for_property(property_id: str) -> Optional[str]:
+    """Return the id of the property's most relevant RTO contract, if any, so an
+    investor's capital ticket is tied to the tenant that services it."""
+    if not property_id:
+        return None
+    try:
+        c = sb.table("rto_contracts").select("id, status") \
+            .eq("property_id", property_id) \
+            .order("created_at", desc=True).execute()
+        rows = c.data or []
+        # Prefer an active contract, else the most recent one.
+        for r in rows:
+            if r.get("status") == "active":
+                return r["id"]
+        return rows[0]["id"] if rows else None
+    except Exception:
+        return None
+
+
 @router.post("/investments")
 async def create_investment(data: InvestmentCreate):
-    """Record a new investment."""
+    """Record a new investment (a capital 'ticket')."""
     try:
+        # Auto-link the property's RTO contract if the caller didn't set one.
+        rto_contract_id = data.rto_contract_id or _active_rto_contract_for_property(data.property_id)
+
         insert_data = {
             "investor_id": data.investor_id,
             "property_id": data.property_id,
-            "rto_contract_id": data.rto_contract_id,
+            "rto_contract_id": rto_contract_id,
             "amount": data.amount,
             "expected_return_rate": data.expected_return_rate,
             "notes": data.notes,
+            "ticket_type": "original",
         }
         if data.promissory_note_id:
             insert_data["promissory_note_id"] = data.promissory_note_id
-        
+
         result = sb.table("investments").insert(insert_data).execute()
-        
+        investment = result.data[0]
+
         # Update investor totals
         investor = sb.table("investors") \
-            .select("total_invested, available_capital") \
+            .select("total_invested, available_capital, name") \
             .eq("id", data.investor_id) \
             .single() \
             .execute()
-        
+        inv_name = ""
         if investor.data:
+            inv_name = investor.data.get("name", "") or ""
             sb.table("investors").update({
                 "total_invested": float(investor.data["total_invested"] or 0) + data.amount,
                 "available_capital": max(0, float(investor.data["available_capital"] or 0) - data.amount),
             }).eq("id", data.investor_id).execute()
-        
-        # Record capital_transaction for reconciliation
-        inv_name = ""
-        try:
-            inv_info = sb.table("investors").select("name").eq("id", data.investor_id).single().execute()
-            inv_name = inv_info.data.get("name", "") if inv_info.data else ""
-        except Exception:
-            pass
-        record_txn(
-            txn_type="investor_deposit",
-            amount=data.amount,
-            is_income=True,
-            description=f"Depósito inversión — {inv_name}".strip(),
-            investor_id=data.investor_id,
-            property_id=data.property_id,
-            rto_contract_id=data.rto_contract_id,
-            bank_account_id=data.bank_account_id,
-            counterparty_name=inv_name or None,
-            notes=data.notes,
-        )
 
-        return {"ok": True, "investment": result.data[0]}
+        # Record the money movement ONCE via _record_flow: this writes capital_flows
+        # (so it shows in "Movimientos" and the Flujo de Capital diagram) AND posts the
+        # balanced ledger pair (investor_deposit → Investor Notes Payable). Using the
+        # flow helper — not a bare record_txn — is what keeps the flows view and the
+        # ledger in sync (no loose end).
+        from api.routes.capital.capital_flows import _record_flow
+        _record_flow({
+            "flow_type": "investment_in",
+            "amount": float(data.amount),
+            "investor_id": data.investor_id,
+            "investment_id": investment["id"],
+            "property_id": data.property_id,
+            "rto_contract_id": rto_contract_id,
+            "description": f"Depósito inversión — {inv_name}".strip(),
+            "bank_account_id": data.bank_account_id,
+        })
+
+        return {"ok": True, "investment": investment}
     except Exception as e:
         logger.error(f"Error creating investment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/investments/{investment_id}/renegotiate")
+async def renegotiate_investment(investment_id: str, data: RenegotiateRequest):
+    """
+    Renegotiate a ticket at a NEW rate. The old ticket is CLOSED
+    (status='renegotiated') and a new linked ticket is created so the history
+    shows both separately. No money moves → no ledger/flow entry.
+    """
+    try:
+        cur = sb.table("investments").select("*").eq("id", investment_id).single().execute()
+        if not cur.data:
+            raise HTTPException(status_code=404, detail="Inversión no encontrada")
+        old = cur.data
+        if old.get("status") not in ("active", "partial_return"):
+            raise HTTPException(status_code=400, detail=f"No se puede renegociar un ticket con estado '{old.get('status')}'")
+
+        new_ticket = sb.table("investments").insert({
+            "investor_id": old["investor_id"],
+            "property_id": old.get("property_id"),
+            "rto_contract_id": old.get("rto_contract_id"),
+            "promissory_note_id": old.get("promissory_note_id"),
+            "amount": old["amount"],
+            "expected_return_rate": data.new_rate,
+            "status": "active",
+            "ticket_type": "renegotiation",
+            "parent_investment_id": old["id"],
+            "previous_rate": old.get("expected_return_rate"),
+            "notes": data.notes or old.get("notes"),
+        }).execute().data[0]
+
+        sb.table("investments").update({
+            "status": "renegotiated",
+            "closed_at": datetime.utcnow().isoformat(),
+        }).eq("id", old["id"]).execute()
+
+        return {"ok": True, "investment": new_ticket, "closed": old["id"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error renegotiating investment {investment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/investments/{investment_id}/transfer")
+async def transfer_investment_debt(investment_id: str, data: TransferDebtRequest):
+    """
+    One investor BUYS another's debt (ticket). Cash passes through Capital:
+    the buyer pays in, the seller is paid out (net bank = 0), and the Investor
+    Notes Payable liability is reclassified from seller to buyer. The seller's
+    ticket is CLOSED (status='transferred') and a new ticket is opened for the
+    buyer, linked to the seller for lineage.
+    """
+    try:
+        cur = sb.table("investments").select("*").eq("id", investment_id).single().execute()
+        if not cur.data:
+            raise HTTPException(status_code=404, detail="Inversión no encontrada")
+        old = cur.data
+        if old.get("status") not in ("active", "partial_return"):
+            raise HTTPException(status_code=400, detail=f"No se puede transferir un ticket con estado '{old.get('status')}'")
+
+        seller_id = old["investor_id"]
+        buyer_id = data.to_investor_id
+        if buyer_id == seller_id:
+            raise HTTPException(status_code=400, detail="El comprador y el vendedor no pueden ser el mismo inversionista")
+
+        face = float(old["amount"])
+        price = float(data.purchase_price) if data.purchase_price is not None else face
+
+        buyer = sb.table("investors").select("name, total_invested, available_capital").eq("id", buyer_id).single().execute()
+        if not buyer.data:
+            raise HTTPException(status_code=404, detail="Inversionista comprador no encontrado")
+        seller = sb.table("investors").select("name, total_invested, available_capital").eq("id", seller_id).single().execute()
+        seller_name = (seller.data or {}).get("name", "") if seller.data else ""
+        buyer_name = buyer.data.get("name", "") or ""
+
+        # New ticket for the buyer (assumes the position at face value).
+        new_ticket = sb.table("investments").insert({
+            "investor_id": buyer_id,
+            "property_id": old.get("property_id"),
+            "rto_contract_id": old.get("rto_contract_id"),
+            "promissory_note_id": old.get("promissory_note_id"),
+            "amount": face,
+            "expected_return_rate": old.get("expected_return_rate"),
+            "status": "active",
+            "ticket_type": "transfer",
+            "parent_investment_id": old["id"],
+            "transferred_from_investor_id": seller_id,
+            "purchase_price": price,
+            "notes": data.notes,
+        }).execute().data[0]
+
+        # Close the seller's ticket.
+        sb.table("investments").update({
+            "status": "transferred",
+            "closed_at": datetime.utcnow().isoformat(),
+        }).eq("id", old["id"]).execute()
+
+        # Move the debt instrument (promissory note) to the buyer, if linked.
+        if old.get("promissory_note_id"):
+            sb.table("promissory_notes").update({
+                "investor_id": buyer_id, "lender_name": buyer_name or None,
+            }).eq("id", old["promissory_note_id"]).execute()
+
+        # Move the principal position between investors; cash exchanged = price.
+        if seller.data:
+            sb.table("investors").update({
+                "total_invested": max(0, float(seller.data["total_invested"] or 0) - face),
+                "available_capital": float(seller.data["available_capital"] or 0) + price,
+            }).eq("id", seller_id).execute()
+        sb.table("investors").update({
+            "total_invested": float(buyer.data["total_invested"] or 0) + face,
+            "available_capital": max(0, float(buyer.data["available_capital"] or 0) - price),
+        }).eq("id", buyer_id).execute()
+
+        # Accounting: cash passes THROUGH Capital → two balanced flow legs.
+        # Buyer pays in (investment_in) and seller is paid out (return_out). Net
+        # bank = 0; the 23900 liability reclasses from seller to buyer. Using
+        # _record_flow keeps flows + ledger in sync in one call.
+        from api.routes.capital.capital_flows import _record_flow
+        _record_flow({
+            "flow_type": "investment_in", "amount": price,
+            "investor_id": buyer_id, "investment_id": new_ticket["id"],
+            "property_id": old.get("property_id"), "bank_account_id": data.bank_account_id,
+            "description": f"Compra de deuda — {buyer_name} compra a {seller_name}".strip(),
+        })
+        _record_flow({
+            "flow_type": "return_out", "amount": -price,
+            "investor_id": seller_id, "investment_id": old["id"],
+            "property_id": old.get("property_id"), "bank_account_id": data.bank_account_id,
+            "description": f"Venta de deuda — {seller_name} vende a {buyer_name}".strip(),
+        })
+
+        return {"ok": True, "investment": new_ticket, "closed": old["id"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error transferring investment {investment_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -374,8 +564,10 @@ async def get_investments_summary(period: Optional[str] = None):
             inv_query = inv_query.gte("invested_at", date_from)
         inv_result = inv_query.execute()
         investments_data = inv_result.data or []
-        total_invertido = sum(float(i.get("amount", 0)) for i in investments_data)
-        active_investments = [i for i in investments_data if i.get("status") == "active"]
+        # Exclude superseded tickets (renegotiated/transferred) so capital isn't double-counted.
+        live_inv = [i for i in investments_data if i.get("status") not in ("renegotiated", "transferred")]
+        total_invertido = sum(float(i.get("amount", 0)) for i in live_inv)
+        active_investments = [i for i in live_inv if i.get("status") == "active"]
 
         # Tasa fondeo promedio (weighted average interest rate from active notes)
         active_notes = [n for n in notes if n.get("status") in ("active", "overdue")]

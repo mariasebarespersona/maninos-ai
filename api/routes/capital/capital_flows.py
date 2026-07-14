@@ -385,9 +385,11 @@ async def get_investor_capital_cycle(investor_id: str):
             .order("created_at", desc=True) \
             .execute().data or []
 
-        # Calculate cycle metrics
-        total_invested = sum(float(i.get("amount", 0)) for i in investments)
-        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in investments)
+        # Calculate cycle metrics — exclude superseded tickets (renegotiated/transferred)
+        # so the same capital isn't counted twice.
+        live_inv = [i for i in investments if i.get("status") not in ("renegotiated", "transferred")]
+        total_invested = sum(float(i.get("amount", 0)) for i in live_inv)
+        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in live_inv)
         active_investments = [i for i in investments if i["status"] == "active"]
 
         # Expected future returns from active investments

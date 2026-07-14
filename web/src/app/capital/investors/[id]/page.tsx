@@ -35,9 +35,17 @@ interface Investment {
   invested_at: string
   returned_at: string | null
   promissory_note_id?: string | null
+  // Ticket lineage (renegotiation / debt transfer)
+  ticket_type?: string | null
+  parent_investment_id?: string | null
+  previous_rate?: number | null
+  transferred_from_investor_id?: string | null
+  transferred_from_name?: string | null
+  purchase_price?: number | null
+  closed_at?: string | null
   properties?: { address: string; city: string; property_code?: string } | null
   rto_contracts?: { client_id: string; clients?: { name: string } } | null
-  promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string } | null
+  promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string; paid_amount?: number | null; annual_rate?: number | null; total_due?: number | null; total_interest?: number | null } | null
 }
 
 interface PromissoryNote {
@@ -128,6 +136,17 @@ export default function InvestorDetailPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes'>('overview')
   const [activeInvestmentId, setActiveInvestmentId] = useState<string>('all')
   const [savingStatus, setSavingStatus] = useState(false)
+
+  // Ticket actions: renegotiate rate / sell (transfer) debt
+  const [otherInvestors, setOtherInvestors] = useState<{ id: string; name: string }[]>([])
+  const [banks, setBanks] = useState<{ id: string; name: string }[]>([])
+  const [renegFor, setRenegFor] = useState<Investment | null>(null)
+  const [renegRate, setRenegRate] = useState('')
+  const [transferFor, setTransferFor] = useState<Investment | null>(null)
+  const [transferBuyer, setTransferBuyer] = useState('')
+  const [transferPrice, setTransferPrice] = useState('')
+  const [transferBank, setTransferBank] = useState('')
+  const [ticketSaving, setTicketSaving] = useState(false)
 
   // Capital cycle
   const [cycleData, setCycleData] = useState<CycleData | null>(null)
@@ -229,6 +248,58 @@ export default function InvestorDetailPage() {
     setActiveTab(tab)
   }
 
+  // Load refs used by the ticket actions (other investors to sell debt to, Capital banks)
+  const loadTicketRefs = async () => {
+    try {
+      const [invRes, bankRes] = await Promise.all([
+        fetch('/api/capital/investors'),
+        fetch('/api/capital/accounting/bank-accounts'),
+      ])
+      const invData = await invRes.json()
+      const bankData = await bankRes.json()
+      if (invData.ok) setOtherInvestors((invData.investors || []).filter((i: any) => i.id !== id).map((i: any) => ({ id: i.id, name: i.name })))
+      const bankList = bankData.ok ? (bankData.bank_accounts || bankData.banks || []) : (Array.isArray(bankData) ? bankData : [])
+      setBanks(bankList.map((b: any) => ({ id: b.id, name: b.name })))
+    } catch (err) {
+      console.error('Error loading ticket refs:', err)
+    }
+  }
+
+  const openReneg = (inv: Investment) => { setRenegFor(inv); setRenegRate(String(inv.expected_return_rate ?? '')) }
+  const openTransfer = (inv: Investment) => { setTransferFor(inv); setTransferBuyer(''); setTransferPrice(String(inv.amount)); setTransferBank(''); if (!otherInvestors.length || !banks.length) loadTicketRefs() }
+
+  const handleRenegotiate = async () => {
+    if (!renegFor) return
+    const rate = parseFloat(renegRate)
+    if (!(rate >= 0)) { toast.warning('Ingresa una tasa válida'); return }
+    setTicketSaving(true)
+    try {
+      const res = await fetch(`/api/capital/investors/investments/${renegFor.id}/renegotiate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_rate: rate }),
+      })
+      const data = await res.json()
+      if (data.ok) { toast.success('Ticket renegociado'); setRenegFor(null); loadInvestor() }
+      else toast.error(data.detail || 'Error al renegociar')
+    } catch { toast.error('Error al renegociar') } finally { setTicketSaving(false) }
+  }
+
+  const handleTransfer = async () => {
+    if (!transferFor) return
+    if (!transferBuyer) { toast.warning('Elige el inversionista comprador'); return }
+    if (!transferBank) { toast.warning('Elige el banco por el que pasa el dinero'); return }
+    setTicketSaving(true)
+    try {
+      const res = await fetch(`/api/capital/investors/investments/${transferFor.id}/transfer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to_investor_id: transferBuyer, bank_account_id: transferBank, purchase_price: transferPrice ? parseFloat(transferPrice) : undefined }),
+      })
+      const data = await res.json()
+      if (data.ok) { toast.success('Deuda transferida al comprador'); setTransferFor(null); loadInvestor() }
+      else toast.error(data.detail || 'Error al transferir')
+    } catch { toast.error('Error al transferir') } finally { setTicketSaving(false) }
+  }
+
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n)
 
@@ -251,9 +322,14 @@ export default function InvestorDetailPage() {
     returned: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Retornada' },
     partial_return: { bg: 'var(--cream)', color: 'var(--info)', label: 'Parcial' },
     defaulted: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Perdida' },
+    renegotiated: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Renegociada' },
+    transferred: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Vendida' },
   }
   const investmentLabel = (inv: Investment, idx: number) =>
     inv.properties?.property_code || inv.rto_contracts?.clients?.name || `Inversión ${idx + 1}`
+  // The investor's return comes from the linked promissory note's payments (not RTO rent).
+  const ticketReturn = (inv: Investment) =>
+    inv.promissory_notes ? Number(inv.promissory_notes.paid_amount || 0) : Number(inv.return_amount || 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
   // Rendimiento real vs esperado (#7)
@@ -457,7 +533,7 @@ export default function InvestorDetailPage() {
               Flujo de Capital
             </h3>
             <p className="text-xs mb-5" style={{ color: 'var(--ash)' }}>
-              El capital de {investor.name} se ramifica en cada casa y regresa como retorno.
+              El capital de {investor.name} se ramifica en cada casa; el retorno se paga vía sus promissory notes.
             </p>
 
             {(() => {
@@ -468,6 +544,8 @@ export default function InvestorDetailPage() {
               const retInt = metrics?.total_retornado_interes || 0
               const retTotal = retCap + retInt
               const pctDeployed = aportado > 0 ? Math.min(100, (invertido / aportado) * 100) : 0
+              // Only live tickets are branches (closed renegotiated/transferred ones live in the history).
+              const liveTickets = investments.filter(i => i.status !== 'renegotiated' && i.status !== 'transferred')
 
               return (
                 <div className="space-y-3">
@@ -502,19 +580,19 @@ export default function InvestorDetailPage() {
                   </div>
 
                   {/* BRANCHES — one per house */}
-                  {investments.length === 0 ? (
+                  {liveTickets.length === 0 ? (
                     <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--stone)', color: 'var(--ash)' }}>
                       <Landmark className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       <p className="text-sm">Aún no hay capital asignado a casas.</p>
                     </div>
                   ) : (
                     <div className="pl-3 space-y-2" style={{ borderLeft: '2px solid var(--gold-300, var(--gold-200))' }}>
-                      {investments.map((inv, idx) => {
+                      {liveTickets.map((inv, idx) => {
                         const code = inv.properties?.property_code
                         const addr = inv.properties?.address
                         const client = inv.rto_contracts?.clients?.name
                         const invAmt = Number(inv.amount || 0)
-                        const retAmt = Number(inv.return_amount || 0)
+                        const retAmt = ticketReturn(inv)
                         const progress = invAmt > 0 ? Math.min(100, (retAmt / invAmt) * 100) : 0
                         const st = INV_STATUS[inv.status] || INV_STATUS.active
                         return (
@@ -920,8 +998,9 @@ export default function InvestorDetailPage() {
               if (!inv) return null
               const s = INV_STATUS[inv.status] || INV_STATUS.active
               const invAmt = Number(inv.amount || 0)
-              const retAmt = Number(inv.return_amount || 0)
+              const retAmt = ticketReturn(inv)
               const progress = invAmt > 0 ? Math.min(100, (retAmt / invAmt) * 100) : 0
+              const isLive = inv.status !== 'renegotiated' && inv.status !== 'transferred'
               return (
                 <div className="card-luxury p-6 space-y-6">
                   {/* Header */}
@@ -937,6 +1016,19 @@ export default function InvestorDetailPage() {
                     </div>
                     <span className="badge" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
                   </div>
+
+                  {/* Lineage banner (renegotiation / debt transfer) */}
+                  {(inv.ticket_type === 'renegotiation' || inv.ticket_type === 'transfer' || inv.status === 'renegotiated' || inv.status === 'transferred') && (
+                    <div className="rounded-lg p-3 text-sm flex items-start gap-2" style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--sand)', color: 'var(--charcoal)' }}>
+                      <RefreshCw className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--gold-600)' }} />
+                      <div className="space-y-0.5">
+                        {inv.ticket_type === 'renegotiation' && <p>Ticket renegociado: tasa <b>{inv.previous_rate ?? '—'}%</b> → <b>{inv.expected_return_rate ?? '—'}%</b></p>}
+                        {inv.ticket_type === 'transfer' && <p>Deuda comprada a <b>{inv.transferred_from_name || 'otro inversionista'}</b>{inv.purchase_price ? <> por <b>{fmt(inv.purchase_price)}</b></> : null}</p>}
+                        {inv.status === 'renegotiated' && <p style={{ color: 'var(--ash)' }}>Este ticket fue renegociado — reemplazado por uno nuevo con otra tasa.</p>}
+                        {inv.status === 'transferred' && <p style={{ color: 'var(--ash)' }}>Esta deuda fue vendida a otro inversionista.</p>}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Key figures */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1013,6 +1105,18 @@ export default function InvestorDetailPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Ticket actions */}
+                  {isLive && (
+                    <div className="flex flex-wrap gap-2 pt-3" style={{ borderTop: '1px solid var(--sand)' }}>
+                      <button onClick={() => openReneg(inv)} className="btn-secondary btn-sm">
+                        <RefreshCw className="w-3.5 h-3.5" /> Renegociar tasa
+                      </button>
+                      <button onClick={() => openTransfer(inv)} className="btn-secondary btn-sm">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> Vender deuda
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -1137,6 +1241,72 @@ export default function InvestorDetailPage() {
           day: 'numeric', month: 'long', year: 'numeric'
         })}
       </div>
+
+      {/* Renegotiate modal */}
+      {renegFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <h3 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>Renegociar tasa</h3>
+            <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+              {investmentLabel(renegFor, 0)} · {fmt(Number(renegFor.amount))}. Se cierra este ticket y se crea uno nuevo con la nueva tasa (el original queda en el historial).
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Tasa actual</label>
+                <input className="input w-full" disabled value={renegFor.expected_return_rate != null ? `${renegFor.expected_return_rate}%` : '—'} />
+              </div>
+              <div>
+                <label className="label">Nueva tasa (%) *</label>
+                <input type="number" step="0.1" className="input w-full" value={renegRate} onChange={e => setRenegRate(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleRenegotiate} disabled={ticketSaving} className="btn-primary flex-1">{ticketSaving ? 'Guardando...' : 'Renegociar'}</button>
+              <button onClick={() => setRenegFor(null)} className="btn-secondary">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer (sell debt) modal */}
+      {transferFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <h3 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>Vender / transferir deuda</h3>
+            <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+              {investmentLabel(transferFor, 0)} · {fmt(Number(transferFor.amount))}. El comprador paga a través de un banco de Capital; la deuda pasa a su nombre.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Comprador *</label>
+                <select className="input w-full" value={transferBuyer} onChange={e => setTransferBuyer(e.target.value)}>
+                  <option value="">Selecciona inversionista…</option>
+                  {otherInvestors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Precio de compra</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate">$</span>
+                  <input type="number" className="input w-full pl-8" value={transferPrice} onChange={e => setTransferPrice(e.target.value)} placeholder={String(transferFor.amount)} />
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>Por defecto el valor nominal ({fmt(Number(transferFor.amount))}).</p>
+              </div>
+              <div>
+                <label className="label">Banco (pasa por Capital) *</label>
+                <select className="input w-full" value={transferBank} onChange={e => setTransferBank(e.target.value)}>
+                  <option value="">Selecciona banco…</option>
+                  {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleTransfer} disabled={ticketSaving} className="btn-primary flex-1">{ticketSaving ? 'Transfiriendo...' : 'Transferir deuda'}</button>
+              <button onClick={() => setTransferFor(null)} className="btn-secondary">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
