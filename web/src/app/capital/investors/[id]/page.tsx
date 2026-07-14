@@ -457,47 +457,130 @@ export default function InvestorDetailPage() {
               Flujo de Capital
             </h3>
             <p className="text-xs mb-5" style={{ color: 'var(--ash)' }}>
-              Cómo se mueve el dinero de {investor.name}: fondeo → casas → rentas RTO → retorno.
+              El capital de {investor.name} se ramifica en cada casa y regresa como retorno.
             </p>
 
             {(() => {
               const aportado = metrics?.total_captado || 0
               const invertido = metrics?.total_invertido || 0
               const disponible = metrics?.total_disponible ?? (investor.available_capital || 0)
-              const rentTotal = cycleFlows.filter(f => f.flow_type === 'rent_income').reduce((s, f) => s + Number(f.amount || 0), 0)
               const retCap = metrics?.total_retornado_capital || 0
               const retInt = metrics?.total_retornado_interes || 0
-              const stages = [
-                { label: 'Capital Aportado', value: aportado, color: 'var(--gold-700)', iconBg: 'var(--gold-100)', icon: DollarSign, sub: 'Fondeo del inversionista' },
-                { label: 'Invertido en Casas', value: invertido, color: 'var(--navy-800)', iconBg: 'var(--sand)', icon: Briefcase, sub: `${investments.length} casa(s)` },
-                { label: 'Rentas RTO', value: rentTotal, color: 'var(--info)', iconBg: 'var(--info-light, var(--cream))', icon: TrendingUp, sub: 'Ingresos generados' },
-                { label: 'Retorno al Inversor', value: retCap + retInt, color: 'var(--success)', iconBg: 'var(--success-light)', icon: ArrowDownLeft, sub: `Cap ${fmt(retCap)} · Int ${fmt(retInt)}` },
-              ]
+              const retTotal = retCap + retInt
+              const pctDeployed = aportado > 0 ? Math.min(100, (invertido / aportado) * 100) : 0
+
               return (
-                <>
-                  <div className="flex flex-col sm:flex-row gap-1">
-                    {stages.map((st, i) => (
-                      <div key={st.label} className="flex flex-col sm:flex-row sm:flex-1 items-center sm:gap-1">
-                        <div className="w-full sm:flex-1 rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--sand)' }}>
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center mx-auto mb-2" style={{ backgroundColor: st.iconBg }}>
-                            <st.icon className="w-4 h-4" style={{ color: st.color }} />
-                          </div>
-                          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--slate)' }}>{st.label}</p>
-                          <p className="font-serif text-lg font-semibold" style={{ color: st.color }}>{fmt(st.value)}</p>
-                          <p className="text-[10px]" style={{ color: 'var(--ash)' }}>{st.sub}</p>
+                <div className="space-y-3">
+                  {/* SOURCE — trunk */}
+                  <div className="rounded-lg p-4" style={{ background: 'linear-gradient(135deg, var(--gold-100), var(--cream))', border: '1px solid var(--gold-200, var(--sand))' }}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--gold-600)' }}>
+                          <DollarSign className="w-5 h-5" style={{ color: 'white' }} />
                         </div>
-                        {i < stages.length - 1 && (
-                          <ArrowRight className="w-5 h-5 my-1 sm:my-0 rotate-90 sm:rotate-0 flex-shrink-0" style={{ color: 'var(--ash)' }} />
-                        )}
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--slate)' }}>Capital Aportado</p>
+                          <p className="font-serif text-2xl font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(aportado)}</p>
+                        </div>
                       </div>
-                    ))}
+                      <div className="flex gap-4 text-right">
+                        <div>
+                          <p className="text-[11px]" style={{ color: 'var(--slate)' }}>Desplegado</p>
+                          <p className="font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(invertido)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px]" style={{ color: 'var(--slate)' }}>Disponible</p>
+                          <p className="font-serif font-semibold" style={{ color: 'var(--info)' }}>{fmt(disponible)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {/* deployment bar */}
+                    <div className="mt-3 w-full h-1.5 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pctDeployed}%`, backgroundColor: 'var(--gold-600)' }} />
+                    </div>
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>{pctDeployed.toFixed(0)}% del capital desplegado en casas</p>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--slate)' }}>
-                    <Landmark className="w-3.5 h-3.5" style={{ color: 'var(--info)' }} />
-                    Capital disponible sin desplegar:
-                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(disponible)}</span>
+
+                  {/* BRANCHES — one per house */}
+                  {investments.length === 0 ? (
+                    <div className="rounded-lg p-6 text-center" style={{ border: '1px dashed var(--stone)', color: 'var(--ash)' }}>
+                      <Landmark className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">Aún no hay capital asignado a casas.</p>
+                    </div>
+                  ) : (
+                    <div className="pl-3 space-y-2" style={{ borderLeft: '2px solid var(--gold-300, var(--gold-200))' }}>
+                      {investments.map((inv, idx) => {
+                        const code = inv.properties?.property_code
+                        const addr = inv.properties?.address
+                        const client = inv.rto_contracts?.clients?.name
+                        const invAmt = Number(inv.amount || 0)
+                        const retAmt = Number(inv.return_amount || 0)
+                        const progress = invAmt > 0 ? Math.min(100, (retAmt / invAmt) * 100) : 0
+                        const st = INV_STATUS[inv.status] || INV_STATUS.active
+                        return (
+                          <div key={inv.id} className="relative card-flat p-3">
+                            {/* connector dot to the rail */}
+                            <span className="absolute -left-[19px] top-6 w-3 h-3 rounded-full" style={{ backgroundColor: 'var(--gold-500, var(--gold-600))', border: '2px solid white' }} />
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* house node */}
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--gold-100)' }}>
+                                <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--gold-700)' }} />
+                                <div className="leading-tight">
+                                  <p className="text-xs font-semibold" style={{ color: 'var(--gold-700)' }}>
+                                    {code || investmentLabel(inv, idx)} <span className="font-serif" style={{ color: 'var(--navy-800)' }}>· {fmt(invAmt)}</span>
+                                  </p>
+                                  {addr && <p className="text-[10px]" style={{ color: 'var(--ash)' }}>{addr}</p>}
+                                </div>
+                              </div>
+                              <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
+                              {/* RTO node */}
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
+                                   style={{ backgroundColor: client ? 'var(--success-light)' : 'var(--cream)', color: client ? 'var(--success)' : 'var(--ash)' }}>
+                                <User className="w-3.5 h-3.5" />
+                                {client || 'Sin contrato RTO'}
+                              </div>
+                              <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--ash)' }} />
+                              {/* return node */}
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
+                                   style={{ backgroundColor: retAmt > 0 ? 'var(--gold-100)' : 'var(--cream)', color: retAmt > 0 ? 'var(--gold-700)' : 'var(--ash)' }}>
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                {retAmt > 0 ? fmt(retAmt) : 'Sin retorno aún'}
+                              </div>
+                              <span className="badge text-xs ml-auto" style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                            </div>
+                            {/* per-house return progress */}
+                            <div className="mt-2 w-full h-1 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                              <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: progress >= 100 ? 'var(--success)' : 'var(--gold-600)' }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* COLLECTOR — total return */}
+                  <div className="rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'linear-gradient(135deg, var(--success-light), var(--cream))', border: '1px solid var(--success-light)' }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success)' }}>
+                        <ArrowDownLeft className="w-5 h-5" style={{ color: 'white' }} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--slate)' }}>Retorno total al inversor</p>
+                        <p className="font-serif text-2xl font-semibold" style={{ color: 'var(--success)' }}>{fmt(retTotal)}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-4 text-right">
+                      <div>
+                        <p className="text-[11px]" style={{ color: 'var(--slate)' }}>Capital</p>
+                        <p className="font-serif font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(retCap)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px]" style={{ color: 'var(--slate)' }}>Interés</p>
+                        <p className="font-serif font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(retInt)}</p>
+                      </div>
+                    </div>
                   </div>
-                </>
+                </div>
               )
             })()}
 
