@@ -35,7 +35,7 @@ interface Investment {
   invested_at: string
   returned_at: string | null
   promissory_note_id?: string | null
-  properties?: { address: string; city: string } | null
+  properties?: { address: string; city: string; property_code?: string } | null
   rto_contracts?: { client_id: string; clients?: { name: string } } | null
   promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string } | null
 }
@@ -126,6 +126,7 @@ export default function InvestorDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState({ notes: '', available_capital: 0, name: '', email: '', phone: '', company: '' })
   const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes' | 'cycle'>('overview')
+  const [activeInvestmentId, setActiveInvestmentId] = useState<string>('all')
   const [savingStatus, setSavingStatus] = useState(false)
 
   // Capital cycle
@@ -243,6 +244,16 @@ export default function InvestorDetailPage() {
   }
 
   const daysUntilMaturity = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+
+  const INV_STATUS: Record<string, { bg: string; color: string; label: string }> = {
+    active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
+    returned: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Retornada' },
+    partial_return: { bg: 'var(--cream)', color: 'var(--info)', label: 'Parcial' },
+    defaulted: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Perdida' },
+  }
+  const investmentLabel = (inv: Investment, idx: number) =>
+    inv.properties?.property_code || inv.rto_contracts?.clients?.name || `Inversión ${idx + 1}`
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
   // Rendimiento real vs esperado (#7)
   const totalInvested = metrics?.total_invested || 0
@@ -606,105 +617,236 @@ export default function InvestorDetailPage() {
 
       {/* TAB: Investments */}
       {activeTab === 'investments' && (
-      <div className="card-luxury">
-        <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
-          <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-            <BarChart3 className="w-4 h-4 inline mr-2" />
-            Historial de Inversiones ({investments.length})
-          </h3>
-        </div>
-
+      <div className="space-y-4">
         {investments.length === 0 ? (
-          <div className="p-8 text-center" style={{ color: 'var(--ash)' }}>
+          <div className="card-luxury p-8 text-center" style={{ color: 'var(--ash)' }}>
             <Landmark className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p>No hay inversiones registradas</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Propiedad / Contrato</th>
-                  <th>Monto</th>
-                  <th>Tasa Esperada</th>
-                  <th>Retorno</th>
-                    <th>Nota Vinculada</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {investments.map((inv) => {
-                  const statusStyles: Record<string, { bg: string; color: string; label: string }> = {
-                    active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Activa' },
-                    returned: { bg: 'var(--gold-100)', color: 'var(--gold-700)', label: 'Retornada' },
-                      partial_return: { bg: 'var(--cream)', color: 'var(--info)', label: 'Parcial' },
-                    defaulted: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Perdida' },
-                  }
-                  const s = statusStyles[inv.status] || statusStyles.active
+          <>
+            {/* Sub-tabs: one per investment */}
+            <div className="flex gap-1 flex-wrap">
+              <button
+                onClick={() => setActiveInvestmentId('all')}
+                className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                style={{
+                  backgroundColor: activeInvestmentId === 'all' ? 'var(--gold-100)' : 'transparent',
+                  color: activeInvestmentId === 'all' ? 'var(--gold-700)' : 'var(--slate)',
+                  border: `1px solid ${activeInvestmentId === 'all' ? 'var(--gold-400)' : 'var(--stone)'}`,
+                }}
+              >
+                Todas ({investments.length})
+              </button>
+              {investments.map((inv, idx) => {
+                const isActive = activeInvestmentId === inv.id
+                return (
+                  <button
+                    key={inv.id}
+                    onClick={() => setActiveInvestmentId(inv.id)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5"
+                    style={{
+                      backgroundColor: isActive ? 'var(--gold-100)' : 'transparent',
+                      color: isActive ? 'var(--gold-700)' : 'var(--slate)',
+                      border: `1px solid ${isActive ? 'var(--gold-400)' : 'var(--stone)'}`,
+                    }}
+                  >
+                    {inv.properties?.property_code ? <MapPin className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                    {investmentLabel(inv, idx)}
+                    <span style={{ color: 'var(--ash)' }}>· {fmt(inv.amount)}</span>
+                  </button>
+                )
+              })}
+            </div>
 
-                  return (
-                    <tr key={inv.id}>
-                      <td className="text-sm">
-                        {new Date(inv.invested_at).toLocaleDateString('es-MX', {
-                          day: 'numeric', month: 'short', year: 'numeric'
-                        })}
-                      </td>
-                      <td>
-                        {inv.properties ? (
-                          <div>
-                            <span className="flex items-center gap-1 text-sm">
-                              <MapPin className="w-3 h-3" style={{ color: 'var(--gold-600)' }} />
-                              {inv.properties.address}
-                            </span>
-                            <span className="text-xs" style={{ color: 'var(--slate)' }}>{inv.properties.city}</span>
-                          </div>
-                        ) : inv.rto_contracts?.clients?.name ? (
-                          <span className="flex items-center gap-1 text-sm">
-                            <User className="w-3 h-3" />
-                            {inv.rto_contracts.clients.name}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--ash)' }}>—</span>
-                        )}
-                      </td>
-                      <td className="font-medium">{fmt(inv.amount)}</td>
-                      <td>
-                        {inv.expected_return_rate ? (
-                          <span style={{ color: 'var(--gold-700)' }}>{inv.expected_return_rate}%</span>
-                        ) : (
-                          <span style={{ color: 'var(--ash)' }}>—</span>
-                        )}
-                      </td>
-                      <td>
-                        {inv.return_amount ? (
-                          <span style={{ color: 'var(--success)' }}>{fmt(inv.return_amount)}</span>
-                        ) : (
-                          <span style={{ color: 'var(--ash)' }}>Pendiente</span>
-                        )}
-                      </td>
-                        <td>
-                          {inv.promissory_notes ? (
-                            <Link href={`/capital/promissory-notes/${inv.promissory_notes.id}`}
-                              className="text-xs flex items-center gap-1 hover:underline" style={{ color: 'var(--gold-700)' }}>
-                              <FileText className="w-3 h-3" />
-                              {fmt(inv.promissory_notes.loan_amount)}
-                            </Link>
-                          ) : (
-                            <span style={{ color: 'var(--ash)' }}>—</span>
-                          )}
-                        </td>
-                      <td>
-                        <span className="badge text-xs" style={{ backgroundColor: s.bg, color: s.color }}>
-                          {s.label}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+            {/* "Todas" — summary table */}
+            {activeInvestmentId === 'all' && (
+              <div className="card-luxury">
+                <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
+                  <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                    <BarChart3 className="w-4 h-4 inline mr-2" />
+                    Historial de Inversiones ({investments.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Casa / Contrato</th>
+                        <th>Monto</th>
+                        <th>Tasa Esperada</th>
+                        <th>Retorno</th>
+                        <th>Nota Vinculada</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {investments.map((inv) => {
+                        const s = INV_STATUS[inv.status] || INV_STATUS.active
+                        return (
+                          <tr key={inv.id} className="cursor-pointer hover:bg-cream/40" onClick={() => setActiveInvestmentId(inv.id)}>
+                            <td className="text-sm">{fmtDate(inv.invested_at)}</td>
+                            <td>
+                              {inv.properties ? (
+                                <div>
+                                  <span className="flex items-center gap-1 text-sm">
+                                    <MapPin className="w-3 h-3" style={{ color: 'var(--gold-600)' }} />
+                                    {inv.properties.property_code ? `${inv.properties.property_code} · ` : ''}{inv.properties.address}
+                                  </span>
+                                  <span className="text-xs" style={{ color: 'var(--slate)' }}>{inv.properties.city}</span>
+                                </div>
+                              ) : inv.rto_contracts?.clients?.name ? (
+                                <span className="flex items-center gap-1 text-sm">
+                                  <User className="w-3 h-3" />
+                                  {inv.rto_contracts.clients.name}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>—</span>
+                              )}
+                            </td>
+                            <td className="font-medium">{fmt(inv.amount)}</td>
+                            <td>
+                              {inv.expected_return_rate ? (
+                                <span style={{ color: 'var(--gold-700)' }}>{inv.expected_return_rate}%</span>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>—</span>
+                              )}
+                            </td>
+                            <td>
+                              {inv.return_amount ? (
+                                <span style={{ color: 'var(--success)' }}>{fmt(inv.return_amount)}</span>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>Pendiente</span>
+                              )}
+                            </td>
+                            <td>
+                              {inv.promissory_notes ? (
+                                <Link href={`/capital/promissory-notes/${inv.promissory_notes.id}`} onClick={e => e.stopPropagation()}
+                                  className="text-xs flex items-center gap-1 hover:underline" style={{ color: 'var(--gold-700)' }}>
+                                  <FileText className="w-3 h-3" />
+                                  {fmt(inv.promissory_notes.loan_amount)}
+                                </Link>
+                              ) : (
+                                <span style={{ color: 'var(--ash)' }}>—</span>
+                              )}
+                            </td>
+                            <td>
+                              <span className="badge text-xs" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Per-investment detail */}
+            {activeInvestmentId !== 'all' && (() => {
+              const idx = investments.findIndex(i => i.id === activeInvestmentId)
+              const inv = investments[idx]
+              if (!inv) return null
+              const s = INV_STATUS[inv.status] || INV_STATUS.active
+              const invAmt = Number(inv.amount || 0)
+              const retAmt = Number(inv.return_amount || 0)
+              const progress = invAmt > 0 ? Math.min(100, (retAmt / invAmt) * 100) : 0
+              return (
+                <div className="card-luxury p-6 space-y-6">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--gold-100)' }}>
+                        {inv.properties?.property_code ? <MapPin className="w-6 h-6" style={{ color: 'var(--gold-700)' }} /> : <DollarSign className="w-6 h-6" style={{ color: 'var(--gold-700)' }} />}
+                      </div>
+                      <div>
+                        <h3 className="font-serif text-xl" style={{ color: 'var(--ink)' }}>{investmentLabel(inv, idx)}</h3>
+                        <p className="text-xs" style={{ color: 'var(--ash)' }}>Invertida el {fmtDate(inv.invested_at)}</p>
+                      </div>
+                    </div>
+                    <span className="badge" style={{ backgroundColor: s.bg, color: s.color }}>{s.label}</span>
+                  </div>
+
+                  {/* Key figures */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--slate)' }}>Monto Invertido</p>
+                      <p className="font-serif text-xl font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(invAmt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--slate)' }}>Tasa Esperada</p>
+                      <p className="font-serif text-xl font-semibold" style={{ color: 'var(--gold-700)' }}>
+                        {inv.expected_return_rate ? `${inv.expected_return_rate}%` : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--slate)' }}>Retorno</p>
+                      <p className="font-serif text-xl font-semibold" style={{ color: retAmt > 0 ? 'var(--success)' : 'var(--ash)' }}>
+                        {retAmt > 0 ? fmt(retAmt) : 'Pendiente'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs" style={{ color: 'var(--slate)' }}>Fecha Retorno</p>
+                      <p className="font-serif text-xl font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        {inv.returned_at ? fmtDate(inv.returned_at) : '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Return progress */}
+                  <div>
+                    <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--ash)' }}>
+                      <span>Retorno: {progress.toFixed(0)}%</span>
+                      <span>{fmt(retAmt)} de {fmt(invAmt)}</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: `${progress}%`,
+                        backgroundColor: progress >= 100 ? 'var(--success)' : 'var(--gold-600)',
+                      }} />
+                    </div>
+                  </div>
+
+                  {/* Links / details */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2" style={{ borderTop: '1px solid var(--sand)' }}>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>Casa</p>
+                      {inv.properties ? (
+                        <p className="text-sm flex items-center gap-1" style={{ color: 'var(--charcoal)' }}>
+                          <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--gold-600)' }} />
+                          {inv.properties.property_code ? `${inv.properties.property_code} · ` : ''}{inv.properties.address}{inv.properties.city ? `, ${inv.properties.city}` : ''}
+                        </p>
+                      ) : <p className="text-sm" style={{ color: 'var(--ash)' }}>Sin casa vinculada</p>}
+                    </div>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>Contrato RTO</p>
+                      {inv.rto_contracts?.clients?.name ? (
+                        <p className="text-sm flex items-center gap-1" style={{ color: 'var(--charcoal)' }}>
+                          <User className="w-3.5 h-3.5" /> {inv.rto_contracts.clients.name}
+                        </p>
+                      ) : <p className="text-sm" style={{ color: 'var(--ash)' }}>Sin contrato vinculado</p>}
+                    </div>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>Nota Vinculada</p>
+                      {inv.promissory_notes ? (
+                        <Link href={`/capital/promissory-notes/${inv.promissory_notes.id}`}
+                          className="text-sm flex items-center gap-1 hover:underline" style={{ color: 'var(--gold-700)' }}>
+                          <FileText className="w-3.5 h-3.5" /> {fmt(inv.promissory_notes.loan_amount)}
+                        </Link>
+                      ) : <p className="text-sm" style={{ color: 'var(--ash)' }}>—</p>}
+                    </div>
+                    {inv.notes && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>Notas</p>
+                        <p className="text-sm" style={{ color: 'var(--charcoal)' }}>{inv.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+          </>
         )}
       </div>
       )}

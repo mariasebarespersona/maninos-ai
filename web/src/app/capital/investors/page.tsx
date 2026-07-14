@@ -23,6 +23,19 @@ interface Investor {
   created_at: string
 }
 
+interface PropertyLite {
+  id: string
+  property_code: string
+  address: string
+  city: string
+  status: string
+}
+
+interface Allocation {
+  property_id: string
+  amount: string
+}
+
 interface InvestmentsSummary {
   total_captado: number
   total_invertido: number
@@ -79,6 +92,32 @@ export default function InvestorsPage() {
   const [capital, setCapital] = useState('')
   const [creating, setCreating] = useState(false)
 
+  // House allocations (assign capital to specific houses on creation)
+  const [properties, setProperties] = useState<PropertyLite[]>([])
+  const [allocations, setAllocations] = useState<Allocation[]>([])
+
+  const openCreate = async () => {
+    setShowCreate(true)
+    if (properties.length === 0) {
+      try {
+        const res = await fetch('/api/properties?limit=100')
+        const data = await res.json()
+        const list: PropertyLite[] = Array.isArray(data) ? data : (data.properties || [])
+        setProperties(list.filter(p => p.property_code))
+      } catch (err) {
+        console.error('Error loading properties:', err)
+      }
+    }
+  }
+
+  const addAllocation = () => setAllocations(prev => [...prev, { property_id: '', amount: '' }])
+  const removeAllocation = (idx: number) => setAllocations(prev => prev.filter((_, i) => i !== idx))
+  const updateAllocation = (idx: number, patch: Partial<Allocation>) =>
+    setAllocations(prev => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)))
+
+  const allocatedTotal = allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0)
+  const capitalNum = parseFloat(capital) || 0
+
   useEffect(() => { loadData() }, [period])
 
   const loadData = async () => {
@@ -105,6 +144,16 @@ export default function InvestorsPage() {
 
   const handleCreate = async () => {
     if (!name) { toast.warning('Ingresa el nombre del inversionista'); return }
+
+    // Validate house allocations
+    const validAllocations = allocations.filter(a => a.property_id && parseFloat(a.amount) > 0)
+    const partial = allocations.some(a => (a.property_id && !(parseFloat(a.amount) > 0)) || (!a.property_id && parseFloat(a.amount) > 0))
+    if (partial) { toast.warning('Completa la casa y el monto en cada asignación'); return }
+    if (allocatedTotal > capitalNum) {
+      toast.warning('Lo asignado a casas supera el capital disponible')
+      return
+    }
+
     setCreating(true)
     try {
       const res = await fetch(`/api/capital/investors`, {
@@ -119,14 +168,45 @@ export default function InvestorsPage() {
         })
       })
       const data = await res.json()
-      if (data.ok) {
-        toast.success('Inversionista registrado')
-        setShowCreate(false)
-        setName(''); setEmail(''); setPhone(''); setCompany(''); setCapital('')
-        loadData()
-      } else {
+      if (!data.ok) {
         toast.error('Error al crear inversionista')
+        return
       }
+
+      // Create one investment per house allocation (reuses the existing flow:
+      // decrements available capital, posts the deposit to the ledger)
+      const investorId = data.investor.id
+      let failed = 0
+      for (const a of validAllocations) {
+        try {
+          const invRes = await fetch(`/api/capital/investors/investments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              investor_id: investorId,
+              property_id: a.property_id,
+              amount: parseFloat(a.amount),
+            }),
+          })
+          const invData = await invRes.json()
+          if (!invData.ok) failed++
+        } catch {
+          failed++
+        }
+      }
+
+      if (failed > 0) {
+        toast.warning(`Inversionista creado, pero ${failed} asignación(es) a casas fallaron`)
+      } else if (validAllocations.length > 0) {
+        toast.success(`Inversionista registrado con ${validAllocations.length} inversión(es)`)
+      } else {
+        toast.success('Inversionista registrado')
+      }
+
+      setShowCreate(false)
+      setName(''); setEmail(''); setPhone(''); setCompany(''); setCapital('')
+      setAllocations([])
+      loadData()
     } catch (err) {
       toast.error('Error al crear inversionista')
     } finally {
@@ -162,7 +242,7 @@ export default function InvestorsPage() {
           <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Seguimiento de Inversionistas</h1>
           <p style={{ color: 'var(--slate)' }}>Perfiles, inversiones y notas promisorias</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="btn-primary btn-sm">
+        <button onClick={openCreate} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" />
           Nuevo Inversionista
         </button>
@@ -432,8 +512,8 @@ export default function InvestorsPage() {
 
       {/* Create Modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-lg max-h-[90vh] overflow-y-auto">
             <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>
               Nuevo Inversionista
             </h3>
@@ -461,12 +541,67 @@ export default function InvestorsPage() {
                   <input type="number" value={capital} onChange={(e) => setCapital(e.target.value)} className="input pl-8" placeholder="0" />
                 </div>
               </div>
+
+              {/* House allocations */}
+              <div className="pt-2" style={{ borderTop: '1px solid var(--sand)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label mb-0">
+                    Asignar a casa(s) <span className="text-xs font-normal" style={{ color: 'var(--ash)' }}>(opcional)</span>
+                  </label>
+                  <button type="button" onClick={addAllocation} className="btn-ghost btn-sm">
+                    <Plus className="w-3.5 h-3.5" /> Añadir casa
+                  </button>
+                </div>
+
+                {allocations.length === 0 ? (
+                  <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                    Indica en qué casa(s) va el dinero y cuánto del capital disponible.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {allocations.map((a, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <select
+                          value={a.property_id}
+                          onChange={(e) => updateAllocation(idx, { property_id: e.target.value })}
+                          className="input flex-1 text-sm"
+                        >
+                          <option value="">Selecciona casa…</option>
+                          {properties.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.property_code} — {p.address}{p.city ? `, ${p.city}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="relative w-32">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate text-sm">$</span>
+                          <input
+                            type="number"
+                            value={a.amount}
+                            onChange={(e) => updateAllocation(idx, { amount: e.target.value })}
+                            className="input pl-6 text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                        <button type="button" onClick={() => removeAllocation(idx)} className="p-1" title="Quitar">
+                          <XCircle className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center justify-between text-xs pt-1" style={{ color: allocatedTotal > capitalNum ? 'var(--error)' : 'var(--ash)' }}>
+                      <span>Asignado: {fmt(allocatedTotal)} de {fmt(capitalNum)}</span>
+                      <span>{allocatedTotal > capitalNum ? 'Supera el capital disponible' : `Restante: ${fmt(Math.max(0, capitalNum - allocatedTotal))}`}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={handleCreate} disabled={creating} className="btn-primary flex-1">
                 {creating ? 'Creando...' : 'Registrar'}
               </button>
-              <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancelar</button>
+              <button onClick={() => { setShowCreate(false); setAllocations([]) }} className="btn-secondary">Cancelar</button>
             </div>
           </div>
         </div>

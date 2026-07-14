@@ -7,10 +7,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status')
-  
+  const limit = searchParams.get('limit')
+
   try {
     const url = new URL(`${API_URL}/api/properties`)
     if (status) url.searchParams.set('status', status)
+    if (limit) url.searchParams.set('limit', limit)
     
     const res = await fetch(url.toString(), { cache: 'no-store' })
     const data = await res.json()

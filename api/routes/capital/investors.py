@@ -113,7 +113,7 @@ async def get_investor(investor_id: str):
             raise HTTPException(status_code=404, detail="Inversionista no encontrado")
         
         investments = sb.table("investments") \
-            .select("*, properties(address, city), rto_contracts(client_id, clients(name)), promissory_notes(id, loan_amount, status, maturity_date)") \
+            .select("*, properties(address, city, property_code), rto_contracts(client_id, clients(name)), promissory_notes(id, loan_amount, status, maturity_date)") \
             .eq("investor_id", investor_id) \
             .order("invested_at", desc=True) \
             .execute()
