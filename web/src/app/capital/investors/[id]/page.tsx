@@ -125,7 +125,7 @@ export default function InvestorDetailPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState({ notes: '', available_capital: 0, name: '', email: '', phone: '', company: '' })
-  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes' | 'cycle'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes'>('overview')
   const [activeInvestmentId, setActiveInvestmentId] = useState<string>('all')
   const [savingStatus, setSavingStatus] = useState(false)
 
@@ -155,6 +155,8 @@ export default function InvestorDetailPage() {
           phone: investorData.investor.phone || '',
           company: investorData.investor.company || '',
         })
+        // Load the capital-flow data for the "Flujo de Capital" section in Resumen
+        loadCycle()
       }
     } catch (err) {
       console.error('Error loading investor:', err)
@@ -225,7 +227,6 @@ export default function InvestorDetailPage() {
 
   const handleTabChange = (tab: typeof activeTab) => {
     setActiveTab(tab)
-    if (tab === 'cycle') loadCycle()
   }
 
   const fmt = (n: number) =>
@@ -387,7 +388,6 @@ export default function InvestorDetailPage() {
           { key: 'overview' as const, label: 'Resumen', icon: BarChart3 },
           { key: 'investments' as const, label: `Inversiones (${investments.length})`, icon: DollarSign },
           { key: 'notes' as const, label: `Promissory Notes (${promissoryNotes.length})`, icon: FileText },
-          { key: 'cycle' as const, label: 'Ciclo de Capital', icon: Activity },
         ].map(tab => (
           <button
             key={tab.key}
@@ -449,6 +449,93 @@ export default function InvestorDetailPage() {
               <p style={{ color: 'var(--charcoal)' }}>{investor.notes}</p>
             </div>
           )}
+
+          {/* Flujo de Capital (diagrama) */}
+          <div className="card-luxury p-6">
+            <h3 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>
+              <Activity className="w-4 h-4 inline mr-2" />
+              Flujo de Capital
+            </h3>
+            <p className="text-xs mb-5" style={{ color: 'var(--ash)' }}>
+              Cómo se mueve el dinero de {investor.name}: fondeo → casas → rentas RTO → retorno.
+            </p>
+
+            {(() => {
+              const aportado = metrics?.total_captado || 0
+              const invertido = metrics?.total_invertido || 0
+              const disponible = metrics?.total_disponible ?? (investor.available_capital || 0)
+              const rentTotal = cycleFlows.filter(f => f.flow_type === 'rent_income').reduce((s, f) => s + Number(f.amount || 0), 0)
+              const retCap = metrics?.total_retornado_capital || 0
+              const retInt = metrics?.total_retornado_interes || 0
+              const stages = [
+                { label: 'Capital Aportado', value: aportado, color: 'var(--gold-700)', iconBg: 'var(--gold-100)', icon: DollarSign, sub: 'Fondeo del inversionista' },
+                { label: 'Invertido en Casas', value: invertido, color: 'var(--navy-800)', iconBg: 'var(--sand)', icon: Briefcase, sub: `${investments.length} casa(s)` },
+                { label: 'Rentas RTO', value: rentTotal, color: 'var(--info)', iconBg: 'var(--info-light, var(--cream))', icon: TrendingUp, sub: 'Ingresos generados' },
+                { label: 'Retorno al Inversor', value: retCap + retInt, color: 'var(--success)', iconBg: 'var(--success-light)', icon: ArrowDownLeft, sub: `Cap ${fmt(retCap)} · Int ${fmt(retInt)}` },
+              ]
+              return (
+                <>
+                  <div className="flex flex-col sm:flex-row gap-1">
+                    {stages.map((st, i) => (
+                      <div key={st.label} className="flex flex-col sm:flex-row sm:flex-1 items-center sm:gap-1">
+                        <div className="w-full sm:flex-1 rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--sand)' }}>
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center mx-auto mb-2" style={{ backgroundColor: st.iconBg }}>
+                            <st.icon className="w-4 h-4" style={{ color: st.color }} />
+                          </div>
+                          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--slate)' }}>{st.label}</p>
+                          <p className="font-serif text-lg font-semibold" style={{ color: st.color }}>{fmt(st.value)}</p>
+                          <p className="text-[10px]" style={{ color: 'var(--ash)' }}>{st.sub}</p>
+                        </div>
+                        {i < stages.length - 1 && (
+                          <ArrowRight className="w-5 h-5 my-1 sm:my-0 rotate-90 sm:rotate-0 flex-shrink-0" style={{ color: 'var(--ash)' }} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--slate)' }}>
+                    <Landmark className="w-3.5 h-3.5" style={{ color: 'var(--info)' }} />
+                    Capital disponible sin desplegar:
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{fmt(disponible)}</span>
+                  </div>
+                </>
+              )
+            })()}
+
+            {/* Movimientos de Capital */}
+            {cycleFlows.length > 0 && (
+              <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--sand)' }}>
+                <h4 className="font-medium text-sm mb-3" style={{ color: 'var(--ink)' }}>Movimientos de Capital Recientes</h4>
+                <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
+                  {cycleFlows.map(flow => {
+                    const fl = FLOW_LABELS[flow.flow_type] || { label: flow.flow_type, color: 'var(--slate)' }
+                    const isPositive = flow.amount > 0
+                    return (
+                      <div key={flow.id} className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: isPositive ? 'var(--success-light)' : 'var(--error-light)' }}>
+                            {isPositive ? (
+                              <ArrowDownLeft className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                            ) : (
+                              <ArrowUpRight className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fl.label}</p>
+                            <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                              {flow.description || '—'} · {new Date(flow.flow_date || flow.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="font-serif font-semibold" style={{ color: fl.color }}>
+                          {isPositive ? '+' : ''}{fmt(flow.amount)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Rendimiento Real vs Esperado (#7) */}
           <div className="card-luxury p-6">
@@ -960,159 +1047,6 @@ export default function InvestorDetailPage() {
         </div>
       )}
 
-      {/* TAB: Ciclo de Capital (#1) */}
-      {activeTab === 'cycle' && (
-        <div className="space-y-6">
-          {cycleLoading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--gold-600)' }} />
-            </div>
-          ) : !cycleData ? (
-            <div className="card-luxury p-8 text-center" style={{ color: 'var(--ash)' }}>
-              <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No se pudo cargar el ciclo de capital</p>
-              <button onClick={loadCycle} className="btn-ghost btn-sm mt-2">
-                <RefreshCw className="w-4 h-4" /> Reintentar
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Cycle KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[
-                  { label: 'Total Invertido', value: fmt(cycleData.total_invested), color: 'var(--navy-800)', sub: `${cycleData.active_investments} inversión(es) activa(s)` },
-                  { label: 'Total Retornado', value: fmt(cycleData.total_returned), color: 'var(--success)', sub: `ROI: ${cycleData.roi_to_date > 0 ? '+' : ''}${cycleData.roi_to_date.toFixed(1)}%` },
-                  { label: 'Pendiente Neto', value: fmt(cycleData.net_outstanding), color: 'var(--gold-700)', sub: `Retorno esperado: ${fmt(cycleData.expected_future_returns)}` },
-                ].map(kpi => (
-                  <div key={kpi.label} className="card-luxury p-5">
-                    <p className="text-xs mb-1" style={{ color: 'var(--slate)' }}>{kpi.label}</p>
-                    <p className="font-serif text-2xl font-semibold" style={{ color: kpi.color }}>{kpi.value}</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>{kpi.sub}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Visual cycle flow */}
-              <div className="card-luxury p-6">
-                <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>
-                  Flujo: Inversión → Propiedad → RTO → Retorno
-                </h3>
-                <div className="space-y-3">
-                  {cycleInvestments.map((inv: any) => {
-                    const prop = inv.properties
-                    const contract = inv.rto_contracts
-                    const client = contract?.clients
-                    const returnAmt = Number(inv.return_amount || 0)
-                    const invAmt = Number(inv.amount || 0)
-                    const progress = invAmt > 0 ? Math.min(100, (returnAmt / invAmt) * 100) : 0
-
-                    return (
-                      <div key={inv.id} className="card-flat p-4">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Investment */}
-                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                               style={{ backgroundColor: 'var(--navy-800)', color: 'white' }}>
-                            <DollarSign className="w-3 h-3" />
-                            {fmt(invAmt)}
-                          </div>
-                          <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
-                          {/* Property */}
-                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                               style={{ backgroundColor: 'var(--gold-100)', color: 'var(--gold-700)' }}>
-                            <MapPin className="w-3 h-3" />
-                            {prop?.address || 'Sin propiedad'}
-                          </div>
-                          {contract && (
-                            <>
-                              <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
-                              {/* RTO Contract */}
-                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                                   style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
-                                <User className="w-3 h-3" />
-                                {client?.name || 'RTO'}
-                              </div>
-                            </>
-                          )}
-                          {returnAmt > 0 && (
-                            <>
-                              <ArrowRight className="w-4 h-4" style={{ color: 'var(--ash)' }} />
-                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                                   style={{ backgroundColor: 'var(--success-light)', color: 'var(--success)' }}>
-                                <TrendingUp className="w-3 h-3" />
-                                {fmt(returnAmt)}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        {/* Progress bar */}
-                        <div className="mt-2">
-                          <div className="flex justify-between text-xs" style={{ color: 'var(--ash)' }}>
-                            <span>Retorno: {progress.toFixed(0)}%</span>
-                            <span>{inv.status}</span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--sand)' }}>
-                            <div className="h-full rounded-full" style={{
-                              width: `${progress}%`,
-                              backgroundColor: progress >= 100 ? 'var(--success)' : 'var(--gold-600)',
-                            }} />
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {cycleInvestments.length === 0 && (
-                    <p className="text-sm text-center py-4" style={{ color: 'var(--ash)' }}>
-                      No hay inversiones vinculadas a propiedades o contratos
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Recent Flows */}
-              {cycleFlows.length > 0 && (
-                <div className="card-luxury">
-                  <div className="p-5 border-b" style={{ borderColor: 'var(--sand)' }}>
-                    <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-                      Movimientos de Capital Recientes
-                    </h3>
-                  </div>
-                  <div className="divide-y" style={{ borderColor: 'var(--sand)' }}>
-                    {cycleFlows.map(flow => {
-                      const fl = FLOW_LABELS[flow.flow_type] || { label: flow.flow_type, color: 'var(--slate)' }
-                      const isPositive = flow.amount > 0
-                      return (
-                        <div key={flow.id} className="flex items-center justify-between p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center"
-                                 style={{ backgroundColor: isPositive ? 'var(--success-light)' : 'var(--error-light)' }}>
-                              {isPositive ? (
-                                <ArrowDownLeft className="w-4 h-4" style={{ color: 'var(--success)' }} />
-                              ) : (
-                                <ArrowUpRight className="w-4 h-4" style={{ color: 'var(--error)' }} />
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{fl.label}</p>
-                              <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                                {flow.description || '—'} · {new Date(flow.flow_date || flow.created_at).toLocaleDateString('es-MX', {
-                                  day: 'numeric', month: 'short', year: 'numeric'
-                                })}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="font-serif font-semibold" style={{ color: fl.color }}>
-                            {isPositive ? '+' : ''}{fmt(flow.amount)}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
 
       {/* Metadata */}
       <div className="text-xs text-center py-2" style={{ color: 'var(--ash)' }}>
