@@ -4639,8 +4639,10 @@ function EstadoCuentaTab() {
       setCandidateSearch('')
       fetchLinkCandidates(stmt?.bank_account_id)
     }
+  // include `statements` so candidates refetch once the statement (with its
+  // bank_account_id) is loaded — fixes the "candidates sometimes empty" race.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStatement, fetchLinkCandidates])
+  }, [activeStatement, statements, fetchLinkCandidates])
 
   const createBankAccount = async () => {
     if (!newAccountName.trim()) return alert('Nombre de cuenta requerido')
@@ -4776,6 +4778,7 @@ function EstadoCuentaTab() {
     const openedStmt = Object.values(statements).flat().find(s => s.id === stmtId)
     fetchLinkCandidates(openedStmt?.bank_account_id)
     fetchOpenInvoices()  // load ALL open invoices so they can be hand-linked
+    fetchAccounts()      // refresh the chart so the "cambiar cuenta" picker is complete
     // Auto-run the AI matcher so each movement shows its suggestion inline.
     reconcileMovements(stmtId)
     try {
@@ -4783,7 +4786,16 @@ function EstadoCuentaTab() {
         fetch(`/api/accounting/bank-statements/${stmtId}`),
         fetch('/api/accounting/transactions?status=confirmed&limit=100'),
       ])
-      if (mvRes.ok) setActiveMovements((await mvRes.json()).movements || [])
+      if (mvRes.ok) {
+        const mvData = await mvRes.json()
+        setActiveMovements(mvData.movements || [])
+        // Reliable bank_account_id from the FRESH statement detail (the
+        // `statements` map can be stale/not-yet-loaded, which raced the
+        // candidates panel to empty). Refetch candidates with it so the panel
+        // is consistent every time.
+        const freshBankId = mvData.statement?.bank_account_id
+        if (freshBankId) fetchLinkCandidates(freshBankId)
+      }
       if (txnRes.ok) {
         const txnData = await txnRes.json()
         const all = (txnData.transactions || txnData.data || txnData || [])
