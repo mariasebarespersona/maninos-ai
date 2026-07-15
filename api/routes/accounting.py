@@ -2404,7 +2404,6 @@ async def delete_invoice(invoice_id: str):
             "deleted_ledger_rows": len(leg_ids)}
 
 
-@router.post("/invoices/{invoice_id}/payments")
 def record_invoice_payment(
     invoice_id: str,
     amount: float,
@@ -2542,7 +2541,12 @@ def record_invoice_payment(
             "invoice": invoice}
 
 
+@router.post("/invoices/{invoice_id}/payments")
 async def add_invoice_payment(invoice_id: str, data: InvoicePaymentCreate):
+    """HTTP route for the "Registrar Pago" modal (JSON body). The shared internal
+    record_invoice_payment() is keyword-only (FastAPI would bind its scalar args
+    as query params → the modal's body 422'd), so this typed wrapper binds the
+    body. Supports partial payments (any amount ≤ balance)."""
     return record_invoice_payment(
         invoice_id, data.amount,
         bank_account_id=data.bank_account_id,
