@@ -318,24 +318,15 @@ export default function PromissoryNoteDetailPage() {
     }
   }
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = () => {
     if (!note) return
-    try {
-      const res = await fetch(`/api/capital/promissory-notes/${id}/pdf`)
-      if (!res.ok) { toast.error('Error al generar el PDF'); return }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `Promissory_Note_${(note.lender_name || 'note').replace(/\s+/g, '_')}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-      toast.success('PDF descargado')
-    } catch {
-      toast.error('Error al descargar el PDF')
-    }
+    // Direct link to the backend-generated PDF (proxy sends Content-Disposition: attachment).
+    const a = document.createElement('a')
+    a.href = `/api/capital/promissory-notes/${id}/pdf`
+    a.download = `Promissory_Note_${(note.lender_name || 'note').replace(/\s+/g, '_')}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   const handleExportCSV = () => {
@@ -580,16 +571,11 @@ export default function PromissoryNoteDetailPage() {
       {/* TAB: Document View */}
       {activeTab === 'document' && (
         <div ref={printRef} className="card-luxury p-8 print:shadow-none print:border-none" style={{ maxWidth: 800, margin: '0 auto' }}>
-          {/* Header — Maninos Homes + Phoenician Boat */}
+          {/* Header — Maninos logo (matches the downloadable PDF) */}
           <div className="text-center mb-6">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              {/* Phoenician Boat SVG */}
-              <svg width="44" height="32" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polygon points="5,12 15,4 45,4 55,12 50,16 10,16" fill="#1a2744" />
-                <polygon points="30,16 30,38 48,20" fill="#d4a853" stroke="#1a2744" strokeWidth="0.5" />
-                <line x1="30" y1="16" x2="30" y2="38" stroke="#1a2744" strokeWidth="1.5" />
-              </svg>
-              <span className="font-serif text-lg" style={{ color: 'var(--navy-800)' }}>maninos capital</span>
+            <div className="flex items-center justify-center mb-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/maninos-logo.jpg" alt="Maninos" style={{ height: 44, width: 'auto' }} />
             </div>
             <h2 className="font-serif text-xl font-bold tracking-wide" style={{ color: 'var(--ink)' }}>
               PROMISSORY NOTE
