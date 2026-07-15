@@ -164,7 +164,6 @@ function ComisionesTab({
   const [payments, setPayments] = useState<CommissionPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null)
-  const [markingPaid, setMarkingPaid] = useState<string | null>(null)
 
   const fetchPayments = useCallback(async () => {
     setLoading(true)
@@ -233,22 +232,6 @@ function ComisionesTab({
   }
 
   const isCurrentMonth = month === today.getMonth() + 1 && year === today.getFullYear()
-
-  const handleMarkPaid = async (paymentId: string) => {
-    setMarkingPaid(paymentId)
-    try {
-      const res = await fetch(`/api/sales/commission-payments/${paymentId}/pay?paid_by=${currentUserId || 'system'}`, {
-        method: 'PATCH',
-      })
-      if (res.ok) {
-        await fetchPayments()
-      }
-    } catch (error) {
-      console.error('Error marking commission as paid:', error)
-    } finally {
-      setMarkingPaid(null)
-    }
-  }
 
   return (
     <>

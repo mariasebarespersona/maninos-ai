@@ -2540,6 +2540,20 @@ def record_invoice_payment(
             except Exception as e:
                 logger.warning(f"[accounting] could not stamp consignment_paid_at for {pid}: {e}")
 
+        # Commission: a "[COMM:<cp_id>]" bill fully paid → mark its
+        # commission_payment row paid too, so the Comisiones page and Facturación
+        # stay in sync no matter where the accountant settled it from.
+        mc = re.search(r"\[COMM:([0-9a-f-]{36})\]", note)
+        if mc:
+            cp_id = mc.group(1)
+            try:
+                sb.table("commission_payments").update(
+                    {"status": "paid", "paid_at": datetime.utcnow().isoformat()}
+                ).eq("id", cp_id).neq("status", "paid").execute()
+                logger.info(f"[accounting] commission_payment {cp_id} marked paid (invoice {invoice.get('invoice_number')} paid)")
+            except Exception as e:
+                logger.warning(f"[accounting] could not sync commission_payment {cp_id}: {e}")
+
     _log_audit("accounting_invoices", invoice_id, "update",
                description=f"Payment of ${amt} on invoice {invoice.get('invoice_number')}")
 
