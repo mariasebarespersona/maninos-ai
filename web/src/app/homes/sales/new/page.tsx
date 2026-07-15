@@ -417,6 +417,10 @@ function NewSaleContent() {
   const soldKey = soldByAssigned ? (soldAdhoc ? `n:${soldByName.trim().toLowerCase()}` : soldByEmployeeId) : null
   const samePerson = !!foundKey && foundKey === soldKey
 
+  // Display name for the summary: the employee's name, or the ad-hoc typed name.
+  const foundDisplayName = foundByUser?.name || (foundAdhoc ? foundByName.trim() : '') || null
+  const soldDisplayName = soldByUser?.name || (soldAdhoc ? soldByName.trim() : '') || null
+
   const commissionPreview = calculateCommissionPreview(paymentType, foundKey, soldKey)
 
   // Effective (possibly user-edited) commission amounts that will be sent.
@@ -822,22 +826,22 @@ function NewSaleContent() {
                   </span>
                 </div>
 
-                {(foundByEmployeeId || soldByEmployeeId) ? (
+                {(foundByAssigned || soldByAssigned) ? (
                   <div className="space-y-2">
-                    {foundByEmployeeId && (
+                    {foundByAssigned && (
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-navy-600">
-                          🔍 {foundByUser?.name || 'Empleado'} <span className="text-navy-400">(encontró)</span>
+                          🔍 {foundDisplayName || 'Comisionista'} <span className="text-navy-400">(encontró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
                           ${effectiveFoundByCommission.toLocaleString()}
                         </span>
                       </div>
                     )}
-                    {soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId && (
+                    {soldByAssigned && !samePerson && (
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-navy-600">
-                          🤝 {soldByUser?.name || 'Empleado'} <span className="text-navy-400">(cerró)</span>
+                          🤝 {soldDisplayName || 'Comisionista'} <span className="text-navy-400">(cerró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
                           ${effectiveSoldByCommission.toLocaleString()}
@@ -1017,8 +1021,8 @@ function NewSaleContent() {
                       🔍 Encontró al cliente:
                     </span>
                     <span className="font-medium text-navy-900">
-                      {foundByUser?.name || '— Sin asignar —'}
-                      {foundByEmployeeId && (
+                      {foundDisplayName || '— Sin asignar —'}
+                      {foundByAssigned && (
                         <span className="text-emerald-600 ml-2">${effectiveFoundByCommission.toLocaleString()}</span>
                       )}
                     </span>
@@ -1028,8 +1032,8 @@ function NewSaleContent() {
                       🤝 Cerró la venta:
                     </span>
                     <span className="font-medium text-navy-900">
-                      {soldByUser?.name || '— Sin asignar —'}
-                      {soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId && (
+                      {soldDisplayName || '— Sin asignar —'}
+                      {soldByAssigned && !samePerson && (
                         <span className="text-emerald-600 ml-2">${effectiveSoldByCommission.toLocaleString()}</span>
                       )}
                     </span>
