@@ -393,17 +393,23 @@ async def list_commission_payments(
 
     payments = result.data or []
 
-    # Resolve employee and sale info manually (avoids complex join issues)
+    # Resolve the recipient name. Ad-hoc (non-employee) rows carry payee_name and
+    # have no employee_id; employee rows resolve their name from users.
     for p in payments:
-        try:
-            emp = sb.table("users").select("name, email, role").eq("id", p["employee_id"]).single().execute()
-            p["employee_name"] = emp.data["name"] if emp.data else "Desconocido"
-            p["employee_email"] = emp.data.get("email", "") if emp.data else ""
-            p["employee_role"] = emp.data.get("role", "") if emp.data else ""
-        except Exception:
-            p["employee_name"] = "Desconocido"
+        if p.get("payee_name") and not p.get("employee_id"):
+            p["employee_name"] = p["payee_name"]
             p["employee_email"] = ""
-            p["employee_role"] = ""
+            p["employee_role"] = "externo"
+        else:
+            try:
+                emp = sb.table("users").select("name, email, role").eq("id", p["employee_id"]).single().execute()
+                p["employee_name"] = emp.data["name"] if emp.data else "Desconocido"
+                p["employee_email"] = emp.data.get("email", "") if emp.data else ""
+                p["employee_role"] = emp.data.get("role", "") if emp.data else ""
+            except Exception:
+                p["employee_name"] = "Desconocido"
+                p["employee_email"] = ""
+                p["employee_role"] = ""
 
         try:
             sale = sb.table("sales").select("sale_type, sale_price, created_at, property_id").eq("id", p["sale_id"]).single().execute()
@@ -850,14 +856,18 @@ async def create_sale(data: SaleCreate):
             sold_by_employee_id=data.sold_by_employee_id,
         )
 
-    # HARD RULE: a commission requires an ASSIGNED person. No name → no
-    # commission, ever (no auto-amount, no phantom). Each half only counts when
-    # its employee is assigned; if neither is assigned the whole commission is 0.
-    if not data.found_by_employee_id:
+    # HARD RULE: a commission requires an ASSIGNED person. No one → no
+    # commission, ever (no auto-amount, no phantom). "Assigned" now means an
+    # EMPLOYEE **or** an ad-hoc free-text name (external person, no account).
+    found_name = (data.found_by_name or "").strip()
+    sold_name = (data.sold_by_name or "").strip()
+    found_present = bool(data.found_by_employee_id or found_name)
+    sold_present = bool(data.sold_by_employee_id or sold_name)
+    if not found_present:
         commission["commission_found_by"] = 0.0
-    if not data.sold_by_employee_id:
+    if not sold_present:
         commission["commission_sold_by"] = 0.0
-    if not data.found_by_employee_id and not data.sold_by_employee_id:
+    if not found_present and not sold_present:
         commission["commission_amount"] = 0.0
     else:
         commission["commission_amount"] = float(commission.get("commission_found_by") or 0) + float(commission.get("commission_sold_by") or 0)
@@ -878,6 +888,13 @@ async def create_sale(data: SaleCreate):
         "commission_found_by": float(commission["commission_found_by"]),
         "commission_sold_by": float(commission["commission_sold_by"]),
     }
+    # Ad-hoc recipient names — only add the column when there's an ad-hoc name
+    # (so employee/unassigned sales don't reference the column and keep working
+    # even if migration 101 hasn't been applied yet).
+    if found_name and not data.found_by_employee_id:
+        insert_data["found_by_name"] = found_name
+    if sold_name and not data.sold_by_employee_id:
+        insert_data["sold_by_name"] = sold_name
 
     # RTO/financed sale: set status + financial split
     if data.sale_type == SaleType.RTO:
@@ -1812,8 +1829,8 @@ def _format_sale(
         commission_amount=Decimal(str(data["commission_amount"])) if data.get("commission_amount") else None,
         commission_found_by=Decimal(str(data["commission_found_by"])) if data.get("commission_found_by") else None,
         commission_sold_by=Decimal(str(data["commission_sold_by"])) if data.get("commission_sold_by") else None,
-        found_by_name=_resolve_employee_name(data.get("found_by_employee_id")),
-        sold_by_name=_resolve_employee_name(data.get("sold_by_employee_id")),
+        found_by_name=_resolve_employee_name(data.get("found_by_employee_id")) or data.get("found_by_name"),
+        sold_by_name=_resolve_employee_name(data.get("sold_by_employee_id")) or data.get("sold_by_name"),
         # Payment tracking
         amount_paid=Decimal(str(data.get("amount_paid") or 0)),
         amount_pending=Decimal(str(data.get("amount_pending") or data.get("sale_price", 0))),
@@ -1967,11 +1984,29 @@ def _create_commission_payments(sale: dict):
     except Exception:
         pass
 
+    # A commission half goes to an EMPLOYEE (employee_id) or an AD-HOC person
+    # (free-text name). Build one commission_payment row per non-zero half; the
+    # ad-hoc name rides in payee_name. Only set payee_name for ad-hoc rows so
+    # employee commissions keep working even before migration 101 is applied.
+    found_name = (sale.get("found_by_name") or "").strip()
+    sold_name = (sale.get("sold_by_name") or "").strip()
+
+    def _mk_comm_row(role, employee_id, name, amount):
+        row = {"sale_id": sale["id"], "role": role, "amount": amount, "status": "pending"}
+        if employee_id:
+            row["employee_id"] = employee_id
+        else:
+            row["payee_name"] = name
+        return row
+
+    # Same person on both halves (same employee OR same ad-hoc name) → one row.
+    same_person = (found_by and sold_by and found_by == sold_by) or \
+                  (found_name and sold_name and found_name.lower() == sold_name.lower())
     rows = []
-    if found_by and comm_found > 0:
-        rows.append({"sale_id": sale["id"], "employee_id": found_by, "role": "found_by", "amount": comm_found, "status": "pending"})
-    if sold_by and comm_sold > 0 and sold_by != found_by:
-        rows.append({"sale_id": sale["id"], "employee_id": sold_by, "role": "sold_by", "amount": comm_sold, "status": "pending"})
+    if comm_found > 0 and (found_by or found_name):
+        rows.append(_mk_comm_row("found_by", found_by, found_name, comm_found))
+    if comm_sold > 0 and (sold_by or sold_name) and not same_person:
+        rows.append(_mk_comm_row("sold_by", sold_by, sold_name, comm_sold))
 
     # Resolve the commission expense account: ALWAYS the per-house
     # "Comisión <CODE>" job-costing sub-account so the commission links to the
@@ -2005,7 +2040,8 @@ def _create_commission_payments(sale: dict):
         # path — the commission is now represented (and posted) exactly ONCE.
         try:
             from api.routes.accounting import issue_invoice
-            emp_name = _resolve_employee_name(row["employee_id"]) or "Empleado"
+            # Payee = the ad-hoc name, else the employee's resolved name.
+            emp_name = row.get("payee_name") or _resolve_employee_name(row.get("employee_id")) or "Comisionista"
             role_label = "encontró al cliente" if row["role"] == "found_by" else "cerró la venta"
             tipo = "RTO" if sale_type == "rto" else "Contado"
             code_str = f" ({prop_code})" if prop_code else ""
@@ -2013,7 +2049,7 @@ def _create_commission_payments(sale: dict):
             inv = issue_invoice(
                 direction="payable",
                 counterparty_name=emp_name,
-                counterparty_type="employee",
+                counterparty_type="employee" if row.get("employee_id") else "person",
                 total_amount=float(row["amount"]),
                 account_code=comm_account,
                 property_id=property_id,

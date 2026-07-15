@@ -190,12 +190,15 @@ function ComisionesTab({
     fetchPayments()
   }, [fetchPayments])
 
-  // Group payments by employee
+  // Group payments by person. Employees group by employee_id; ad-hoc recipients
+  // (no employee_id) group by their name so two different external people don't
+  // collapse into one card.
   const employeeMap = new Map<string, EmployeeCommission>()
   for (const p of payments) {
-    if (!employeeMap.has(p.employee_id)) {
-      employeeMap.set(p.employee_id, {
-        employee_id: p.employee_id,
+    const groupKey = p.employee_id || `name:${(p.employee_name || '').trim().toLowerCase()}`
+    if (!employeeMap.has(groupKey)) {
+      employeeMap.set(groupKey, {
+        employee_id: groupKey,
         name: p.employee_name,
         total_earned: 0,
         total_pending: 0,
@@ -205,7 +208,7 @@ function ComisionesTab({
         payments: [],
       })
     }
-    const emp = employeeMap.get(p.employee_id)!
+    const emp = employeeMap.get(groupKey)!
     emp.total_earned += p.amount
     if (p.status === 'pending') emp.total_pending += p.amount
     if (p.status === 'paid') emp.total_paid += p.amount

@@ -128,6 +128,10 @@ function NewSaleContent() {
   // Employee assignment
   const [foundByEmployeeId, setFoundByEmployeeId] = useState<string | null>(null)
   const [soldByEmployeeId, setSoldByEmployeeId] = useState<string | null>(null)
+  // Ad-hoc (non-employee) commission recipients: when the dropdown is set to the
+  // ADHOC sentinel, these free-text names are used instead of an employee.
+  const [foundByName, setFoundByName] = useState('')
+  const [soldByName, setSoldByName] = useState('')
 
   // Editable commission amounts (prefilled by rule, overridable by user).
   // Empty string = follow the suggested default; a set value = manual override.
@@ -186,16 +190,22 @@ function NewSaleContent() {
   // Prefill suggested commission amounts by rule when sale_type or assigned
   // employees change — but never clobber a value the user manually edited.
   useEffect(() => {
-    const preview = calculateCommissionPreview(paymentType, foundByEmployeeId, soldByEmployeeId)
+    // Key each half the same way the submit does: employee id, or ad-hoc name
+    // (null until a name is typed) so the sentinel alone never triggers prefill.
+    const fKey = foundByEmployeeId === ADHOC
+      ? (foundByName.trim() ? `n:${foundByName.trim().toLowerCase()}` : null)
+      : foundByEmployeeId
+    const sKey = soldByEmployeeId === ADHOC
+      ? (soldByName.trim() ? `n:${soldByName.trim().toLowerCase()}` : null)
+      : soldByEmployeeId
+    const preview = calculateCommissionPreview(paymentType, fKey, sKey)
     if (!foundByEdited) {
-      setFoundByCommission(foundByEmployeeId ? String(preview.foundBy) : '')
+      setFoundByCommission(fKey ? String(preview.foundBy) : '')
     }
     if (!soldByEdited) {
-      setSoldByCommission(
-        soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId ? String(preview.soldBy) : ''
-      )
+      setSoldByCommission(sKey && sKey !== fKey ? String(preview.soldBy) : '')
     }
-  }, [paymentType, foundByEmployeeId, soldByEmployeeId, foundByEdited, soldByEdited])
+  }, [paymentType, foundByEmployeeId, soldByEmployeeId, foundByName, soldByName, foundByEdited, soldByEdited])
 
   const fetchProperties = async () => {
     try {
@@ -319,11 +329,17 @@ function NewSaleContent() {
 
       // Commission amounts: only count a person when they're actually assigned.
       // "No employee → no commission" is enforced by sending 0 in that case.
-      const commissionFoundBy = foundByEmployeeId ? (parseFloat(foundByCommission) || 0) : 0
-      const commissionSoldBy =
-        soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId
-          ? (parseFloat(soldByCommission) || 0)
-          : 0
+      const fAdhoc = foundByEmployeeId === ADHOC
+      const sAdhoc = soldByEmployeeId === ADHOC
+      const fName = foundByName.trim()
+      const sName = soldByName.trim()
+      const fAssigned = !!foundByEmployeeId && (!fAdhoc || !!fName)
+      const sAssigned = !!soldByEmployeeId && (!sAdhoc || !!sName)
+      const fKey = fAdhoc ? `n:${fName.toLowerCase()}` : (foundByEmployeeId || '')
+      const sKey = sAdhoc ? `n:${sName.toLowerCase()}` : (soldByEmployeeId || '')
+      const same = !!fKey && fKey === sKey
+      const commissionFoundBy = fAssigned ? (parseFloat(foundByCommission) || 0) : 0
+      const commissionSoldBy = sAssigned && !same ? (parseFloat(soldByCommission) || 0) : 0
 
       // Create sale
       const salePayload: any = {
@@ -331,8 +347,10 @@ function NewSaleContent() {
         client_id: clientId,
         sale_price: selectedProperty.sale_price,
         sale_type: paymentType || 'contado',
-        found_by_employee_id: foundByEmployeeId || undefined,
-        sold_by_employee_id: soldByEmployeeId || undefined,
+        found_by_employee_id: (foundByEmployeeId && !fAdhoc) ? foundByEmployeeId : undefined,
+        sold_by_employee_id: (soldByEmployeeId && !sAdhoc) ? soldByEmployeeId : undefined,
+        found_by_name: fAdhoc && fName ? fName : undefined,
+        sold_by_name: sAdhoc && sName ? sName : undefined,
         commission_found_by: commissionFoundBy,
         commission_sold_by: commissionSoldBy,
         commission_amount: commissionFoundBy + commissionSoldBy,
@@ -377,20 +395,34 @@ function NewSaleContent() {
 
   // Only operations roles can earn commissions
   const COMMISSION_ROLES = ['operations', 'comprador', 'vendedor']
+  const ADHOC = '__adhoc__'  // dropdown sentinel for "otra persona (nombre libre)"
   const commissionEligible = teamUsers.filter(u => u.role && COMMISSION_ROLES.includes(u.role))
   const filteredEmployees = commissionEligible.filter(u =>
     u.name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
     u.email?.toLowerCase().includes(employeeSearch.toLowerCase())
   )
 
-  const commissionPreview = calculateCommissionPreview(paymentType, foundByEmployeeId, soldByEmployeeId)
   const foundByUser = teamUsers.find(u => u.id === foundByEmployeeId)
   const soldByUser = teamUsers.find(u => u.id === soldByEmployeeId)
 
+  // A half is "assigned" when an employee is picked OR the ad-hoc option is
+  // chosen and a name is typed. A person key (id or name) lets us dedupe when
+  // the same person did both halves — and distinguish two different ad-hoc
+  // people (both share the ADHOC sentinel, so we key by name instead).
+  const foundAdhoc = foundByEmployeeId === ADHOC
+  const soldAdhoc = soldByEmployeeId === ADHOC
+  const foundByAssigned = !!foundByEmployeeId && (!foundAdhoc || !!foundByName.trim())
+  const soldByAssigned = !!soldByEmployeeId && (!soldAdhoc || !!soldByName.trim())
+  const foundKey = foundByAssigned ? (foundAdhoc ? `n:${foundByName.trim().toLowerCase()}` : foundByEmployeeId) : null
+  const soldKey = soldByAssigned ? (soldAdhoc ? `n:${soldByName.trim().toLowerCase()}` : soldByEmployeeId) : null
+  const samePerson = !!foundKey && foundKey === soldKey
+
+  const commissionPreview = calculateCommissionPreview(paymentType, foundKey, soldKey)
+
   // Effective (possibly user-edited) commission amounts that will be sent.
-  const effectiveFoundByCommission = foundByEmployeeId ? (parseFloat(foundByCommission) || 0) : 0
+  const effectiveFoundByCommission = foundByAssigned ? (parseFloat(foundByCommission) || 0) : 0
   const effectiveSoldByCommission =
-    soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId ? (parseFloat(soldByCommission) || 0) : 0
+    soldByAssigned && !samePerson ? (parseFloat(soldByCommission) || 0) : 0
   const effectiveTotalCommission = effectiveFoundByCommission + effectiveSoldByCommission
 
   return (
@@ -683,7 +715,20 @@ function NewSaleContent() {
                       {u.name}{u.email ? ` (${u.email})` : ''}
                     </option>
                   ))}
+                  <option value={ADHOC}>➕ Otra persona (nombre)</option>
                 </select>
+                {foundAdhoc && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-blue-700 mb-1">Nombre de la persona</label>
+                    <input
+                      type="text"
+                      value={foundByName}
+                      onChange={(e) => setFoundByName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-blue-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                      placeholder="Ej. Juan Pérez (externo, sin cuenta)"
+                    />
+                  </div>
+                )}
                 {foundByEmployeeId && (
                   <div className="mt-2">
                     <label className="block text-xs font-medium text-blue-700 mb-1">Comisión ($)</label>
@@ -720,8 +765,21 @@ function NewSaleContent() {
                       {u.name}{u.email ? ` (${u.email})` : ''}
                     </option>
                   ))}
+                  <option value={ADHOC}>➕ Otra persona (nombre)</option>
                 </select>
-                {soldByEmployeeId && soldByEmployeeId !== foundByEmployeeId && (
+                {soldAdhoc && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Nombre de la persona</label>
+                    <input
+                      type="text"
+                      value={soldByName}
+                      onChange={(e) => setSoldByName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-navy-900 text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+                      placeholder="Ej. Juan Pérez (externo, sin cuenta)"
+                    />
+                  </div>
+                )}
+                {soldByEmployeeId && !samePerson && (
                   <div className="mt-2">
                     <label className="block text-xs font-medium text-emerald-700 mb-1">Comisión ($)</label>
                     <div className="relative">
@@ -738,7 +796,7 @@ function NewSaleContent() {
                     </div>
                   </div>
                 )}
-                {soldByEmployeeId && soldByEmployeeId === foundByEmployeeId && (
+                {soldByEmployeeId && samePerson && (
                   <p className="mt-2 text-xs text-emerald-700">
                     Misma persona que encontró — comisión asignada arriba (100%).
                   </p>
