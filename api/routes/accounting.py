@@ -2861,6 +2861,53 @@ def _build_report_tree(accounts, balances, root_codes):
     return roots
 
 
+def _party_balance_summary(direction: str):
+    """Open A/R (by customer) or A/P (by vendor), grouped by counterparty — the
+    QuickBooks 'Customer/Vendor Balance Summary'. Sums the still-due balance of
+    every open invoice per party, so you see who owes you (receivable) or whom
+    you owe (payable), e.g. for house sales (RTO financed → Capital) and bills."""
+    try:
+        rows = (sb.table("accounting_invoices")
+                .select("counterparty_name, balance_due, total_amount, status, due_date")
+                .eq("direction", direction)
+                .in_("status", ["draft", "sent", "partial", "overdue"]).execute()).data or []
+    except Exception as e:
+        logger.warning(f"[party-balance] fetch failed: {e}")
+        rows = []
+    now = date.today().isoformat()
+    by_party: dict = {}
+    for r in rows:
+        bal = round(float(r.get("balance_due") or 0), 2)
+        if bal <= 0.01:
+            continue
+        name = (r.get("counterparty_name") or "Sin nombre").strip() or "Sin nombre"
+        p = by_party.setdefault(name, {"name": name, "balance": 0.0, "invoices": 0, "overdue": 0.0})
+        p["balance"] = round(p["balance"] + bal, 2)
+        p["invoices"] += 1
+        if r.get("due_date") and r["due_date"] < now:
+            p["overdue"] = round(p["overdue"] + bal, 2)
+    parties = sorted(by_party.values(), key=lambda x: -x["balance"])
+    return {
+        "direction": direction,
+        "title": "Customer Balance Summary" if direction == "receivable" else "Vendor Balance Summary",
+        "rows": parties,
+        "total": round(sum(p["balance"] for p in parties), 2),
+        "total_overdue": round(sum(p["overdue"] for p in parties), 2),
+    }
+
+
+@router.get("/reports/customer-balance-summary")
+async def customer_balance_summary():
+    """Saldo pendiente que deben los CLIENTES (cuentas por cobrar por cliente)."""
+    return _party_balance_summary("receivable")
+
+
+@router.get("/reports/vendor-balance-summary")
+async def vendor_balance_summary():
+    """Saldo pendiente que se debe a PROVEEDORES (cuentas por pagar por proveedor)."""
+    return _party_balance_summary("payable")
+
+
 @router.get("/reports/income-statement")
 async def get_income_statement(
     start_date: Optional[str] = None,

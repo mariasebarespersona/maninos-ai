@@ -2000,7 +2000,7 @@ function QBComputedLine({ label, amount, bold, thick, highlight, hideZeros = fal
 
 function StatementsTab() {
   const toast = useToast()
-  const [activeReport, setActiveReport] = useState<'income' | 'balance' | 'cashflow'>('income')
+  const [activeReport, setActiveReport] = useState<'income' | 'balance' | 'cashflow' | 'customer' | 'vendor'>('income')
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -2071,6 +2071,8 @@ function StatementsTab() {
         income: '/api/accounting/reports/income-statement',
         balance: '/api/accounting/reports/balance-sheet',
         cashflow: '/api/accounting/reports/cash-flow',
+        customer: '/api/accounting/reports/customer-balance-summary',
+        vendor: '/api/accounting/reports/vendor-balance-summary',
       }
       const res = await fetch(endpoints[activeReport])
       if (res.ok) setReport(await res.json())
@@ -2109,6 +2111,8 @@ function StatementsTab() {
           income: '/api/accounting/reports/income-statement',
           balance: '/api/accounting/reports/balance-sheet',
           cashflow: '/api/accounting/reports/cash-flow',
+          customer: '/api/accounting/reports/customer-balance-summary',
+          vendor: '/api/accounting/reports/vendor-balance-summary',
         }
         const res = await fetch(endpoints[activeReport])
         if (res.ok) setReport(await res.json())
@@ -2205,7 +2209,7 @@ function StatementsTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-lg border overflow-hidden w-fit" style={{ borderColor: 'var(--stone)' }}>
-          {([['income', 'Profit & Loss'], ['balance', 'Balance Sheet'], ['cashflow', 'Cash Flow']] as const).map(([key, label]) => (
+          {([['income', 'Profit & Loss'], ['balance', 'Balance Sheet'], ['cashflow', 'Cash Flow'], ['customer', 'Saldos Clientes'], ['vendor', 'Saldos Proveedores']] as const).map(([key, label]) => (
             <button key={key} onClick={() => { setActiveReport(key as any); setExpanded({}); setViewingSaved(null); setViewingSavedData(null) }}
               className={`px-4 py-2 text-sm font-medium transition-colors ${activeReport === key && !isViewingSaved ? 'text-white' : ''}`}
               style={activeReport === key && !isViewingSaved ? { backgroundColor: 'var(--navy-800)', color: 'white' } : { color: 'var(--charcoal)' }}>
@@ -2213,6 +2217,7 @@ function StatementsTab() {
             </button>
           ))}
         </div>
+        {effectiveActiveReport !== 'customer' && effectiveActiveReport !== 'vendor' && (
         <div className="flex gap-2">
           <button onClick={expandAll} className="px-3 py-1.5 text-xs rounded border hover:bg-stone-50 transition-colors" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
             Expandir todo
@@ -2258,6 +2263,7 @@ function StatementsTab() {
             </button>
           )}
         </div>
+        )}
       </div>
 
       {/* Viewing saved banner */}
@@ -2288,6 +2294,8 @@ function StatementsTab() {
         <QBIncomeStatement data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={(n) => setDrilldown({ accountId: n.id, label: n.name, code: n.code })} hideZeros={hideZeros} />
       ) : effectiveActiveReport === 'balance' ? (
         <QBBalanceSheet data={renderReport} expanded={expanded} toggleExpand={toggleExpand} onDrilldown={(n) => setDrilldown({ accountId: n.id, label: n.name, code: n.code })} hideZeros={hideZeros} />
+      ) : effectiveActiveReport === 'customer' || effectiveActiveReport === 'vendor' ? (
+        <PartyBalanceSummary data={renderReport} kind={effectiveActiveReport} fmtMoney={fmtMoney} />
       ) : (
         <CashFlowStatement data={renderReport} />
       )}
@@ -2625,6 +2633,63 @@ function QBBalanceSheet({ data, expanded, toggleExpand, onDrilldown, hideZeros =
         <span>Accrual basis</span>
         <span>{today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} {today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
+    </div>
+  )
+}
+
+// Customer / Vendor Balance Summary (QuickBooks-style): open A/R by customer
+// or A/P by vendor — who owes Maninos and whom Maninos owes.
+function PartyBalanceSummary({ data, kind, fmtMoney }: {
+  data: any; kind: 'customer' | 'vendor'; fmtMoney: (v: number | null | undefined) => string
+}) {
+  const rows: any[] = data?.rows || []
+  const isCustomer = kind === 'customer'
+  const noun = isCustomer ? 'cliente' : 'proveedor'
+  return (
+    <div className="card-luxury p-5 sm:p-8">
+      <div className="text-center mb-6">
+        <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>
+          {isCustomer ? 'Saldos de Clientes (por cobrar)' : 'Saldos de Proveedores (por pagar)'}
+        </h2>
+        <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+          {isCustomer ? 'Lo que cada cliente aún debe a Maninos' : 'Lo que Maninos aún debe a cada proveedor'}
+          {' · '}{rows.length} {rows.length === 1 ? noun : noun + 'es'}
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <div className="text-center py-10"><p className="text-sm" style={{ color: 'var(--ash)' }}>Sin saldos pendientes {isCustomer ? 'por cobrar' : 'por pagar'}.</p></div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--sand)' }}>
+                <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--slate)' }}>{isCustomer ? 'Cliente' : 'Proveedor'}</th>
+                <th className="px-3 py-2 text-center font-medium" style={{ color: 'var(--slate)' }}>Facturas</th>
+                <th className="px-3 py-2 text-right font-medium" style={{ color: 'var(--slate)' }}>Vencido</th>
+                <th className="px-3 py-2 text-right font-medium" style={{ color: 'var(--slate)' }}>Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b hover:bg-sand/20" style={{ borderColor: 'var(--sand)' }}>
+                  <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                  <td className="px-3 py-2.5 text-center" style={{ color: 'var(--ash)' }}>{r.invoices}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: r.overdue > 0 ? '#dc2626' : 'var(--ash)' }}>{r.overdue > 0 ? fmtMoney(r.overdue) : '—'}</td>
+                  <td className="px-3 py-2.5 text-right font-bold tabular-nums" style={{ color: isCustomer ? '#059669' : '#dc2626' }}>{fmtMoney(r.balance)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2" style={{ borderColor: 'var(--stone)' }}>
+                <td className="px-3 py-3 font-bold" style={{ color: 'var(--ink)' }}>TOTAL</td>
+                <td />
+                <td className="px-3 py-3 text-right tabular-nums font-medium" style={{ color: (data?.total_overdue || 0) > 0 ? '#dc2626' : 'var(--ash)' }}>{(data?.total_overdue || 0) > 0 ? fmtMoney(data.total_overdue) : '—'}</td>
+                <td className="px-3 py-3 text-right font-bold text-lg tabular-nums" style={{ color: 'var(--ink)' }}>{fmtMoney(data?.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
