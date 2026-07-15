@@ -452,7 +452,7 @@ async def mark_commission_paid(
     if payment.data["status"] == "paid":
         raise HTTPException(status_code=400, detail="Esta comisión ya fue pagada")
 
-    emp_name = _resolve_employee_name(payment.data["employee_id"]) or "Empleado"
+    emp_name = _resolve_employee_name(payment.data.get("employee_id")) or payment.data.get("payee_name") or "Comisionista"
 
     sale = sb.table("sales").select("sale_type, property_id, properties(address)").eq("id", payment.data["sale_id"]).single().execute()
     sale_type = sale.data.get("sale_type", "") if sale.data else ""
