@@ -2433,6 +2433,17 @@ def record_invoice_payment(
         raise HTTPException(status_code=404, detail="Invoice not found")
     invoice = inv.data[0]
 
+    # A "[PO:]" bill is a DOCUMENT-ONLY mirror of an outbound payment_order (it
+    # has NO accrual leg). Its real payment happens through that order's
+    # approve/disburse flow, which posts the actual cash+expense/inventory entry.
+    # Paying it here would double-count the bank and leave a phantom A/P — so
+    # refuse from every entry point (UI, reconciliation, API) and point to the
+    # right place. Partial payments on REAL invoices are unaffected.
+    if "[PO:" in (invoice.get("notes") or ""):
+        raise HTTPException(status_code=400,
+            detail="Esta factura se paga desde su ORDEN DE PAGO (Notificaciones → Por Aprobar), no desde Facturación. "
+                   "Se generó automáticamente desde una orden de pago; pagarla aquí duplicaría el movimiento.")
+
     total = float(invoice.get("total_amount") or 0)
     already = float(invoice.get("amount_paid") or 0)
     balance = round(total - already, 2)
@@ -2795,13 +2806,17 @@ async def get_open_invoices(direction: Optional[str] = None):
     Accepting a movement↔factura records the cobro/pago automatically."""
     q = (sb.table("accounting_invoices")
          .select("id, invoice_number, direction, counterparty_name, total_amount, "
-                 "amount_paid, balance_due, status, due_date, description, property_id")
+                 "amount_paid, balance_due, status, due_date, description, property_id, notes")
          .in_("status", ["draft", "sent", "partial", "overdue"])
          .order("due_date", desc=False))
     if direction in ("receivable", "payable"):
         q = q.eq("direction", direction)
     rows = q.execute().data or []
-    rows = [r for r in rows if float(r.get("balance_due") or 0) > 0.01]
+    # Exclude "[PO:]" document-only mirror bills: they're paid via their payment
+    # order (disburse), not by matching a bank movement here — matching one would
+    # double-count. Keep the balance filter too.
+    rows = [r for r in rows if float(r.get("balance_due") or 0) > 0.01
+            and "[PO:" not in (r.get("notes") or "")]
     return {"invoices": rows}
 
 

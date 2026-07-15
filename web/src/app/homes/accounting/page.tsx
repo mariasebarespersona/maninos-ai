@@ -7,7 +7,7 @@ import {
   ChevronRight, Calendar, Download, Loader2, Landmark, BarChart3,
   PieChart, Wallet, Receipt, Home, Users, Hammer, Truck, Award,
   Settings, Eye, X, Check, AlertCircle, FileText, Repeat, Banknote,
-  CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft,
+  CircleDollarSign, ArrowRightLeft, MapPin, Clock, ChevronLeft, Info,
   MoreHorizontal, Scale, BookOpen, ClipboardCheck, History,
   ShieldCheck, Upload, FileUp, Brain, CheckCircle2, SkipForward,
   ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors, AlertTriangle, Package
@@ -1405,11 +1405,23 @@ function InvoicesTab() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {inv.balance_due > 0 && inv.status !== 'voided' && (
-                          <button onClick={() => setPayInvoice(inv)}
-                            title="Registrar pago"
-                            className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors">
-                            <CircleDollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
-                          </button>
+                          (inv.notes || '').includes('[PO:') ? (
+                            // Document-only mirror of a payment order — it's paid
+                            // from its ORDER (Notificaciones), not here. Guide the
+                            // user there instead of offering a (double-counting) pay.
+                            <a href="/homes/notifications"
+                              title="Esta factura se paga desde su ORDEN DE PAGO (Notificaciones → Por Aprobar), no aquí. Se generó automáticamente desde una orden de pago."
+                              className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors flex items-center gap-1">
+                              <Info className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                              <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--gold-600)' }}>Orden de pago</span>
+                            </a>
+                          ) : (
+                            <button onClick={() => setPayInvoice(inv)}
+                              title="Registrar pago (admite pagos parciales)"
+                              className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors">
+                              <CircleDollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                            </button>
+                          )
                         )}
                         {inv.status !== 'voided' && (
                           <button onClick={() => setReclassInvoice(inv)}
