@@ -24,6 +24,8 @@ interface PromissoryNote {
   annual_rate: number
   monthly_rate: number
   term_months: number
+  interest_only_months?: number | null
+  amortization_months?: number | null
   total_interest: number
   total_due: number
   subscriber_name: string
@@ -48,12 +50,11 @@ interface PromissoryNote {
 }
 
 interface ScheduleRow {
-  term: number
-  interest: number
-  accrued_interest: number
-  payment: number
+  period: number
   principal: number
-  pending: number
+  interest: number
+  payment: number
+  balance: number
 }
 
 interface PaymentRecord {
@@ -218,7 +219,8 @@ export default function PromissoryNoteDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState({
     annual_rate: '',
-    term_months: '',
+    interest_only_months: '',
+    amortization_months: '',
     notes: '',
     subscriber_representative: '',
     lender_representative: '',
@@ -236,7 +238,8 @@ export default function PromissoryNoteDetailPage() {
         setPayments(data.payments || [])
         setEditData({
           annual_rate: String(data.note.annual_rate),
-          term_months: String(data.note.term_months),
+          interest_only_months: String(data.note.interest_only_months ?? data.interest_only_months ?? 0),
+          amortization_months: String(data.note.amortization_months ?? data.amortization_months ?? data.note.term_months),
           notes: data.note.notes || '',
           subscriber_representative: data.note.subscriber_representative || '',
           lender_representative: data.note.lender_representative || '',
@@ -259,7 +262,8 @@ export default function PromissoryNoteDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           annual_rate: parseFloat(editData.annual_rate),
-          term_months: parseInt(editData.term_months),
+          interest_only_months: parseInt(editData.interest_only_months) || 0,
+          amortization_months: parseInt(editData.amortization_months) || 0,
           notes: editData.notes || null,
           subscriber_representative: editData.subscriber_representative || null,
           lender_representative: editData.lender_representative || null,
@@ -320,8 +324,8 @@ export default function PromissoryNoteDetailPage() {
 
   const handleExportCSV = () => {
     if (!schedule.length || !note) return
-    const headers = ['Month', 'Monthly Interest', 'Accrued Interest', 'Principal', 'Total Owed']
-    const rows = schedule.map(r => [r.term, r.interest.toFixed(2), r.accrued_interest.toFixed(2), r.principal.toFixed(2), r.pending.toFixed(2)])
+    const headers = ['Period', 'Principal', 'Interest', 'Payment', 'Balance']
+    const rows = schedule.map(r => [r.period, r.principal.toFixed(2), r.interest.toFixed(2), r.payment.toFixed(2), r.balance.toFixed(2)])
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -502,8 +506,12 @@ export default function PromissoryNoteDetailPage() {
               <input type="number" value={editData.annual_rate} onChange={e => setEditData({ ...editData, annual_rate: e.target.value })} className="input w-full" step="0.5" />
             </div>
             <div>
-              <label className="label">Plazo (meses)</label>
-              <input type="number" value={editData.term_months} onChange={e => setEditData({ ...editData, term_months: e.target.value })} className="input w-full" />
+              <label className="label">Meses interest-only</label>
+              <input type="number" min="0" value={editData.interest_only_months} onChange={e => setEditData({ ...editData, interest_only_months: e.target.value })} className="input w-full" />
+            </div>
+            <div>
+              <label className="label">Meses de amortización</label>
+              <input type="number" min="0" value={editData.amortization_months} onChange={e => setEditData({ ...editData, amortization_months: e.target.value })} className="input w-full" />
             </div>
             <div>
               <label className="label">Representante Capital</label>
@@ -596,10 +604,11 @@ export default function PromissoryNoteDetailPage() {
               <tbody>
                 {[
                   ['Loan', fmt(note.loan_amount)],
-                  ['Annual rate (simple)', `${note.annual_rate}%`],
+                  ['Annual rate', `${note.annual_rate}%`],
                   ['Monthly rate', `${(note.monthly_rate * 100).toFixed(2)}%`],
-                  ['Monthly interest', fmt(note.loan_amount * note.monthly_rate)],
-                  ['Months', String(note.term_months)],
+                  ['Interest-only months', String(note.interest_only_months ?? 0)],
+                  ['Amortization months', String(note.amortization_months ?? note.term_months)],
+                  ['Total months', String(note.term_months)],
                   ['Total interest', fmt(note.total_interest)],
                   ['Total due', fmt(note.total_due)],
                 ].map(([label, value]) => (
@@ -612,12 +621,12 @@ export default function PromissoryNoteDetailPage() {
             </table>
           </div>
 
-          {/* Schedule Table — Simple Interest */}
+          {/* Schedule Table — two-tranche */}
           <div className="mb-6 overflow-x-auto">
             <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--cream)' }}>
-                  {['Month', 'Monthly Interest', 'Accrued Interest', 'Principal', 'Total Owed'].map(h => (
+                  {['Period', 'Principal', 'Interest', 'Payment', 'Balance'].map(h => (
                     <th key={h} className="py-2 px-3 text-center font-semibold text-xs" style={{ color: 'var(--charcoal)', borderBottom: '2px solid var(--sand)' }}>
                       {h}
                     </th>
@@ -626,19 +635,19 @@ export default function PromissoryNoteDetailPage() {
               </thead>
               <tbody>
                 {schedule.map(row => (
-                  <tr key={row.term} style={{ borderBottom: '1px solid var(--sand)' }}>
-                    <td className="py-1.5 px-3 text-center font-medium" style={{ color: 'var(--charcoal)' }}>{row.term}</td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: row.interest > 0 ? 'var(--gold-700)' : 'var(--ash)' }}>
-                      {row.interest > 0 ? `$ ${row.interest.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '$ -'}
-                    </td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--charcoal)' }}>
-                      $ {row.accrued_interest.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--charcoal)' }}>
+                  <tr key={row.period} style={{ borderBottom: '1px solid var(--sand)' }}>
+                    <td className="py-1.5 px-3 text-center font-medium" style={{ color: 'var(--charcoal)' }}>{row.period}</td>
+                    <td className="py-1.5 px-3 text-right" style={{ color: row.principal > 0 ? 'var(--navy-800)' : 'var(--ash)' }}>
                       $ {row.principal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </td>
+                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--gold-700)' }}>
+                      $ {row.interest.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--charcoal)' }}>
+                      $ {row.payment.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </td>
                     <td className="py-1.5 px-3 text-right font-medium" style={{ color: 'var(--navy-800)' }}>
-                      $ {row.pending.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      $ {row.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}
@@ -646,12 +655,11 @@ export default function PromissoryNoteDetailPage() {
             </table>
           </div>
 
-          {/* Simple interest note */}
+          {/* Two-tranche note */}
           <div className="text-xs mb-6 px-2" style={{ color: 'var(--ash)' }}>
             <p><em>
-              Simple interest: {fmt(note.loan_amount)} × {(note.monthly_rate * 100).toFixed(2)}%/month = {fmt(note.loan_amount * note.monthly_rate)}/month.
-              Interest does not compound — it is always calculated on the original principal.
-              Payments are flexible and may be made at any time.
+              Tramo 1 (interest-only): pago = {fmt(note.loan_amount * note.monthly_rate)}/mes (solo interés), el capital no baja.
+              Tramo 2 (amortización): pago fijo capital + interés; el interés se recalcula sobre el saldo restante y el capital baja cada mes.
             </em></p>
           </div>
 
@@ -710,24 +718,22 @@ export default function PromissoryNoteDetailPage() {
         </div>
       )}
 
-      {/* TAB: Schedule — Simple Interest */}
+      {/* TAB: Schedule — two-tranche amortization */}
       {activeTab === 'schedule' && (() => {
         const monthlyInt = note.loan_amount * note.monthly_rate
 
-        // ── Payment-status helpers ──────────────────────────────────
-        // Cumulative obligation at month M:
-        //   • M = 0 → 0 (no payment due yet, just disbursement)
-        //   • 1 ≤ M < term_months → M × monthlyInterest (interest-only)
-        //   • M = term_months → total_due (principal + all interest)
-        const cumulativeObligation = (m: number) => {
-          if (m <= 0) return 0
-          if (m < note.term_months) return m * monthlyInt
-          return note.total_due // final month: everything due
-        }
+        // ── Payment-status helpers (two-tranche) ────────────────────
+        // Cumulative payment obligation up to and including period m,
+        // summed straight from the schedule's per-period payments.
+        const cumByPeriod: Record<number, number> = {}
+        let running = 0
+        for (const r of schedule) { running += r.payment; cumByPeriod[r.period] = running }
+        const totalScheduled = running
+        const cumulativeObligation = (m: number) => m <= 0 ? 0 : (cumByPeriod[m] ?? totalScheduled)
 
         type RowStatus = 'paid' | 'partial' | 'pending' | 'neutral'
         const rowStatus = (m: number): RowStatus => {
-          if (m === 0) return 'neutral'
+          if (m <= 0) return 'neutral'
           const obligation = cumulativeObligation(m)
           const prevObligation = cumulativeObligation(m - 1)
           if (paidAmount >= obligation) return 'paid'
@@ -744,10 +750,9 @@ export default function PromissoryNoteDetailPage() {
           }
         }
 
-        // How many months fully covered
-        const monthsPaid = monthlyInt > 0
-          ? Math.min(note.term_months, Math.floor(paidAmount / monthlyInt))
-          : 0
+        // How many periods are fully covered by what's been paid
+        let monthsPaid = 0
+        for (const r of schedule) { if (paidAmount >= cumulativeObligation(r.period)) monthsPaid = r.period; else break }
         const monthsRemaining = note.term_months - monthsPaid
 
         return (
@@ -755,7 +760,7 @@ export default function PromissoryNoteDetailPage() {
           <div className="card-luxury overflow-hidden">
             <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--sand)' }}>
               <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
-                Tabla de Interés Simple
+                Tabla de Amortización
               </h3>
               <button onClick={handleExportCSV} className="btn-ghost btn-sm">
                 <Download className="w-4 h-4" /> CSV
@@ -769,7 +774,7 @@ export default function PromissoryNoteDetailPage() {
                 <p className="font-serif font-semibold" style={{ color: 'var(--ink)' }}>{fmt(note.loan_amount)}</p>
               </div>
               <div>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>Tasa Anual (simple)</p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Tasa Anual</p>
                 <p className="font-serif font-semibold" style={{ color: 'var(--charcoal)' }}>{note.annual_rate}%</p>
               </div>
               <div>
@@ -831,21 +836,21 @@ export default function PromissoryNoteDetailPage() {
                 <thead>
                   <tr>
                     <th className="text-center" style={{ width: 50 }}></th>
-                    <th className="text-center">Mes</th>
-                    <th className="text-right">Interés Mensual</th>
-                    <th className="text-right">Interés Acumulado</th>
+                    <th className="text-center">Periodo</th>
                     <th className="text-right">Principal</th>
-                    <th className="text-right">Total Adeudado</th>
+                    <th className="text-right">Interés</th>
+                    <th className="text-right">Pago</th>
+                    <th className="text-right">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {schedule.map(row => {
-                    const st = rowStatus(row.term)
+                    const st = rowStatus(row.period)
                     const sty = statusStyle(st)
                     return (
                     <tr
-                      key={row.term}
-                      className={row.term === note.term_months ? 'font-semibold' : ''}
+                      key={row.period}
+                      className={row.period === note.term_months ? 'font-semibold' : ''}
                       style={{
                         backgroundColor: sty.bg,
                         opacity: sty.opacity,
@@ -856,19 +861,19 @@ export default function PromissoryNoteDetailPage() {
                         {sty.icon}
                       </td>
                       <td className="text-center" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
-                        {row.term}
+                        {row.period}
                       </td>
-                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : row.interest > 0 ? 'var(--gold-700)' : 'var(--ash)' }}>
-                        {row.interest > 0 ? fmt(row.interest) : '—'}
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : row.principal > 0 ? 'var(--navy-800)' : 'var(--ash)' }}>
+                        {row.principal > 0 ? fmt(row.principal) : '—'}
+                      </td>
+                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--gold-700)' }}>
+                        {fmt(row.interest)}
                       </td>
                       <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
-                        {fmt(row.accrued_interest)}
-                      </td>
-                      <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : 'var(--charcoal)' }}>
-                        {fmt(row.principal)}
+                        {fmt(row.payment)}
                       </td>
                       <td className="text-right" style={{ color: st === 'paid' ? 'var(--ash)' : st === 'pending' ? 'var(--error)' : 'var(--navy-800)' }}>
-                        {fmt(row.pending)}
+                        {fmt(row.balance)}
                       </td>
                     </tr>
                     )
@@ -879,18 +884,18 @@ export default function PromissoryNoteDetailPage() {
 
             {/* Formula explanation */}
             <div className="p-5" style={{ borderTop: '1px solid var(--sand)', backgroundColor: 'var(--cream)' }}>
-              <p className="text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Fórmula (interés simple):</p>
+              <p className="text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Estructura (2 tramos):</p>
               <p className="text-xs font-mono" style={{ color: 'var(--charcoal)' }}>
-                Interés mensual = Principal × Tasa mensual = {fmt(note.loan_amount)} × {(note.monthly_rate * 100).toFixed(4)}% = {fmt(monthlyInt)}
+                Tramo 1 — solo interés ({note.interest_only_months ?? 0} meses): pago = {fmt(note.loan_amount)} × {(note.monthly_rate * 100).toFixed(4)}% = {fmt(monthlyInt)}/mes (el capital no baja)
               </p>
               <p className="text-xs font-mono mt-1" style={{ color: 'var(--charcoal)' }}>
-                Total = Principal + (Interés mensual × meses) = {fmt(note.loan_amount)} + ({fmt(monthlyInt)} × {note.term_months}) = {fmt(note.total_due)}
+                Tramo 2 — amortización ({note.amortization_months ?? note.term_months} meses): pago fijo capital + interés; el interés se recalcula sobre el saldo restante y el capital baja cada mes hasta $0.
+              </p>
+              <p className="text-xs font-mono mt-1" style={{ color: 'var(--charcoal)' }}>
+                Interés total = {fmt(note.total_interest)} · Total a pagar = {fmt(note.total_due)}
               </p>
               <p className="text-xs mt-2" style={{ color: 'var(--ash)' }}>
-                Interés simple no acumulativo — el interés siempre se calcula sobre el principal original.
-                Los pagos son flexibles: mensuales, parciales, o de golpe.
-                <br />
-                <strong>Colores:</strong> Gris = pagado · Rojo = pendiente. Si se paga más de lo acordado mensualmente, los meses cubiertos se actualizan automáticamente.
+                <strong>Colores:</strong> Gris = pagado · Rojo = pendiente. Si se paga más de lo agendado, los periodos cubiertos se actualizan automáticamente.
               </p>
             </div>
           </div>
