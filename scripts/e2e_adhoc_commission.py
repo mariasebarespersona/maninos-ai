@@ -95,8 +95,9 @@ async def main():
               inv and f"${float(inv.get('total_amount') or 0):,.0f}")
 
         # 3) list handler surfaces the ad-hoc name (not "Desconocido")
-        listing = await list_commission_payments() or []
-        lrow = next((p for p in listing if (p.get("payee_name") or "") == PERSON), None)
+        listing = await list_commission_payments(month=None, year=None, employee_id=None, status=None)
+        lrows = (listing or {}).get("payments", [])
+        lrow = next((p for p in lrows if (p.get("payee_name") or "") == PERSON), None)
         check("list_commission_payments muestra el nombre ad-hoc", lrow is not None and lrow.get("employee_name") == PERSON,
               lrow and lrow.get("employee_name"))
 
