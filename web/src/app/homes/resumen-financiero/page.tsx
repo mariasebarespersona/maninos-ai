@@ -134,7 +134,9 @@ export default function ResumenFinancieroPage() {
                 <th className="px-2 py-2">Estado</th>
                 <th className="px-2 py-2 text-right">Inversión</th>
                 <th className="px-2 py-2">Venta</th>
-                <th className="px-2 py-2 text-right">Utilidad</th>
+                <th className="px-2 py-2 text-right">
+                  <span title="Ganancia real = Precio de venta − costos reales (Compra + Renovación + Movida + Comisión). No resta el Margen (ese es la ganancia objetivo, ya incluida en el precio). Solo aplica a casas vendidas." className="cursor-help border-b border-dotted border-navy-300">Utilidad ⓘ</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -302,10 +304,14 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
           { label: 'Precio venta', value: p.sale_price, bold: true, color: p.sale_price > 0 ? 'text-navy-900' : 'text-navy-300' },
           // Utilidad (ganancia) ALWAYS shows its real figure — a loss in red, a
           // break-even as $0 — never "—" (that hid negative/zero profit).
-          { label: 'Utilidad', value: p.profit, bold: true, always: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-500' },
+          { label: 'Utilidad', value: p.profit, bold: true, always: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-500',
+            hint: 'Ganancia real de la casa = Precio de venta − costos reales (Compra + Renovación + Movida + Comisión). NO resta el Margen (ese es la ganancia objetivo, ya incluida en el precio de venta). Solo aplica cuando la casa está vendida.' },
         ].map(f => (
           <div key={f.label} className="flex justify-between items-center py-0.5">
-            <span className="text-navy-500">{f.label}</span>
+            <span className="text-navy-500 flex items-center gap-1">
+              {f.label}
+              {f.hint && <span title={f.hint} className="cursor-help text-navy-400">ⓘ</span>}
+            </span>
             <span className={`${f.bold ? 'font-bold' : 'font-medium'} ${f.color || (f.value > 0 ? 'text-navy-900' : 'text-navy-300')}`}>
               {f.always || f.value > 0 ? fmt(f.value) : '—'}
             </span>
