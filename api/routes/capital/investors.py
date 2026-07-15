@@ -623,3 +623,45 @@ async def get_investments_summary(period: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{investor_id}")
+async def delete_investor(investor_id: str):
+    """
+    Delete an investor and their financial footprint so nothing is orphaned:
+    investments + promissory notes (+ note payments) cascade via FK; capital_flows
+    are RESTRICT so they're removed explicitly first; capital_transactions/invoices/
+    payment_orders keep their rows with investor_id set to NULL (ON DELETE SET NULL).
+    The frontend confirms before calling this.
+    """
+    try:
+        inv = sb.table("investors").select("id, name").eq("id", investor_id).single().execute()
+        if not inv.data:
+            raise HTTPException(status_code=404, detail="Inversionista no encontrado")
+        name = inv.data.get("name", "")
+
+        # capital_flows have RESTRICT FKs on investor_id AND investment_id, so remove
+        # them (for this investor and for their investments) before the cascade.
+        inv_ids = [r["id"] for r in (sb.table("investments").select("id").eq("investor_id", investor_id).execute().data or [])]
+        sb.table("capital_flows").delete().eq("investor_id", investor_id).execute()
+        for iid in inv_ids:
+            try:
+                sb.table("capital_flows").delete().eq("investment_id", iid).execute()
+            except Exception:
+                pass
+
+        # A ticket bought FROM this investor references it (RESTRICT) — detach it.
+        try:
+            sb.table("investments").update({"transferred_from_investor_id": None}) \
+                .eq("transferred_from_investor_id", investor_id).execute()
+        except Exception:
+            pass
+
+        # Delete the investor → cascades investments + promissory_notes (+ note payments).
+        sb.table("investors").delete().eq("id", investor_id).execute()
+        return {"ok": True, "message": f"Inversionista '{name}' eliminado"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting investor {investor_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

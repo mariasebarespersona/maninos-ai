@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, DollarSign, Calendar, Clock, AlertTriangle,
-  CheckCircle2, User, Search, ArrowRight, Landmark, TrendingUp
+  CheckCircle2, User, Search, ArrowRight, Landmark, TrendingUp, Trash2
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -64,6 +64,19 @@ export default function PromissoryNotesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [deleteTarget, setDeleteTarget] = useState<PromissoryNote | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDeleteNote = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/capital/promissory-notes/${deleteTarget.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.ok) { toast.success('Nota eliminada'); setDeleteTarget(null); loadData() }
+      else toast.error(data.detail || 'Error al eliminar')
+    } catch { toast.error('Error al eliminar') } finally { setDeleting(false) }
+  }
 
   // Create form state
   const [showCreate, setShowCreate] = useState(false)
@@ -335,11 +348,45 @@ export default function PromissoryNotesPage() {
                       </div>
                     </div>
                   </div>
-                  <ArrowRight className="w-5 h-5 flex-shrink-0 mt-2" style={{ color: 'var(--ash)' }} />
+                  <div className="flex items-center gap-1 flex-shrink-0 mt-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(note) }}
+                      className="p-1.5 rounded hover:opacity-80"
+                      title="Eliminar nota"
+                      aria-label="Eliminar nota"
+                    >
+                      <Trash2 className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                    </button>
+                    <ArrowRight className="w-5 h-5" style={{ color: 'var(--ash)' }} />
+                  </div>
                 </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
+                <Trash2 className="w-5 h-5" style={{ color: 'var(--error)' }} />
+              </div>
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Eliminar nota promisoria</h3>
+            </div>
+            <p className="text-sm" style={{ color: 'var(--slate)' }}>
+              ¿Eliminar la nota de <b>{fmt(deleteTarget.loan_amount)}</b> ({deleteTarget.investors?.name || deleteTarget.lender_name})?
+              Se borrará también su historial de pagos. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleDeleteNote} disabled={deleting} className="btn flex-1 text-white" style={{ backgroundColor: 'var(--error)' }}>
+                {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary">Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Landmark, Plus, User, DollarSign, Briefcase, Phone, Mail,
   TrendingUp, ArrowRight, FileText, Search, AlertTriangle,
-  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle
+  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle, Trash2
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -85,6 +85,19 @@ export default function InvestorsPage() {
   const [showAlerts, setShowAlerts] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [period, setPeriod] = useState<string>('all')
+  const [deleteTarget, setDeleteTarget] = useState<Investor | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDeleteInvestor = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/capital/investors/${deleteTarget.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.ok) { toast.success('Inversionista eliminado'); setDeleteTarget(null); loadData() }
+      else toast.error(data.detail || 'Error al eliminar')
+    } catch { toast.error('Error al eliminar') } finally { setDeleting(false) }
+  }
 
   // Create form
   const [name, setName] = useState('')
@@ -500,12 +513,22 @@ export default function InvestorsPage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => router.push(`/capital/investors/${inv.id}`)}
-                    className="btn-ghost btn-sm w-full mt-3 justify-center"
-                  >
-                    Ver Detalle <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => router.push(`/capital/investors/${inv.id}`)}
+                      className="btn-ghost btn-sm flex-1 justify-center"
+                    >
+                      Ver Detalle <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(inv)}
+                      className="btn-ghost btn-sm px-2"
+                      title="Eliminar inversionista"
+                      aria-label="Eliminar inversionista"
+                    >
+                      <Trash2 className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -625,6 +648,30 @@ export default function InvestorsPage() {
                 {creating ? 'Creando...' : 'Registrar'}
               </button>
               <button onClick={() => { setShowCreate(false); setAllocations([]) }} className="btn-secondary">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--error-light)' }}>
+                <Trash2 className="w-5 h-5" style={{ color: 'var(--error)' }} />
+              </div>
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Eliminar inversionista</h3>
+            </div>
+            <p className="text-sm" style={{ color: 'var(--slate)' }}>
+              ¿Eliminar a <b>{deleteTarget.name}</b>? Se borrarán también sus inversiones y notas promisorias.
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleDeleteInvestor} disabled={deleting} className="btn flex-1 text-white" style={{ backgroundColor: 'var(--error)' }}>
+                {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary">Cancelar</button>
             </div>
           </div>
         </div>

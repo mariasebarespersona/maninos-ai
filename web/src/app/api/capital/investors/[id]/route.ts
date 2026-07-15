@@ -42,5 +42,23 @@ export async function PUT(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const res = await fetch(`${API}/api/capital/investors/${params.id}`, {
+      method: 'DELETE',
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: 'Backend unavailable' },
+      { status: 500 }
+    )
+  }
+}
+
 
 

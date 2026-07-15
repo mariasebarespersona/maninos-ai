@@ -1028,23 +1028,18 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
 
 @router.delete("/{note_id}")
 async def delete_promissory_note(note_id: str):
-    """Delete a draft promissory note."""
+    """Delete a promissory note (any status). Its payment history is removed via
+    the ON DELETE CASCADE on promissory_note_payments. The frontend confirms first."""
     try:
         note = sb.table("promissory_notes") \
             .select("status") \
             .eq("id", note_id) \
             .single() \
             .execute()
-        
+
         if not note.data:
             raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
-        
-        if note.data["status"] not in ("draft", "cancelled"):
-            raise HTTPException(
-                status_code=400,
-                detail="Solo se pueden eliminar notas en borrador o canceladas"
-            )
-        
+
         sb.table("promissory_notes").delete().eq("id", note_id).execute()
         return {"ok": True, "message": "Nota promisoria eliminada"}
     except HTTPException:
