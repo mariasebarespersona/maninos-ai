@@ -752,21 +752,23 @@ async def download_promissory_note_pdf(note_id: str):
             d.add(Line(30, 16, 30, 38, strokeColor=navy, strokeWidth=1.5))
             return d
         
+        # Issuing entity (Maker): "de Jorge" → Maninos Capital, "de Sebastian" → Maninos Homes.
+        # Carried in subscriber_name; the representative name stays Sebastian in both cases.
+        # Drives BOTH the brand-title header and the Maker in the body/signature.
+        maker_entity = (note.get("subscriber_name") or MAKER_NAME).upper()
+
         elements.append(_draw_phoenician_boat())
-        elements.append(Paragraph("MANINOS CAPITAL LLC", ParagraphStyle(
+        elements.append(Paragraph(maker_entity, ParagraphStyle(
             name='BrandTitle', parent=styles['Normal'],
             fontSize=11, alignment=TA_CENTER, spaceAfter=4,
             textColor=colors.HexColor("#1a2744"),
             fontName='Helvetica-Bold',
         )))
         elements.append(Paragraph("PROMISSORY NOTE", styles['DocTitle']))
-        
+
         # ── Dynamic fields ──
         lender = note.get("lender_name") or investor.get("name", "") or "_______________"
         maker_rep = note.get("subscriber_representative") or MAKER_REP_DEFAULT
-        # Issuing entity (Maker): "de Jorge" → Maninos Capital, "de Sebastian" → Maninos Homes.
-        # Carried in subscriber_name; the representative name stays Sebastian in both cases.
-        maker_entity = (note.get("subscriber_name") or MAKER_NAME).upper()
         city = note.get("signed_city", "Conroe")
         state = note.get("signed_state", "Texas")
         annual_rate = float(note.get("annual_rate", 12) or 12)
