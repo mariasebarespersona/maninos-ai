@@ -3685,10 +3685,11 @@ function SummaryLine({ label, amount, bold, highlight, pct }: { label: string; a
 function NewTransactionModal({ accounts, allAccounts, bankAccounts, yards, onClose, onCreated }: {
   accounts: AccountInfo[]; allAccounts: any[]; bankAccounts: BankAccount[]; yards: YardBreakdown[]; onClose: () => void; onCreated: () => void
 }) {
+  // transaction_type is now generic (set by the Ingreso/Gasto toggle). The
+  // ACCOUNT (account_id) is the real classification — Abby picks it from the
+  // full catalog. account_id drives the ledger, desglose bucket, P&L & reports.
   const [form, setForm] = useState({ transaction_date: new Date().toISOString().split('T')[0], transaction_type: 'other_expense', amount: '', is_income: false, description: '', counterparty_name: '', payment_method: '', payment_reference: '', bank_account_id: '', yard_id: '', notes: '', account_id: '' })
   const [saving, setSaving] = useState(false)
-  const incomeTypes = ['sale_cash', 'sale_rto_capital', 'deposit_received', 'other_income']
-  const expenseTypes = ['purchase_house', 'renovation', 'moving_transport', 'commission', 'operating_expense', 'other_expense']
 
   // Full chart of accounts for the manual account picker (Abby request): show
   // every leaf account of the relevant side so she can book a manual cash
@@ -3701,6 +3702,7 @@ function NewTransactionModal({ accounts, allAccounts, bankAccounts, yards, onClo
 
   const handleSubmit = async () => {
     if (!form.amount || !form.description) return alert('Completa monto y descripción')
+    if (!form.account_id) return alert('Elige la cuenta contable')
     setSaving(true)
     try {
       const body: any = { ...form, amount: parseFloat(form.amount) }
@@ -3724,19 +3726,17 @@ function NewTransactionModal({ accounts, allAccounts, bankAccounts, yards, onClo
             <button onClick={() => setForm(f => ({ ...f, is_income: false, transaction_type: 'other_expense', account_id: '' }))}
               className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${!form.is_income ? 'bg-red-500 text-white' : ''}`}><ArrowDownRight className="w-4 h-4" /> Gasto</button>
           </div>
-          <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Tipo</label>
-            <select value={form.transaction_type} onChange={e => setForm(f => ({ ...f, transaction_type: e.target.value, is_income: incomeTypes.includes(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
-              {(form.is_income ? incomeTypes : expenseTypes).map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-            </select></div>
-          {/* Full chart-of-accounts picker (Abby request): book a manual
-              income/expense to a specific account. Overrides the Tipo when set. */}
+          {/* The account IS the classification — Abby picks it from the full
+              catalog (no more generic "Tipo"). transaction_type is set behind
+              the scenes to a generic other_income/other_expense; the account_id
+              drives the ledger, the desglose bucket, the P&L and the reports. */}
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>
-              Cuenta contable <span style={{ color: 'var(--ash)' }}>(catálogo completo — opcional)</span>
+              Cuenta contable <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <select value={form.account_id} onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))}
-              className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
-              <option value="">— Usar el Tipo de arriba —</option>
+              className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: form.account_id ? 'var(--stone)' : '#f59e0b' }}>
+              <option value="">— Elige la cuenta ({form.is_income ? 'ingreso' : 'gasto'}) —</option>
               {catalogTypes.map((ty: string) => (
                 <optgroup key={ty} label={ty}>
                   {catalog.filter((a: any) => a.account_type === ty)
@@ -3746,7 +3746,7 @@ function NewTransactionModal({ accounts, allAccounts, bankAccounts, yards, onClo
               ))}
             </select>
             <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>
-              Elige una cuenta específica (ej. insumos de oficina, honorarios/títulos). Si la dejas vacía, se usa el Tipo.
+              Elige la cuenta del catálogo (ej. insumos de oficina, honorarios/títulos). El catálogo cambia según sea Ingreso o Gasto.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
