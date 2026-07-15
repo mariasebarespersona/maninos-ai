@@ -22,7 +22,6 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
-import AIChatWidget from '@/components/AIChatWidget'
 import TourProvider from '@/components/tour/TourProvider'
 
 interface NavItem {
@@ -363,8 +362,6 @@ export default function HomesLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* AI Chat Widget */}
-      <AIChatWidget />
       <TourProvider portal="homes" />
     </div>
   )
