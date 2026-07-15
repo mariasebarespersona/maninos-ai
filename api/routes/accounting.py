@@ -5714,11 +5714,13 @@ async def delete_bank_statement(statement_id: str):
             # whose transaction_id is the matched_transaction_id (which we
             # set to the bank leg of the pair we created in reconcile-confirm).
             target_txn_id_for_inv_check = matched_txn_id or posted_txn_id
+            autocollect_handled = False   # invoice auto-collect → the whole pair goes
             if target_txn_id_for_inv_check:
                 inv_pay_res = (sb.table("accounting_invoice_payments")
                                .select("*").eq("transaction_id", target_txn_id_for_inv_check)
                                .execute()).data or []
                 for pay in inv_pay_res:
+                    autocollect_handled = True
                     # Revert the invoice
                     inv_id = pay.get("invoice_id")
                     if inv_id:
@@ -5739,6 +5741,24 @@ async def delete_bank_statement(statement_id: str):
                             reverted_invoices += 1
                     # Delete the payment row itself
                     sb.table("accounting_invoice_payments").delete().eq("id", pay["id"]).execute()
+                    # AND delete the LEDGER PAIR the reconciliation created (bank
+                    # leg + its linked A/R leg). This is the fix: record_invoice_
+                    # payment's cash pair isn't tagged source='bank_statement', so
+                    # the case logic below would only UN-reconcile it — leaving an
+                    # orphaned bank credit that inflated the balance after delete.
+                    pair_ids = _resolve_transaction_legs(pay["transaction_id"]) if pay.get("transaction_id") else []
+                    if pair_ids:
+                        sb.table("statement_movements").update(
+                            {"transaction_id": None, "matched_transaction_id": None}
+                        ).in_("matched_transaction_id", pair_ids).execute()
+                        sb.table("accounting_transactions").delete().in_("id", pair_ids).execute()
+
+            # An invoice auto-collect is fully undone above (payment reverted +
+            # its ledger pair deleted). Skip the pre-existing/new-pair logic so we
+            # don't also try to touch the (already deleted) transactions.
+            if autocollect_handled:
+                deleted_new_pairs += 1
+                continue
 
             # Distinguish "matched with a pre-existing transaction"
             # (e.g. Test 1 purchase that this movement reconciled against)
