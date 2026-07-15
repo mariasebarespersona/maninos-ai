@@ -2092,7 +2092,6 @@ def _validate_postable_account(code: Optional[str], direction: str) -> Optional[
     return code
 
 
-@router.post("/invoices")
 def issue_invoice(
     *,
     direction: str,
@@ -2221,9 +2220,12 @@ def issue_invoice(
     return invoice_row
 
 
+@router.post("/invoices")
 async def create_invoice(data: InvoiceCreate):
-    # Manual invoices from the UI are issued (status 'sent') so they count
-    # immediately, matching the auto-generated ones.
+    # HTTP route for the UI's "Nueva Factura" modal (JSON body). issue_invoice
+    # itself is keyword-only (query params in FastAPI) and is the shared internal
+    # helper called by sales/properties; this wraps it so the modal's body binds.
+    # Manual invoices are issued (status 'sent') so they count immediately.
     return issue_invoice(
         direction=data.direction,
         counterparty_name=data.counterparty_name,
