@@ -524,32 +524,6 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
           <BizStatCard icon={ArrowDownRight} iconColor="#ea580c" iconBg="#fff7ed" emoji="📤" label="Por pagar" value={fmt(s.accounts_payable)} hint="Lo que Maninos debe: facturas por pagar a proveedores, comisiones y consignaciones pendientes." onClick={() => setDrilldown({ metric: 'payable', label: 'Por pagar' })} />
         </div>
 
-        {/* Vista de Gabriel — inversión en casas (INFORMATIVA, no suma a gastos) */}
-        <div className="rounded-xl border p-4" style={{ borderColor: '#fbbf24', backgroundColor: '#fffbeb' }}>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 rounded-lg p-2" style={{ backgroundColor: '#fef3c7' }}>
-              <Package className="w-5 h-5" style={{ color: '#b45309' }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>📦 Inversión en casas este período</p>
-              <p className="mt-1.5 text-sm font-medium" style={{ color: '#78350f' }}>
-                Compra de casas: {fmt(s.houses_bought_period || 0)}{' '}
-                ({s.houses_bought_count || 0} {(s.houses_bought_count || 0) === 1 ? 'casa' : 'casas'})
-              </p>
-              <p className="mt-1 text-xs" style={{ color: '#92400e' }}>
-                Inversión total en inventario (compra + renovación + movida): {fmt(s.inventory_invested_period || 0)}
-              </p>
-              <button onClick={() => setDrilldown({ metric: 'inventory_invested', label: 'Inversión en inventario del período' })}
-                className="mt-1.5 text-xs font-medium flex items-center gap-1 hover:underline" style={{ color: '#b45309' }}>
-                <Search className="w-3 h-3" /> Ver transacciones (compra, renovación, movida)
-              </button>
-              <p className="mt-2 text-xs" style={{ color: 'var(--ash)' }}>
-                Esto va a INVENTARIO (un activo), NO a gastos. Se convierte en costo cuando la casa se vende — por eso no suma al total de gastos.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Explicación colapsable para Gabriel */}
         <div>
           <button
