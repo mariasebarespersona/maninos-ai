@@ -684,10 +684,18 @@ async def create_property(data: PropertyCreate):
     # Get data from request
     request_data = data.model_dump(exclude_none=True)
     
-    # Auto-generate property_code based on leadership
+    # The property code / ID is set MANUALLY at creation (no auto-generation),
+    # so the same ID flows consistently to the house, its per-house accounts and
+    # the financial statements. Required + unique. Leadership is still captured
+    # (it drives the yard/location), it just no longer generates the code.
     leadership = request_data.pop("leadership", None)
-    if "property_code" not in request_data or not request_data.get("property_code"):
-        request_data["property_code"] = _generate_next_property_code(leadership)
+    code = (request_data.get("property_code") or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="Falta el código / ID de la casa (obligatorio).")
+    dup = sb.table("properties").select("id").eq("property_code", code).limit(1).execute().data
+    if dup:
+        raise HTTPException(status_code=400, detail=f"Ya existe una casa con el código '{code}'. Usa uno distinto.")
+    request_data["property_code"] = code
     
     # Build insert data with defaults, but respect values from request
     insert_data = {

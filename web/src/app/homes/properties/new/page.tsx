@@ -97,6 +97,9 @@ export default function NewPropertyPage() {
 
   // Leadership (determines property code prefix: H=Houston, B=Conroe, DFW=Dallas)
   const [leadership, setLeadership] = useState<string>('')
+  // Optional manual property code/ID. Empty → auto-generated from the leadership
+  // prefix (H1, B1, DFW1…). Set it here to avoid renaming the house later.
+  const [propertyCode, setPropertyCode] = useState<string>('')
 
   // Document state
   const [documents, setDocuments] = useState<PurchaseDocuments>({ billOfSale: null, title: null, titleApplication: null })
@@ -642,6 +645,7 @@ export default function NewPropertyPage() {
 
       const payload = {
         leadership: leadership || undefined,
+        property_code: propertyCode || undefined,
         address: form.address,
         city: form.city || undefined,
         state: form.state || undefined,
@@ -1735,6 +1739,30 @@ export default function NewPropertyPage() {
                   <AlertTriangle className="w-3 h-3" /> Selecciona un leadership para continuar
                 </p>
               )}
+
+              {/* Manual code/ID — set it from the start (no auto-generation) */}
+              <div className="mt-4 pt-3 border-t border-blue-200">
+                <label className="block text-xs font-semibold text-blue-800 mb-1">
+                  Código / ID de la casa <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={propertyCode}
+                  onChange={e => setPropertyCode(e.target.value.trim().toUpperCase())}
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 ${
+                    leadership && !propertyCode ? 'border-amber-400 bg-amber-50' : 'border-blue-200'
+                  }`}
+                  placeholder="Ej. B1010"
+                />
+                <p className="text-[11px] text-blue-500 mt-1">
+                  Escribe el código exacto de la casa (ej. <b>B1010</b>). Se fija desde el inicio y no se puede duplicar.
+                </p>
+                {leadership && !propertyCode && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Escribe el código de la casa para continuar
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 sm:p-6 mb-6">
@@ -1956,10 +1984,11 @@ export default function NewPropertyPage() {
           {purchaseStep === 'confirm' && (() => {
             const hasPendingSig = (sellerSignatures.bos?.signed === false) || (sellerSignatures.title_app?.signed === false)
             const noLeadership = !leadership
+            const noCode = !propertyCode
             return (
               <button
                 onClick={confirmPurchase}
-                disabled={processing || hasPendingSig || noLeadership}
+                disabled={processing || hasPendingSig || noLeadership || noCode}
                 className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
                   hasPendingSig ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'btn-gold'
                 }`}
