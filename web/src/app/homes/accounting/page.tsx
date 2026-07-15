@@ -383,7 +383,7 @@ export default function AccountingPage() {
       {activeTab === 'audit' && <AuditTab />}
 
       {/* Modals */}
-      {showNewTxnModal && <NewTransactionModal accounts={accounts} bankAccounts={dashboard?.bank_accounts || []} yards={dashboard?.yard_breakdown || []} onClose={() => setShowNewTxnModal(false)} onCreated={() => { setShowNewTxnModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
+      {showNewTxnModal && <NewTransactionModal accounts={accounts} allAccounts={allAccounts} bankAccounts={dashboard?.bank_accounts || []} yards={dashboard?.yard_breakdown || []} onClose={() => setShowNewTxnModal(false)} onCreated={() => { setShowNewTxnModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
       {showMovementModal && <RegisterMovementModal allAccounts={allAccounts} onClose={() => setShowMovementModal(false)} onCreated={() => { setShowMovementModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
       {showNewBankModal && <NewBankAccountModal onClose={() => setShowNewBankModal(false)} onCreated={() => { setShowNewBankModal(false); fetchDashboard() }} />}
       {showNewRecurringModal && <NewRecurringExpenseModal accounts={accounts} onClose={() => setShowNewRecurringModal(false)} onCreated={() => setShowNewRecurringModal(false)} />}
@@ -3682,13 +3682,22 @@ function SummaryLine({ label, amount, bold, highlight, pct }: { label: string; a
 //  MODALS
 // ════════════════════════════════════════════════════════════════════════
 
-function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated }: {
-  accounts: AccountInfo[]; bankAccounts: BankAccount[]; yards: YardBreakdown[]; onClose: () => void; onCreated: () => void
+function NewTransactionModal({ accounts, allAccounts, bankAccounts, yards, onClose, onCreated }: {
+  accounts: AccountInfo[]; allAccounts: any[]; bankAccounts: BankAccount[]; yards: YardBreakdown[]; onClose: () => void; onCreated: () => void
 }) {
-  const [form, setForm] = useState({ transaction_date: new Date().toISOString().split('T')[0], transaction_type: 'other_expense', amount: '', is_income: false, description: '', counterparty_name: '', payment_method: '', payment_reference: '', bank_account_id: '', yard_id: '', notes: '' })
+  const [form, setForm] = useState({ transaction_date: new Date().toISOString().split('T')[0], transaction_type: 'other_expense', amount: '', is_income: false, description: '', counterparty_name: '', payment_method: '', payment_reference: '', bank_account_id: '', yard_id: '', notes: '', account_id: '' })
   const [saving, setSaving] = useState(false)
   const incomeTypes = ['sale_cash', 'sale_rto_capital', 'deposit_received', 'other_income']
   const expenseTypes = ['purchase_house', 'renovation', 'moving_transport', 'commission', 'operating_expense', 'other_expense']
+
+  // Full chart of accounts for the manual account picker (Abby request): show
+  // every leaf account of the relevant side so she can book a manual cash
+  // income/expense to a specific account (title fees, office supplies, …).
+  const INCOME_TYPES = ['Income', 'Other Income', 'income']
+  const EXPENSE_TYPES = ['Expenses', 'Other Expense', 'Cost of Goods Sold', 'expense', 'cogs']
+  const catalog = (allAccounts || []).filter((a: any) => !a.is_header &&
+    (form.is_income ? INCOME_TYPES : EXPENSE_TYPES).includes(a.account_type))
+  const catalogTypes = Array.from(new Set(catalog.map((a: any) => a.account_type)))
 
   const handleSubmit = async () => {
     if (!form.amount || !form.description) return alert('Completa monto y descripción')
@@ -3710,15 +3719,36 @@ function NewTransactionModal({ accounts, bankAccounts, yards, onClose, onCreated
         </div>
         <div className="p-6 space-y-4">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--stone)' }}>
-            <button onClick={() => setForm(f => ({ ...f, is_income: true, transaction_type: 'other_income' }))}
+            <button onClick={() => setForm(f => ({ ...f, is_income: true, transaction_type: 'other_income', account_id: '' }))}
               className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${form.is_income ? 'bg-emerald-500 text-white' : ''}`}><ArrowUpRight className="w-4 h-4" /> Ingreso</button>
-            <button onClick={() => setForm(f => ({ ...f, is_income: false, transaction_type: 'other_expense' }))}
+            <button onClick={() => setForm(f => ({ ...f, is_income: false, transaction_type: 'other_expense', account_id: '' }))}
               className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${!form.is_income ? 'bg-red-500 text-white' : ''}`}><ArrowDownRight className="w-4 h-4" /> Gasto</button>
           </div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Tipo</label>
             <select value={form.transaction_type} onChange={e => setForm(f => ({ ...f, transaction_type: e.target.value, is_income: incomeTypes.includes(e.target.value) }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
               {(form.is_income ? incomeTypes : expenseTypes).map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
             </select></div>
+          {/* Full chart-of-accounts picker (Abby request): book a manual
+              income/expense to a specific account. Overrides the Tipo when set. */}
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>
+              Cuenta contable <span style={{ color: 'var(--ash)' }}>(catálogo completo — opcional)</span>
+            </label>
+            <select value={form.account_id} onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">— Usar el Tipo de arriba —</option>
+              {catalogTypes.map((ty: string) => (
+                <optgroup key={ty} label={ty}>
+                  {catalog.filter((a: any) => a.account_type === ty)
+                    .sort((a: any, b: any) => (a.name || a.code).localeCompare(b.name || b.code))
+                    .map((a: any) => <option key={a.id} value={a.id}>{a.name || a.code}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>
+              Elige una cuenta específica (ej. insumos de oficina, honorarios/títulos). Si la dejas vacía, se usa el Tipo.
+            </p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Monto ($)</label>
               <input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="0.00" /></div>
