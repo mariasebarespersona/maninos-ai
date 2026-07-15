@@ -72,7 +72,9 @@ export default function PromissoryNotesPage() {
     investor_id: '',
     loan_amount: '',
     annual_rate: '12',
-    term_months: '12',
+    interest_only_months: '0',
+    amortization_months: '12',
+    issued_by: 'jorge',   // 'jorge' → Maninos Capital · 'sebastian' → Maninos Homes
     start_date: new Date().toISOString().split('T')[0],
     subscriber_representative: '',
     lender_representative: '',
@@ -115,7 +117,10 @@ export default function PromissoryNotesPage() {
           investor_id: form.investor_id,
           loan_amount: parseFloat(form.loan_amount),
           annual_rate: parseFloat(form.annual_rate),
-          term_months: parseInt(form.term_months),
+          interest_only_months: parseInt(form.interest_only_months) || 0,
+          amortization_months: parseInt(form.amortization_months) || 0,
+          // Issuing entity: Jorge → Maninos Capital, Sebastian → Maninos Homes.
+          subscriber_name: form.issued_by === 'jorge' ? 'Maninos Capital LLC' : 'Maninos Homes LLC',
           start_date: form.start_date,
           subscriber_representative: form.subscriber_representative || undefined,
           lender_representative: form.lender_representative || undefined,
@@ -126,7 +131,7 @@ export default function PromissoryNotesPage() {
       if (data.ok) {
         toast.success('Nota promisoria creada')
         setShowCreate(false)
-        setForm({ investor_id: '', loan_amount: '', annual_rate: '12', term_months: '12', start_date: new Date().toISOString().split('T')[0], subscriber_representative: '', lender_representative: '', notes: '' })
+        setForm({ investor_id: '', loan_amount: '', annual_rate: '12', interest_only_months: '0', amortization_months: '12', issued_by: 'jorge', start_date: new Date().toISOString().split('T')[0], subscriber_representative: '', lender_representative: '', notes: '' })
         loadData()
         // Navigate to the new note
         if (data.note?.id) {
@@ -362,6 +367,20 @@ export default function PromissoryNotesPage() {
                 </select>
               </div>
               <div>
+                <label className="label">¿De quién viene?</label>
+                <select
+                  value={form.issued_by}
+                  onChange={e => setForm({ ...form, issued_by: e.target.value })}
+                  className="input w-full"
+                >
+                  <option value="jorge">Jorge → Maninos Capital LLC</option>
+                  <option value="sebastian">Sebastian → Maninos Homes LLC</option>
+                </select>
+                <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+                  Define la entidad emisora en la nota. El representante firmante siempre es Sebastian.
+                </p>
+              </div>
+              <div>
                 <label className="label">Monto del Préstamo *</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--slate)' }}>$</span>
@@ -389,16 +408,30 @@ export default function PromissoryNotesPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Plazo (meses)</label>
+                  <label className="label">Meses interest-only</label>
                   <input
                     type="number"
-                    value={form.term_months}
-                    onChange={e => setForm({ ...form, term_months: e.target.value })}
+                    value={form.interest_only_months}
+                    onChange={e => setForm({ ...form, interest_only_months: e.target.value })}
                     className="input w-full"
-                    min="1"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="label">Meses de amortización</label>
+                  <input
+                    type="number"
+                    value={form.amortization_months}
+                    onChange={e => setForm({ ...form, amortization_months: e.target.value })}
+                    className="input w-full"
+                    min="0"
                   />
                 </div>
               </div>
+              <p className="text-xs -mt-2" style={{ color: 'var(--ash)' }}>
+                Plazo total: {(parseInt(form.interest_only_months) || 0) + (parseInt(form.amortization_months) || 0)} meses
+                {' · '}Tramo 1 paga solo interés; Tramo 2 amortiza capital + interés.
+              </p>
               <div>
                 <label className="label">Fecha de Inicio</label>
                 <input
@@ -409,35 +442,34 @@ export default function PromissoryNotesPage() {
                 />
               </div>
 
-              {/* Preview — Simple Interest */}
+              {/* Preview — two-tranche */}
               {form.loan_amount && parseFloat(form.loan_amount) > 0 && (
                 <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--cream)' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--slate)' }}>Vista Previa (interés simple)</p>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--slate)' }}>Vista Previa (2 tramos)</p>
                   {(() => {
                     const loan = parseFloat(form.loan_amount)
-                    const monthlyRate = parseFloat(form.annual_rate) / 100 / 12
-                    const months = parseInt(form.term_months)
-                    const monthlyInterest = loan * monthlyRate
-                    const totalInterest = monthlyInterest * months
+                    const mrate = parseFloat(form.annual_rate) / 100 / 12
+                    const io = parseInt(form.interest_only_months) || 0
+                    const amort = parseInt(form.amortization_months) || 0
+                    const monthlyInterest = loan * mrate
+                    let totalInterest = io * monthlyInterest
+                    let amortPayment = 0
+                    if (amort > 0) {
+                      amortPayment = mrate > 0 ? loan * mrate / (1 - Math.pow(1 + mrate, -amort)) : loan / amort
+                      let bal = loan
+                      for (let i = 0; i < amort; i++) { const int = bal * mrate; totalInterest += int; bal -= (amortPayment - int) }
+                    }
                     const totalDue = loan + totalInterest
                     return (
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span style={{ color: 'var(--ash)' }}>Tasa Mensual:</span>
-                          <span className="ml-1 font-medium">{(monthlyRate * 100).toFixed(2)}%</span>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--ash)' }}>Interés/Mes:</span>
-                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(monthlyInterest)}</span>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--ash)' }}>Interés Total:</span>
-                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(totalInterest)}</span>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--ash)' }}>Total a Pagar:</span>
-                          <span className="ml-1 font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(totalDue)}</span>
-                        </div>
+                        <div><span style={{ color: 'var(--ash)' }}>Pago Tramo 1 (solo interés):</span>
+                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(monthlyInterest)}/mes</span></div>
+                        <div><span style={{ color: 'var(--ash)' }}>Pago Tramo 2 (amortiza):</span>
+                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{amort > 0 ? `${fmt(amortPayment)}/mes` : '—'}</span></div>
+                        <div><span style={{ color: 'var(--ash)' }}>Interés Total:</span>
+                          <span className="ml-1 font-medium" style={{ color: 'var(--gold-700)' }}>{fmt(totalInterest)}</span></div>
+                        <div><span style={{ color: 'var(--ash)' }}>Total a Pagar:</span>
+                          <span className="ml-1 font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(totalDue)}</span></div>
                       </div>
                     )
                   })()}

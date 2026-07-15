@@ -26,7 +26,9 @@ class PromissoryNoteCreate(BaseModel):
     investor_id: str
     loan_amount: float
     annual_rate: float = 12.0        # default 12%
-    term_months: int = 12
+    term_months: int = 12            # derived = interest_only + amortization (kept for compat)
+    interest_only_months: int = 0    # Tranche 1: pay interest only, principal does NOT move
+    amortization_months: Optional[int] = None  # Tranche 2: fixed payment (principal+interest), balance amortizes
     start_date: Optional[str] = None  # YYYY-MM-DD
     signed_at: Optional[str] = None
     signed_city: str = "Conroe"
@@ -45,6 +47,8 @@ class PromissoryNoteCreate(BaseModel):
 class PromissoryNoteUpdate(BaseModel):
     annual_rate: Optional[float] = None
     term_months: Optional[int] = None
+    interest_only_months: Optional[int] = None
+    amortization_months: Optional[int] = None
     start_date: Optional[str] = None
     signed_at: Optional[str] = None
     signed_city: Optional[str] = None
@@ -72,60 +76,71 @@ class RecordPaymentRequest(BaseModel):
 # HELPERS
 # =============================================================================
 
-def _calculate_simple_schedule(loan_amount: float, monthly_rate: float, term_months: int) -> dict:
-    """
-    Calculate **simple (non-accumulative) interest** schedule.
-    Interest is always computed on the ORIGINAL principal — it never compounds.
+def _note_tranches(note: dict) -> tuple:
+    """Return (interest_only_months, amortization_months) for a note, with a
+    safe fallback for legacy notes created before tranches existed (treated as
+    all interest-only with a balloon principal at maturity)."""
+    term = int(note.get("term_months") or 0)
+    io = note.get("interest_only_months")
+    amort = note.get("amortization_months")
+    if io is None and amort is None:
+        return term, 0                      # legacy: interest-only + balloon
+    io = int(io or 0)
+    amort = int(amort if amort is not None else max(0, term - io))
+    return io, amort
 
-    Returns:
-        {
-            "total_interest": float,
-            "total_due": float,
-            "monthly_interest": float,
-            "schedule": [
-                { "term": 0, "interest": 0, "accrued_interest": 0,
-                  "payment": 0, "principal": loan, "pending": loan },
-                { "term": 1, "interest": x, "accrued_interest": x,
-                  "payment": 0, "principal": loan, "pending": loan + x },
-                ...
-            ]
-        }
+
+def _note_schedule(loan_amount: float, annual_rate: float, io_months: int, amort_months: int) -> dict:
     """
-    monthly_interest = round(loan_amount * monthly_rate, 2)
-    total_interest = round(monthly_interest * term_months, 2)
+    Two-tranche promissory-note schedule:
+
+      • Tranche 1 (interest-only): ``io_months`` months where the payment equals
+        the interest on the ORIGINAL principal (principal × monthly rate). The
+        principal does NOT move; the balance stays at the loan amount.
+      • Tranche 2 (amortization): ``amort_months`` months of a FIXED payment that
+        includes principal + interest. Interest is recomputed each month on the
+        DECLINING balance, so the outstanding principal goes down every month.
+
+    Each row: {period, principal, interest, payment, balance}, where ``balance``
+    is what is still owed AFTER that month's payment. If there is no amortization
+    tranche, the principal is a balloon due at maturity (balance stays at loan).
+    """
+    mrate = (annual_rate / 100.0) / 12.0
+    io_months = max(0, int(io_months))
+    amort_months = max(0, int(amort_months))
+    monthly_interest = round(loan_amount * mrate, 2)
+
+    rows = []
+    bal = loan_amount
+
+    # Tranche 1 — interest only
+    for p in range(1, io_months + 1):
+        rows.append({"period": p, "principal": 0.0, "interest": monthly_interest,
+                     "payment": monthly_interest, "balance": round(bal, 2)})
+
+    # Tranche 2 — amortizing (fixed payment on declining balance)
+    if amort_months > 0:
+        pmt = (bal * mrate / (1 - (1 + mrate) ** (-amort_months))) if mrate > 0 else (bal / amort_months)
+        for i in range(amort_months):
+            interest = round(bal * mrate, 2)
+            if i == amort_months - 1:                 # last row clears the balance exactly
+                principal = round(bal, 2)
+                pay = round(principal + interest, 2)
+            else:
+                principal = round(pmt - interest, 2)
+                pay = round(pmt, 2)
+            bal = round(max(0.0, bal - principal), 2)
+            rows.append({"period": io_months + i + 1, "principal": principal,
+                         "interest": interest, "payment": pay, "balance": bal})
+
+    total_interest = round(sum(r["interest"] for r in rows), 2)
     total_due = round(loan_amount + total_interest, 2)
-
-    schedule = []
-
-    # Term 0
-    schedule.append({
-        "term": 0,
-        "interest": 0.0,
-        "accrued_interest": 0.0,
-        "payment": 0.0,
-        "principal": round(loan_amount, 2),
-        "pending": round(loan_amount, 2),
-    })
-
-    accrued = 0.0
-    for month in range(1, term_months + 1):
-        accrued = round(accrued + monthly_interest, 2)
-        pending = round(loan_amount + accrued, 2)
-
-        schedule.append({
-            "term": month,
-            "interest": monthly_interest,
-            "accrued_interest": accrued,
-            "payment": 0.0,
-            "principal": round(loan_amount, 2),
-            "pending": pending,
-        })
-
     return {
+        "schedule": rows,
+        "term_months": io_months + amort_months,
+        "monthly_interest": monthly_interest,
         "total_interest": total_interest,
         "total_due": total_due,
-        "monthly_interest": monthly_interest,
-        "schedule": schedule,
     }
 
 
@@ -243,12 +258,12 @@ async def get_promissory_note(note_id: str):
             raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
         
         note = result.data
-        monthly_rate = float(note["monthly_rate"])
         loan_amount = float(note["loan_amount"])
-        term_months = int(note["term_months"])
-        
-        # Calculate simple interest schedule
-        calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
+        annual_rate = float(note.get("annual_rate", 12) or 12)
+        io_m, amort_m = _note_tranches(note)
+
+        # Two-tranche schedule (interest-only, then amortizing)
+        calc = _note_schedule(loan_amount, annual_rate, io_m, amort_m)
         
         # Get individual payment history
         payments = []
@@ -291,24 +306,29 @@ async def create_promissory_note(data: PromissoryNoteCreate):
         
         inv = investor.data
         
-        # Calculate rates and amounts
+        # Calculate rates and amounts. Term = interest-only + amortization tranches.
         monthly_rate = data.annual_rate / 100 / 12
+        io_months = int(data.interest_only_months or 0)
+        amort_months = int(data.amortization_months if data.amortization_months is not None else data.term_months)
+        term_months = io_months + amort_months
         start = date.fromisoformat(data.start_date) if data.start_date else date.today()
-        maturity = start + relativedelta(months=data.term_months)
-        
-        # Calculate simple interest schedule
-        calc = _calculate_simple_schedule(data.loan_amount, monthly_rate, data.term_months)
-        
+        maturity = start + relativedelta(months=term_months)
+
+        # Two-tranche schedule (interest-only, then amortizing)
+        calc = _note_schedule(data.loan_amount, data.annual_rate, io_months, amort_months)
+
         # Auto-populate lender info from investor if not provided
         lender_name = data.lender_name or inv["name"]
         lender_company = data.lender_company or inv.get("company")
-        
+
         note_data = {
             "investor_id": data.investor_id,
             "loan_amount": data.loan_amount,
             "annual_rate": data.annual_rate,
             "monthly_rate": monthly_rate,
-            "term_months": data.term_months,
+            "term_months": term_months,
+            "interest_only_months": io_months,
+            "amortization_months": amort_months,
             "total_interest": calc["total_interest"],
             "total_due": calc["total_due"],
             "subscriber_name": data.subscriber_name,
@@ -341,7 +361,7 @@ async def create_promissory_note(data: PromissoryNoteCreate):
             investor_id=data.investor_id,
             counterparty_name=lender_name,
             bank_account_id=data.bank_account_id,
-            notes=f"Pagaré {data.term_months} meses, vence {maturity.isoformat()}",
+            notes=f"Pagaré {term_months} meses ({io_months} solo-interés + {amort_months} amortizando), vence {maturity.isoformat()}",
         )
 
         created_note = result.data[0]
@@ -361,7 +381,7 @@ async def create_promissory_note(data: PromissoryNoteCreate):
             "ok": True,
             "note": created_note,
             "schedule": calc["schedule"],
-            "message": f"Nota promisoria creada: ${data.loan_amount:,.2f} al {data.annual_rate}% por {data.term_months} meses. Vencimiento: ${calc['total_due']:,.2f}",
+            "message": f"Nota promisoria creada: ${data.loan_amount:,.2f} al {data.annual_rate}% por {term_months} meses ({io_months} solo-interés + {amort_months} amortizando). Total: ${calc['total_due']:,.2f}",
         }
     except HTTPException:
         raise
@@ -390,23 +410,29 @@ async def update_promissory_note(note_id: str, data: PromissoryNoteUpdate):
         if not update:
             return {"ok": True, "message": "Nada que actualizar"}
         
-        # If financial terms changed, recalculate
+        # If financial terms changed, recalculate the two-tranche schedule.
         annual_rate = float(update.get("annual_rate", note["annual_rate"]))
-        term_months = int(update.get("term_months", note["term_months"]))
         loan_amount = float(note["loan_amount"])
-        
-        if "annual_rate" in update or "term_months" in update:
+        cur_io, cur_amort = _note_tranches(note)
+        io_months = int(update.get("interest_only_months", cur_io))
+        amort_months = int(update.get("amortization_months", cur_amort))
+        terms_changed = any(k in update for k in ("annual_rate", "term_months", "interest_only_months", "amortization_months"))
+
+        if terms_changed:
+            term_months = io_months + amort_months
             monthly_rate = annual_rate / 100 / 12
-            calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
+            calc = _note_schedule(loan_amount, annual_rate, io_months, amort_months)
             update["monthly_rate"] = monthly_rate
+            update["term_months"] = term_months
+            update["interest_only_months"] = io_months
+            update["amortization_months"] = amort_months
             update["total_interest"] = calc["total_interest"]
             update["total_due"] = calc["total_due"]
-        
-        if "start_date" in update or "term_months" in update:
+
+        if "start_date" in update or terms_changed:
             start_str = update.get("start_date", note["start_date"])
             start = date.fromisoformat(str(start_str))
-            tm = int(update.get("term_months", note["term_months"]))
-            update["maturity_date"] = (start + relativedelta(months=tm)).isoformat()
+            update["maturity_date"] = (start + relativedelta(months=io_months + amort_months)).isoformat()
         
         sb.table("promissory_notes").update(update).eq("id", note_id).execute()
         
@@ -542,26 +568,25 @@ async def get_note_schedule(note_id: str):
     """Get just the amortization schedule for a note."""
     try:
         note = sb.table("promissory_notes") \
-            .select("loan_amount, monthly_rate, term_months, annual_rate") \
+            .select("loan_amount, monthly_rate, term_months, annual_rate, interest_only_months, amortization_months") \
             .eq("id", note_id) \
             .single() \
             .execute()
-        
+
         if not note.data:
             raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
-        
+
         n = note.data
-        calc = _calculate_simple_schedule(
-            float(n["loan_amount"]),
-            float(n["monthly_rate"]),
-            int(n["term_months"]),
-        )
-        
+        io_m, amort_m = _note_tranches(n)
+        calc = _note_schedule(float(n["loan_amount"]), float(n.get("annual_rate", 12) or 12), io_m, amort_m)
+
         return {
             "ok": True,
             "schedule": calc["schedule"],
             "total_interest": calc["total_interest"],
             "total_due": calc["total_due"],
+            "interest_only_months": io_m,
+            "amortization_months": amort_m,
         }
     except HTTPException:
         raise
@@ -650,37 +675,6 @@ def _term_phrase(term_months: int) -> str:
     return f"{term_months} ({_int_to_words(term_months)}) months"
 
 
-def _amortized_schedule(loan_amount: float, annual_rate: float, term_months: int) -> dict:
-    """Template amortization: interest-only until the last 12 months; the final
-    (up to) 12 months amortize principal + interest at the annual rate.
-    Columns mirror the template: period, principal, interest ('Rate'), payment, balance."""
-    mrate = (annual_rate / 100.0) / 12.0
-    amort_months = min(12, term_months)
-    io_months = max(0, term_months - amort_months)
-    monthly_interest = loan_amount * mrate
-    rows, bal, total = [], loan_amount, 0.0
-    for p in range(1, io_months + 1):
-        rows.append({"period": p, "principal": 0.0, "interest": monthly_interest,
-                     "payment": monthly_interest, "balance": bal})
-        total += monthly_interest
-    if amort_months > 0:
-        pmt = (bal * mrate / (1 - (1 + mrate) ** (-amort_months))) if mrate > 0 else (bal / amort_months)
-        for i in range(amort_months):
-            interest = bal * mrate
-            if i == amort_months - 1:  # last row clears the balance exactly
-                principal = bal
-                pay = principal + interest
-            else:
-                principal = pmt - interest
-                pay = pmt
-            bal = max(0.0, bal - principal)
-            rows.append({"period": io_months + i + 1, "principal": principal, "interest": interest,
-                         "payment": pay, "balance": bal})
-            total += pay
-    return {"schedule": rows, "total_payment": total,
-            "total_interest": total - loan_amount, "monthly_interest": monthly_interest}
-
-
 @router.get("/{note_id}/pdf")
 async def download_promissory_note_pdf(note_id: str):
     """Generate and download a PDF of the promissory note document."""
@@ -699,11 +693,10 @@ async def download_promissory_note_pdf(note_id: str):
         
         note = result.data
         investor = note.get("investors", {}) or {}
-        monthly_rate = float(note["monthly_rate"])
         loan_amount = float(note["loan_amount"])
-        term_months = int(note["term_months"])
-        calc = _calculate_simple_schedule(loan_amount, monthly_rate, term_months)
-        
+        io_months, amort_months = _note_tranches(note)
+        term_months = io_months + amort_months
+
         # Generate PDF
         try:
             from reportlab.lib import colors
@@ -771,6 +764,9 @@ async def download_promissory_note_pdf(note_id: str):
         # ── Dynamic fields ──
         lender = note.get("lender_name") or investor.get("name", "") or "_______________"
         maker_rep = note.get("subscriber_representative") or MAKER_REP_DEFAULT
+        # Issuing entity (Maker): "de Jorge" → Maninos Capital, "de Sebastian" → Maninos Homes.
+        # Carried in subscriber_name; the representative name stays Sebastian in both cases.
+        maker_entity = (note.get("subscriber_name") or MAKER_NAME).upper()
         city = note.get("signed_city", "Conroe")
         state = note.get("signed_state", "Texas")
         annual_rate = float(note.get("annual_rate", 12) or 12)
@@ -782,7 +778,7 @@ async def download_promissory_note_pdf(note_id: str):
             sd = datetime.now()
         date_full = _date_spelled(sd)
 
-        sched = _amortized_schedule(loan_amount, annual_rate, term_months)
+        sched = _note_schedule(loan_amount, annual_rate, io_months, amort_months)
         total_interest = sched["total_interest"]
         total_repayment = loan_amount + total_interest
         rate_words = f" ({_int_to_words(int(annual_rate))})" if float(annual_rate).is_integer() else ""
@@ -798,7 +794,7 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(Spacer(1, 10))
 
         # ── Binding paragraph (Maker + Co-Obligor) ──
-        binding = f"""{MAKER_NAME}, a Texas limited liability company (the "Maker"), acting by and through its
+        binding = f"""{maker_entity}, a Texas limited liability company (the "Maker"), acting by and through its
         authorized representative, <b>{maker_rep}</b>, owes and by means of this Promissory Note unconditionally
         binds itself to pay <b>{lender}</b> (the "Lender"), the amount of <b>{fmt(loan_amount)}</b> U.S.D.
         ({_amount_words(loan_amount)} UNITED STATES DOLLARS), as a renewal and replacement of the Lender's existing
@@ -913,7 +909,7 @@ async def download_promissory_note_pdf(note_id: str):
         # ── Signatures (Maker + Co-Obligor) ──
         sig_left = Paragraph(
             f"<b>Signature</b><br/>_______________________________<br/><b>{maker_rep}</b><br/>"
-            f"{MAKER_NAME}, Authorized Representative<br/>"
+            f"{maker_entity}, Authorized Representative<br/>"
             f"<font size='8' color='#666666'>(representing and warranting that the undersigned has full authority to "
             f"execute this Promissory Note on behalf of the Maker)</font>",
             ParagraphStyle(name='SigL', parent=styles['Normal'], fontSize=9, leading=13))
