@@ -13,7 +13,7 @@ import { useAuth } from '@/components/Auth/AuthProvider'
 
 interface PropertyFinancial {
   id: string; address: string; property_code: string; city: string; status: string
-  purchase_price: number; renovation_cost: number; move_cost: number
+  purchase_price: number; renovation_cost: number; renovation_real?: number; move_cost: number
   commission: number; margin: number; total_investment: number
   sale_price: number; profit: number; amount_paid: number; amount_pending: number
   sale_id: string | null; sale_status: string | null; sale_type: string | null; client_name: string
@@ -293,18 +293,21 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs bg-white rounded-lg border border-navy-200 p-3">
         {[
           { label: 'Compra', value: p.purchase_price },
-          { label: 'Renovación', value: p.renovation_cost },
+          { label: 'Renovación (est.)', value: p.renovation_cost },
+          { label: 'Renovación real', value: p.renovation_real || 0, always: true, color: (p.renovation_real || 0) > 0 ? 'text-navy-900' : 'text-navy-400' },
           { label: 'Movida', value: p.move_cost },
           { label: 'Comisión', value: p.commission },
           { label: 'Margen', value: p.margin },
           { label: 'Total inversión', value: p.total_investment, bold: true },
           { label: 'Precio venta', value: p.sale_price, bold: true, color: p.sale_price > 0 ? 'text-navy-900' : 'text-navy-300' },
-          { label: 'Utilidad', value: p.profit, bold: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-300' },
+          // Utilidad (ganancia) ALWAYS shows its real figure — a loss in red, a
+          // break-even as $0 — never "—" (that hid negative/zero profit).
+          { label: 'Utilidad', value: p.profit, bold: true, always: true, color: p.profit > 0 ? 'text-emerald-700' : p.profit < 0 ? 'text-red-600' : 'text-navy-500' },
         ].map(f => (
           <div key={f.label} className="flex justify-between items-center py-0.5">
             <span className="text-navy-500">{f.label}</span>
             <span className={`${f.bold ? 'font-bold' : 'font-medium'} ${f.color || (f.value > 0 ? 'text-navy-900' : 'text-navy-300')}`}>
-              {f.value > 0 ? fmt(f.value) : '—'}
+              {f.always || f.value > 0 ? fmt(f.value) : '—'}
             </span>
           </div>
         ))}

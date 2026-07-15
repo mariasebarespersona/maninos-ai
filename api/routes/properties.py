@@ -405,6 +405,10 @@ async def financial_summary():
                 "status": p.get("status", ""),
                 "purchase_price": round(pp, 2),
                 "renovation_cost": round(reno, 2),
+                # The REAL renovation spent (from the ledger "Renovación <CODE>"),
+                # shown alongside the estimate/override above so the operator sees
+                # what was actually paid per house, not just the prediction.
+                "renovation_real": round(ledger_cost_by_code.get(f"Renovación {_code}", 0.0), 2),
                 "move_cost": round(move, 2),
                 "commission": round(commission, 2),
                 "margin": margin,
