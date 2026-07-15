@@ -43,6 +43,7 @@ interface Investment {
   transferred_from_name?: string | null
   purchase_price?: number | null
   closed_at?: string | null
+  property_code?: string | null   // manual house code (old houses not linked to a property record)
   properties?: { address: string; city: string; property_code?: string } | null
   rto_contracts?: { client_id: string; clients?: { name: string } } | null
   promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string; paid_amount?: number | null; annual_rate?: number | null; total_due?: number | null; total_interest?: number | null } | null
@@ -326,7 +327,7 @@ export default function InvestorDetailPage() {
     transferred: { bg: 'var(--cream)', color: 'var(--ash)', label: 'Vendida' },
   }
   const investmentLabel = (inv: Investment, idx: number) =>
-    inv.properties?.property_code || inv.rto_contracts?.clients?.name || `Inversión ${idx + 1}`
+    inv.properties?.property_code || inv.property_code || inv.rto_contracts?.clients?.name || `Inversión ${idx + 1}`
   // The investor's return comes from the linked promissory note's payments (not RTO rent).
   const ticketReturn = (inv: Investment) =>
     inv.promissory_notes ? Number(inv.promissory_notes.paid_amount || 0) : Number(inv.return_amount || 0)
@@ -588,7 +589,7 @@ export default function InvestorDetailPage() {
                   ) : (
                     <div className="pl-3 space-y-2" style={{ borderLeft: '2px solid var(--gold-300, var(--gold-200))' }}>
                       {liveTickets.map((inv, idx) => {
-                        const code = inv.properties?.property_code
+                        const code = inv.properties?.property_code || inv.property_code
                         const addr = inv.properties?.address
                         const client = inv.rto_contracts?.clients?.name
                         const invAmt = Number(inv.amount || 0)

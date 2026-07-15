@@ -33,6 +33,8 @@ interface PropertyLite {
 
 interface Allocation {
   property_id: string
+  property_code: string   // manual code (e.g. "H13") when `manual` is true
+  manual: boolean
   amount: string
 }
 
@@ -110,7 +112,7 @@ export default function InvestorsPage() {
     }
   }
 
-  const addAllocation = () => setAllocations(prev => [...prev, { property_id: '', amount: '' }])
+  const addAllocation = () => setAllocations(prev => [...prev, { property_id: '', property_code: '', manual: false, amount: '' }])
   const removeAllocation = (idx: number) => setAllocations(prev => prev.filter((_, i) => i !== idx))
   const updateAllocation = (idx: number, patch: Partial<Allocation>) =>
     setAllocations(prev => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)))
@@ -145,9 +147,10 @@ export default function InvestorsPage() {
   const handleCreate = async () => {
     if (!name) { toast.warning('Ingresa el nombre del inversionista'); return }
 
-    // Validate house allocations
-    const validAllocations = allocations.filter(a => a.property_id && parseFloat(a.amount) > 0)
-    const partial = allocations.some(a => (a.property_id && !(parseFloat(a.amount) > 0)) || (!a.property_id && parseFloat(a.amount) > 0))
+    // Validate house allocations (a house is either picked from the list or typed manually)
+    const houseRef = (a: Allocation) => a.manual ? a.property_code.trim() : a.property_id
+    const validAllocations = allocations.filter(a => houseRef(a) && parseFloat(a.amount) > 0)
+    const partial = allocations.some(a => (houseRef(a) && !(parseFloat(a.amount) > 0)) || (!houseRef(a) && parseFloat(a.amount) > 0))
     if (partial) { toast.warning('Completa la casa y el monto en cada asignación'); return }
     if (allocatedTotal > capitalNum) {
       toast.warning('Lo asignado a casas supera el capital disponible')
@@ -184,7 +187,7 @@ export default function InvestorsPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               investor_id: investorId,
-              property_id: a.property_id,
+              ...(a.manual ? { property_code: a.property_code.trim() } : { property_id: a.property_id }),
               amount: parseFloat(a.amount),
             }),
           })
@@ -560,21 +563,41 @@ export default function InvestorsPage() {
                 ) : (
                   <div className="space-y-2">
                     {allocations.map((a, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <select
-                          value={a.property_id}
-                          onChange={(e) => updateAllocation(idx, { property_id: e.target.value })}
-                          className="input flex-1 text-sm"
-                        >
-                          <option value="">Selecciona casa…</option>
-                          {properties.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.property_code} — {p.address}{p.city ? `, ${p.city}` : ''}
-                            </option>
-                          ))}
-                        </select>
+                      <div key={idx} className="flex items-start gap-2">
+                        <div className="flex-1">
+                          {a.manual ? (
+                            <input
+                              type="text"
+                              value={a.property_code}
+                              onChange={(e) => updateAllocation(idx, { property_code: e.target.value })}
+                              className="input w-full text-sm"
+                              placeholder="Código de casa (ej. H13)"
+                            />
+                          ) : (
+                            <select
+                              value={a.property_id}
+                              onChange={(e) => updateAllocation(idx, { property_id: e.target.value })}
+                              className="input w-full text-sm"
+                            >
+                              <option value="">Selecciona casa…</option>
+                              {properties.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.property_code} — {p.address}{p.city ? `, ${p.city}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => updateAllocation(idx, { manual: !a.manual, property_id: '', property_code: '' })}
+                            className="text-[11px] mt-0.5 hover:underline"
+                            style={{ color: 'var(--gold-700)' }}
+                          >
+                            {a.manual ? '← Elegir de la lista' : 'Escribir código manual (casa antigua)'}
+                          </button>
+                        </div>
                         <div className="relative w-32">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate text-sm">$</span>
+                          <span className="absolute left-2.5 top-2.5 text-slate text-sm">$</span>
                           <input
                             type="number"
                             value={a.amount}
@@ -583,7 +606,7 @@ export default function InvestorsPage() {
                             placeholder="0"
                           />
                         </div>
-                        <button type="button" onClick={() => removeAllocation(idx)} className="p-1" title="Quitar">
+                        <button type="button" onClick={() => removeAllocation(idx)} className="p-1 mt-1.5" title="Quitar">
                           <XCircle className="w-4 h-4" style={{ color: 'var(--ash)' }} />
                         </button>
                       </div>

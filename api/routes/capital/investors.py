@@ -42,6 +42,7 @@ class InvestorUpdate(BaseModel):
 class InvestmentCreate(BaseModel):
     investor_id: str
     property_id: Optional[str] = None
+    property_code: Optional[str] = None   # manual house code (e.g. "H13") for old houses not in the dropdown
     rto_contract_id: Optional[str] = None
     promissory_note_id: Optional[str] = None
     amount: float
@@ -297,18 +298,36 @@ def _active_rto_contract_for_property(property_id: str) -> Optional[str]:
 async def create_investment(data: InvestmentCreate):
     """Record a new investment (a capital 'ticket')."""
     try:
+        # Manual house code (e.g. "H13"): try to resolve it to an existing property
+        # so the ticket links properly; if the house isn't in the system, keep the
+        # typed code so it is still recorded and shown.
+        property_id = data.property_id
+        property_code = (data.property_code or "").strip().upper() or None
+        if not property_id and property_code:
+            try:
+                match = sb.table("properties").select("id, property_code") \
+                    .ilike("property_code", property_code).limit(1).execute()
+                if match.data:
+                    property_id = match.data[0]["id"]
+            except Exception:
+                pass
+
         # Auto-link the property's RTO contract if the caller didn't set one.
-        rto_contract_id = data.rto_contract_id or _active_rto_contract_for_property(data.property_id)
+        rto_contract_id = data.rto_contract_id or _active_rto_contract_for_property(property_id)
 
         insert_data = {
             "investor_id": data.investor_id,
-            "property_id": data.property_id,
+            "property_id": property_id,
             "rto_contract_id": rto_contract_id,
             "amount": data.amount,
             "expected_return_rate": data.expected_return_rate,
             "notes": data.notes,
             "ticket_type": "original",
         }
+        # Only touch the new column when a manual code is present, so list-mode
+        # creation keeps working even before migration 101 is applied.
+        if property_code:
+            insert_data["property_code"] = property_code
         if data.promissory_note_id:
             insert_data["promissory_note_id"] = data.promissory_note_id
 
@@ -340,7 +359,7 @@ async def create_investment(data: InvestmentCreate):
             "amount": float(data.amount),
             "investor_id": data.investor_id,
             "investment_id": investment["id"],
-            "property_id": data.property_id,
+            "property_id": property_id,
             "rto_contract_id": rto_contract_id,
             "description": f"Depósito inversión — {inv_name}".strip(),
             "bank_account_id": data.bank_account_id,
