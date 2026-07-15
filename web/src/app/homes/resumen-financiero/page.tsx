@@ -310,13 +310,28 @@ function TimelineDetail({ propertyId, p, onRefresh, toast }: { propertyId: strin
           <div key={f.label} className="flex justify-between items-center py-0.5">
             <span className="text-navy-500 flex items-center gap-1">
               {f.label}
-              {f.hint && <span title={f.hint} className="cursor-help text-navy-400">ⓘ</span>}
+              {f.hint && (
+                <span className="relative group inline-flex">
+                  <span className="cursor-help text-navy-400 font-bold">ⓘ</span>
+                  <span className="absolute left-0 bottom-full mb-1 z-30 w-64 bg-navy-800 text-white text-[10px] leading-snug normal-case font-normal rounded-lg p-2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                    {f.hint}
+                  </span>
+                </span>
+              )}
             </span>
             <span className={`${f.bold ? 'font-bold' : 'font-medium'} ${f.color || (f.value > 0 ? 'text-navy-900' : 'text-navy-300')}`}>
               {f.always || f.value > 0 ? fmt(f.value) : '—'}
             </span>
           </div>
         ))}
+        {/* Always-visible explanation of Utilidad (no hover needed) */}
+        <div className="col-span-2 sm:col-span-4 mt-1 pt-2 border-t border-navy-100">
+          <p className="text-[10px] leading-snug text-navy-500">
+            <span className="font-bold text-navy-700">Utilidad</span> = Precio de venta − costos reales
+            (Compra + Renovación + Movida + Comisión). El <b>Margen</b> es la ganancia objetivo (ya incluida
+            en el precio de venta), por eso <b>no</b> se resta. Solo aplica a casas vendidas.
+          </p>
+        </div>
       </div>
 
       {/* RTO breakdown if financed sale */}
