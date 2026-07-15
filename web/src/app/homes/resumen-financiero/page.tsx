@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import {
   BarChart3, Building2, Search, ChevronDown, ChevronRight, Plus, Loader2,
-  CreditCard, CheckCircle, Clock, AlertCircle,
+  CreditCard, CheckCircle, Clock, AlertCircle, Info,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
@@ -105,6 +105,16 @@ export default function ResumenFinancieroPage() {
             <p className={`text-lg font-serif font-bold ${kpi.color}`}>{fmt(kpi.value)}</p>
           </div>
         ))}
+      </div>
+
+      {/* Always-visible explanation of Utilidad (front and center, no hover/expand) */}
+      <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-[11px] leading-snug text-blue-800">
+          <b>Utilidad</b> = Precio de venta − costos reales (Compra + Renovación + Movida + Comisión).
+          El <b>Margen</b> es la ganancia objetivo (ya incluida en el precio de venta), por eso <b>no</b> se resta.
+          Solo aplica a casas vendidas.
+        </p>
       </div>
 
       {/* Filters */}
