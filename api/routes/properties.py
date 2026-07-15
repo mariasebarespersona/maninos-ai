@@ -771,6 +771,10 @@ async def create_property(data: PropertyCreate):
                     property_id=prop["id"],
                     description=f"Compra en consignación — {prop.get('address') or code}",
                     notes=f"[CONSIGN:{prop['id']}] Consignación — pago pendiente al dueño anterior ({payee})",
+                    # Buying inventory on credit: CAPITALIZE to the per-house
+                    # "Compra <CODE>" asset (debit Inventory / credit A/P), NOT an
+                    # expense. The cost becomes COGS only when the house sells.
+                    capitalize=True,
                 )
                 logger.info(f"[properties] Consignment payable INVOICE {inv.get('invoice_number')} created for {prop['id']}: ${amount:,.2f} to {payee}")
         except Exception as e:

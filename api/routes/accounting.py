@@ -37,6 +37,10 @@ BS_TYPES = {"Bank", "Accounts receivable (A/R)", "Other Current Assets", "Fixed 
             "Other Assets", "Accounts payable (A/P)", "Other Current Liabilities",
             "Long Term Liabilities", "Equity", "asset", "liability", "equity"}
 PL_TYPES = INCOME_TYPES | EXPENSE_TYPES
+# Asset accounts a payable may CAPITALIZE to (bought on credit, cost parked on
+# the Balance Sheet until the house sells): consignment intake debits the
+# per-house Inventory ("Compra <CODE>") instead of an expense.
+CAPITALIZABLE_TYPES = {"Other Current Assets", "Fixed Assets", "Other Assets", "asset"}
 
 
 def _signed_balance(amt: float, account_type: str, is_income: bool) -> float:
@@ -2092,6 +2096,26 @@ def _validate_postable_account(code: Optional[str], direction: str) -> Optional[
     return code
 
 
+def _validate_asset_account(code: Optional[str]) -> Optional[str]:
+    """A CAPITALIZED payable (an asset bought on credit — e.g. a consignment
+    intake) debits a real, non-header ASSET account (per-house Inventory / Fixed
+    Assets), never an expense: the cost stays on the Balance Sheet until the
+    house sells (COGS recognized then). Mirrors _validate_postable_account for
+    the asset side. Returns the validated code or raises 400."""
+    if not code:
+        return None
+    a = {x["name"]: x for x in _fetch_all_accounts(active_only=False)}.get(code)
+    if not a:
+        raise HTTPException(status_code=400, detail=f"La cuenta contable '{code}' no existe en el plan de cuentas.")
+    if a.get("is_header"):
+        raise HTTPException(status_code=400,
+            detail=f"'{code}' es una cuenta de encabezado (agrupador); selecciona una cuenta específica.")
+    if a.get("account_type") not in CAPITALIZABLE_TYPES:
+        raise HTTPException(status_code=400,
+            detail=f"'{code}' no es una cuenta de activo capitalizable (Inventory / Activo fijo).")
+    return code
+
+
 def issue_invoice(
     *,
     direction: str,
@@ -2111,6 +2135,7 @@ def issue_invoice(
     notes: Optional[str] = None,
     payment_terms: Optional[str] = None,
     status: str = "sent",
+    capitalize: bool = False,
 ) -> dict:
     """Create an invoice AND post its AR/AP accrual pair at issuance. The ONE
     place invoices come into being — the HTTP endpoint and internal callers
@@ -2123,10 +2148,16 @@ def issue_invoice(
     # Root guard FIRST (before we create anything): the P&L line must target a
     # specific non-header account on the correct side, so the invoice is always
     # linked to the right place and the statements add up. Raises 400 otherwise.
-    _pl_code = _validate_postable_account(
-        account_code if direction == "receivable" else (account_code or expense_account_code),
-        direction,
-    )
+    if capitalize and direction == "payable":
+        # Capitalized purchase on credit (consignment intake): the debit leg is
+        # an INVENTORY/asset account (e.g. "Compra <CODE>"), not an expense, so
+        # validate the asset side and post debit<asset>/credit A/P below.
+        _pl_code = _validate_asset_account(account_code or expense_account_code)
+    else:
+        _pl_code = _validate_postable_account(
+            account_code if direction == "receivable" else (account_code or expense_account_code),
+            direction,
+        )
     inv_number = _generate_invoice_number(direction)
     total = float(total_amount or 0)
     insert_data = {
