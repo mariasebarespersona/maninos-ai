@@ -570,6 +570,117 @@ async def get_note_schedule(note_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# PROMISSORY-NOTE DOCUMENT HELPERS (template rendering)
+# Fixed parties for the Maninos Capital note template.
+# =============================================================================
+MAKER_NAME = "MANINOS CAPITAL LLC"
+MAKER_REP_DEFAULT = "BENJAMIN SEBASTIAN GONZALEZ ZAMBRANO"
+CO_OBLIGOR_NAME = "DELATORO LLC"
+CO_OBLIGOR_REP = "JORGE DE LA TORRE ROSAS"
+NOTE_ADDRESS = "15891 Old Houston Rd, Conroe, Tx. Zip Code 77302"
+
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+
+def _two_digit_words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    t, o = divmod(n, 10)
+    return _TENS[t] + ("-" + _ONES[o] if o else "")
+
+
+def _three_digit_words(n: int) -> str:
+    h, rest = divmod(n, 100)
+    parts = []
+    if h:
+        parts.append(_ONES[h] + " hundred")
+    if rest:
+        parts.append(_two_digit_words(rest))
+    return " ".join(parts) if parts else "zero"
+
+
+def _int_to_words(n: int) -> str:
+    if n == 0:
+        return "zero"
+    parts = []
+    millions, rest = divmod(n, 1_000_000)
+    thousands, hundreds = divmod(rest, 1000)
+    if millions:
+        parts.append(_three_digit_words(millions) + " million")
+    if thousands:
+        parts.append(_three_digit_words(thousands) + " thousand")
+    if hundreds:
+        parts.append(_three_digit_words(hundreds))
+    return " ".join(parts)
+
+
+def _amount_words(amount: float) -> str:
+    dollars = int(amount)
+    cents = int(round((amount - dollars) * 100))
+    return f"{_int_to_words(dollars).upper()} {cents:02d}/100"
+
+
+def _year_words(y: int) -> str:
+    if 2000 <= y < 2100:
+        rest = y % 100
+        return "two thousand" + (" " + _two_digit_words(rest) if rest else "")
+    return str(y)
+
+
+_ORD = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth", 7: "seventh",
+        8: "eighth", 9: "ninth", 10: "tenth", 11: "eleventh", 12: "twelfth", 13: "thirteenth",
+        14: "fourteenth", 15: "fifteenth", 16: "sixteenth", 17: "seventeenth", 18: "eighteenth",
+        19: "nineteenth", 20: "twentieth", 21: "twenty-first", 22: "twenty-second", 23: "twenty-third",
+        24: "twenty-fourth", 25: "twenty-fifth", 26: "twenty-sixth", 27: "twenty-seventh",
+        28: "twenty-eighth", 29: "twenty-ninth", 30: "thirtieth", 31: "thirty-first"}
+
+
+def _date_spelled(d) -> str:
+    """'MM/DD/YYYY (Month Dth, year words)' — mirrors the template's date style."""
+    return f"{d.strftime('%m/%d/%Y')} ({d.strftime('%B')} {_ORD.get(d.day, str(d.day))}, {_year_words(d.year)})"
+
+
+def _term_phrase(term_months: int) -> str:
+    if term_months % 12 == 0:
+        yrs = term_months // 12
+        return f"{_int_to_words(yrs)} ({yrs}) year{'s' if yrs != 1 else ''}"
+    return f"{term_months} ({_int_to_words(term_months)}) months"
+
+
+def _amortized_schedule(loan_amount: float, annual_rate: float, term_months: int) -> dict:
+    """Template amortization: interest-only until the last 12 months; the final
+    (up to) 12 months amortize principal + interest at the annual rate.
+    Columns mirror the template: period, principal, interest ('Rate'), payment, balance."""
+    mrate = (annual_rate / 100.0) / 12.0
+    amort_months = min(12, term_months)
+    io_months = max(0, term_months - amort_months)
+    monthly_interest = loan_amount * mrate
+    rows, bal, total = [], loan_amount, 0.0
+    for p in range(1, io_months + 1):
+        rows.append({"period": p, "principal": 0.0, "interest": monthly_interest,
+                     "payment": monthly_interest, "balance": bal})
+        total += monthly_interest
+    if amort_months > 0:
+        pmt = (bal * mrate / (1 - (1 + mrate) ** (-amort_months))) if mrate > 0 else (bal / amort_months)
+        for i in range(amort_months):
+            interest = bal * mrate
+            if i == amort_months - 1:  # last row clears the balance exactly
+                principal = bal
+                pay = principal + interest
+            else:
+                principal = pmt - interest
+                pay = pmt
+            bal = max(0.0, bal - principal)
+            rows.append({"period": io_months + i + 1, "principal": principal, "interest": interest,
+                         "payment": pay, "balance": bal})
+            total += pay
+    return {"schedule": rows, "total_payment": total,
+            "total_interest": total - loan_amount, "monthly_interest": monthly_interest}
+
+
 @router.get("/{note_id}/pdf")
 async def download_promissory_note_pdf(note_id: str):
     """Generate and download a PDF of the promissory note document."""
@@ -657,139 +768,177 @@ async def download_promissory_note_pdf(note_id: str):
         )))
         elements.append(Paragraph("PROMISSORY NOTE", styles['DocTitle']))
         
-        # Meta
-        signed_date = note.get("signed_at", note.get("start_date", ""))
-        if signed_date:
-            try:
-                d = datetime.fromisoformat(str(signed_date).replace("Z", "+00:00"))
-                signed_str = d.strftime("%B %d, %Y")
-            except Exception:
-                signed_str = str(signed_date)
-        else:
-            signed_str = "_______________"
-        
+        # ── Dynamic fields ──
+        lender = note.get("lender_name") or investor.get("name", "") or "_______________"
+        maker_rep = note.get("subscriber_representative") or MAKER_REP_DEFAULT
         city = note.get("signed_city", "Conroe")
         state = note.get("signed_state", "Texas")
-        monthly_int = calc.get("monthly_interest", 0)
-        
-        meta_data = [
-            [f"Date: {signed_str}", f"City: {city}, {state}"],
-            [f"Amount: {fmt(loan_amount)}", f"Term: {term_months} months"],
-            [f"Annual Rate: {note.get('annual_rate', 12)}% (simple)", f"Total Due: {fmt(calc['total_due'])}"],
-            [f"Monthly Interest: {fmt(monthly_int)}", f"Total Interest: {fmt(calc['total_interest'])}"],
-        ]
-        t = Table(meta_data, colWidths=[270, 270])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f9f9f6")),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(t)
-        elements.append(Spacer(1, 16))
-        
-        # Body text
-        subscriber = note.get("subscriber_name", "Maninos Homes LLC")
-        lender = note.get("lender_name", investor.get("name", ""))
-        lender_co = note.get("lender_company", "")
-        
-        body_text = f"""
-        FOR VALUE RECEIVED, the undersigned <b>{subscriber}</b> ("Subscriber") promises to pay to the order of 
-        <b>{lender}</b>{f' ({lender_co})' if lender_co else ''} ("Lender"), the principal sum of 
-        <b>{fmt(loan_amount)}</b>, together with simple (non-accumulative) interest at the rate of 
-        <b>{note.get('annual_rate', 12)}%</b> per annum, calculated on the original principal, for a period of 
-        <b>{term_months} months</b>, resulting in a total amount due of <b>{fmt(calc['total_due'])}</b>.
-        Payments may be made at any time — monthly, in partial amounts, or as a lump sum.
-        """
-        elements.append(Paragraph(body_text.strip(), styles['Body']))
-        elements.append(Spacer(1, 8))
-        
-        maturity = note.get("maturity_date", "")
-        mat_str = maturity
-        if maturity:
-            try:
-                mat_str = datetime.fromisoformat(str(maturity)).strftime("%B %d, %Y")
-            except Exception:
-                pass
-        
-        elements.append(Paragraph(f"<b>Maturity Date:</b> {mat_str}", styles['Body']))
-        elements.append(Spacer(1, 8))
-        
-        default_rate = note.get("default_interest_rate", 12)
+        annual_rate = float(note.get("annual_rate", 12) or 12)
+
+        signed_raw = note.get("signed_at") or note.get("start_date") or ""
+        try:
+            sd = datetime.fromisoformat(str(signed_raw).replace("Z", "+00:00"))
+        except Exception:
+            sd = datetime.now()
+        date_full = _date_spelled(sd)
+
+        sched = _amortized_schedule(loan_amount, annual_rate, term_months)
+        total_interest = sched["total_interest"]
+        total_repayment = loan_amount + total_interest
+        rate_words = f" ({_int_to_words(int(annual_rate))})" if float(annual_rate).is_integer() else ""
+
+        # ── Principal amount headline ──
         elements.append(Paragraph(
-            f"In the event of default, interest shall accrue at the rate of <b>{default_rate}%</b> per annum on the outstanding balance.",
-            styles['Body']
-        ))
-        elements.append(Spacer(1, 16))
-        
-        # Schedule table
-        elements.append(Paragraph("Simple Interest Schedule", styles['Section']))
-        sched_header = ["Month", "Monthly Interest", "Accrued Interest", "Principal", "Total Owed"]
-        sched_rows = [sched_header]
-        for row in calc["schedule"]:
-            sched_rows.append([
-                str(row["term"]),
-                fmt(row["interest"]) if row["interest"] > 0 else "-",
-                fmt(row["accrued_interest"]),
-                fmt(row["principal"]),
-                fmt(row["pending"]),
-            ])
-        
-        t = Table(sched_rows, colWidths=[50, 95, 95, 100, 100])
-        style = [
+            f"<b>Principal Amount:</b> {fmt(loan_amount)} USD "
+            f"(Total Repayment with Interest: {fmt(total_repayment)} USD)",
+            ParagraphStyle(name='PNPrincipal', parent=styles['Normal'], fontSize=11,
+                           alignment=TA_CENTER, spaceAfter=10, textColor=colors.HexColor("#283242"),
+                           fontName='Helvetica-Bold')))
+        elements.append(Paragraph(f"In {city}, {state} on {date_full}.", styles['Body']))
+        elements.append(Spacer(1, 10))
+
+        # ── Binding paragraph (Maker + Co-Obligor) ──
+        binding = f"""{MAKER_NAME}, a Texas limited liability company (the "Maker"), acting by and through its
+        authorized representative, <b>{maker_rep}</b>, owes and by means of this Promissory Note unconditionally
+        binds itself to pay <b>{lender}</b> (the "Lender"), the amount of <b>{fmt(loan_amount)}</b> U.S.D.
+        ({_amount_words(loan_amount)} UNITED STATES DOLLARS), as a renewal and replacement of the Lender's existing
+        loan for a new term of {_term_phrase(term_months)} (this Promissory Note supersedes and replaces in its
+        entirety any prior promissory note or loan agreement between the Maker and the Lender with respect to such
+        loan), which will be paid as follows: {CO_OBLIGOR_NAME}, a Texas limited liability company (the "Co-Obligor"),
+        joins this Promissory Note as a joint obligor, provided that the Co-Obligor's liability hereunder shall be
+        secondary to the Subscriber's and the Co-Obligor shall retain all rights of contribution and subrogation
+        against the Subscriber. Amounts will be paid as follows:"""
+        elements.append(Paragraph(binding, styles['Body']))
+        elements.append(Spacer(1, 12))
+
+        # ── Loan summary table ──
+        summary_rows = [
+            [lender, "", ""],
+            ["Loan", fmt(loan_amount), ""],
+            ["Rate", fmt(total_interest), f"{annual_rate:g}%"],
+        ]
+        t = Table(summary_rows, colWidths=[180, 180, 180])
+        t.setStyle(TableStyle([
+            ('SPAN', (0, 0), (2, 0)),
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#283242")),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f6")]),
-        ]
-        # Highlight last row
-        style.append(('BACKGROUND', (0, -1), (-1, -1), colors.HexColor("#e8f5e9")))
-        style.append(('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'))
-        t.setStyle(TableStyle(style))
-        elements.append(t)
-        elements.append(Spacer(1, 24))
-        
-        # Signature lines
-        elements.append(Paragraph("SIGNATURES", styles['Section']))
-        sig_data = [
-            ["_" * 40, "", "_" * 40],
-            [f"{subscriber}", "", f"{lender}"],
-            ["Subscriber", "", "Lender"],
-        ]
-        t = Table(sig_data, colWidths=[200, 60, 200])
-        t.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
         ]))
         elements.append(t)
-        
-        # Formula note
         elements.append(Spacer(1, 12))
+
+        # ── Amortization schedule (interest-only, then amortizing) ──
+        sched_rows = [["Period", "Principal", "Rate", "Payment", "Balance"]]
+        for row in sched["schedule"]:
+            sched_rows.append([
+                str(row["period"]),
+                fmt(row["principal"]),
+                fmt(row["interest"]),
+                fmt(row["payment"]),
+                fmt(row["balance"]),
+            ])
+        t = Table(sched_rows, colWidths=[55, 120, 110, 120, 120], repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#283242")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8.5),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#ddd")),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f6")]),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 18))
+
+        # ── Default-interest clauses ──
         elements.append(Paragraph(
-            f"<i>Simple interest: Monthly interest = Principal × Monthly Rate = {fmt(loan_amount)} × "
-            f"{(monthly_rate * 100):.4f}% = {fmt(monthly_int)}/month. "
-            f"Total interest = {fmt(monthly_int)} × {term_months} months = {fmt(calc['total_interest'])}. "
-            f"Interest does not compound.</i>",
-            ParagraphStyle(name='FormulaNote', parent=styles['Normal'], fontSize=8,
-                           textColor=colors.HexColor("#666"), alignment=TA_CENTER)
-        ))
+            "The Maker agrees to pay, if applicable, default interest, in accordance with the following:",
+            styles['Body']))
+        elements.append(Spacer(1, 6))
+        elements.append(Paragraph(
+            f"""<b>1. Default interest.</b> The Maker expressly acknowledges and agrees that in the event of default
+            in the timely and total payment of the amounts established in this Promissory Note, which default remains
+            uncured for ten (10) business days after written notice thereof is delivered to the Maker and all joint
+            obligors, the unpaid amount will accrue interest at the annual rate of {annual_rate:g}%{rate_words} percent
+            (in lieu of, and not in addition to, the regular interest rate) from the expiration of such cure period and
+            until the day it is fully paid, payable on demand. No late fees, penalties, or other charges beyond the
+            interest specified herein shall be assessed against the Co-Obligor. Notwithstanding anything herein to the
+            contrary, in no event shall interest contracted for, charged, or received hereunder exceed the maximum rate
+            permitted by applicable law.""",
+            styles['Body']))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(
+            """Default interest will be calculated on unpaid balances and based on a year of three hundred and
+            sixty-five (365) days and days elapsed. If the payment date corresponds to a day that is not a business day,
+            the Maker may make payment free of charge on the immediately following business day. This promissory note
+            shall be construed in accordance with the laws of the State of Texas, without regard to its conflict of laws
+            principles. The Maker and the Co-Obligor irrevocably submit to the exclusive jurisdiction of the state and
+            federal courts located in Montgomery County, Texas for any action arising under or related to this Promissory
+            Note brought by the Lender, and waive any objection to venue or jurisdiction in such courts; provided,
+            however, that the Co-Obligor may bring any contribution or subrogation action against the Maker in any court
+            of competent jurisdiction. The Maker designates the following as its address to be required for payment:""",
+            styles['Body']))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(
+            """<b>Currency.</b> All amounts referenced in this Promissory Note, including the principal, interest,
+            default interest, and every payment reflected in the amortization schedule above, are denominated in, and
+            shall be paid exclusively in, lawful currency of the United States of America (U.S. Dollars, "USD"). Any
+            reference to "$" herein means U.S. Dollars.""",
+            styles['Body']))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(
+            f"""{NOTE_ADDRESS}. Payments may be made by wire transfer, ACH, certified check, or such other method as the
+            parties may agree in writing. All notices to {CO_OBLIGOR_NAME} shall be sent to: [INSERT DELATORO LLC
+            ADDRESS]. The Maker or the Co-Obligor may prepay this Promissory Note in whole or in part at any time without
+            premium or penalty; any such prepayment by the Co-Obligor shall not waive or diminish its rights of
+            contribution and subrogation against the Maker.""",
+            styles['Body']))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(
+            f"""This promissory note is signed and delivered in the city of {city}, {state} on {date_full}. The Lender
+            may not assign or transfer this Promissory Note without the prior written consent of the Subscriber and
+            {CO_OBLIGOR_NAME}.""",
+            styles['Body']))
+        elements.append(Spacer(1, 24))
+
+        # ── Signatures (Maker + Co-Obligor) ──
+        sig_left = Paragraph(
+            f"<b>Signature</b><br/>_______________________________<br/><b>{maker_rep}</b><br/>"
+            f"{MAKER_NAME}, Authorized Representative<br/>"
+            f"<font size='8' color='#666666'>(representing and warranting that the undersigned has full authority to "
+            f"execute this Promissory Note on behalf of the Maker)</font>",
+            ParagraphStyle(name='SigL', parent=styles['Normal'], fontSize=9, leading=13))
+        sig_right = Paragraph(
+            f"<b>Signature</b><br/>_______________________________<br/><b>{CO_OBLIGOR_REP}</b><br/>"
+            f"{CO_OBLIGOR_NAME} Authorized Representative<br/>"
+            f"<font size='8' color='#666666'>Co-Obligor with Secondary Liability (limited to obligations expressly set "
+            f"forth in this Promissory Note, with full rights of contribution and subrogation against the Maker; the "
+            f"Lender shall first exhaust all remedies against the Maker before seeking payment from the Co-Obligor)</font>",
+            ParagraphStyle(name='SigR', parent=styles['Normal'], fontSize=9, leading=13))
+        t = Table([[sig_left, sig_right]], colWidths=[265, 265])
+        t.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(t)
 
         # Footer
         elements.append(Spacer(1, 20))
         elements.append(Paragraph(
-            f"Generated {datetime.now().strftime('%m/%d/%Y %H:%M')} — Maninos Homes LLC — Confidential",
+            f"Generated {datetime.now().strftime('%m/%d/%Y %H:%M')} — {MAKER_NAME} — Confidential",
             ParagraphStyle(name='PNFooter', parent=styles['Normal'], fontSize=7,
-                           textColor=colors.grey, alignment=TA_CENTER)
-        ))
+                           textColor=colors.grey, alignment=TA_CENTER)))
         
         doc.build(elements)
         pdf_bytes = buffer.getvalue()
