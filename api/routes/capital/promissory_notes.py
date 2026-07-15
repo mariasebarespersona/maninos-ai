@@ -704,7 +704,7 @@ async def download_promissory_note_pdf(note_id: str):
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib.units import inch
             from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
             from reportlab.graphics.shapes import Drawing, Polygon, Line, Rect
             from reportlab.graphics import renderPDF
         except ImportError:
@@ -757,7 +757,12 @@ async def download_promissory_note_pdf(note_id: str):
         # Drives BOTH the brand-title header and the Maker in the body/signature.
         maker_entity = (note.get("subscriber_name") or MAKER_NAME).upper()
 
-        elements.append(_draw_phoenician_boat())
+        # Client-provided "maninos" logo (base64-embedded), centered at the top.
+        import base64 as _b64
+        from api.routes.capital._promissory_logo import LOGO_B64
+        _logo = Image(BytesIO(_b64.b64decode(LOGO_B64)), width=104, height=49)
+        _logo.hAlign = 'CENTER'
+        elements.append(_logo)
         elements.append(Paragraph(maker_entity, ParagraphStyle(
             name='BrandTitle', parent=styles['Normal'],
             fontSize=11, alignment=TA_CENTER, spaceAfter=4,
