@@ -157,6 +157,7 @@ export default function AccountingPage() {
   const [txnPage, setTxnPage] = useState(1)
   const [txnSearch, setTxnSearch] = useState('')
   const [txnTypeFilter, setTxnTypeFilter] = useState('')
+  const [txnAccountFilter, setTxnAccountFilter] = useState('')
   const [txnFlowFilter, setTxnFlowFilter] = useState<'' | 'income' | 'expense'>('')
   const [showNewTxnModal, setShowNewTxnModal] = useState(false)
   const [showNewBankModal, setShowNewBankModal] = useState(false)
@@ -200,6 +201,7 @@ export default function AccountingPage() {
       const params = new URLSearchParams({ page: String(txnPage), per_page: '30' })
       if (txnSearch) params.set('search', txnSearch)
       if (txnTypeFilter) params.set('transaction_type', txnTypeFilter)
+      if (txnAccountFilter) params.set('account_id', txnAccountFilter)
       if (txnFlowFilter) params.set('is_income', txnFlowFilter === 'income' ? 'true' : 'false')
       if (selectedYard) params.set('yard_id', selectedYard)
       const res = await fetch(`/api/accounting/transactions?${params}`)
@@ -213,7 +215,7 @@ export default function AccountingPage() {
       }
     } catch (e) { /* ignore */ }
     finally { setTxnLoading(false) }
-  }, [txnPage, txnSearch, txnTypeFilter, txnFlowFilter, selectedYard])
+  }, [txnPage, txnSearch, txnTypeFilter, txnAccountFilter, txnFlowFilter, selectedYard])
 
   useEffect(() => { fetchDashboard(); fetchAccounts(); fetchAllAccounts() }, [fetchDashboard, fetchAccounts, fetchAllAccounts])
   useEffect(() => { if (activeTab === 'transactions') fetchTransactions() }, [activeTab, fetchTransactions])
@@ -371,7 +373,7 @@ export default function AccountingPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} salesReceivables={dashboard?.sales_receivables || []} period={period} year={selectedYear} month={selectedMonth} />}
-      {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
+      {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} accountFilter={txnAccountFilter} setAccountFilter={setTxnAccountFilter} allAccounts={allAccounts} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
       {activeTab === 'statements' && <StatementsTab />}
       {activeTab === 'estado_cuenta' && <EstadoCuentaTab />}
@@ -838,9 +840,11 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, yardBreakdown, recentTra
 // ════════════════════════════════════════════════════════════════════════
 //  TRANSACTIONS TAB (kept from V1)
 // ════════════════════════════════════════════════════════════════════════
-function TransactionsTab({ transactions, loading, search, setSearch, typeFilter, setTypeFilter, flowFilter, setFlowFilter, page, setPage, onRefresh }: {
+function TransactionsTab({ transactions, loading, search, setSearch, typeFilter, setTypeFilter, accountFilter, setAccountFilter, allAccounts, flowFilter, setFlowFilter, page, setPage, onRefresh }: {
   transactions: Transaction[]; loading: boolean; search: string; setSearch: (s: string) => void
-  typeFilter: string; setTypeFilter: (s: string) => void; flowFilter: '' | 'income' | 'expense'
+  typeFilter: string; setTypeFilter: (s: string) => void
+  accountFilter: string; setAccountFilter: (s: string) => void; allAccounts: any[]
+  flowFilter: '' | 'income' | 'expense'
   setFlowFilter: (s: '' | 'income' | 'expense') => void; page: number; setPage: (n: number) => void; onRefresh: () => void
 }) {
   const [attachTxnId, setAttachTxnId] = useState<string | null>(null)
@@ -1013,6 +1017,22 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
           <option value="">Todos los tipos</option>
           {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {/* Filter by accounting account (the real classification, esp. for manual entries) */}
+        <select value={accountFilter} onChange={e => { setAccountFilter(e.target.value); setPage(1) }}
+          className="px-3 py-2 text-sm rounded-lg border max-w-[220px]" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+          <option value="">Todas las cuentas</option>
+          {(() => {
+            const leafs = (allAccounts || []).filter((a: any) => !a.is_header)
+            const types = Array.from(new Set(leafs.map((a: any) => a.account_type)))
+            return types.map((ty: string) => (
+              <optgroup key={ty} label={ty}>
+                {leafs.filter((a: any) => a.account_type === ty)
+                  .sort((a: any, b: any) => (a.name || a.code).localeCompare(b.name || b.code))
+                  .map((a: any) => <option key={a.id} value={a.id}>{a.name || a.code}</option>)}
+              </optgroup>
+            ))
+          })()}
+        </select>
         <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
           {([['', 'Todos'], ['income', '↑ Ingresos'], ['expense', '↓ Gastos']] as const).map(([val, label]) => (
             <button key={val} onClick={() => { setFlowFilter(val as any); setPage(1) }}
@@ -1048,6 +1068,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
               <thead><tr className="border-b" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--ivory)' }}>
                 <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Fecha</th>
                 <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Tipo</th>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Cuenta</th>
                 <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Descripción</th>
                 <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Contraparte</th>
                 <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Pago</th>
@@ -1075,6 +1096,11 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <tr key={t.id} data-testid="txn-row" data-leadership={getLeadership(t)} className="border-b hover:bg-sand/20 transition-colors" style={{ borderColor: 'var(--sand)' }}>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.transaction_date}</td>
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${t.is_income ? 'text-emerald-500' : 'text-red-500'}`} /><span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{TYPE_LABELS[t.transaction_type] || t.transaction_type}</span></div></td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {t.accounting_accounts?.name
+                          ? <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700" title={t.accounting_accounts.code}>{t.accounting_accounts.name}</span>
+                          : <span className="text-xs" style={{ color: 'var(--ash)' }}>—</span>}
+                      </td>
                       <td className="px-4 py-3 align-top">
                         <div className="flex items-start gap-2">
                           {t.properties?.property_code && (
@@ -1182,7 +1208,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                           if (next.has(key)) next.delete(key); else next.add(key)
                           setCollapsedGroups(next)
                         }}>
-                        <td colSpan={8} className="px-4 py-2">
+                        <td colSpan={9} className="px-4 py-2">
                           <div className="flex items-center justify-between">
                             <span className="flex items-center gap-2 font-semibold text-sm" style={{ color: 'var(--ink)' }}>
                               {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
