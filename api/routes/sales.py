@@ -181,18 +181,27 @@ async def get_sales_summary():
     }
     
     for sale in (all_sales.data or []):
+        status = sale["status"]
         stats["total_sales"] += 1
-        stats[sale["status"]] = stats.get(sale["status"], 0) + 1
+        stats[status] = stats.get(status, 0) + 1
         stats[sale["sale_type"]] = stats.get(sale["sale_type"], 0) + 1
-        
-        if sale["status"] == "completed":
+
+        # Revenue is recognized when the sale is MADE (a house is sold the moment
+        # the sale is recorded — even RTO with a pending balance). So count every
+        # non-cancelled sale, not only 'completed'. Otherwise a fresh sale (and
+        # any RTO, which sits in rto_pending/rto_active) never showed in the
+        # "Ingresos Totales" summary until it was manually completed.
+        if status != "cancelled":
             stats["total_revenue"] += float(sale.get("sale_price", 0) or 0)
-            
             if sale.get("sold_before_renovation"):
                 stats["sold_before_renovation"] += 1
             else:
                 stats["sold_after_renovation"] += 1
-    
+
+    # "Pendientes" = active sales not yet completed — includes RTO in-progress
+    # (rto_pending / rto_approved / rto_active), transfer_reported, paid, etc.
+    stats["pending"] = stats["total_sales"] - stats.get("completed", 0) - stats.get("cancelled", 0)
+
     return stats
 
 

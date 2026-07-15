@@ -170,16 +170,14 @@ function SalesPage() {
           <p className="text-sm text-navy-500 mt-1">Ingresos Totales</p>
         </div>
 
-        <Link
-          href="/homes/sales?status=pending"
-          className={`card-luxury p-5 transition-all hover:shadow-card ${statusFilter === 'pending' ? 'ring-2 ring-gold-400' : ''}`}
-        >
+        <div className="card-luxury p-5">
           <div className="p-3 bg-amber-100 rounded-xl w-fit mb-3">
             <Clock className="w-6 h-6 text-amber-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-navy-900">{stats.pending}</p>
           <p className="text-sm text-navy-500 mt-1">Pendientes</p>
-        </Link>
+          <p className="text-[11px] text-navy-400 mt-0.5">Ventas activas sin completar (incluye RTO)</p>
+        </div>
 
         <Link
           href="/homes/sales?status=completed"
