@@ -318,8 +318,24 @@ export default function PromissoryNoteDetailPage() {
     }
   }
 
-  const handlePrint = () => {
-    window.print()
+  const handleDownloadPDF = async () => {
+    if (!note) return
+    try {
+      const res = await fetch(`/api/capital/promissory-notes/${id}/pdf`)
+      if (!res.ok) { toast.error('Error al generar el PDF'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Promissory_Note_${(note.lender_name || 'note').replace(/\s+/g, '_')}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success('PDF descargado')
+    } catch {
+      toast.error('Error al descargar el PDF')
+    }
   }
 
   const handleExportCSV = () => {
@@ -327,13 +343,16 @@ export default function PromissoryNoteDetailPage() {
     const headers = ['Period', 'Principal', 'Interest', 'Payment', 'Balance']
     const rows = schedule.map(r => [r.period, r.principal.toFixed(2), r.interest.toFixed(2), r.payment.toFixed(2), r.balance.toFixed(2)])
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `promissory-note-${note.lender_name.replace(/\s+/g, '-')}-${note.loan_amount}.csv`
+    a.download = `promissory-note-${(note.lender_name || 'note').replace(/\s+/g, '-')}-${note.loan_amount}.csv`
+    document.body.appendChild(a)
     a.click()
+    a.remove()
     URL.revokeObjectURL(url)
+    toast.success('CSV descargado')
   }
 
   const handleExportPaymentsCSV = () => {
@@ -482,8 +501,8 @@ export default function PromissoryNoteDetailPage() {
               <CreditCard className="w-4 h-4" /> Registrar Pago
             </button>
           )}
-          <button onClick={handlePrint} className="btn-ghost btn-sm">
-            <Printer className="w-4 h-4" /> Imprimir / PDF
+          <button onClick={handleDownloadPDF} className="btn-ghost btn-sm">
+            <Download className="w-4 h-4" /> Descargar PDF
           </button>
           <button onClick={handleExportCSV} className="btn-ghost btn-sm">
             <Download className="w-4 h-4" /> Exportar CSV
@@ -672,16 +691,16 @@ export default function PromissoryNoteDetailPage() {
               <strong>1. Default interest.</strong> The Subscriber expressly and irrevocably acknowledges that in the event of default
               in the timely and total payment of the amounts established in this Promissory Note, the unpaid amount will cause
               default interest from the due date and until the day it is fully paid, payable to sight, at the annual rate of{' '}
-              <strong>{note.default_interest_rate}%</strong> ({note.default_interest_rate === 12 ? 'twelve' : note.default_interest_rate}) percent.
+              <strong>{note.annual_rate}%</strong> (the same rate as this Promissory Note).
             </p>
             <p>
               Default interest will be calculated on unpaid balances and based on a year of three hundred and sixty five days
               and days elapsed. If the payment date corresponds to a day that is not a business day, the Subscriber may make
               payment free of charge immediately following business day. This promissory note shall be construed in accordance
-              with the laws of the United States of America. The Subscriber submits to the jurisdiction and competence of the
-              Courts of the city of The Woodlands, Texas, expressly waiving any other jurisdiction to which he is entitled or
-              may have it in the future, by virtue of his domicile or for any other reason. The Subscriber designates the
-              following as his address to be required for payment:
+              with the laws of the State of Texas. The Subscriber submits to the exclusive jurisdiction of the state and
+              federal courts located in Montgomery County, Texas, expressly waiving any other jurisdiction to which he is
+              entitled or may have it in the future, by virtue of his domicile or for any other reason. The Subscriber
+              designates the following as his address to be required for payment:
             </p>
             <p className="font-bold">{note.subscriber_address || '15891 Old Houston Rd, Conroe, Tx. Zip Code 77302'}</p>
             <p>
