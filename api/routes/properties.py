@@ -394,7 +394,12 @@ async def financial_summary():
             commission = float(p["commission"]) if p.get("commission") is not None else round(ledger_cost_by_code.get(f"Comisión {_code}", 0.0), 2)
             margin = float(p["margin"]) if p.get("margin") is not None else MARGIN_FIXED
             total_inv = pp + reno + move
-            profit = sp - total_inv - commission - margin if sp > 0 else 0
+            # Utilidad = ACTUAL profit = sale − real costs (compra + reno + movida
+            # + comisión). Do NOT subtract `margin`: margin is the TARGET profit
+            # baked into the sale price (sale = costs + margin), not a cost — the
+            # old formula subtracted it and showed "profit vs target" (e.g. −$1,000
+            # for a house that really made +$8,500).
+            profit = sp - total_inv - commission if sp > 0 else 0
             po = po_map.get(pid, {"count": 0, "total": 0})
 
             result.append({
