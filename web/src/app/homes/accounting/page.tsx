@@ -4403,8 +4403,9 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
       const body: any = { ...form, total_amount: total, subtotal: total }
       Object.keys(body).forEach(k => { if (body[k] === '') delete body[k] })
       const res = await fetch('/api/accounting/invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (res.ok) onCreated(); else alert('Error')
-    } catch (e) { alert('Error') } finally { setSaving(false) }
+      if (res.ok) onCreated()
+      else { const d = await res.json().catch(() => ({})); alert(d.detail || 'No se pudo crear la factura') }
+    } catch (e) { alert('Error de conexión') } finally { setSaving(false) }
   }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:p-4 pt-4 sm:pt-16" onClick={onClose}>

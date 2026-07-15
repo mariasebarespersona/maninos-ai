@@ -2081,8 +2081,13 @@ def _validate_postable_account(code: Optional[str], direction: str) -> Optional[
     message. `None`/missing is left for the caller's leaf default."""
     if not code:
         return None
-    accts = {a["name"]: a for a in _fetch_all_accounts(active_only=False)}
-    a = accts.get(code)
+    # Resolve by CODE first, then by NAME. The UI sends the account's `code`
+    # (which for QB-style sub-accounts is "Parent:Child", different from the
+    # display `name`); internal callers may pass either. Return the canonical
+    # `code` so the ledger (which resolves by code) always finds the account.
+    all_accts = _fetch_all_accounts(active_only=False)
+    a = next((x for x in all_accts if x.get("code") == code), None) \
+        or next((x for x in all_accts if x.get("name") == code), None)
     if not a:
         raise HTTPException(status_code=400, detail=f"La cuenta contable '{code}' no existe en el plan de cuentas.")
     if a.get("is_header"):
@@ -2093,7 +2098,7 @@ def _validate_postable_account(code: Optional[str], direction: str) -> Optional[
         side = "ingreso" if direction == "receivable" else "gasto"
         raise HTTPException(status_code=400,
             detail=f"'{code}' no es una cuenta de {side}; una factura {'por cobrar' if direction=='receivable' else 'por pagar'} debe usar una cuenta de {side}.")
-    return code
+    return a["code"]
 
 
 def _validate_asset_account(code: Optional[str]) -> Optional[str]:
@@ -2104,7 +2109,9 @@ def _validate_asset_account(code: Optional[str]) -> Optional[str]:
     the asset side. Returns the validated code or raises 400."""
     if not code:
         return None
-    a = {x["name"]: x for x in _fetch_all_accounts(active_only=False)}.get(code)
+    all_accts = _fetch_all_accounts(active_only=False)
+    a = next((x for x in all_accts if x.get("code") == code), None) \
+        or next((x for x in all_accts if x.get("name") == code), None)
     if not a:
         raise HTTPException(status_code=400, detail=f"La cuenta contable '{code}' no existe en el plan de cuentas.")
     if a.get("is_header"):
@@ -2113,7 +2120,7 @@ def _validate_asset_account(code: Optional[str]) -> Optional[str]:
     if a.get("account_type") not in CAPITALIZABLE_TYPES:
         raise HTTPException(status_code=400,
             detail=f"'{code}' no es una cuenta de activo capitalizable (Inventory / Activo fijo).")
-    return code
+    return a["code"]
 
 
 def issue_invoice(
