@@ -829,7 +829,34 @@ async def update_property(property_id: str, data: PropertyUpdate):
 
     if not update_data:
         return _format_property(current.data)
-    
+
+    # If the property_code changes, RENAME its per-house accounts to match, so
+    # their balances stay with the house and COGS recognition (which keys off
+    # the current code) still finds "Compra/Renovación/Movida <CODE>". Without
+    # this, renaming a house orphaned the old-code accounts and the purchase
+    # cost never reached COGS (the P&L was missing the house cost).
+    old_code = (current.data.get("property_code") or "").strip()
+    new_code = (update_data.get("property_code") or "").strip()
+    if new_code and old_code and new_code != old_code:
+        try:
+            ph = sb.table("accounting_accounts").select("id, code").eq(
+                "description", f"property_id:{property_id}").execute().data or []
+            for a in ph:
+                code = a["code"]
+                if code.endswith(" " + old_code):
+                    new_acct_code = code[: len(code) - len(old_code)] + new_code
+                    dup = sb.table("accounting_accounts").select("id").eq(
+                        "code", new_acct_code).neq("id", a["id"]).execute().data
+                    if dup:
+                        logger.warning(f"[properties] account rename skipped: '{new_acct_code}' already exists")
+                        continue
+                    sb.table("accounting_accounts").update(
+                        {"code": new_acct_code, "name": new_acct_code}
+                    ).eq("id", a["id"]).execute()
+            logger.info(f"[properties] Renamed per-house accounts '{old_code}' → '{new_code}' for {property_id}")
+        except Exception as e:
+            logger.warning(f"[properties] Could not rename per-house accounts for {property_id}: {e}")
+
     try:
         result = sb.table("properties").update(update_data).eq("id", property_id).execute()
     except Exception as e:
