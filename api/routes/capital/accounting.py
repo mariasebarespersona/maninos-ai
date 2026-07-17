@@ -178,7 +178,7 @@ INCOME_ACCOUNT_MAP: dict[str, str] = {
 # ── EXPENSE transaction types → account codes ──
 EXPENSE_ACCOUNT_MAP: dict[str, str] = {
     "acquisition":       "14300",  # RTO Properties (postable; 14100 is a header)
-    "investor_return":   "71400",  # Interest paid (exists)
+    "investor_interest": "71400",  # Interest paid — interest portion of a return
     "commission":        "60100",  # Commissions & fees (exists)
     "operating_expense": "60500",  # Office expenses (exists)
     "insurance":         "60500",  # Office expenses (fallback — update when account exists)
@@ -189,6 +189,7 @@ EXPENSE_ACCOUNT_MAP: dict[str, str] = {
 # ── BALANCE SHEET transaction types → account codes ──
 BALANCE_ACCOUNT_MAP: dict[str, str] = {
     "investor_deposit":  "23900",  # Investor Notes Payable (postable; 23000 is a header)
+    "investor_return":   "23900",  # Return of PRINCIPAL reduces the same liability
     "transfer":          "10100",  # Bank and Cash Equivalents (inter-account transfer)
 }
 

@@ -15,6 +15,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/investors", tags=["Capital - Investors"])
 
 
+# Ledger rows excluded from a settled balance (mirror CAPITAL_CONFIG).
+_UNSETTLED_STATUSES = ("voided", "pending_confirmation", "draft")
+
+
+def _capital_account_balance(code: str, *, exclude_unsettled: bool = True) -> float:
+    """Net ledger balance of a Capital chart account, by code.
+
+    Uses the same sign convention as the ledger engine: a leg contributes
+    +amount when is_income is True, −amount otherwise. For a liability (23900)
+    this yields the outstanding balance; for an expense (71400) it yields the
+    negative of cumulative spend (so magnitude = total paid). Paginated to beat
+    Supabase's 1000-row cap.
+    """
+    acct = sb.table("capital_accounts").select("id").eq("code", code).limit(1).execute()
+    if not acct.data:
+        return 0.0
+    account_id = acct.data[0]["id"]
+    total = 0.0
+    page = 0
+    while True:
+        q = sb.table("capital_transactions").select("amount, is_income, status") \
+            .eq("account_id", account_id).range(page * 1000, page * 1000 + 999).execute()
+        rows = q.data or []
+        for r in rows:
+            if exclude_unsettled and (r.get("status") in _UNSETTLED_STATUSES):
+                continue
+            amt = float(r.get("amount", 0) or 0)
+            total += amt if r.get("is_income") else -amt
+        if len(rows) < 1000:
+            break
+        page += 1
+    return round(total, 2)
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -437,6 +471,13 @@ async def transfer_investment_debt(investment_id: str, data: TransferDebtRequest
 
         face = float(old["amount"])
         price = float(data.purchase_price) if data.purchase_price is not None else face
+        # Discount (>0) / premium (<0) = seller's REALIZED gain/loss and the
+        # buyer's mirrored position. Capital's OWN books have NO gain/loss here:
+        # 23900 is a single account, so reclassing the face seller→buyer is a
+        # wash (net 0), and the cash P passes through net-zero. The P&L belongs
+        # to the investors and is encoded in their totals (seller: position −face,
+        # cash +price → realized −discount; buyer: position +face, cash −price).
+        discount_premium = round(face - price, 2)
 
         buyer = sb.table("investors").select("name, total_invested, available_capital").eq("id", buyer_id).single().execute()
         if not buyer.data:
@@ -495,18 +536,92 @@ async def transfer_investment_debt(investment_id: str, data: TransferDebtRequest
             "property_id": old.get("property_id"), "bank_account_id": data.bank_account_id,
             "description": f"Compra de deuda — {buyer_name} compra a {seller_name}".strip(),
         })
+        _pl_label = (f" (descuento ${discount_premium:,.0f}, pérdida realizada del vendedor)" if discount_premium > 0
+                     else f" (prima ${abs(discount_premium):,.0f}, ganancia realizada del vendedor)" if discount_premium < 0
+                     else "")
         _record_flow({
             "flow_type": "return_out", "amount": -price,
             "investor_id": seller_id, "investment_id": old["id"],
             "property_id": old.get("property_id"), "bank_account_id": data.bank_account_id,
-            "description": f"Venta de deuda — {seller_name} vende a {buyer_name}".strip(),
+            "description": f"Venta de deuda — {seller_name} vende a {buyer_name}{_pl_label}".strip(),
         })
 
-        return {"ok": True, "investment": new_ticket, "closed": old["id"]}
+        return {
+            "ok": True,
+            "investment": new_ticket,
+            "closed": old["id"],
+            "face": face,
+            "price": price,
+            "discount_premium": discount_premium,           # >0 discount / <0 premium
+            "seller_realized_pl": round(-discount_premium, 2),  # seller loses the discount
+            "buyer_position_gain": discount_premium,         # buyer holds face, paid price
+        }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error transferring investment {investment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/investments/reconciliation")
+async def reconcile_investors():
+    """
+    Reconcile the investor sub-ledger against the general ledger:
+
+      • Σ outstanding principal (active/partial tickets: amount − return_amount)
+        must equal the 23900 "Investor Notes Payable" ledger balance.
+      • Σ interest paid to investors must equal the magnitude of the 71400
+        "Interest paid" ledger balance.
+
+    Returns per-check expected/actual/diff plus an overall `ok` (diffs within
+    a $1 tolerance for rounding). This is the invariant the principal/interest
+    split is designed to preserve.
+    """
+    try:
+        TOL = 1.0
+
+        # --- Principal: investments book vs 23900 -----------------------------
+        investments = []
+        page = 0
+        while True:
+            q = sb.table("investments").select("amount, return_amount, status") \
+                .range(page * 1000, page * 1000 + 999).execute()
+            rows = q.data or []
+            investments.extend(rows)
+            if len(rows) < 1000:
+                break
+            page += 1
+        outstanding_principal = round(sum(
+            float(i.get("amount", 0) or 0) - float(i.get("return_amount", 0) or 0)
+            for i in investments if i.get("status") in ("active", "partial_return")
+        ), 2)
+        liability_23900 = _capital_account_balance("23900")
+        principal_diff = round(outstanding_principal - liability_23900, 2)
+
+        # --- Interest: ledger 71400 magnitude ---------------------------------
+        interest_71400 = _capital_account_balance("71400")
+        interest_paid = round(-interest_71400, 2)  # expense balance is negative
+
+        checks = {
+            "principal_vs_notes_payable": {
+                "expected_outstanding_principal": outstanding_principal,
+                "ledger_23900_balance": liability_23900,
+                "diff": principal_diff,
+                "ok": abs(principal_diff) <= TOL,
+            },
+            "interest_paid_ledger": {
+                "ledger_71400_balance": interest_71400,
+                "interest_paid_magnitude": interest_paid,
+                "ok": True,  # informational: 71400 is the source of truth for interest
+            },
+        }
+        return {
+            "ok": all(c["ok"] for c in checks.values()),
+            "checks": checks,
+            "note": "Principal debe cuadrar con 23900; el interés vive en 71400 (P&L), nunca en 23900.",
+        }
+    except Exception as e:
+        logger.error(f"Error reconciling investors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

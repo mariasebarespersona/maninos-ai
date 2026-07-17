@@ -496,7 +496,8 @@ async def get_unified_financial_summary(
 
         # Investor-related transactions this month
         investor_deposits = by_type.get("investor_deposit", {}).get("total", 0)
-        investor_returns = by_type.get("investor_return", {}).get("total", 0)
+        investor_returns = by_type.get("investor_return", {}).get("total", 0)   # principal (23900)
+        investor_interest = by_type.get("investor_interest", {}).get("total", 0)  # interest (71400 / P&L)
 
         # Active promissory notes
         notes = sb.table("promissory_notes") \
@@ -551,7 +552,8 @@ async def get_unified_financial_summary(
                 "active_investors": len(active_investors),
                 "total_invested": round(total_invested, 2),
                 "month_deposits": round(investor_deposits, 2),
-                "month_returns": round(investor_returns, 2),
+                "month_returns": round(investor_returns, 2),          # principal
+                "month_interest": round(investor_interest, 2),        # interest (P&L)
                 "active_notes": len(active_notes),
                 "notes_outstanding": round(notes_outstanding, 2),
             },
@@ -562,6 +564,7 @@ async def get_unified_financial_summary(
                 "down_payments_to_accounting": round(by_type.get("down_payment", {}).get("total", 0), 2),
                 "investor_deposits_to_accounting": round(investor_deposits, 2),
                 "investor_returns_from_accounting": round(investor_returns, 2),
+                "investor_interest_from_accounting": round(investor_interest, 2),
                 "commissions_from_accounting": round(by_type.get("commission", {}).get("total", 0), 2),
                 "acquisitions_from_accounting": round(by_type.get("acquisition", {}).get("total", 0), 2),
             },

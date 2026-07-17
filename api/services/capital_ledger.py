@@ -111,7 +111,7 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     "investor_interest_paid": EventSpec(
         debit="71400",
         credit=BANK,
-        transaction_type="investor_return",
+        transaction_type="investor_interest",
         is_income_on_bank_side=False,
         description_template="Interés a inversionista: {counterparty}",
     ),

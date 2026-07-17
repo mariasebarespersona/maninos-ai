@@ -47,7 +47,9 @@ class ReturnPayment(BaseModel):
     """Pay returns to an investor from collected payments."""
     investor_id: str
     investment_id: str
-    amount: float
+    amount: float                                  # TOTAL paid (principal + interest)
+    interest_amount: Optional[float] = None        # if set, that portion is interest (71400);
+                                                   # if None, auto: excess over outstanding principal = interest
     notes: Optional[str] = None
     bank_account_id: Optional[str] = None
 
@@ -325,27 +327,66 @@ async def pay_investor_return(data: ReturnPayment):
 
         investor_name = inv["investors"]["name"]
 
-        # Create pending capital_transaction (awaits Sebastian → Abigail approval)
-        txn = record_txn(
-            txn_type="investor_return",
-            amount=data.amount,
-            is_income=False,
-            description=f"Retorno a {investor_name} — ${data.amount:,.0f} (pendiente aprobación)",
-            txn_date=date.today().isoformat(),
-            investor_id=data.investor_id,
-            property_id=inv.get("property_id"),
-            rto_contract_id=inv.get("rto_contract_id"),
-            counterparty_name=investor_name,
-            bank_account_id=data.bank_account_id,
-            notes=f"return_payment|{data.investor_id}|{data.investment_id}|{data.amount}",
-            created_by="sistema",
-            status="pending_confirmation",
-        )
+        # ROOT FIX — split the payment into PRINCIPAL (→ 23900 Investor Notes
+        # Payable) and INTEREST (→ 71400 Interés). Principal is capped at the
+        # outstanding principal so 23900 never goes negative; the excess (or an
+        # explicit interest_amount) is interest, which must hit the P&L and NEVER
+        # reduce the investor-principal liability.
+        principal_outstanding = max(0.0, float(inv.get("amount", 0) or 0) - float(inv.get("return_amount", 0) or 0))
+        total = float(data.amount)
+        if data.interest_amount is not None:
+            interest = max(0.0, min(float(data.interest_amount), total))
+            principal = total - interest
+        else:
+            principal = min(total, principal_outstanding)
+            interest = total - principal
+        principal = round(principal, 2)
+        interest = round(interest, 2)
+
+        # Two pending capital_transactions (both await Sebastian → Abigail
+        # approval): the principal leg drives the investment/return bookkeeping;
+        # the interest leg only posts the expense.
+        txn = None
+        if principal > 0.005:
+            txn = record_txn(
+                txn_type="investor_return",
+                amount=principal,
+                is_income=False,
+                description=f"Retorno capital a {investor_name} — ${principal:,.0f} (pendiente aprobación)",
+                txn_date=date.today().isoformat(),
+                investor_id=data.investor_id,
+                property_id=inv.get("property_id"),
+                rto_contract_id=inv.get("rto_contract_id"),
+                counterparty_name=investor_name,
+                bank_account_id=data.bank_account_id,
+                notes=f"return_payment|{data.investor_id}|{data.investment_id}|{principal}",
+                created_by="sistema",
+                status="pending_confirmation",
+            )
+        if interest > 0.005:
+            record_txn(
+                txn_type="investor_interest",
+                amount=interest,
+                is_income=False,
+                description=f"Interés a {investor_name} — ${interest:,.0f} (pendiente aprobación)",
+                txn_date=date.today().isoformat(),
+                investor_id=data.investor_id,
+                property_id=inv.get("property_id"),
+                rto_contract_id=inv.get("rto_contract_id"),
+                counterparty_name=investor_name,
+                bank_account_id=data.bank_account_id,
+                notes=f"interest_payment|{data.investor_id}|{data.investment_id}|{interest}",
+                created_by="sistema",
+                status="pending_confirmation",
+            )
 
         return {
             "ok": True,
             "transaction_id": txn["id"] if txn else None,
-            "message": f"Solicitud de retorno ${data.amount:,.0f} a {investor_name} creada. Pendiente de aprobación.",
+            "principal": principal,
+            "interest": interest,
+            "message": f"Solicitud de retorno ${total:,.0f} a {investor_name} "
+                       f"(capital ${principal:,.0f} + interés ${interest:,.0f}) creada. Pendiente de aprobación.",
         }
 
     except HTTPException:
