@@ -451,7 +451,11 @@ async def update_promissory_note(note_id: str, data: PromissoryNoteUpdate):
         
         if not update:
             return {"ok": True, "message": "Nada que actualizar"}
-        
+
+        # Cancelling a note reverses its phantom accrued interest (71400/23950).
+        if update.get("status") == "cancelled" and note.get("status") != "cancelled":
+            _void_note_accruals(note_id)
+
         # If financial terms changed, recalculate the two-tranche schedule.
         annual_rate = float(update.get("annual_rate", note["annual_rate"]))
         loan_amount = float(note["loan_amount"])
@@ -1108,6 +1112,23 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _void_note_accruals(note_id: str) -> int:
+    """Void this note's accrual entries (71400/23950) so a removed/cancelled note
+    leaves no phantom accrued interest. Accrual legs share the notes tag
+    `accrual|<note_id>|<period>`. Returns the number of rows voided."""
+    try:
+        rows = sb.table("capital_transactions").select("id") \
+            .like("notes", f"accrual|{note_id}|%").neq("status", "voided").execute().data or []
+        for r in rows:
+            sb.table("capital_transactions").update({"status": "voided"}).eq("id", r["id"]).execute()
+        if rows:
+            logger.info(f"[note-void] voided {len(rows)} accrual leg(s) for note {note_id}")
+        return len(rows)
+    except Exception as exc:
+        logger.warning(f"[note-void] could not void accruals for note {note_id}: {exc}")
+        return 0
+
+
 @router.delete("/{note_id}")
 async def delete_promissory_note(note_id: str):
     """Delete a promissory note (any status). Its payment history is removed via
@@ -1122,6 +1143,7 @@ async def delete_promissory_note(note_id: str):
         if not note.data:
             raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
 
+        _void_note_accruals(note_id)   # reverse phantom accrued interest first
         sb.table("promissory_notes").delete().eq("id", note_id).execute()
         return {"ok": True, "message": "Nota promisoria eliminada"}
     except HTTPException:

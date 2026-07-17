@@ -8,7 +8,7 @@ import {
   DollarSign, TrendingUp, Calendar, MapPin, FileText,
   PieChart, BarChart3, Edit2, Save, X, Clock, AlertTriangle,
   ArrowRight, CheckCircle2, Plus, Activity, ArrowUpRight,
-  ArrowDownLeft, Pause, Play, Ban, RefreshCw
+  ArrowDownLeft, Pause, Play, Ban, RefreshCw, Scale
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -134,7 +134,8 @@ export default function InvestorDetailPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState({ notes: '', available_capital: 0, name: '', email: '', phone: '', company: '' })
-  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes' | 'estado_cuenta'>('overview')
+  const [statement, setStatement] = useState<any>(null)
   const [activeInvestmentId, setActiveInvestmentId] = useState<string>('all')
   const [savingStatus, setSavingStatus] = useState(false)
 
@@ -247,6 +248,12 @@ export default function InvestorDetailPage() {
 
   const handleTabChange = (tab: typeof activeTab) => {
     setActiveTab(tab)
+    if (tab === 'estado_cuenta' && !statement) {
+      fetch(`/api/capital/investors/${id}/account-statement`)
+        .then(r => r.json())
+        .then(d => { if (d.ok) setStatement(d) })
+        .catch(() => {})
+    }
   }
 
   // Load refs used by the ticket actions (other investors to sell debt to, Capital banks)
@@ -465,6 +472,7 @@ export default function InvestorDetailPage() {
           { key: 'overview' as const, label: 'Resumen', icon: BarChart3 },
           { key: 'investments' as const, label: `Inversiones (${investments.length})`, icon: DollarSign },
           { key: 'notes' as const, label: `Promissory Notes (${promissoryNotes.length})`, icon: FileText },
+          { key: 'estado_cuenta' as const, label: 'Estado de Cuenta', icon: Scale },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1232,6 +1240,69 @@ export default function InvestorDetailPage() {
             </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB: Estado de Cuenta (accounting statement, straight from the ledger) */}
+      {activeTab === 'estado_cuenta' && (
+        <div className="space-y-6">
+          {!statement ? (
+            <div className="text-center py-12" style={{ color: 'var(--slate)' }}>Cargando estado de cuenta…</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="card-luxury p-5">
+                  <h3 className="font-serif text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                    <Landmark className="w-4 h-4" /> Capital (Principal)
+                  </h3>
+                  {[
+                    ['Depositado por el inversor', statement.principal.deposited],
+                    ['Devuelto', statement.principal.repaid],
+                  ].map(([l, v]: any) => (
+                    <div key={l} className="flex justify-between py-1.5 text-sm border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
+                      <span style={{ color: 'var(--slate)' }}>{l}</span><span style={{ color: 'var(--charcoal)' }}>{fmt(v)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-3 mt-1 font-semibold text-sm">
+                    <span style={{ color: 'var(--ink)' }}>Principal pendiente</span>
+                    <span style={{ color: 'var(--gold-700)' }}>{fmt(statement.principal.outstanding)}</span>
+                  </div>
+                </div>
+
+                <div className="card-luxury p-5">
+                  <h3 className="font-serif text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+                    <TrendingUp className="w-4 h-4" /> Interés
+                  </h3>
+                  {[
+                    ['Reconocido (gasto)', statement.interest.recognized],
+                    ['Pagado al inversor', statement.interest.paid],
+                    ['Devengado sin pagar', statement.interest.accrued_unpaid],
+                  ].map(([l, v]: any) => (
+                    <div key={l} className="flex justify-between py-1.5 text-sm border-b last:border-0" style={{ borderColor: 'var(--sand)' }}>
+                      <span style={{ color: 'var(--slate)' }}>{l}</span><span style={{ color: 'var(--charcoal)' }}>{fmt(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="card-luxury p-5 text-center">
+                  <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Pendiente por pagar al inversor</p>
+                  <p className="text-2xl font-bold" style={{ color: 'var(--error)' }}>{fmt(statement.totals.owed_to_investor)}</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Principal pendiente + interés devengado</p>
+                </div>
+                <div className="card-luxury p-5 text-center">
+                  <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ash)' }}>Pagado al inversor a la fecha</p>
+                  <p className="text-2xl font-bold" style={{ color: '#059669' }}>{fmt(statement.totals.paid_to_investor)}</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Principal devuelto + interés pagado</p>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-center" style={{ color: 'var(--ash)' }}>
+                Calculado directamente del libro contable de Capital (cuentas 23900 principal · 71400 interés · 23950 interés devengado).
+              </p>
+            </>
+          )}
         </div>
       )}
 

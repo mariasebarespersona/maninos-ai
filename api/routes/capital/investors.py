@@ -563,6 +563,80 @@ async def transfer_investment_debt(investment_id: str, data: TransferDebtRequest
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _investor_account_sums(investor_id: str, codes: list[str]) -> dict:
+    """Per-investor debit/credit sums on the given chart accounts (confirmed rows)."""
+    accts = sb.table("capital_accounts").select("id, code").in_("code", codes).execute().data or []
+    id_to_code = {a["id"]: a["code"] for a in accts}
+    if not id_to_code:
+        return {c: {"credit": 0.0, "debit": 0.0} for c in codes}
+    out = {c: {"credit": 0.0, "debit": 0.0} for c in codes}
+    page = 0
+    while True:
+        rows = sb.table("capital_transactions") \
+            .select("account_id, amount, is_income, status") \
+            .eq("investor_id", investor_id) \
+            .in_("account_id", list(id_to_code.keys())) \
+            .range(page * 1000, page * 1000 + 999).execute().data or []
+        for r in rows:
+            if r.get("status") in _UNSETTLED_STATUSES:
+                continue
+            code = id_to_code.get(r["account_id"])
+            if not code:
+                continue
+            amt = float(r.get("amount", 0) or 0)
+            out[code]["credit" if r.get("is_income") else "debit"] += amt
+        if len(rows) < 1000:
+            break
+        page += 1
+    return out
+
+
+@router.get("/{investor_id}/account-statement")
+async def investor_account_statement(investor_id: str):
+    """Accounting statement for one investor, straight from the Capital ledger.
+
+    Principal (23900), interest expense recognized (71400) and accrued-but-unpaid
+    interest (23950) — so the investor's balance with Capital is fully auditable.
+    """
+    try:
+        inv = sb.table("investors").select("id, name, total_invested, available_capital, status") \
+            .eq("id", investor_id).single().execute()
+        if not inv.data:
+            raise HTTPException(status_code=404, detail="Inversionista no encontrado")
+
+        s = _investor_account_sums(investor_id, ["23900", "71400", "23950"])
+        principal_deposited = round(s["23900"]["credit"], 2)
+        principal_repaid = round(s["23900"]["debit"], 2)
+        principal_outstanding = round(principal_deposited - principal_repaid, 2)
+        interest_recognized = round(s["71400"]["debit"] - s["71400"]["credit"], 2)   # expense
+        accrued_outstanding = round(s["23950"]["credit"] - s["23950"]["debit"], 2)    # owed, unpaid
+        interest_paid = round(interest_recognized - accrued_outstanding, 2)
+
+        return {
+            "ok": True,
+            "investor": {"id": inv.data["id"], "name": inv.data["name"], "status": inv.data.get("status")},
+            "principal": {
+                "deposited": principal_deposited,
+                "repaid": principal_repaid,
+                "outstanding": principal_outstanding,   # what Capital still owes in principal
+            },
+            "interest": {
+                "recognized": interest_recognized,          # total interest expensed to the investor
+                "paid": interest_paid,                      # interest actually paid out
+                "accrued_unpaid": accrued_outstanding,      # accrued but not yet paid (23950)
+            },
+            "totals": {
+                "owed_to_investor": round(principal_outstanding + accrued_outstanding, 2),
+                "paid_to_investor": round(principal_repaid + interest_paid, 2),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error building investor statement {investor_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/investments/accrue-interest")
 async def accrue_investor_interest():
     """Manually run the monthly interest accrual (also runs on a scheduler).

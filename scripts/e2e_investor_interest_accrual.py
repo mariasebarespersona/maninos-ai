@@ -78,9 +78,12 @@ async def confirm_pending(confirm_fn, investor_id):
 
 async def main():
     from api.routes.capital.accounting import BankAccountCreate, create_bank_account
-    from api.routes.capital.investors import InvestorCreate, create_investor, reconcile_investors
+    from api.routes.capital.investors import (
+        InvestorCreate, create_investor, reconcile_investors, investor_account_statement,
+    )
     from api.routes.capital.promissory_notes import (
         PromissoryNoteCreate, create_promissory_note, RecordPaymentRequest, record_note_payment,
+        delete_promissory_note,
     )
     from api.routes.capital.payments import confirm_transaction
     import api.services.capital_interest_accrual as accr
@@ -147,6 +150,28 @@ async def main():
     rec = await reconcile_investors()
     pc = rec["checks"]["principal_vs_notes_payable"]
     check("reconciliation OK (principal == 23900)", rec["ok"], f"diff={pc['diff']}")
+
+    # ── Point 4: investor account-statement endpoint reflects the ledger ──
+    st = await investor_account_statement(investor_id)
+    check("statement principal outstanding = 0", abs(st["principal"]["outstanding"]) < 1, f"{st['principal']}")
+    check("statement interest recognized = 360", abs(st["interest"]["recognized"] - 360) < 1, f"{st['interest']}")
+    check("statement interest paid = 360", abs(st["interest"]["paid"] - 360) < 1)
+    check("statement accrued unpaid = 0", abs(st["interest"]["accrued_unpaid"]) < 1)
+
+    # ── Point 6: deleting a note voids its (phantom) accruals ──
+    i_before = -(bal("71400") - i0)
+    n2 = await create_promissory_note(PromissoryNoteCreate(
+        investor_id=investor_id, loan_amount=6000, annual_rate=12.0,
+        term_months=2, interest_only_months=2, amortization_months=0, bank_account_id=bank_id))
+    n2_id = (n2.get("note") or n2).get("id")
+    track("promissory_notes", n2_id)
+    n2_full = sb.table("promissory_notes").select("*, investors(name)").eq("id", n2_id).single().execute().data
+    accr.accrue_note(n2_full, 1)  # 6000 @ 12% → $60/mo
+    check("throwaway accrual raised 71400 by 60", abs((-(bal("71400") - i0)) - (i_before + 60)) < 1,
+          f"71400 mag={-(bal('71400')-i0)}")
+    await delete_promissory_note(n2_id)
+    check("delete voided the accrual (71400 restored)", abs((-(bal("71400") - i0)) - i_before) < 1,
+          f"71400 mag={-(bal('71400')-i0)}")
 
 
 async def teardown():

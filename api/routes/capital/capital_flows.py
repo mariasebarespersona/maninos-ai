@@ -305,9 +305,16 @@ async def link_investment_to_contract(data: InvestmentLink):
 @router.post("/pay-return")
 async def pay_investor_return(data: ReturnPayment):
     """
-    Request to pay returns to an investor.
-    Creates a pending capital_transaction for approval (Sebastian → Abigail).
-    The actual payment is executed only when Abigail confirms.
+    Request to pay returns to an investor (for a direct INVESTMENT ticket, not a
+    promissory note). Creates a pending capital_transaction for approval
+    (Sebastian → Abigail); the payment executes only when Abigail confirms.
+
+    Interest here is CASH-BASIS (excess over principal → 71400) because a bare
+    investment ticket has no amortization schedule to accrue against. Note-backed
+    returns must go through the promissory-note payment flow
+    (`POST /promissory-notes/{id}/pay`), which is accrual-basis (71400/23950).
+    Principal always settles 23900. Not currently wired to the UI — returns flow
+    through note payments.
     """
     try:
         # Validate investment
