@@ -155,6 +155,11 @@ async def teardown():
             sb.table(t).delete().eq("id", i).execute()
         except Exception as e:
             print(f"  ! {t}:{i} — {e}")
+    # sweep the bank's auto-created chart account (named after the bank)
+    try:
+        sb.table("capital_accounts").delete().ilike("name", f"%{TAG}%").execute()
+    except Exception:
+        pass
     print("  done")
 
 
