@@ -144,6 +144,48 @@ def _note_schedule(loan_amount: float, annual_rate: float, io_months: int, amort
     }
 
 
+def _split_note_payment(note: dict, prior_paid: float, payment: float) -> tuple:
+    """Split a promissory-note payment into (principal, interest).
+
+    Payments are applied in period order; the slice of THIS payment that lands
+    in each period is split by that period's principal/interest ratio, so an
+    interest-only tranche books 100% interest (→71400) and the amortizing/balloon
+    principal books to 23900. Anything beyond the scheduled total (overpayment /
+    balloon rounding) is principal. Falls back to all-principal on any error so a
+    schedule quirk never blocks a payment.
+    """
+    try:
+        loan = float(note.get("loan_amount") or 0)
+        rate = float(note.get("annual_rate", 12) or 12)
+        io_m, amort_m = _note_tranches(note)
+        rows = _note_schedule(loan, rate, io_m, amort_m)["schedule"]
+        principal = 0.0
+        skip = float(prior_paid or 0)   # already-paid amount to walk past
+        left = float(payment)
+        for row in rows:
+            rp = float(row["payment"])
+            if rp <= 0:
+                continue
+            if skip >= rp:
+                skip -= rp
+                continue
+            avail = rp - skip           # still-unpaid portion of this period
+            skip = 0.0
+            take = min(left, avail)
+            principal += take * (float(row["principal"]) / rp)
+            left -= take
+            if left <= 0.005:
+                break
+        if left > 0.005:                # beyond schedule → principal (balloon/overpay)
+            principal += left
+        principal = round(min(principal, float(payment)), 2)
+        interest = round(float(payment) - principal, 2)   # legs sum to payment exactly
+        return principal, interest
+    except Exception as exc:
+        logger.warning(f"[note-split] falling back to all-principal: {exc}")
+        return round(float(payment), 2), 0.0
+
+
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
@@ -513,19 +555,38 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
         except Exception as flow_err:
             logger.warning(f"Could not record capital flow for note payment: {flow_err}")
 
-        # Record capital_transaction for reconciliation
-        record_txn(
-            txn_type="investor_return",
-            amount=data.amount,
-            is_income=False,
-            description=f"Pago pagaré — {n['investors']['name']} — cuota ${data.amount:,.2f}",
-            investor_id=n["investor_id"],
-            counterparty_name=n["investors"]["name"],
-            payment_method=data.payment_method,
-            payment_reference=data.reference,
-            bank_account_id=data.bank_account_id,
-            notes=data.notes,
-        )
+        # Record capital_transaction(s) for reconciliation — SPLIT principal vs
+        # interest using the note's amortization schedule so principal reduces
+        # the 23900 liability and interest hits 71400 (P&L). current_paid is the
+        # cumulative amount paid BEFORE this installment.
+        inv_name = n["investors"]["name"]
+        principal_part, interest_part = _split_note_payment(n, current_paid, data.amount)
+        if principal_part > 0.005:
+            record_txn(
+                txn_type="investor_return",
+                amount=principal_part,
+                is_income=False,
+                description=f"Pago pagaré (capital) — {inv_name} — ${principal_part:,.2f}",
+                investor_id=n["investor_id"],
+                counterparty_name=inv_name,
+                payment_method=data.payment_method,
+                payment_reference=data.reference,
+                bank_account_id=data.bank_account_id,
+                notes=data.notes,
+            )
+        if interest_part > 0.005:
+            record_txn(
+                txn_type="investor_interest",
+                amount=interest_part,
+                is_income=False,
+                description=f"Pago pagaré (interés) — {inv_name} — ${interest_part:,.2f}",
+                investor_id=n["investor_id"],
+                counterparty_name=inv_name,
+                payment_method=data.payment_method,
+                payment_reference=data.reference,
+                bank_account_id=data.bank_account_id,
+                notes=data.notes,
+            )
         
         # Send completion email if note is fully paid
         if new_status == "paid":

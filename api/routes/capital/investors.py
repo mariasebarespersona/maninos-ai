@@ -579,46 +579,84 @@ async def reconcile_investors():
     """
     try:
         TOL = 1.0
+        from api.routes.capital.promissory_notes import _split_note_payment, _note_schedule, _note_tranches
 
-        # --- Principal: investments book vs 23900 -----------------------------
+        # --- Ledger balances --------------------------------------------------
+        liability_23900 = _capital_account_balance("23900")   # outstanding investor principal
+        interest_71400 = _capital_account_balance("71400")    # expense (negative)
+        interest_paid = round(-interest_71400, 2)             # magnitude paid to date
+
+        # --- Outstanding principal from PROMISSORY NOTES (the real 23900 driver)
+        # 23900 = deposits − principal repaid. Note payments book their principal
+        # slice to 23900, so outstanding = Σ active notes (loan − principal repaid),
+        # deriving principal repaid from the amortization schedule + paid_amount.
+        notes = []
+        page = 0
+        while True:
+            q = sb.table("promissory_notes") \
+                .select("loan_amount, paid_amount, annual_rate, term_months, "
+                        "interest_only_months, amortization_months, status") \
+                .range(page * 1000, page * 1000 + 999).execute()
+            rows = q.data or []
+            notes.extend(rows)
+            if len(rows) < 1000:
+                break
+            page += 1
+        notes_outstanding = 0.0
+        notes_interest_scheduled = 0.0
+        for nt in notes:
+            if nt.get("status") not in ("active", "partial", "partial_return"):
+                continue
+            loan = float(nt.get("loan_amount", 0) or 0)
+            paid = float(nt.get("paid_amount", 0) or 0)
+            principal_repaid, _ = _split_note_payment(nt, 0.0, paid)
+            notes_outstanding += max(0.0, loan - principal_repaid)
+            io_m, amort_m = _note_tranches(nt)
+            notes_interest_scheduled += _note_schedule(
+                loan, float(nt.get("annual_rate", 12) or 12), io_m, amort_m)["total_interest"]
+        notes_outstanding = round(notes_outstanding, 2)
+
+        # --- Outstanding principal from INVESTMENTS not backed by a note ------
         investments = []
         page = 0
         while True:
-            q = sb.table("investments").select("amount, return_amount, status") \
+            q = sb.table("investments").select("amount, return_amount, status, promissory_note_id") \
                 .range(page * 1000, page * 1000 + 999).execute()
             rows = q.data or []
             investments.extend(rows)
             if len(rows) < 1000:
                 break
             page += 1
-        outstanding_principal = round(sum(
+        inv_outstanding_noteless = round(sum(
             float(i.get("amount", 0) or 0) - float(i.get("return_amount", 0) or 0)
-            for i in investments if i.get("status") in ("active", "partial_return")
+            for i in investments
+            if i.get("status") in ("active", "partial_return") and not i.get("promissory_note_id")
         ), 2)
-        liability_23900 = _capital_account_balance("23900")
-        principal_diff = round(outstanding_principal - liability_23900, 2)
 
-        # --- Interest: ledger 71400 magnitude ---------------------------------
-        interest_71400 = _capital_account_balance("71400")
-        interest_paid = round(-interest_71400, 2)  # expense balance is negative
+        expected_outstanding = round(notes_outstanding + inv_outstanding_noteless, 2)
+        principal_diff = round(expected_outstanding - liability_23900, 2)
 
         checks = {
             "principal_vs_notes_payable": {
-                "expected_outstanding_principal": outstanding_principal,
+                "notes_outstanding_principal": notes_outstanding,
+                "investments_noteless_outstanding": inv_outstanding_noteless,
+                "expected_outstanding_principal": expected_outstanding,
                 "ledger_23900_balance": liability_23900,
                 "diff": principal_diff,
                 "ok": abs(principal_diff) <= TOL,
             },
             "interest_paid_ledger": {
                 "ledger_71400_balance": interest_71400,
-                "interest_paid_magnitude": interest_paid,
+                "interest_paid_to_date": interest_paid,
+                "interest_scheduled_total": round(notes_interest_scheduled, 2),
                 "ok": True,  # informational: 71400 is the source of truth for interest
             },
         }
         return {
             "ok": all(c["ok"] for c in checks.values()),
             "checks": checks,
-            "note": "Principal debe cuadrar con 23900; el interés vive en 71400 (P&L), nunca en 23900.",
+            "note": "Principal (pagarés + inversiones sin pagaré) debe cuadrar con 23900; "
+                    "el interés vive en 71400 (P&L), nunca en 23900.",
         }
     except Exception as e:
         logger.error(f"Error reconciling investors: {e}")
