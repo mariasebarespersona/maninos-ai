@@ -585,44 +585,38 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
                 notes=data.notes,
             )
         if interest_part > 0.005:
-            from api.services.capital_interest_accrual import accrued_account_ready, accrue_note, elapsed_periods
+            from api.services.capital_interest_accrual import (
+                accrued_account_ready, accrue_note, elapsed_periods, split_settle_catchup,
+            )
             if accrued_account_ready():
-                # ACCRUAL basis: recognize interest as it accrues (71400/23950),
-                # then this payment SETTLES the accrued liability (23950/bank).
-                # Catch up accrual so 23950 has a balance to settle. Pro-rata
-                # (default) recognizes only interest EARNED to date; make-whole
-                # notes recognize ALL remaining interest when the note closes.
-                if new_status == "paid" and n.get("make_whole"):
-                    accrue_target = 10**9
-                else:
-                    accrue_target = elapsed_periods(n)
+                # ACCRUAL basis. Catch up accrual so 23950 holds what's earned:
+                # pro-rata (default) recognizes only interest EARNED to date,
+                # make-whole notes recognize ALL remaining interest at close.
+                accrue_target = 10**9 if (new_status == "paid" and n.get("make_whole")) else elapsed_periods(n)
                 accrue_note(n, accrue_target)
-                record_txn(
-                    txn_type="interest_settle",
-                    amount=interest_part,
-                    is_income=False,
-                    description=f"Pago pagaré (interés devengado) — {inv_name} — ${interest_part:,.2f}",
-                    investor_id=n["investor_id"],
-                    counterparty_name=inv_name,
-                    payment_method=data.payment_method,
-                    payment_reference=data.reference,
-                    bank_account_id=data.bank_account_id,
-                    notes=data.notes,
-                )
+                # Settle the accrued liability (23950); any interest PAID beyond
+                # what's accrued is expensed now (71400), so paid interest is
+                # always recognized even with little/no elapsed time.
+                settle_amt, catchup_amt = split_settle_catchup(interest_part)
+                if settle_amt > 0.005:
+                    record_txn(txn_type="interest_settle", amount=settle_amt, is_income=False,
+                               description=f"Pago pagaré (interés devengado) — {inv_name} — ${settle_amt:,.2f}",
+                               investor_id=n["investor_id"], counterparty_name=inv_name,
+                               payment_method=data.payment_method, payment_reference=data.reference,
+                               bank_account_id=data.bank_account_id, notes=data.notes)
+                if catchup_amt > 0.005:
+                    record_txn(txn_type="investor_interest", amount=catchup_amt, is_income=False,
+                               description=f"Pago pagaré (interés) — {inv_name} — ${catchup_amt:,.2f}",
+                               investor_id=n["investor_id"], counterparty_name=inv_name,
+                               payment_method=data.payment_method, payment_reference=data.reference,
+                               bank_account_id=data.bank_account_id, notes=data.notes)
             else:
                 # Cash-basis fallback (23950 not seeded yet): interest → 71400.
-                record_txn(
-                    txn_type="investor_interest",
-                    amount=interest_part,
-                    is_income=False,
-                    description=f"Pago pagaré (interés) — {inv_name} — ${interest_part:,.2f}",
-                    investor_id=n["investor_id"],
-                    counterparty_name=inv_name,
-                    payment_method=data.payment_method,
-                    payment_reference=data.reference,
-                    bank_account_id=data.bank_account_id,
-                    notes=data.notes,
-                )
+                record_txn(txn_type="investor_interest", amount=interest_part, is_income=False,
+                           description=f"Pago pagaré (interés) — {inv_name} — ${interest_part:,.2f}",
+                           investor_id=n["investor_id"], counterparty_name=inv_name,
+                           payment_method=data.payment_method, payment_reference=data.reference,
+                           bank_account_id=data.bank_account_id, notes=data.notes)
         
         # Send completion email if note is fully paid
         if new_status == "paid":
@@ -1136,7 +1130,9 @@ async def settle_note_early(note_id: str, data: RecordPaymentRequest):
         if n["status"] in ("paid", "cancelled"):
             raise HTTPException(status_code=400, detail=f"Esta nota ya está {n['status']}")
 
-        from api.services.capital_interest_accrual import accrued_account_ready, accrue_note, elapsed_periods
+        from api.services.capital_interest_accrual import (
+            accrued_account_ready, accrue_note, elapsed_periods, split_settle_catchup,
+        )
         loan = float(n["loan_amount"])
         schedule = _note_schedule(loan, float(n.get("annual_rate", 12) or 12), *_note_tranches(n))["schedule"]
         make_whole = bool(n.get("make_whole"))
@@ -1160,19 +1156,28 @@ async def settle_note_early(note_id: str, data: RecordPaymentRequest):
                        payment_method=data.payment_method, payment_reference=data.reference,
                        bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
         if interest_part > 0.005:
+            _note = data.notes or "Liquidación anticipada"
             if accrued_account_ready():
                 accrue_note(n, period)
-                record_txn(txn_type="interest_settle", amount=interest_part, is_income=False,
-                           description=f"Liquidación anticipada (interés devengado) — {inv_name} — ${interest_part:,.2f}",
-                           investor_id=n["investor_id"], counterparty_name=inv_name,
-                           payment_method=data.payment_method, payment_reference=data.reference,
-                           bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
+                settle_amt, catchup_amt = split_settle_catchup(interest_part)
+                if settle_amt > 0.005:
+                    record_txn(txn_type="interest_settle", amount=settle_amt, is_income=False,
+                               description=f"Liquidación anticipada (interés devengado) — {inv_name} — ${settle_amt:,.2f}",
+                               investor_id=n["investor_id"], counterparty_name=inv_name,
+                               payment_method=data.payment_method, payment_reference=data.reference,
+                               bank_account_id=data.bank_account_id, notes=_note)
+                if catchup_amt > 0.005:
+                    record_txn(txn_type="investor_interest", amount=catchup_amt, is_income=False,
+                               description=f"Liquidación anticipada (interés) — {inv_name} — ${catchup_amt:,.2f}",
+                               investor_id=n["investor_id"], counterparty_name=inv_name,
+                               payment_method=data.payment_method, payment_reference=data.reference,
+                               bank_account_id=data.bank_account_id, notes=_note)
             else:
                 record_txn(txn_type="investor_interest", amount=interest_part, is_income=False,
                            description=f"Liquidación anticipada (interés) — {inv_name} — ${interest_part:,.2f}",
                            investor_id=n["investor_id"], counterparty_name=inv_name,
                            payment_method=data.payment_method, payment_reference=data.reference,
-                           bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
+                           bank_account_id=data.bank_account_id, notes=_note)
 
         sb.table("promissory_note_payments").insert({
             "promissory_note_id": note_id, "amount": amount,

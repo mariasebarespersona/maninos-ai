@@ -134,6 +134,23 @@ def accrued_outstanding() -> float:
     return _capital_account_balance(_ACCRUED_ACCOUNT)
 
 
+def split_settle_catchup(interest_amount: float) -> tuple:
+    """Allocate an interest payment between settling the accrued liability (23950)
+    and immediate expense (71400).
+
+    Returns (settle_23950, catchup_71400): settle up to the accrued-outstanding
+    balance, and recognize any excess (interest PAID beyond what was accrued) as
+    expense now — so interest actually paid is always expensed, even if little or
+    no time had accrued (e.g. a note paid the same day it was issued). With 23950
+    absent it's pure cash-basis (everything to 71400)."""
+    amt = round(float(interest_amount), 2)
+    if not accrued_account_ready():
+        return 0.0, amt
+    accrued = max(0.0, accrued_outstanding())
+    settle = round(min(amt, accrued), 2)
+    return settle, round(amt - settle, 2)
+
+
 def accrue_all_active_notes(*, as_of: Optional[str] = None) -> dict:
     """Monthly job: catch-up accrue every active note up to the elapsed period."""
     if not accrued_account_ready():
