@@ -910,7 +910,7 @@ async def download_promissory_note_pdf(note_id: str):
         summary_rows = [
             [lender, "", ""],
             ["Loan", fmt(loan_amount), ""],
-            ["Rate", fmt(total_interest), f"{annual_rate:g}%"],
+            ["Total Interest", fmt(total_interest), f"{annual_rate:g}%"],
         ]
         t = Table(summary_rows, colWidths=[180, 180, 180])
         t.setStyle(TableStyle([
@@ -929,7 +929,7 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(Spacer(1, 12))
 
         # ── Amortization schedule (interest-only, then amortizing) ──
-        sched_rows = [["Period", "Principal", "Rate", "Payment", "Balance"]]
+        sched_rows = [["Period", "Principal", "Interest", "Payment", "Balance"]]
         for row in sched["schedule"]:
             sched_rows.append([
                 str(row["period"]),
