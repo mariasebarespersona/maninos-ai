@@ -214,6 +214,7 @@ export default function PromissoryNoteDetailPage() {
   const [payReference, setPayReference] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [paying, setPaying] = useState(false)
+  const [settling, setSettling] = useState(false)
 
   // Edit
   const [editing, setEditing] = useState(false)
@@ -315,6 +316,33 @@ export default function PromissoryNoteDetailPage() {
       toast.error('Error de conexión')
     } finally {
       setPaying(false)
+    }
+  }
+
+  const handleSettleEarly = async () => {
+    const mw = (note as any)?.make_whole
+    const policy = mw
+      ? 'Se cobrará el INTERÉS COMPLETO pactado (make-whole).'
+      : 'Se cobrará solo el interés corrido a la fecha; el interés futuro se condona (pro-rata).'
+    if (!confirm(`¿Liquidar esta nota anticipadamente?\n\n${policy}`)) return
+    setSettling(true)
+    try {
+      const res = await fetch(`/api/capital/promissory-notes/${id}/settle-early`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 0, payment_method: 'bank_transfer', notes: 'Liquidación anticipada' }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(`${data.message} (${data.policy === 'make_whole' ? 'make-whole' : 'pro-rata'})`)
+        loadNote()
+      } else {
+        toast.error(data.detail || 'Error al liquidar')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setSettling(false)
     }
   }
 
@@ -490,6 +518,11 @@ export default function PromissoryNoteDetailPage() {
           {note.status === 'active' && remaining > 0 && (
             <button onClick={() => setShowPayModal(true)} className="btn-primary btn-sm">
               <CreditCard className="w-4 h-4" /> Registrar Pago
+            </button>
+          )}
+          {note.status === 'active' && (
+            <button onClick={handleSettleEarly} disabled={settling} className="btn-ghost btn-sm">
+              <CheckCircle2 className="w-4 h-4" /> {settling ? 'Liquidando…' : 'Liquidar anticipadamente'}
             </button>
           )}
           <button onClick={handleDownloadPDF} className="btn-ghost btn-sm">

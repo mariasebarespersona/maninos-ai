@@ -40,6 +40,7 @@ class PromissoryNoteCreate(BaseModel):
     lender_company: Optional[str] = None
     lender_representative: Optional[str] = None
     default_interest_rate: float = 12.0
+    make_whole: bool = False   # early payoff: True=full interest owed, False=pro-rata (accrued only)
     notes: Optional[str] = None
     bank_account_id: Optional[str] = None  # Capital bank that received the loan
 
@@ -59,6 +60,7 @@ class PromissoryNoteUpdate(BaseModel):
     lender_company: Optional[str] = None
     lender_representative: Optional[str] = None
     default_interest_rate: Optional[float] = None
+    make_whole: Optional[bool] = None
     status: Optional[str] = None
     notes: Optional[str] = None
     document_url: Optional[str] = None
@@ -388,7 +390,11 @@ async def create_promissory_note(data: PromissoryNoteCreate):
             "notes": data.notes,
             "status": "active",
         }
-        
+        # Only set make_whole when True — the DB default is FALSE (pro-rata), so
+        # pro-rata notes insert fine even before migration 105 adds the column.
+        if data.make_whole:
+            note_data["make_whole"] = True
+
         result = sb.table("promissory_notes").insert(note_data).execute()
         
         if not result.data:
@@ -583,9 +589,14 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
             if accrued_account_ready():
                 # ACCRUAL basis: recognize interest as it accrues (71400/23950),
                 # then this payment SETTLES the accrued liability (23950/bank).
-                # Catch up accrual first so 23950 has a balance to settle: up to
-                # the elapsed period, or ALL periods if this payment closes the note.
-                accrue_note(n, 10**9 if new_status == "paid" else elapsed_periods(n))
+                # Catch up accrual so 23950 has a balance to settle. Pro-rata
+                # (default) recognizes only interest EARNED to date; make-whole
+                # notes recognize ALL remaining interest when the note closes.
+                if new_status == "paid" and n.get("make_whole"):
+                    accrue_target = 10**9
+                else:
+                    accrue_target = elapsed_periods(n)
+                accrue_note(n, accrue_target)
                 record_txn(
                     txn_type="interest_settle",
                     amount=interest_part,
@@ -1109,6 +1120,86 @@ async def get_payoff_estimate(note_id: str, monthly_payment: float = 0):
         raise
     except Exception as e:
         logger.error(f"Error calculating payoff for note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{note_id}/settle-early")
+async def settle_note_early(note_id: str, data: RecordPaymentRequest):
+    """Close a note BEFORE term. Pro-rata (default) charges only interest accrued
+    to date and condones the rest; make_whole notes charge the full scheduled
+    interest. Principal → 23900, interest → 23950 (or 71400 cash-basis fallback)."""
+    try:
+        note = sb.table("promissory_notes").select("*, investors(id, name)").eq("id", note_id).single().execute()
+        if not note.data:
+            raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
+        n = note.data
+        if n["status"] in ("paid", "cancelled"):
+            raise HTTPException(status_code=400, detail=f"Esta nota ya está {n['status']}")
+
+        from api.services.capital_interest_accrual import accrued_account_ready, accrue_note, elapsed_periods
+        loan = float(n["loan_amount"])
+        schedule = _note_schedule(loan, float(n.get("annual_rate", 12) or 12), *_note_tranches(n))["schedule"]
+        make_whole = bool(n.get("make_whole"))
+        period = len(schedule) if make_whole else min(elapsed_periods(n), len(schedule))
+        interest_to_period = round(sum(float(schedule[i]["interest"]) for i in range(period)), 2)
+        obligation = round(loan + interest_to_period, 2)
+        paid_so_far = float(n.get("paid_amount", 0) or 0)
+
+        prin_repaid, int_paid = _split_note_payment(n, 0.0, paid_so_far)
+        principal_part = round(loan - prin_repaid, 2)
+        interest_part = round(interest_to_period - int_paid, 2)
+        amount = round(principal_part + max(0.0, interest_part), 2)
+        if amount <= 0.005:
+            raise HTTPException(status_code=400, detail="No hay saldo por liquidar")
+
+        inv_name = (n.get("investors") or {}).get("name", "")
+        if principal_part > 0.005:
+            record_txn(txn_type="investor_return", amount=principal_part, is_income=False,
+                       description=f"Liquidación anticipada (capital) — {inv_name} — ${principal_part:,.2f}",
+                       investor_id=n["investor_id"], counterparty_name=inv_name,
+                       payment_method=data.payment_method, payment_reference=data.reference,
+                       bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
+        if interest_part > 0.005:
+            if accrued_account_ready():
+                accrue_note(n, period)
+                record_txn(txn_type="interest_settle", amount=interest_part, is_income=False,
+                           description=f"Liquidación anticipada (interés devengado) — {inv_name} — ${interest_part:,.2f}",
+                           investor_id=n["investor_id"], counterparty_name=inv_name,
+                           payment_method=data.payment_method, payment_reference=data.reference,
+                           bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
+            else:
+                record_txn(txn_type="investor_interest", amount=interest_part, is_income=False,
+                           description=f"Liquidación anticipada (interés) — {inv_name} — ${interest_part:,.2f}",
+                           investor_id=n["investor_id"], counterparty_name=inv_name,
+                           payment_method=data.payment_method, payment_reference=data.reference,
+                           bank_account_id=data.bank_account_id, notes=data.notes or "Liquidación anticipada")
+
+        sb.table("promissory_note_payments").insert({
+            "promissory_note_id": note_id, "amount": amount,
+            "payment_method": data.payment_method, "reference": data.reference,
+            "notes": data.notes or "Liquidación anticipada", "paid_at": datetime.utcnow().isoformat(),
+        }).execute()
+        sb.table("promissory_notes").update({
+            "paid_amount": round(paid_so_far + amount, 2),
+            "total_interest": interest_to_period, "total_due": obligation,
+            "status": "paid", "paid_at": datetime.utcnow().isoformat(),
+        }).eq("id", note_id).execute()
+
+        from api.routes.capital.capital_flows import _record_flow
+        _record_flow({"flow_type": "return_out", "amount": -abs(amount), "investor_id": n["investor_id"],
+                      "description": f"Liquidación anticipada nota a {inv_name}",
+                      "flow_date": date.today().isoformat()}, skip_accounting=True)
+
+        return {
+            "ok": True, "amount": amount, "principal": principal_part, "interest": max(0.0, interest_part),
+            "policy": "make_whole" if make_whole else "pro_rata",
+            "interest_condoned": round(float(n.get("total_interest", 0) or 0) - interest_to_period, 2),
+            "message": f"Nota liquidada: capital ${principal_part:,.0f} + interés ${max(0.0, interest_part):,.0f}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error settling note early {note_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

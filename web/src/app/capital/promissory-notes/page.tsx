@@ -92,6 +92,7 @@ export default function PromissoryNotesPage() {
     subscriber_representative: '',
     lender_representative: '',
     notes: '',
+    make_whole: false,
   })
 
   useEffect(() => { loadData() }, [])
@@ -138,13 +139,14 @@ export default function PromissoryNotesPage() {
           subscriber_representative: form.subscriber_representative || undefined,
           lender_representative: form.lender_representative || undefined,
           notes: form.notes || undefined,
+          make_whole: form.make_whole,
         }),
       })
       const data = await res.json()
       if (data.ok) {
         toast.success('Nota promisoria creada')
         setShowCreate(false)
-        setForm({ investor_id: '', loan_amount: '', annual_rate: '12', interest_only_months: '0', amortization_months: '12', issued_by: 'jorge', start_date: new Date().toISOString().split('T')[0], subscriber_representative: '', lender_representative: '', notes: '' })
+        setForm({ investor_id: '', loan_amount: '', annual_rate: '12', interest_only_months: '0', amortization_months: '12', issued_by: 'jorge', start_date: new Date().toISOString().split('T')[0], subscriber_representative: '', lender_representative: '', notes: '', make_whole: false })
         loadData()
         // Navigate to the new note
         if (data.note?.id) {
@@ -553,6 +555,21 @@ export default function PromissoryNotesPage() {
                   placeholder="Notas adicionales..."
                 />
               </div>
+              <label className="flex items-start gap-2 cursor-pointer p-3 rounded-md" style={{ backgroundColor: 'var(--cream)' }}>
+                <input
+                  type="checkbox"
+                  checked={form.make_whole}
+                  onChange={e => setForm({ ...form, make_whole: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                  <strong>Interés completo si se paga antes (make-whole)</strong><br />
+                  <span style={{ color: 'var(--ash)' }}>
+                    Si se marca, al liquidar la nota antes de tiempo el inversor cobra TODO el interés pactado.
+                    Si se deja sin marcar (recomendado), se cobra solo el interés corrido a la fecha (pro-rata).
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="flex gap-3 mt-6">
               <button
