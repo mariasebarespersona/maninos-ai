@@ -179,7 +179,7 @@ test('crea inversionista y fondea vía UI → contabilidad refleja el depósito 
   expect(pc.ledger_23900_balance, '23900 holds the $10,000 deposit').toBeCloseTo(LOAN, 1)
   expect(pc.notes_outstanding_principal).toBeCloseTo(LOAN, 1)
   expect(pc.ok, 'principal == 23900 reconciles').toBeTruthy()
-  expect(rec.checks.interest_paid_ledger.interest_paid_to_date, 'no interest yet').toBeCloseTo(0, 1)
+  expect(rec.checks.interest_paid_ledger.interest_recognized_to_date, 'no interest yet').toBeCloseTo(0, 1)
 
   // Accounting page loads and renders the Capital books
   await page.goto(`${APP_URL}/capital/accounting`, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -209,8 +209,8 @@ test('devuelve el dinero al inversionista vía UI → contabilidad: principal 23
   const ic = rec.checks.interest_paid_ledger
   expect(pc.ledger_23900_balance, 'principal repaid → 23900 back to 0').toBeCloseTo(0, 1)
   expect(pc.ok, 'reconciles at zero').toBeTruthy()
-  expect(ic.interest_paid_to_date, 'interest landed in 71400').toBeCloseTo(totalInterest, 1)
-  expect(ic.interest_paid_to_date).toBeGreaterThan(0)
+  expect(ic.interest_recognized_to_date, 'interest landed in 71400').toBeCloseTo(totalInterest, 1)
+  expect(ic.interest_recognized_to_date).toBeGreaterThan(0)
 
   const note = await sbGet(`promissory_notes?id=eq.${noteId}&select=status`)
   expect(note[0]?.status, 'note fully paid').toBe('paid')

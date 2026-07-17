@@ -563,6 +563,23 @@ async def transfer_investment_debt(investment_id: str, data: TransferDebtRequest
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/investments/accrue-interest")
+async def accrue_investor_interest():
+    """Manually run the monthly interest accrual (also runs on a scheduler).
+
+    Recognizes each active note's scheduled interest for the elapsed period
+    (71400 expense / 23950 accrued liability). Idempotent per note+period.
+    """
+    try:
+        from api.services.capital_interest_accrual import accrue_all_active_notes, accrued_account_ready
+        if not accrued_account_ready():
+            return {"ok": False, "detail": "La cuenta 23950 (interés devengado) no existe aún. Corre la migración 104."}
+        return accrue_all_active_notes()
+    except Exception as e:
+        logger.error(f"Error accruing investor interest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/investments/reconciliation")
 async def reconcile_investors():
     """
@@ -647,9 +664,15 @@ async def reconcile_investors():
             },
             "interest_paid_ledger": {
                 "ledger_71400_balance": interest_71400,
-                "interest_paid_to_date": interest_paid,
+                "interest_recognized_to_date": interest_paid,   # 71400 magnitude (accrued + cash-basis)
                 "interest_scheduled_total": round(notes_interest_scheduled, 2),
-                "ok": True,  # informational: 71400 is the source of truth for interest
+                "ok": True,  # informational: 71400 is the source of truth for interest expense
+            },
+            "accrued_interest_payable": {
+                # Accrual basis: 23950 = interest recognized (71400) but not yet
+                # paid. Nets to ~0 once every note's interest is fully settled.
+                "ledger_23950_balance": _capital_account_balance("23950"),
+                "ok": True,  # informational
             },
         }
         return {

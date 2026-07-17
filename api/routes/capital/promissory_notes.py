@@ -575,18 +575,39 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
                 notes=data.notes,
             )
         if interest_part > 0.005:
-            record_txn(
-                txn_type="investor_interest",
-                amount=interest_part,
-                is_income=False,
-                description=f"Pago pagaré (interés) — {inv_name} — ${interest_part:,.2f}",
-                investor_id=n["investor_id"],
-                counterparty_name=inv_name,
-                payment_method=data.payment_method,
-                payment_reference=data.reference,
-                bank_account_id=data.bank_account_id,
-                notes=data.notes,
-            )
+            from api.services.capital_interest_accrual import accrued_account_ready, accrue_note, elapsed_periods
+            if accrued_account_ready():
+                # ACCRUAL basis: recognize interest as it accrues (71400/23950),
+                # then this payment SETTLES the accrued liability (23950/bank).
+                # Catch up accrual first so 23950 has a balance to settle: up to
+                # the elapsed period, or ALL periods if this payment closes the note.
+                accrue_note(n, 10**9 if new_status == "paid" else elapsed_periods(n))
+                record_txn(
+                    txn_type="interest_settle",
+                    amount=interest_part,
+                    is_income=False,
+                    description=f"Pago pagaré (interés devengado) — {inv_name} — ${interest_part:,.2f}",
+                    investor_id=n["investor_id"],
+                    counterparty_name=inv_name,
+                    payment_method=data.payment_method,
+                    payment_reference=data.reference,
+                    bank_account_id=data.bank_account_id,
+                    notes=data.notes,
+                )
+            else:
+                # Cash-basis fallback (23950 not seeded yet): interest → 71400.
+                record_txn(
+                    txn_type="investor_interest",
+                    amount=interest_part,
+                    is_income=False,
+                    description=f"Pago pagaré (interés) — {inv_name} — ${interest_part:,.2f}",
+                    investor_id=n["investor_id"],
+                    counterparty_name=inv_name,
+                    payment_method=data.payment_method,
+                    payment_reference=data.reference,
+                    bank_account_id=data.bank_account_id,
+                    notes=data.notes,
+                )
         
         # Send completion email if note is fully paid
         if new_status == "paid":

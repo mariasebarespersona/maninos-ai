@@ -329,6 +329,21 @@ def _job_promissory_maturity_alerts():
         return {"ok": False, "error": str(e)}
 
 
+def _job_accrue_investor_interest():
+    """Job: Accrue scheduled promissory-note interest for the month (71400/23950)."""
+    from api.services.capital_interest_accrual import accrue_all_active_notes
+    try:
+        result = accrue_all_active_notes()
+        _log_job("accrue_investor_interest", result)
+        if result.get("accrued"):
+            logger.info(f"[scheduler] Accrued ${result['accrued']:,.2f} interest on {result.get('notes', 0)} note(s)")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in accrue_investor_interest: {e}")
+        _log_job("accrue_investor_interest", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def _job_investor_followup_emails():
     """Job: Send monthly follow-up emails to all active investors."""
     from api.services.email_service import process_investor_followup_emails
@@ -571,6 +586,17 @@ def init_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=10, minute=0),
         id="title_monitor",
         name="TDHCA Title Name Monitor (daily)",
+        replace_existing=True,
+    )
+
+    # Job: Accrue investor interest — 1st of every month at 5:30 AM CT
+    # Recognizes each active note's scheduled interest for the elapsed period
+    # (71400 expense / 23950 accrued liability). Idempotent per note+period.
+    _scheduler.add_job(
+        _job_accrue_investor_interest,
+        trigger=CronTrigger(day=1, hour=5, minute=30),
+        id="accrue_investor_interest",
+        name="Capital: Devengo mensual de interés a inversores",
         replace_existing=True,
     )
 

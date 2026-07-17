@@ -158,8 +158,8 @@ async def main():
     ic = rec["checks"]["interest_paid_ledger"]
     check("reconciliation OK (principal == 23900)", rec["ok"],
           f"expected={pc['expected_outstanding_principal']} 23900={pc['ledger_23900_balance']} diff={pc['diff']}")
-    check("reconciliation reports interest", ic["interest_paid_to_date"] >= 120 - 1,
-          f"interest_paid={ic['interest_paid_to_date']} scheduled={ic['interest_scheduled_total']}")
+    check("reconciliation reports interest", ic["interest_recognized_to_date"] >= 120 - 1,
+          f"interest={ic['interest_recognized_to_date']} scheduled={ic['interest_scheduled_total']}")
 
 
 async def teardown():

@@ -118,6 +118,22 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
         is_income_on_bank_side=False,
         description_template="Interés a inversionista: {counterparty}",
     ),
+    # ---- Accrual-basis interest (no bank) ----------------------------------
+    "interest_accrued": EventSpec(
+        debit="71400",              # Interest expense recognized over time
+        credit="23950",             # Accrued Interest Payable (liability)
+        transaction_type="adjustment",   # DB-allowed; distinguished by account 23950
+        is_income_on_bank_side=False,
+        description_template="Interés devengado: {counterparty}",
+        requires_bank=False,
+    ),
+    "interest_settled": EventSpec(
+        debit="23950",              # settle the accrued liability
+        credit=BANK,                # cash leaves the bank
+        transaction_type="investor_return",   # DB-allowed; distinguished by account 23950
+        is_income_on_bank_side=False,
+        description_template="Pago interés devengado: {counterparty}",
+    ),
     "acquisition_paid": EventSpec(
         debit="14300",
         credit=BANK,

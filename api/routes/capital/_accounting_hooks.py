@@ -54,7 +54,8 @@ _INCOME_EVENT_BY_TYPE = {
 
 _EXPENSE_EVENT_BY_TYPE = {
     "investor_return": "investor_return_paid",
-    "investor_interest": "investor_interest_paid",   # interest → 71400 (never mixed with principal/23900)
+    "investor_interest": "investor_interest_paid",   # interest → 71400 (cash-basis fallback)
+    "interest_settle": "interest_settled",            # accrual-basis: interest payment settles 23950
     "acquisition": "acquisition_paid",
     "commission": "commission_paid",
     "operating_expense": "manual_expense_paid",
