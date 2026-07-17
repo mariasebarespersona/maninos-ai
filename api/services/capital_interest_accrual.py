@@ -27,6 +27,7 @@ from tools.supabase_client import sb
 logger = logging.getLogger(__name__)
 
 _ACCRUED_ACCOUNT = "23950"
+_UNSETTLED_STATUSES = ("voided", "pending_confirmation", "draft")
 _acct_exists_cache: dict[str, bool] = {}
 
 
@@ -134,20 +135,34 @@ def accrued_outstanding() -> float:
     return _capital_account_balance(_ACCRUED_ACCOUNT)
 
 
-def split_settle_catchup(interest_amount: float) -> tuple:
-    """Allocate an interest payment between settling the accrued liability (23950)
-    and immediate expense (71400).
+def accrued_for_note(note_id: str) -> float:
+    """Total interest accrued to 23950 for ONE note (its `accrual|<id>|<n>` legs)."""
+    try:
+        rows = sb.table("capital_transactions").select("amount, is_income, status") \
+            .like("notes", f"accrual|{note_id}|%").execute().data or []
+        return round(sum(
+            float(r.get("amount", 0) or 0)
+            for r in rows
+            if r.get("is_income") and r.get("status") not in _UNSETTLED_STATUSES
+        ), 2)
+    except Exception:
+        return 0.0
 
-    Returns (settle_23950, catchup_71400): settle up to the accrued-outstanding
-    balance, and recognize any excess (interest PAID beyond what was accrued) as
-    expense now — so interest actually paid is always expensed, even if little or
-    no time had accrued (e.g. a note paid the same day it was issued). With 23950
-    absent it's pure cash-basis (everything to 71400)."""
+
+def split_settle_catchup(note_id: str, prior_interest_paid: float, interest_amount: float) -> tuple:
+    """Allocate ONE note's interest payment between settling its accrued liability
+    (23950) and immediate expense (71400).
+
+    Returns (settle_23950, catchup_71400): settle up to THIS note's own accrued-
+    but-unpaid interest, and expense any excess now — so interest actually paid is
+    always recognized, even with little/no elapsed time (e.g. a note paid the same
+    day it was issued). Per-note (not aggregate) so one note's payment never
+    settles another note's accrual. With 23950 absent it's pure cash-basis."""
     amt = round(float(interest_amount), 2)
     if not accrued_account_ready():
         return 0.0, amt
-    accrued = max(0.0, accrued_outstanding())
-    settle = round(min(amt, accrued), 2)
+    outstanding = max(0.0, accrued_for_note(note_id) - round(float(prior_interest_paid), 2))
+    settle = round(min(amt, outstanding), 2)
     return settle, round(amt - settle, 2)
 
 

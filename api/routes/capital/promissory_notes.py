@@ -594,10 +594,11 @@ async def record_note_payment(note_id: str, data: RecordPaymentRequest):
                 # make-whole notes recognize ALL remaining interest at close.
                 accrue_target = 10**9 if (new_status == "paid" and n.get("make_whole")) else elapsed_periods(n)
                 accrue_note(n, accrue_target)
-                # Settle the accrued liability (23950); any interest PAID beyond
-                # what's accrued is expensed now (71400), so paid interest is
-                # always recognized even with little/no elapsed time.
-                settle_amt, catchup_amt = split_settle_catchup(interest_part)
+                # Settle THIS note's accrued liability (23950); any interest PAID
+                # beyond what's accrued is expensed now (71400), so paid interest
+                # is always recognized even with little/no elapsed time.
+                prior_int_paid = _split_note_payment(n, 0.0, current_paid)[1]
+                settle_amt, catchup_amt = split_settle_catchup(note_id, prior_int_paid, interest_part)
                 if settle_amt > 0.005:
                     record_txn(txn_type="interest_settle", amount=settle_amt, is_income=False,
                                description=f"Pago pagaré (interés devengado) — {inv_name} — ${settle_amt:,.2f}",
@@ -1159,7 +1160,7 @@ async def settle_note_early(note_id: str, data: RecordPaymentRequest):
             _note = data.notes or "Liquidación anticipada"
             if accrued_account_ready():
                 accrue_note(n, period)
-                settle_amt, catchup_amt = split_settle_catchup(interest_part)
+                settle_amt, catchup_amt = split_settle_catchup(note_id, int_paid, interest_part)
                 if settle_amt > 0.005:
                     record_txn(txn_type="interest_settle", amount=settle_amt, is_income=False,
                                description=f"Liquidación anticipada (interés devengado) — {inv_name} — ${settle_amt:,.2f}",
