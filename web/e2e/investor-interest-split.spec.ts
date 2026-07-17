@@ -158,9 +158,7 @@ test('crea inversionista y fondea vía UI → contabilidad refleja el depósito 
   await killOverlays(page)
   await page.getByRole('button', { name: /Nueva Nota/i }).click({ force: true })
   await page.waitForTimeout(600)
-  await page.locator('select').first().selectOption({ label: new RegExp(INVESTOR_NAME) }).catch(async () => {
-    await page.locator('select').first().selectOption({ value: investorId })
-  })
+  await page.locator('select').first().selectOption(investorId)
   await page.locator('input[type="number"]').first().fill(String(LOAN))
   await page.getByRole('button', { name: /Crear Nota Promisoria/i }).click({ force: true })
   await page.waitForTimeout(3000)

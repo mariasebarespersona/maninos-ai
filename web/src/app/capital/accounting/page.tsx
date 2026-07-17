@@ -201,7 +201,7 @@ const ACCT_TYPE_LABELS: Record<string, string> = {
   income: 'Ingresos', expense: 'Gastos', cogs: 'Costo de Ventas',
 }
 
-type TabId = 'overview' | 'transactions' | 'invoices' | 'statements' | 'chart' | 'banks' | 'recurring' | 'audit' | 'budget'
+type TabId = 'overview' | 'transactions' | 'invoices' | 'statements' | 'estado_cuenta' | 'chart' | 'banks' | 'recurring' | 'audit' | 'budget'
 
 // ── Main Component ──
 export default function CapitalAccountingPage() {
@@ -303,6 +303,7 @@ export default function CapitalAccountingPage() {
     { id: 'transactions', label: 'Transacciones', icon: Receipt },
     { id: 'invoices', label: 'Facturación', icon: FileText },
     { id: 'statements', label: 'Estados Financieros', icon: Scale },
+    { id: 'estado_cuenta', label: 'Estado de Cuenta', icon: Upload },
     { id: 'chart', label: 'Plan de Cuentas', icon: BookOpen },
     { id: 'banks', label: 'Bancos', icon: Landmark },
     { id: 'recurring', label: 'Gastos Recurrentes', icon: Repeat },
@@ -390,6 +391,7 @@ export default function CapitalAccountingPage() {
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab bankAccounts={dashboard?.bank_accounts || []} />}
       {activeTab === 'statements' && <StatementsTab />}
+      {activeTab === 'estado_cuenta' && <EstadoCuentaCapitalSection onRefresh={fetchDashboard} />}
       {activeTab === 'chart' && <ChartOfAccountsTab />}
       {activeTab === 'banks' && <BanksTab onAdd={() => setShowNewBankModal(true)} onRefresh={fetchDashboard} />}
       {activeTab === 'recurring' && <RecurringTab />}
@@ -2558,11 +2560,11 @@ function AccountRow({ node, depth }: { node: AccountNode; depth: number }) {
 
 
 // ════════════════════════════════════════════════════════════════════════
-//  BANKS & CASH TAB — with Estado de Cuenta (Bank Statement Import)
+//  BANKS & CASH TAB (Estado de Cuenta is now its own top-level tab)
 // ════════════════════════════════════════════════════════════════════════
 function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => void }) {
   const toast = useToast()
-  const [subTab, setSubTab] = useState<'accounts' | 'estado_cuenta'>('accounts')
+  const subTab: 'accounts' = 'accounts'
   const [banks, setBanks] = useState<BankAccount[]>([])
   const [summary, setSummary] = useState({ total_balance: 0, bank_balance: 0, cash_on_hand: 0, count: 0 })
   const [loading, setLoading] = useState(true)
@@ -2661,23 +2663,7 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
         </div>
       </div>
 
-      {/* Sub-tabs: Cuentas | Estado de Cuenta */}
-      <div className="flex gap-2 border-b" style={{ borderColor: 'var(--sand)' }}>
-        {[
-          { key: 'accounts' as const, label: 'Cuentas Bancarias', icon: Landmark },
-          { key: 'estado_cuenta' as const, label: 'Estado de Cuenta (Import)', icon: Upload },
-        ].map(tab => (
-          <button key={tab.key} onClick={() => setSubTab(tab.key)}
-            className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
-            style={subTab === tab.key
-              ? { borderColor: 'var(--gold-600)', color: 'var(--gold-700)' }
-              : { borderColor: 'transparent', color: 'var(--slate)' }}>
-            <tab.icon className="w-4 h-4" /> {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── SUB-TAB: Cuentas Bancarias ── */}
+      {/* Cuentas Bancarias (Estado de Cuenta is now a top-level tab) */}
       {subTab === 'accounts' && (
         <>
       <div className="flex items-center justify-between">
@@ -2873,11 +2859,6 @@ function BanksTab({ onAdd, onRefresh }: { onAdd: () => void; onRefresh: () => vo
         </div>
           )}
         </>
-      )}
-
-      {/* ── SUB-TAB: Estado de Cuenta ── */}
-      {subTab === 'estado_cuenta' && (
-        <EstadoCuentaCapitalSection onRefresh={() => { fetchBanks(); onRefresh() }} />
       )}
 
       {/* Transfer Modal */}
