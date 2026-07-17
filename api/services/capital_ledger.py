@@ -111,7 +111,10 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     "investor_interest_paid": EventSpec(
         debit="71400",
         credit=BANK,
-        transaction_type="investor_interest",
+        # Keep the DB-allowed 'investor_return' type (the constraint has no
+        # 'investor_interest'); interest is separated by its ACCOUNT (71400),
+        # which is what drives the P&L, balance sheet and reconciliation.
+        transaction_type="investor_return",
         is_income_on_bank_side=False,
         description_template="Interés a inversionista: {counterparty}",
     ),

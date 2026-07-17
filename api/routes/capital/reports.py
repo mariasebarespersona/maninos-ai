@@ -496,8 +496,16 @@ async def get_unified_financial_summary(
 
         # Investor-related transactions this month
         investor_deposits = by_type.get("investor_deposit", {}).get("total", 0)
-        investor_returns = by_type.get("investor_return", {}).get("total", 0)   # principal (23900)
-        investor_interest = by_type.get("investor_interest", {}).get("total", 0)  # interest (71400 / P&L)
+        investor_returns = by_type.get("investor_return", {}).get("total", 0)   # gross (principal+interest legs)
+        # Interest is separated by ACCOUNT (71400), not transaction_type: sum the
+        # interest-expense debit legs (account 71400, is_income False) this period.
+        _int_acct = sb.table("capital_accounts").select("id").eq("code", "71400").limit(1).execute().data
+        _int_acct_id = _int_acct[0]["id"] if _int_acct else None
+        investor_interest = round(sum(
+            abs(float(t.get("amount", 0)))
+            for t in txns
+            if _int_acct_id and t.get("account_id") == _int_acct_id and not t.get("is_income")
+        ), 2) if _int_acct_id else 0.0
 
         # Active promissory notes
         notes = sb.table("promissory_notes") \
