@@ -388,7 +388,7 @@ async def create_investment(data: InvestmentCreate):
         # flow helper — not a bare record_txn — is what keeps the flows view and the
         # ledger in sync (no loose end).
         from api.routes.capital.capital_flows import _record_flow
-        _record_flow({
+        dep_flow = _record_flow({
             "flow_type": "investment_in",
             "amount": float(data.amount),
             "investor_id": data.investor_id,
@@ -398,6 +398,15 @@ async def create_investment(data: InvestmentCreate):
             "description": f"Depósito inversión — {inv_name}".strip(),
             "bank_account_id": data.bank_account_id,
         })
+        # Persist the flow id on the ticket so the deposit's ledger legs can be
+        # found deterministically later (e.g. to reverse an assignment).
+        if dep_flow and dep_flow.get("id"):
+            try:
+                sb.table("investments").update({"capital_flow_id": dep_flow["id"]}) \
+                    .eq("id", investment["id"]).execute()
+                investment["capital_flow_id"] = dep_flow["id"]
+            except Exception:
+                pass
 
         return {"ok": True, "investment": investment}
     except Exception as e:

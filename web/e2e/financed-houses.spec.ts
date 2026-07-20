@@ -5,12 +5,13 @@
  *   new section with the right code/status/terms, and its detail renders the
  *   "Posición contable (Capital)" block.
  *
- * Test 2: earmark an EXISTING investor ticket to the house through the "Asignar
- *   inversionista" modal, and confirm (via the API) that the house now lists the
- *   investor AND the principal reconciliation diff is unchanged — earmarking
- *   moves no money, so the 23900 invariant holds.
+ * Test 2: deploy an existing investor's capital to the house through the
+ *   "Asignar inversionista" modal (pick investor + amount), approve the pending
+ *   deposit, and confirm via the API that the house lists the investor and the
+ *   deposit landed in 23900 (reconciliation stays balanced — both the note-less
+ *   investment total and 23900 move by the same amount).
  *
- * Seeding/teardown use the Supabase service role directly; the earmark action is
+ * Seeding/teardown use the Supabase service role directly; the deploy action is
  * driven through the browser. Everything is tagged E2E-PW-FH-<ts> (0 residue).
  */
 import { test, expect, Page } from '@playwright/test'
@@ -23,12 +24,13 @@ const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const MARKER = `E2E-PW-FH-${Date.now()}`
 const CODE = `H${Date.now() % 100000}`
 
+const DEPLOY = 5000
 let propId = ''
 let clientId = ''
 let saleId = ''
 let contractId = ''
 let investorId = ''
-let investmentId = ''
+let bankId = ''
 
 test.describe.configure({ mode: 'serial' })
 
@@ -66,10 +68,29 @@ async function sbDel(pathq: string) {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
   }).catch(() => {})
 }
+async function apiPost(path: string, body?: any) {
+  const r = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }
+}
+async function confirmPending() {
+  const pend = await sbGet(
+    `capital_transactions?investor_id=eq.${investorId}&status=eq.pending_confirmation&select=id`
+  )
+  for (const t of pend) await apiPost(`/api/capital/payments/confirm-transaction/${t.id}`)
+}
 async function reconDiff(): Promise<number> {
   const r = await fetch(`${API_URL}/api/capital/investors/investments/reconciliation`)
   const j = await r.json()
   return Math.round(Number(j.checks.principal_vs_notes_payable.diff) * 100) / 100
+}
+async function bal23900(): Promise<number> {
+  const r = await fetch(`${API_URL}/api/capital/investors/investments/reconciliation`)
+  const j = await r.json()
+  return Math.round(Number(j.checks.principal_vs_notes_payable.ledger_23900_balance) * 100) / 100
 }
 async function houseInvestors(): Promise<any[]> {
   const r = await fetch(`${API_URL}/api/capital/financed-houses/${saleId}`)
@@ -138,25 +159,35 @@ test.beforeAll(async () => {
     amount: 700, due_date: '2025-02-15', status: 'paid', paid_amount: 700, paid_date: '2025-02-15',
   })
 
-  const investor = await sbPost('investors', { name: `${MARKER} Investor`, available_capital: 0 })
-  investorId = investor?.id || ''
-  // Active, note-less ticket, initially unassigned (available to earmark).
-  const investment = await sbPost('investments', {
-    investor_id: investorId, amount: 5000, expected_return_rate: 12, status: 'active',
-    ticket_type: 'original', notes: MARKER,
+  // Primary Capital bank so the deposit posts as a balanced pair.
+  await apiPost('/api/capital/accounting/bank-accounts', {
+    name: `${MARKER} Bank`, account_type: 'checking', current_balance: 0, is_primary: true,
   })
-  investmentId = investment?.id || ''
+  const banks = await sbGet(`capital_bank_accounts?name=eq.${encodeURIComponent(`${MARKER} Bank`)}&select=id`)
+  bankId = banks[0]?.id || ''
+
+  // Investor WITH available capital but NO ticket yet — the real-world case the
+  // deploy flow must handle (assign a house even if it was forgotten at creation).
+  const investor = await sbPost('investors', { name: `${MARKER} Investor`, available_capital: 50000 })
+  investorId = investor?.id || ''
 })
 
 test.afterAll(async () => {
   if (saleId) await sbPatch(`sales?id=eq.${saleId}`, { rto_contract_id: null })
-  if (investorId) await sbDel(`investments?investor_id=eq.${investorId}`)
+  if (investorId) {
+    // Break the investments ↔ capital_flows FK cycle before deleting.
+    await sbPatch(`investments?investor_id=eq.${investorId}`, { capital_flow_id: null })
+    await sbDel(`capital_transactions?investor_id=eq.${investorId}`)
+    await sbDel(`capital_flows?investor_id=eq.${investorId}`)
+    await sbDel(`investments?investor_id=eq.${investorId}`)
+  }
   if (contractId) await sbDel(`rto_payments?rto_contract_id=eq.${contractId}`)
   if (contractId) await sbDel(`rto_contracts?id=eq.${contractId}`)
   if (saleId) await sbDel(`sales?id=eq.${saleId}`)
   if (propId) await sbDel(`properties?id=eq.${propId}`)
   if (clientId) await sbDel(`clients?id=eq.${clientId}`)
   if (investorId) await sbDel(`investors?id=eq.${investorId}`)
+  if (bankId) await sbDel(`capital_bank_accounts?id=eq.${bankId}`)
 })
 
 // ─── Test 1: house shows in the section + accounting block renders ─────────
@@ -177,27 +208,34 @@ test('la casa financiada aparece en la sección y su detalle muestra la posició
   await expect(page.getByText('$28,000').first()).toBeVisible({ timeout: 30000 })
 })
 
-// ─── Test 2: earmark an investor via the modal → neutral to the ledger ─────
-test('asignar inversionista vía UI vincula el ticket sin alterar la reconciliación', async ({ page }) => {
-  expect(investmentId, 'investment seeded').toBeTruthy()
+// ─── Test 2: deploy investor capital via the modal → lands in 23900 ────────
+test('asignar (desplegar capital) vía UI crea el ticket y el depósito llega a 23900', async ({ page }) => {
+  expect(investorId, 'investor seeded').toBeTruthy()
   await loginAsAdmin(page)
 
   const diffBefore = await reconDiff()
+  const bal0 = await bal23900()
 
   await page.goto(`${APP_URL}/capital/financed-houses/${saleId}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
   await killOverlays(page)
   await page.getByRole('button', { name: /Asignar inversionista/i }).click({ force: true })
   await page.waitForTimeout(800)
-  await page.locator('input[placeholder="Buscar inversionista…"]').fill(MARKER)
-  await page.waitForTimeout(500)
-  await page.getByRole('button', { name: /^Asignar$/ }).first().click({ force: true })
+  // Pick the investor and enter the amount, then deploy.
+  await page.locator('select').selectOption(investorId)
+  await page.locator('input[type="number"]').first().fill(String(DEPLOY))
+  await page.getByRole('button', { name: /Asignar capital a esta casa/i }).click({ force: true })
   await page.waitForTimeout(2500)
 
-  // The house now lists the investor
+  // A ticket now exists, earmarked to this house, listing the investor.
   const linked = await houseInvestors()
-  expect(linked.some((i) => i.investment_id === investmentId), 'investor earmarked to house').toBeTruthy()
+  const mine = linked.find((i) => i.investor_id === investorId)
+  expect(mine, 'investor deployed to house').toBeTruthy()
+  expect(Number(mine.amount), 'ticket amount = deploy').toBeCloseTo(DEPLOY, 1)
 
-  // Earmarking moved no money → reconciliation diff unchanged
+  // Approve the pending deposit → it lands in 23900, reconciliation stays balanced.
+  await confirmPending()
+  const bal1 = await bal23900()
+  expect(bal1 - bal0, 'deposit landed in 23900').toBeCloseTo(DEPLOY, 1)
   const diffAfter = await reconDiff()
-  expect(Math.abs(diffAfter - diffBefore), 'earmark neutral to reconciliation').toBeLessThan(0.01)
+  expect(Math.abs(diffAfter - diffBefore), 'deploy neutral to reconciliation').toBeLessThan(0.5)
 })

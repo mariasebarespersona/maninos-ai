@@ -116,14 +116,16 @@ def seed_house():
 
 async def main():
     from api.routes.capital.accounting import BankAccountCreate, create_bank_account
-    from api.routes.capital.investors import (
-        InvestorCreate, create_investor, InvestmentCreate, create_investment, reconcile_investors,
-    )
+    from api.routes.capital.investors import InvestorCreate, create_investor, reconcile_investors
     from api.routes.capital.payments import confirm_transaction
     from api.routes.capital.financed_houses import (
         list_financed_houses, get_financed_house, assignable_investments,
-        assign_investor, unassign_investor, AssignInvestorRequest,
+        assign_investor, unassign_investor, DeployInvestorRequest, UnassignInvestorRequest,
     )
+
+    def investor_row(iid):
+        return (sb.table("investors").select("available_capital, total_invested")
+                .eq("id", iid).limit(1).execute().data or [{}])[0]
 
     print(f"\n=== {TAG} — Casas Financiadas ===\n")
     seed_accounts()
@@ -147,58 +149,81 @@ async def main():
     lst_rev = await list_financed_houses("por_revisar")
     check("status=por_revisar excludes it", not any(h["sale_id"] == sale_id for h in lst_rev["houses"]))
 
-    # ── Investor + unassigned ticket ──
+    # ── Investor with available capital (no ticket yet — the real-world case) ──
     bank = await create_bank_account(BankAccountCreate(name=f"{TAG} Bank", current_balance=0, is_primary=True))
     bank_id = (bank.get("account") or bank).get("id") or \
         (sb.table("capital_bank_accounts").select("id").eq("name", f"{TAG} Bank").limit(1).execute().data or [{}])[0].get("id")
     track("capital_bank_accounts", bank_id)
 
-    invr = await create_investor(InvestorCreate(name=f"{TAG} Investor", available_capital=0))
+    invr = await create_investor(InvestorCreate(name=f"{TAG} Investor", available_capital=50000))
     investor_id = (invr.get("investor") or invr).get("id")
     track("investors", investor_id)
-
-    inv_res = await create_investment(InvestmentCreate(
-        investor_id=investor_id, amount=5000, expected_return_rate=12.0,
-        notes=TAG, bank_account_id=bank_id))
-    investment_id = (inv_res.get("investment") or inv_res).get("id")
-    track("investments", investment_id)
-    await confirm_pending(confirm_transaction, investor_id)
-
-    b1 = bal("23900")  # after deposit, before assign
 
     def recon_diff(r):
         return round(float(r["checks"]["principal_vs_notes_payable"]["diff"]), 2)
 
-    diff0 = recon_diff(await reconcile_investors())  # baseline (whole portfolio)
+    b0 = bal("23900")
+    diff0 = recon_diff(await reconcile_investors())
 
-    # ticket shows as assignable to this house
-    assignable = await assignable_investments(sale_id, None)
-    check("ticket is assignable", any(a["investment_id"] == investment_id for a in assignable["investments"]))
+    # assignable-investments returns INVESTORS with available capital
+    avail = await assignable_investments(sale_id)
+    mine_av = next((a for a in avail["investors"] if a["investor_id"] == investor_id), None)
+    check("investor listed as assignable", mine_av is not None)
+    if mine_av:
+        check("shows available capital 50,000", abs(mine_av["available_capital"] - 50000) < 1, str(mine_av["available_capital"]))
 
-    # ── ASSIGN — earmark, must NOT touch the ledger ──
-    ar = await assign_investor(sale_id, AssignInvestorRequest(investment_id=investment_id))
+    # over-deploy (amount > available) must be rejected — protects the round-trip
+    over_rejected = False
+    try:
+        await assign_investor(sale_id, DeployInvestorRequest(investor_id=investor_id, amount=999999, expected_return_rate=12.0))
+    except Exception:
+        over_rejected = True
+    check("over-deploy rejected", over_rejected)
+    ir_over = investor_row(investor_id)
+    check("over-deploy left available untouched (50k)", abs(float(ir_over.get("available_capital") or 0) - 50000) < 1, str(ir_over.get("available_capital")))
+
+    # ── ASSIGN = deploy capital → creates ticket, moves available + 23900 ──
+    DEPLOY = 5000
+    ar = await assign_investor(sale_id, DeployInvestorRequest(investor_id=investor_id, amount=DEPLOY, expected_return_rate=12.0))
     check("assign ok", ar.get("ok") is True)
+    investment_id = (ar.get("investment") or {}).get("id")
+    check("ticket created", bool(investment_id))
+    if investment_id:
+        track("investments", investment_id)
+    await confirm_pending(confirm_transaction, investor_id)
+
     det = await get_financed_house(sale_id)
     linked = det["house"]["investors"]
     check("house now shows the investor", any(i["investment_id"] == investment_id for i in linked))
-    check("assign did NOT change 23900", abs(bal("23900") - b1) < 0.01, f"Δ23900={bal('23900')-b1}")
+    check("23900 += deploy (5,000)", abs((bal("23900") - b0) - DEPLOY) < 0.5, f"Δ23900={bal('23900')-b0}")
+    ir = investor_row(investor_id)
+    check("available_capital 50k → 45k", abs(float(ir.get("available_capital") or 0) - 45000) < 1, str(ir.get("available_capital")))
+    check("total_invested 0 → 5k", abs(float(ir.get("total_invested") or 0) - 5000) < 1, str(ir.get("total_invested")))
+    # Both 23900 and note-less-investments moved +5000 → reconciliation diff unchanged.
+    check("assign neutral to reconciliation", abs(recon_diff(await reconcile_investors()) - diff0) < 0.5)
 
-    # The invariant: earmarking is neutral to the principal reconciliation.
-    diff1 = recon_diff(await reconcile_investors())
-    check("assign is neutral to reconciliation", abs(diff1 - diff0) < 0.01, f"diff {diff0} → {diff1}")
-
-    # ── UNASSIGN — again no ledger movement ──
-    ur = await unassign_investor(sale_id, AssignInvestorRequest(investment_id=investment_id))
-    check("unassign ok", ur.get("ok") is True)
-    check("unassign did NOT change 23900", abs(bal("23900") - b1) < 0.01, f"Δ23900={bal('23900')-b1}")
+    # ── UNASSIGN = deshacer completo: reverse ledger + restore investor ──
+    ur = await unassign_investor(sale_id, UnassignInvestorRequest(investment_id=investment_id))
+    check("undo ok", ur.get("ok") is True)
+    check("23900 back to start", abs(bal("23900") - b0) < 0.5, f"Δ23900={bal('23900')-b0}")
+    ir2 = investor_row(investor_id)
+    check("available_capital restored to 50k", abs(float(ir2.get("available_capital") or 0) - 50000) < 1, str(ir2.get("available_capital")))
+    check("total_invested back to 0", abs(float(ir2.get("total_invested") or 0)) < 1, str(ir2.get("total_invested")))
     det2 = await get_financed_house(sale_id)
     check("house no longer shows the investor", not any(i["investment_id"] == investment_id for i in det2["house"]["investors"]))
+    check("ticket deleted", not (sb.table("investments").select("id").eq("id", investment_id).execute().data or []))
+    check("undo neutral to reconciliation", abs(recon_diff(await reconcile_investors()) - diff0) < 0.5)
 
 
 async def teardown():
     print("\n--- teardown ---")
     for t, i in CREATED:
         if t == "investors":
+            # Break the investments ↔ capital_flows FK cycle before deleting.
+            try:
+                sb.table("investments").update({"capital_flow_id": None}).eq("investor_id", i).execute()
+            except Exception:
+                pass
             for tbl in ("capital_transactions", "capital_flows", "investments"):
                 try:
                     sb.table(tbl).delete().eq("investor_id", i).execute()

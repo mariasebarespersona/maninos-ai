@@ -43,7 +43,7 @@ _ACCT_RENTAL = "41000"      # monthly RTO income collected
 _ACCT_DOWN = "42000"        # enganche (down payment) income
 _ACCT_LATE = "43000"        # late-fee income
 
-_ASSIGNABLE_STATUSES = ("active", "partial_return")
+_UNDOABLE_STATUSES = ("active", "partial_return")  # live tickets an undo may reverse
 
 _acct_code_cache: dict[str, str] = {}
 
@@ -379,59 +379,58 @@ async def get_financed_house(sale_id: str):
 
 
 @router.get("/{sale_id}/assignable-investments")
-async def assignable_investments(sale_id: str, investor_id: Optional[str] = None):
-    """Investor tickets eligible to be earmarked to this house: active/partial_return
-    tickets NOT already linked to this property. Optionally filter by investor."""
+async def assignable_investments(sale_id: str):
+    """Investors available to fund this house — active investors with their
+    available capital. Used to populate the "Asignar inversionista" dropdown so
+    capital can be deployed to the house even if it was not assigned when the
+    investor was first created."""
     try:
-        sale = sb.table("sales").select("property_id").eq("id", sale_id).limit(1).execute()
+        sale = sb.table("sales").select("id").eq("id", sale_id).limit(1).execute()
         if not sale.data:
             raise HTTPException(status_code=404, detail="Venta no encontrada")
-        this_prop = sale.data[0].get("property_id")
-
-        q = sb.table("investments").select(
-            "id, investor_id, property_id, property_code, rto_contract_id, amount, "
-            "expected_return_rate, status, promissory_note_id, "
-            "investors!investments_investor_id_fkey(name)"
-        ).in_("status", list(_ASSIGNABLE_STATUSES))
-        if investor_id:
-            q = q.eq("investor_id", investor_id)
-        rows = q.execute().data or []
-
-        out = [
+        rows = sb.table("investors").select("id, name, available_capital, total_invested, status") \
+            .eq("status", "active").order("name").execute().data or []
+        investors = [
             {
-                "investment_id": r.get("id"),
-                "investor_id": r.get("investor_id"),
-                "investor_name": (r.get("investors") or {}).get("name"),
-                "amount": float(r.get("amount") or 0),
-                "rate": float(r.get("expected_return_rate") or 0),
-                "status": r.get("status"),
-                "note_backed": bool(r.get("promissory_note_id")),
-                "current_property_id": r.get("property_id"),
-                "current_property_code": r.get("property_code"),
+                "investor_id": r["id"],
+                "investor_name": r.get("name"),
+                "available_capital": float(r.get("available_capital") or 0),
+                "total_invested": float(r.get("total_invested") or 0),
             }
             for r in rows
-            if r.get("property_id") != this_prop  # not already on this house
         ]
-        return {"ok": True, "investments": out, "count": len(out)}
+        return {"ok": True, "investors": investors, "count": len(investors)}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error listing assignable investments for {sale_id}: {e}")
+        logger.error(f"Error listing assignable investors for {sale_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class AssignInvestorRequest(BaseModel):
+class DeployInvestorRequest(BaseModel):
+    investor_id: str
+    amount: float
+    expected_return_rate: float = 12.0
+    notes: Optional[str] = None
+
+
+class UnassignInvestorRequest(BaseModel):
     investment_id: str
 
 
 @router.post("/{sale_id}/assign-investor")
-async def assign_investor(sale_id: str, data: AssignInvestorRequest):
-    """Earmark an EXISTING investor ticket to this house.
+async def assign_investor(sale_id: str, data: DeployInvestorRequest):
+    """Deploy an investor's capital to this house.
 
-    Pure re-tag: UPDATE investments.property_id / rto_contract_id. No money moves,
-    no ledger entry — the ticket's principal already sits in 23900, so the
-    reconciliation invariant is preserved regardless of the house it points to."""
+    Creates an investment ticket earmarked to the house via the canonical
+    create_investment path: the investor's available_capital ↓, total_invested ↑,
+    and a deposit posts to 23900 (starts pending_confirmation → approval flow).
+    record_txn falls back to the primary Capital bank; with no bank configured it
+    lands as a single 23900 leg. Everything stays reconciled because both 23900
+    and the note-less investments total move by the same amount."""
     try:
+        if data.amount <= 0:
+            raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
         sale = sb.table("sales").select("property_id, rto_contract_id, sale_type") \
             .eq("id", sale_id).limit(1).execute()
         if not sale.data:
@@ -440,53 +439,103 @@ async def assign_investor(sale_id: str, data: AssignInvestorRequest):
         if s.get("sale_type") != "rto":
             raise HTTPException(status_code=400, detail="La venta no es financiada (RTO)")
 
-        inv = sb.table("investments").select("id, status, amount, investor_id") \
-            .eq("id", data.investment_id).limit(1).execute()
-        if not inv.data:
-            raise HTTPException(status_code=404, detail="Inversión no encontrada")
-        ticket = inv.data[0]
-        if ticket.get("status") not in _ASSIGNABLE_STATUSES:
+        investor = sb.table("investors").select("id, available_capital") \
+            .eq("id", data.investor_id).limit(1).execute()
+        if not investor.data:
+            raise HTTPException(status_code=404, detail="Inversionista no encontrado")
+        available = float(investor.data[0].get("available_capital") or 0)
+        # Never deploy more than the investor has available — the capped
+        # available_capital on create would otherwise not round-trip on undo.
+        if data.amount > available + 0.005:
             raise HTTPException(
                 status_code=400,
-                detail=f"No se puede asignar un ticket con estado '{ticket.get('status')}'",
+                detail=f"El monto (${data.amount:,.2f}) supera el capital disponible (${available:,.2f})",
             )
 
-        update = {"property_id": s.get("property_id")}
-        if s.get("rto_contract_id"):
-            update["rto_contract_id"] = s.get("rto_contract_id")
-        sb.table("investments").update(update).eq("id", data.investment_id).execute()
-
-        return {"ok": True, "investment_id": data.investment_id, "property_id": s.get("property_id")}
+        from api.routes.capital.investors import InvestmentCreate, create_investment
+        res = await create_investment(InvestmentCreate(
+            investor_id=data.investor_id,
+            amount=data.amount,
+            expected_return_rate=data.expected_return_rate,
+            property_id=s.get("property_id"),
+            rto_contract_id=s.get("rto_contract_id"),
+            notes=data.notes or "Asignado desde Casas Financiadas",
+        ))
+        # Return the persisted available_capital (create_investment wrote it),
+        # not a hand-recompute that could drift from the DB.
+        after = sb.table("investors").select("available_capital") \
+            .eq("id", data.investor_id).limit(1).execute()
+        return {
+            "ok": True,
+            "investment": res.get("investment") if isinstance(res, dict) else None,
+            "available_capital": float((after.data or [{}])[0].get("available_capital") or 0),
+        }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error assigning investor to {sale_id}: {e}")
+        logger.error(f"Error deploying investor to {sale_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{sale_id}/unassign-investor")
-async def unassign_investor(sale_id: str, data: AssignInvestorRequest):
-    """Remove a ticket's earmark from this house (only if it currently points here).
-
-    Clears property_id / rto_contract_id — the capital stays deposited (still in
-    23900), it just becomes un-earmarked. No ledger entry."""
+async def unassign_investor(sale_id: str, data: UnassignInvestorRequest):
+    """Undo an assignment completely (deshacer): delete the ticket, reverse its
+    23900 deposit legs (via capital_flow_id) and restore the investor's
+    available_capital / total_invested — as if it was never assigned. Only for a
+    non-note ticket currently earmarked to this house."""
     try:
         sale = sb.table("sales").select("property_id").eq("id", sale_id).limit(1).execute()
         if not sale.data:
             raise HTTPException(status_code=404, detail="Venta no encontrada")
         this_prop = sale.data[0].get("property_id")
 
-        inv = sb.table("investments").select("id, property_id").eq("id", data.investment_id).limit(1).execute()
+        inv = sb.table("investments").select(
+            "id, investor_id, property_id, amount, status, capital_flow_id, promissory_note_id"
+        ).eq("id", data.investment_id).limit(1).execute()
         if not inv.data:
             raise HTTPException(status_code=404, detail="Inversión no encontrada")
-        if inv.data[0].get("property_id") != this_prop:
+        t = inv.data[0]
+        if t.get("property_id") != this_prop:
             raise HTTPException(status_code=400, detail="El ticket no está asignado a esta casa")
+        if t.get("status") not in _UNDOABLE_STATUSES:
+            raise HTTPException(status_code=400, detail=f"No se puede deshacer un ticket con estado '{t.get('status')}'")
+        if t.get("promissory_note_id"):
+            raise HTTPException(status_code=400, detail="Ticket respaldado por un pagaré; gestiónalo desde el pagaré")
 
-        sb.table("investments").update({"property_id": None, "rto_contract_id": None}) \
-            .eq("id", data.investment_id).execute()
-        return {"ok": True, "investment_id": data.investment_id}
+        amount = float(t.get("amount") or 0)
+        # Reverse the deposit, then delete the ticket, THEN restore totals. Order
+        # matters: investments ↔ capital_flows form an FK cycle
+        # (capital_flows.investment_id → investments, investments.capital_flow_id →
+        # capital_flows), so NULL the ticket's capital_flow_id first, delete the
+        # ledger legs (by capital_flow_id) and flow rows, and delete the ticket
+        # BEFORE crediting the investor back — a failure anywhere must never leave
+        # refunded capital next to a still-live deposit (double count). We do NOT
+        # swallow errors here: a partial reversal must surface as a 500.
+        flow_rows = sb.table("capital_flows").select("id") \
+            .eq("investment_id", data.investment_id).execute().data or []
+        fids = {r["id"] for r in flow_rows}
+        if t.get("capital_flow_id"):
+            fids.add(t["capital_flow_id"])
+        sb.table("investments").update({"capital_flow_id": None}).eq("id", data.investment_id).execute()
+        for fid in fids:
+            sb.table("capital_transactions").delete().eq("capital_flow_id", fid).execute()
+        if fids:
+            sb.table("capital_flows").delete().in_("id", list(fids)).execute()
+        sb.table("investments").delete().eq("id", data.investment_id).execute()
+
+        # Ticket + deposit are gone — now it is safe to credit the investor back.
+        investor = sb.table("investors").select("total_invested, available_capital") \
+            .eq("id", t.get("investor_id")).limit(1).execute()
+        if investor.data:
+            iv = investor.data[0]
+            sb.table("investors").update({
+                "total_invested": max(0.0, float(iv.get("total_invested") or 0) - amount),
+                "available_capital": float(iv.get("available_capital") or 0) + amount,
+            }).eq("id", t.get("investor_id")).execute()
+
+        return {"ok": True, "investment_id": data.investment_id, "reversed_amount": amount}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error unassigning investor from {sale_id}: {e}")
+        logger.error(f"Error undoing assignment on {sale_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

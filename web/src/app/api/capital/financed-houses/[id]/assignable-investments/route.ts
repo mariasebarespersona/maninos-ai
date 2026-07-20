@@ -6,13 +6,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { searchParams } = new URL(request.url)
-  const investorId = searchParams.get('investor_id')
-  const qs = investorId ? `?investor_id=${investorId}` : ''
-
   try {
     const res = await fetch(
-      `${API}/api/capital/financed-houses/${params.id}/assignable-investments${qs}`,
+      `${API}/api/capital/financed-houses/${params.id}/assignable-investments`,
       { cache: 'no-store' }
     )
     const data = await res.json()

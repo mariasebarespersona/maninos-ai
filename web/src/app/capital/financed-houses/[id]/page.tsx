@@ -18,16 +18,11 @@ interface InvestorLink {
   note_backed: boolean
 }
 
-interface Assignable {
-  investment_id: string
+interface AssignableInvestor {
   investor_id: string
   investor_name: string | null
-  amount: number
-  rate: number
-  status: string
-  note_backed: boolean
-  current_property_id: string | null
-  current_property_code: string | null
+  available_capital: number
+  total_invested: number
 }
 
 interface ScheduleRow {
@@ -85,10 +80,13 @@ export default function FinancedHouseDetailPage() {
   const [house, setHouse] = useState<HouseDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [assignable, setAssignable] = useState<Assignable[]>([])
+  const [assignable, setAssignable] = useState<AssignableInvestor[]>([])
   const [loadingAssign, setLoadingAssign] = useState(false)
-  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [selInvestor, setSelInvestor] = useState('')
+  const [amount, setAmount] = useState('')
+  const [rate, setRate] = useState('12')
+  const [submitting, setSubmitting] = useState(false)
 
   const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n || 0)
 
@@ -107,12 +105,13 @@ export default function FinancedHouseDetailPage() {
   useEffect(() => { loadHouse() }, [loadHouse])
 
   const openModal = async () => {
+    setSelInvestor(''); setAmount(''); setRate('12')
     setShowModal(true)
     setLoadingAssign(true)
     try {
       const res = await fetch(`/api/capital/financed-houses/${saleId}/assignable-investments`)
       const data = await res.json()
-      if (data.ok) setAssignable(data.investments)
+      if (data.ok) setAssignable(data.investors)
     } catch (err) {
       console.error('Error loading assignable:', err)
     } finally {
@@ -120,30 +119,35 @@ export default function FinancedHouseDetailPage() {
     }
   }
 
-  const assign = async (investmentId: string) => {
-    setBusy(investmentId)
+  const assign = async () => {
+    const amt = parseFloat(amount)
+    if (!selInvestor || !amt || amt <= 0) { alert('Elegí un inversionista y un monto válido'); return }
+    const rateNum = rate.trim() === '' ? 12 : parseFloat(rate)
+    setSubmitting(true)
     try {
       const res = await fetch(`/api/capital/financed-houses/${saleId}/assign-investor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ investment_id: investmentId }),
+        body: JSON.stringify({ investor_id: selInvestor, amount: amt, expected_return_rate: isNaN(rateNum) ? 12 : rateNum }),
       })
       const data = await res.json()
       if (data.ok) {
         setShowModal(false)
+        setSelInvestor(''); setAmount(''); setRate('12')
         await loadHouse()
       } else {
         alert(data.detail || 'No se pudo asignar')
       }
     } catch (err) {
       console.error(err)
+      alert('Error de red al asignar. Intentá de nuevo.')
     } finally {
-      setBusy(null)
+      setSubmitting(false)
     }
   }
 
   const unassign = async (investmentId: string) => {
-    if (!confirm('¿Quitar este inversionista de la casa? El capital sigue depositado, solo se des-etiqueta.')) return
+    if (!confirm('¿Deshacer esta asignación? Se borra el ticket, se revierte el asiento de 23900 y se restaura el capital disponible del inversionista.')) return
     setBusy(investmentId)
     try {
       const res = await fetch(`/api/capital/financed-houses/${saleId}/unassign-investor`, {
@@ -181,9 +185,8 @@ export default function FinancedHouseDetailPage() {
   }
 
   const s = bucketLabels[house.bucket] || bucketLabels.por_revisar
-  const filteredAssignable = assignable.filter(a =>
-    !search || (a.investor_name || '').toLowerCase().includes(search.toLowerCase())
-  )
+  const selAvail = assignable.find(a => a.investor_id === selInvestor)?.available_capital ?? null
+  const amtNum = parseFloat(amount)
 
   const posItems = [
     { icon: Building2, label: 'Capital invertido (14300)', value: house.capital_position.capital_invested_house, hint: 'Pagado a Homes por la casa' },
@@ -224,6 +227,26 @@ export default function FinancedHouseDetailPage() {
           <span className="px-3 py-1.5 rounded-full text-sm font-medium" style={{ backgroundColor: s.bg, color: s.color }}>
             {s.label}
           </span>
+        </div>
+
+        {/* Cross-links: Clientes RTO ↔ Casas Financiadas */}
+        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t" style={{ borderColor: 'var(--cream)' }}>
+          <Link href="/capital/applications" className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
+            Ver en Clientes RTO
+          </Link>
+          {house.contract && (
+            <Link href={`/capital/contracts/${house.contract.id}`} className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
+              Ver contrato
+            </Link>
+          )}
+          <Link href="/capital/payments" className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
+            Ver pagos
+          </Link>
+          {house.client.id && (
+            <Link href={`/capital/investors`} className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
+              Seguimiento inversionistas
+            </Link>
+          )}
         </div>
       </div>
 
@@ -370,40 +393,47 @@ export default function FinancedHouseDetailPage() {
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
             </div>
             <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
-              Vincula capital que el inversionista <strong>ya depositó</strong> a esta casa. No mueve dinero ni genera asientos — solo etiqueta el ticket existente.
+              Despliega capital de un inversionista a esta casa: baja su <strong>capital disponible</strong>, sube su capital invertido y registra el depósito en contabilidad (23900, sujeto a aprobación).
             </p>
-            <input
-              type="text"
-              placeholder="Buscar inversionista…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input w-full mb-4 text-sm"
-            />
             {loadingAssign ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
-            ) : filteredAssignable.length === 0 ? (
-              <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>No hay tickets de inversión disponibles para asignar.</p>
+            ) : assignable.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>No hay inversionistas activos disponibles.</p>
             ) : (
-              <div className="space-y-2">
-                {filteredAssignable.map((a) => (
-                  <div key={a.investment_id} className="flex items-center justify-between gap-3 p-3 rounded-lg border" style={{ borderColor: 'var(--cream)' }}>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate" style={{ color: 'var(--ink)' }}>{a.investor_name || 'Inversionista'}</p>
-                      <p className="text-xs" style={{ color: 'var(--slate)' }}>
-                        {fmt(a.amount)} · {a.rate}%
-                        {a.note_backed ? ' · con pagaré' : ''}
-                        {a.current_property_code ? ` · hoy en ${a.current_property_code}` : ''}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => assign(a.investment_id)}
-                      disabled={busy === a.investment_id}
-                      className="btn-primary text-xs py-1.5 px-3 inline-flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {busy === a.investment_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Asignar
-                    </button>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Inversionista</label>
+                  <select value={selInvestor} onChange={(e) => setSelInvestor(e.target.value)} className="input w-full mt-1 text-sm">
+                    <option value="">Elegí un inversionista…</option>
+                    {assignable.map((a) => (
+                      <option key={a.investor_id} value={a.investor_id}>
+                        {a.investor_name || 'Inversionista'} — disponible {fmt(a.available_capital)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Monto</label>
+                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="input w-full mt-1 text-sm" />
                   </div>
-                ))}
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Tasa % anual</label>
+                    <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} className="input w-full mt-1 text-sm" />
+                  </div>
+                </div>
+                {selAvail != null && !isNaN(amtNum) && amtNum > selAvail && (
+                  <p className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--warning)' }}>
+                    <AlertTriangle className="w-3.5 h-3.5" /> El monto supera el capital disponible ({fmt(selAvail)}).
+                  </p>
+                )}
+                <button
+                  onClick={assign}
+                  disabled={submitting || !selInvestor || !amtNum || amtNum <= 0 || (selAvail != null && amtNum > selAvail)}
+                  className="btn-primary w-full inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Asignar capital a esta casa
+                </button>
               </div>
             )}
           </div>
