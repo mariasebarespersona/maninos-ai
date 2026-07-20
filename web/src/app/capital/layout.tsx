@@ -22,6 +22,7 @@ import {
   BookOpen,
   Bell,
   Target,
+  Home,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -52,6 +53,7 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
+      { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
       { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
     ],
   },
@@ -345,6 +347,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     applications: 'Clientes RTO',
     kyc: 'Verificación KYC',
     contracts: 'Contratos',
+    'financed-houses': 'Casas Financiadas',
     payments: 'Pagos',
     investors: 'Seguimiento',
     'promissory-notes': 'Promissory Notes',

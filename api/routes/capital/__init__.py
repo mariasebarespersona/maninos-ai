@@ -17,6 +17,7 @@ from .promissory_notes import router as promissory_notes_router
 from .accounting import router as accounting_router
 from .accounting_invoices import router as accounting_invoices_router
 from .payment_orders import router as capital_payment_orders_router
+from .financed_houses import router as financed_houses_router
 
 router = APIRouter()
 
@@ -33,4 +34,5 @@ router.include_router(promissory_notes_router)
 router.include_router(accounting_router)
 router.include_router(accounting_invoices_router)
 router.include_router(capital_payment_orders_router)
+router.include_router(financed_houses_router)
 
