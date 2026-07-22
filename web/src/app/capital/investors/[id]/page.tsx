@@ -70,6 +70,9 @@ interface Metrics {
   total_disponible: number
   total_retornado_capital: number
   total_retornado_interes: number
+  total_pagado_a_hoy: number
+  total_obligacion: number
+  total_restante_por_pagar: number
   tasa_fondeo: number
   avg_term_months: number
   // Legacy
@@ -447,13 +450,15 @@ export default function InvestorDetailPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total Captado', value: fmt(metrics?.total_captado || 0), icon: DollarSign, color: 'var(--gold-600)' },
           { label: 'Total Invertido', value: fmt(metrics?.total_invertido || totalInvested), icon: Briefcase, color: 'var(--navy-800)' },
-          { label: 'Total Disponible', value: fmt(metrics?.total_disponible || investor.available_capital), icon: Landmark, color: 'var(--info)' },
-          { label: 'Retornado Capital', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
-          { label: 'Retornado Interes', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
+          { label: 'Total Disponible', value: fmt(metrics?.total_disponible || 0), icon: Landmark, color: 'var(--info)' },
+          { label: 'Pagado a hoy', value: fmt(metrics?.total_pagado_a_hoy || 0), icon: TrendingUp, color: 'var(--success)', hint: 'Calculado al día de hoy' },
+          { label: 'Queda por pagar', value: fmt(metrics?.total_restante_por_pagar || 0), icon: Clock, color: 'var(--warning)', hint: 'Obligación − pagado a hoy' },
+          { label: 'Capital devuelto (a hoy)', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
+          { label: 'Interés pagado (a hoy)', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
+          { label: 'Obligación total', value: fmt(metrics?.total_obligacion || 0), icon: DollarSign, color: 'var(--gold-600)' },
           { label: 'Tasa Fondeo', value: `${metrics?.tasa_fondeo || 0}%`, icon: PieChart, color: 'var(--charcoal)' },
         ].map((kpi) => (
           <div key={kpi.label} className="card-luxury p-4">
@@ -462,6 +467,7 @@ export default function InvestorDetailPage() {
               <span className="text-xs" style={{ color: 'var(--slate)' }}>{kpi.label}</span>
             </div>
             <p className="font-serif text-xl font-semibold" style={{ color: 'var(--ink)' }}>{kpi.value}</p>
+            {kpi.hint && <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>{kpi.hint}</p>}
           </div>
         ))}
       </div>

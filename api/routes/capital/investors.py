@@ -49,6 +49,56 @@ def _capital_account_balance(code: str, *, exclude_unsettled: bool = True) -> fl
     return round(total, 2)
 
 
+def _note_paid_to_date(note: dict, as_of=None) -> dict:
+    """What a promissory note SHOULD have paid the investor as of `as_of`
+    (default today), derived from its start_date + amortization schedule.
+
+    Payments aren't tracked by hand (paid_amount is ~always 0), so this schedule-
+    based figure is the practical "pagado a la fecha": for the whole months elapsed
+    since start_date, sum the scheduled principal + interest. Returns the split
+    plus what remains to pay."""
+    from datetime import date as _date
+    from api.routes.capital.promissory_notes import _note_schedule, _note_tranches
+    as_of = as_of or _date.today()
+    loan = float(note.get("loan_amount", 0) or 0)
+    rate = float(note.get("annual_rate", 12) or 12)
+    io_m, amort_m = _note_tranches(note)
+    try:
+        sch = _note_schedule(loan, rate, io_m, amort_m)
+    except Exception:
+        return {"elapsed_periods": 0, "term": 0, "capital_to_date": 0.0, "interest_to_date": 0.0,
+                "paid_to_date": 0.0, "total_due": round(loan, 2), "total_interest": 0.0,
+                "loan_amount": loan, "remaining": round(loan, 2), "principal_remaining": round(loan, 2)}
+    rows = sch["schedule"]
+    # Whole months elapsed since start_date, capped at the schedule length.
+    start_raw = note.get("start_date") or note.get("created_at")
+    elapsed = 0
+    if start_raw:
+        try:
+            start = _date.fromisoformat(str(start_raw)[:10])
+            months = (as_of.year - start.year) * 12 + (as_of.month - start.month)
+            if as_of.day < start.day:
+                months -= 1
+            elapsed = max(0, min(months, len(rows)))
+        except Exception:
+            elapsed = 0
+    cap = round(sum(r["principal"] for r in rows[:elapsed]), 2)
+    inte = round(sum(r["interest"] for r in rows[:elapsed]), 2)
+    paid = round(cap + inte, 2)
+    return {
+        "elapsed_periods": elapsed,
+        "term": len(rows),
+        "capital_to_date": cap,
+        "interest_to_date": inte,
+        "paid_to_date": paid,
+        "total_due": sch["total_due"],
+        "total_interest": sch["total_interest"],
+        "loan_amount": loan,
+        "remaining": round(sch["total_due"] - paid, 2),
+        "principal_remaining": round(loan - cap, 2),
+    }
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -240,17 +290,24 @@ async def get_investor(investor_id: str):
         total_paid_notes = sum(float(n.get("paid_amount", 0) or 0) for n in notes_data)
         active_notes = [n for n in notes_data if n.get("status") in ("active", "overdue")]
 
-        # New detailed metrics: capital vs interest breakdown
+        # Retorno a la fecha de HOY, calculado del cronograma de cada pagaré
+        # (start_date → hoy), no del paid_amount manual (que está en 0). Así el
+        # empleado ve cuánto se le debería haber pagado al inversor a la fecha y
+        # cuánto queda por pagar, sin registrar pagos a mano.
         retornado_capital = 0.0
         retornado_interes = 0.0
+        total_obligacion = 0.0
         for n in notes_data:
-            paid = float(n.get("paid_amount", 0) or 0)
-            principal = float(n.get("loan_amount", 0))
-            if paid <= principal:
-                retornado_capital += paid
-            else:
-                retornado_capital += principal
-                retornado_interes += paid - principal
+            if n.get("status") in ("cancelled", "voided"):
+                continue
+            ptd = _note_paid_to_date(n)
+            retornado_capital += ptd["capital_to_date"]
+            retornado_interes += ptd["interest_to_date"]
+            total_obligacion += ptd["total_due"]
+        retornado_capital = round(retornado_capital, 2)
+        retornado_interes = round(retornado_interes, 2)
+        total_pagado_a_hoy = round(retornado_capital + retornado_interes, 2)
+        total_restante_por_pagar = round(total_obligacion - total_pagado_a_hoy, 2)
 
         # Tasa fondeo for this investor (weighted avg of their notes)
         investor_active_notes = [n for n in notes_data if n.get("status") in ("active", "overdue") and n.get("annual_rate")]
@@ -288,6 +345,10 @@ async def get_investor(investor_id: str):
                 "total_disponible": total_disponible,
                 "total_retornado_capital": round(retornado_capital, 2),
                 "total_retornado_interes": round(retornado_interes, 2),
+                # A la fecha de hoy (calculado del cronograma):
+                "total_pagado_a_hoy": total_pagado_a_hoy,
+                "total_obligacion": round(total_obligacion, 2),
+                "total_restante_por_pagar": total_restante_por_pagar,
                 "tasa_fondeo": tasa_fondeo,
                 "avg_term_months": avg_term,
                 # Legacy fields for backwards compat (now unified to include notes)
