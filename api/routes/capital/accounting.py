@@ -2677,6 +2677,7 @@ def _match_capital_movements_to_transactions(movements: list, transactions: list
 
         best_match = None
         best_score = 0
+        best_sig = {"amount_exact": False, "diff_days": None, "name_sim": 0.0}
 
         for txn in transactions:
             if txn["id"] in used_txn_ids:
@@ -2690,19 +2691,21 @@ def _match_capital_movements_to_transactions(movements: list, transactions: list
             if mv_is_credit != txn_is_income:
                 continue
 
-            # Amount match
+            # Amount match — like Homes, amount alone is never enough; hard-stop
+            # anything worse than a 1% match (no marginal 5% acceptances).
+            amount_exact = False
             if mv_amount > 0 and txn_amount > 0:
                 diff_pct = abs(mv_amount - txn_amount) / max(mv_amount, txn_amount)
                 if abs(mv_amount - txn_amount) < 0.01:
                     score += 50
+                    amount_exact = True
                 elif diff_pct < 0.01:
                     score += 35
-                elif diff_pct < 0.05:
-                    score += 15
                 else:
                     continue
 
             # Date proximity
+            diff_days = None
             try:
                 mv_date = datetime.strptime(mv_date_str, "%Y-%m-%d").date() if mv_date_str else None
                 txn_date_str = txn.get("transaction_date", "")
@@ -2736,20 +2739,57 @@ def _match_capital_movements_to_transactions(movements: list, transactions: list
             if score > best_score:
                 best_score = score
                 best_match = txn
+                best_sig = {"amount_exact": amount_exact, "diff_days": diff_days, "name_sim": best_name_sim}
 
+        # Corroboration gate (mirror Homes): amount alone is NEVER sufficient —
+        # require at least one corroborating signal (name ≥ 0.4 OR date within ±3d).
         if best_match and best_score >= 50:
+            name_sim = best_sig["name_sim"]
+            dd = best_sig["diff_days"]
+            corroborated = (name_sim >= 0.4) or (dd is not None and dd <= 3)
+            if not corroborated:
+                continue
             used_txn_ids.add(best_match["id"])
-            confidence = "high" if best_score >= 80 else "medium" if best_score >= 60 else "low"
+            if name_sim >= 0.7 or (name_sim >= 0.4 and best_sig["amount_exact"] and dd == 0):
+                confidence = "high"
+            elif best_score >= 60:
+                confidence = "medium"
+            else:
+                confidence = "low"
+            reason, caveat = _capital_match_reason(best_sig)
             matches.append({
                 "movement_id": mv["id"],
                 "transaction_id": best_match["id"],
                 "score": best_score,
                 "confidence": confidence,
+                "signals": best_sig,
+                "reason": reason,
+                "caveat": caveat,
                 "movement": mv,
                 "transaction": best_match,
             })
 
     return matches
+
+
+def _capital_match_reason(sig: dict) -> tuple:
+    """Human-readable reason + caveat for a match (mirror Homes' _match_signals)."""
+    parts = []
+    if sig.get("amount_exact"):
+        parts.append("monto coincide")
+    else:
+        parts.append("monto aproximado")
+    name_sim = sig.get("name_sim") or 0.0
+    if name_sim > 0:
+        parts.append(f"nombre {int(name_sim * 100)}%")
+    dd = sig.get("diff_days")
+    if dd is not None:
+        parts.append("mismo día" if dd == 0 else f"±{dd} días")
+    reason = " · ".join(parts)
+    caveat = ""
+    if name_sim < 0.4:
+        caveat = "La app NO está segura: coincide el monto pero el nombre no. Revísalo."
+    return reason, caveat
 
 
 def _match_capital_movements_to_invoices(movements: list, invoices: list) -> list:
@@ -3068,11 +3108,19 @@ async def classify_capital_statement(statement_id: str):
     accounts_list = [a for a in qb_accounts if not a.get("is_header")]
     acct_by_id = {a["id"]: a for a in accounts_list}
 
-    # Build accounts reference for the AI — only leaf P&L accounts (income/expense/cogs)
-    pl_accounts = [a for a in accounts_list if a["account_type"] in ("income", "expense", "cogs")]
+    # Build accounts reference for the AI. Capital books several movements to the
+    # BALANCE SHEET (investor deposits → 23900 liability, house acquisitions →
+    # 14300 asset), so the reference must include those accounts — not just P&L —
+    # or the model is forced to mis-book them as income/expense.
+    CAPITAL_BS_CLASSIFY_CODES = {"14300", "12000", "23900", "23950"}
+    classify_accounts = [
+        a for a in accounts_list
+        if a["account_type"] in ("income", "expense", "cogs")
+        or a["code"] in CAPITAL_BS_CLASSIFY_CODES
+    ]
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category', '')})"
-        for a in pl_accounts
+        for a in classify_accounts
     ])
 
     # --- Learning from human corrections ---
@@ -3675,32 +3723,40 @@ async def _ai_classify_capital_movements(
         movements_lines.append(line)
     movements_text = "\n".join(movements_lines)
 
-    prompt = f"""Classify each bank movement into the correct QuickBooks account for Maninos Capital LLC (mobile home RTO financing, Texas).
+    prompt = f"""Classify each bank movement into the correct account for Maninos Capital LLC (mobile-home rent-to-own financing, Texas).
 
-RULES:
-- Use ONLY account codes from the chart below. No other codes.
-- Credits (deposits) → income accounts (4xxxx)
-- Debits (withdrawals) → expense/COGS accounts (5xxxx, 6xxxx, 8xxxx)
-- Bank transfers → transaction_type "transfer", closest expense account.
+CRITICAL: the sign of the movement does NOT decide the account. Some deposits are LIABILITIES and some withdrawals are ASSETS. Match by the MEANING of the description, using the table below.
 
-CHART OF ACCOUNTS:
+CHART OF ACCOUNTS (use ONLY these exact codes — no others, never leave empty):
 {accounts_reference}
 
-CLASSIFICATION GUIDE FOR RECONCILED MOVEMENTS:
-Movements marked "RECONCILED with app transaction: ..." have a known internal description. Use it as the PRIMARY source:
-- "Venta contado" or "Depósito" → income (House Sales or equivalent)
-- "Venta RTO" or "Capital" → income (House Sales or equivalent)
-- "Compra propiedad" or "Compra:" → COGS (House Sales - COGS or equivalent)
-- "Renovación" → Supplies & materials or Contractors
+CAPITAL CLASSIFICATION RULES (description → account, most specific wins):
+
+INCOMING MONEY (credits / deposits):
+- Investor capital in — "aporte inversionista", "pagaré", "nota", "depósito inversión", "investor deposit/wire" → 23900 Investor Notes Payable. THIS IS A LIABILITY, NOT INCOME — it is money Capital OWES the investor. transaction_type=investor_deposit.
+- RTO monthly payment — "pago mensual", "mensualidad", "renta RTO", "rent-to-own payment" → 41000 RTO Rental Income. transaction_type=rto_payment. (Do NOT use "Interest earned" for a monthly RTO payment.)
+- Down payment / "enganche" — → 42000 Down Payment Income. transaction_type=down_payment.
+- Late fee / "mora" / "cargo por atraso" — → 43000 Late Fee Income. transaction_type=late_fee.
+- Anything else clearly income with no better fit → 70000 Other Income. transaction_type=other_income.
+
+OUTGOING MONEY (debits / withdrawals):
+- Paying Homes for a financed house — "pago a Homes", "financiamiento", "adquisición", "compra casa/propiedad" → 14300 RTO Properties. THIS IS AN ASSET (the house Capital now owns), NOT an expense. transaction_type=acquisition.
+- Interest paid to an investor — "pago intereses inversionista", "interés" → 71400 Interest paid. transaction_type=investor_interest.
+- Returning an investor's principal — "devolución capital", "retiro inversionista", "return of principal" → 23900 Investor Notes Payable (reduces the liability). transaction_type=investor_return.
+- Commission — "comisión", "commission" → 60100 Commissions & fees. transaction_type=commission.
+- Bank fee / "comisión bancaria" / "service charge" → 60600 Bank fees & service charges (or the closest bank-fee account). transaction_type=operating_expense.
+- Generic operating expense — software, office, legal, consulting → 60500 Office expenses. transaction_type=operating_expense.
+- Anything else clearly an expense with no better fit → 71000 Other Business Expenses. transaction_type=other_expense.
+
+BANK TRANSFERS between Capital's own accounts → transaction_type="transfer".
+
+RECONCILED MOVEMENTS: those marked "RECONCILED with app transaction: ..." carry a known internal description — trust it as the PRIMARY signal and map it with the same rules above.
 
 BUSINESS CONTEXT:
-- Finances mobile homes through rent-to-own (RTO) contracts
-- Main income: interest earned on RTO loans, down payments
-- Investors who lend money (VALTO, SGZ entities)
-- Common expenses: consulting, legal, office, commissions, interest paid to investors
-- Related parties: Maninos Homes, SGZ, La Agustedad
-- Banks: Bank of America, BOA Capital 9197, PNC, Monex Bank
-- Zelle = common payment method
+- Capital finances mobile homes for clients via RTO contracts, funded by investors who lend money (promissory notes).
+- Investor money in is a LIABILITY (23900), never income. Interest paid to investors is an expense (71400). Houses Capital buys from Homes to finance are ASSETS (14300).
+- Client money in is income: monthly RTO = 41000, enganche = 42000, mora = 43000.
+- Related party: Maninos Homes (Capital pays Homes for each financed house).
 
 {f"HUMAN CORRECTIONS (the accountant overrode the AI — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS:
 {movements_text}
@@ -3718,10 +3774,10 @@ Return a JSON array with one object per movement (in order):
     response = client.chat.completions.create(
         model="gpt-5",
         messages=[
-            {"role": "system", "content": "You are an expert accountant for a mobile home RTO financing company. Return valid JSON arrays only."},
+            {"role": "system", "content": "You are an expert accountant for a mobile-home RTO financing company (Maninos Capital). Investor money in is a LIABILITY (23900), houses bought to finance are ASSETS (14300) — never book those as income/expense. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
-        max_completion_tokens=4096,
+        max_completion_tokens=8192,
     )
 
     content = response.choices[0].message.content or "[]"
