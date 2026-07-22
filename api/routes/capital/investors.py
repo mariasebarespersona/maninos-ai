@@ -123,9 +123,28 @@ async def list_investors(status: Optional[str] = "active"):
             if iid:
                 notes_by_investor.setdefault(iid, []).append(n)
 
+        # Get note-less investment tickets (notes already cover note-backed ones)
+        # so we can show a UNIFIED "total invertido" per card.
+        tickets_by_investor: dict = {}
+        try:
+            all_tickets = sb.table("investments") \
+                .select("investor_id, amount, status, promissory_note_id").execute().data or []
+            for t in all_tickets:
+                iid = t.get("investor_id")
+                if iid and t.get("status") not in ("renegotiated", "transferred") and not t.get("promissory_note_id"):
+                    tickets_by_investor.setdefault(iid, 0.0)
+                    tickets_by_investor[iid] += float(t.get("amount", 0) or 0)
+        except Exception:
+            pass
+        _INVESTED_NOTE_STATUSES = ("active", "overdue", "partial", "partial_return")
+
         # Enrich each investor with card preview metrics
         for inv in investors:
             inv_notes = notes_by_investor.get(inv["id"], [])
+            # Unified invested = active notes principal + note-less tickets.
+            notes_inv = sum(float(n.get("loan_amount", 0)) for n in inv_notes if n.get("status") in _INVESTED_NOTE_STATUSES)
+            inv["total_invested"] = round(notes_inv + tickets_by_investor.get(inv["id"], 0.0), 2)
+            inv["total_captado"] = inv["total_invested"]
             active_notes = [n for n in inv_notes if n.get("status") in ("active", "overdue")]
             if active_notes:
                 w_sum = sum(float(n.get("loan_amount", 0)) * float(n.get("annual_rate", 0)) for n in active_notes)
@@ -203,6 +222,19 @@ async def get_investor(investor_id: str):
 
         # Notes metrics
         notes_data = notes.data or []
+        # UNIFIED invested capital: a promissory note IS the investor's money
+        # (it's the note confirming they lent it), so "invested" = notes' principal
+        # + any note-less investment tickets. Note-backed tickets aren't added
+        # separately (the note already counts them) to avoid double-counting.
+        INVESTED_NOTE_STATUSES = ("active", "overdue", "partial", "partial_return")
+        notes_invested = sum(
+            float(n.get("loan_amount", 0)) for n in notes_data
+            if n.get("status") in INVESTED_NOTE_STATUSES
+        )
+        tickets_invested_noteless = sum(
+            float(i.get("amount", 0)) for i in live if not i.get("promissory_note_id")
+        )
+        total_invertido_unificado = round(notes_invested + tickets_invested_noteless, 2)
         total_lent = sum(float(n.get("loan_amount", 0)) for n in notes_data)
         total_due_notes = sum(float(n.get("total_due", 0)) for n in notes_data)
         total_paid_notes = sum(float(n.get("paid_amount", 0) or 0) for n in notes_data)
@@ -236,9 +268,13 @@ async def get_investor(investor_id: str):
         terms = [int(n.get("term_months", 0)) for n in notes_data if n.get("term_months")]
         avg_term = round(sum(terms) / len(terms), 1) if terms else 0
 
-        # Total captado = total_invested from investor record (what they put in)
+        # "Disponible" = capital aportado que NO está desplegado en pagarés/tickets.
+        # available_capital a veces duplica lo que ya está en un pagaré (se cargó al
+        # crear y luego se emitió la nota por el mismo monto), así que restamos lo
+        # invertido para no contar el mismo dinero dos veces.
         total_captado = float(investor.data.get("total_invested", 0))
-        total_disponible = float(investor.data.get("available_capital", 0))
+        _raw_disponible = float(investor.data.get("available_capital", 0))
+        total_disponible = round(max(0.0, _raw_disponible - total_invertido_unificado), 2)
 
         return {
             "ok": True,
@@ -246,15 +282,16 @@ async def get_investor(investor_id: str):
             "investments": inv_data,
             "promissory_notes": notes_data,
             "metrics": {
-                "total_captado": total_captado,
-                "total_invertido": total_invested,
+                # Unified: notes (pagarés) count as invested capital, same as tickets.
+                "total_captado": total_invertido_unificado,
+                "total_invertido": total_invertido_unificado,
                 "total_disponible": total_disponible,
                 "total_retornado_capital": round(retornado_capital, 2),
                 "total_retornado_interes": round(retornado_interes, 2),
                 "tasa_fondeo": tasa_fondeo,
                 "avg_term_months": avg_term,
-                # Legacy fields for backwards compat
-                "total_invested": total_invested,
+                # Legacy fields for backwards compat (now unified to include notes)
+                "total_invested": total_invertido_unificado,
                 "total_returned": total_returned,
                 "net_outstanding": total_invested - total_returned,
                 "active_investments": len(active_investments),
