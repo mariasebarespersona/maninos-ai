@@ -708,6 +708,52 @@ async def void_transaction(transaction_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/transactions/{transaction_id}/reclassify")
+async def reclassify_capital_transaction(transaction_id: str, data: dict):
+    """Re-point a transaction leg to a different chart account WITHOUT re-posting
+    (fix a mis-categorized P&L/BS line). Mirrors Homes' reclassify. The bank leg
+    is never touched — if the clicked row is the bank leg, reclassify its linked
+    counter leg instead. Rejects header accounts."""
+    new_code = (data.get("account_code") or "").strip()
+    if not new_code:
+        raise HTTPException(status_code=400, detail="account_code requerido")
+    acct = sb.table("capital_accounts").select("id, is_header").eq("code", new_code).limit(1).execute()
+    if not acct.data:
+        raise HTTPException(status_code=404, detail=f"Cuenta {new_code} no encontrada")
+    if acct.data[0].get("is_header"):
+        raise HTTPException(status_code=400, detail="No se puede reclasificar a una cuenta de encabezado")
+    new_account_id = acct.data[0]["id"]
+
+    row = sb.table("capital_transactions").select("id, account_id, linked_transaction_id") \
+        .eq("id", transaction_id).limit(1).execute()
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    leg = row.data[0]
+
+    # The counter leg (P&L/BS side) is the one to reclassify — NEVER the bank leg.
+    # Both legs of a Capital pair carry bank_account_id, so we identify the bank
+    # leg by its account being a bank's own chart account (accounting_account_id).
+    banks = sb.table("capital_bank_accounts").select("accounting_account_id") \
+        .not_.is_("accounting_account_id", "null").execute().data or []
+    bank_acct_ids = {b["accounting_account_id"] for b in banks if b.get("accounting_account_id")}
+
+    target_id = transaction_id
+    # If the clicked row is the bank leg, reclassify its linked counter leg instead.
+    if leg.get("account_id") in bank_acct_ids and leg.get("linked_transaction_id"):
+        target_id = leg["linked_transaction_id"]
+    if new_account_id in bank_acct_ids:
+        raise HTTPException(status_code=400, detail="No se puede reclasificar a una cuenta de banco")
+
+    sb.table("capital_transactions").update({"account_id": new_account_id}).eq("id", target_id).execute()
+    try:
+        from api.routes.capital.accounting_invoices import _log_capital_audit
+        _log_capital_audit("capital_transactions", target_id, "update",
+                           description=f"Reclasificada a {new_code}")
+    except Exception:
+        pass
+    return {"ok": True, "transaction_id": target_id, "account_code": new_code}
+
+
 @router.post("/transactions/{transaction_id}/split")
 async def split_capital_transaction(transaction_id: str, data: dict):
     """Split a transaction into multiple parts. Sum of parts must equal the

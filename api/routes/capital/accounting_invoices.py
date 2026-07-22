@@ -428,6 +428,89 @@ async def get_capital_aging_summary(direction: str = Query("receivable")):
     return {"direction": direction, "total": total, "buckets": buckets, "items": items}
 
 
+@router.get("/reports/customer-balance-summary")
+async def capital_customer_balance_summary():
+    """Open A/R grouped by customer (who owes Capital), with aging hint."""
+    return _party_balance_summary("receivable")
+
+
+@router.get("/reports/vendor-balance-summary")
+async def capital_vendor_balance_summary():
+    """Open A/P grouped by vendor (whom Capital owes)."""
+    return _party_balance_summary("payable")
+
+
+def _party_balance_summary(direction: str) -> dict:
+    today = date.today()
+    invoices = sb.table("capital_invoices") \
+        .select("counterparty_name, balance_due, due_date, status, invoice_number") \
+        .eq("direction", direction) \
+        .in_("status", ["sent", "partial", "overdue"]) \
+        .execute().data or []
+    parties: dict = {}
+    for inv in invoices:
+        bal = float(inv.get("balance_due") or 0)
+        if bal <= 0.005:
+            continue
+        name = (inv.get("counterparty_name") or "Sin nombre").strip()
+        p = parties.setdefault(name, {"counterparty_name": name, "total_due": 0.0,
+                                      "invoice_count": 0, "overdue_due": 0.0, "oldest_due_date": None})
+        p["total_due"] += bal
+        p["invoice_count"] += 1
+        due = inv.get("due_date")
+        if due:
+            if p["oldest_due_date"] is None or due < p["oldest_due_date"]:
+                p["oldest_due_date"] = due
+            try:
+                if (today - date.fromisoformat(due)).days > 0:
+                    p["overdue_due"] += bal
+            except Exception:
+                pass
+    rows = sorted(parties.values(), key=lambda x: -x["total_due"])
+    for r in rows:
+        r["total_due"] = round(r["total_due"], 2)
+        r["overdue_due"] = round(r["overdue_due"], 2)
+    return {"ok": True, "direction": direction, "parties": rows,
+            "total": round(sum(r["total_due"] for r in rows), 2)}
+
+
+@router.patch("/invoices/{invoice_id}/reclassify")
+async def reclassify_capital_invoice(invoice_id: str, data: dict):
+    """Re-point an invoice's income/expense leg to a different account WITHOUT
+    re-issuing (fix a mis-categorized P&L line). The A/R (12000) / A/P (21000)
+    leg is never touched."""
+    new_code = (data.get("account_code") or "").strip()
+    if not new_code:
+        raise HTTPException(status_code=400, detail="account_code requerido")
+    acct = sb.table("capital_accounts").select("id, is_header").eq("code", new_code).limit(1).execute()
+    if not acct.data:
+        raise HTTPException(status_code=404, detail=f"Cuenta {new_code} no encontrada")
+    if acct.data[0].get("is_header"):
+        raise HTTPException(status_code=400, detail="No se puede reclasificar a una cuenta de encabezado")
+    new_account_id = acct.data[0]["id"]
+
+    # The invoice's ledger legs carry entity_type='invoice', entity_id=invoice_id.
+    # Reclassify the income/expense leg — i.e. NOT the A/R (12000) or A/P (21000) side.
+    legs = sb.table("capital_transactions") \
+        .select("id, account_id, capital_accounts(code)") \
+        .eq("entity_type", "invoice").eq("entity_id", invoice_id) \
+        .neq("status", "voided").execute().data or []
+    ar_ap_codes = {"12000", "21000"}
+    updated = 0
+    for leg in legs:
+        code = (leg.get("capital_accounts") or {}).get("code")
+        if code in ar_ap_codes:
+            continue  # keep the receivable/payable side intact
+        sb.table("capital_transactions").update({"account_id": new_account_id}).eq("id", leg["id"]).execute()
+        updated += 1
+    try:
+        _log_capital_audit("capital_invoices", invoice_id, "update",
+                           description=f"Reclasificada a {new_code}")
+    except Exception:
+        pass
+    return {"ok": True, "invoice_id": invoice_id, "account_code": new_code, "legs_updated": updated}
+
+
 @router.get("/invoices/{invoice_id}")
 async def get_capital_invoice_detail(invoice_id: str):
     inv = sb.table("capital_invoices").select("*").eq("id", invoice_id).execute()
