@@ -1821,6 +1821,23 @@ function StatementsTab() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Drill-down: click an amount in the statements → see its transactions
+  const [drill, setDrill] = useState<ReportNode | null>(null)
+  const [drillTxns, setDrillTxns] = useState<any[]>([])
+  const [drillLoading, setDrillLoading] = useState(false)
+
+  useEffect(() => {
+    if (!drill?.id) { setDrillTxns([]); return }
+    let cancelled = false
+    setDrillLoading(true)
+    fetch(`/api/capital/accounting/transactions?account_id=${drill.id}&per_page=200`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setDrillTxns(d.ok ? (d.transactions || []) : []) })
+      .catch(() => { if (!cancelled) setDrillTxns([]) })
+      .finally(() => { if (!cancelled) setDrillLoading(false) })
+    return () => { cancelled = true }
+  }, [drill?.id])
+
   // Save / Saved reports state
   const [saving, setSaving] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -2112,7 +2129,7 @@ function StatementsTab() {
                   {renderBsData.assets.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
                   )}
-                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_assets)}</span>
@@ -2128,7 +2145,7 @@ function StatementsTab() {
                   {renderBsData.liabilities.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
                   )}
-                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
@@ -2139,7 +2156,7 @@ function StatementsTab() {
                   {renderBsData.equity.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
                   )}
-                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} />)}
+                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
@@ -2181,7 +2198,7 @@ function StatementsTab() {
                   {renderPlData.income.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
                   )}
-                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_income)}</span>
@@ -2200,7 +2217,7 @@ function StatementsTab() {
                   {renderPlData.expenses.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
                   )}
-                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
@@ -2217,7 +2234,7 @@ function StatementsTab() {
                 {renderPlData.other_income.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
-                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
@@ -2229,7 +2246,7 @@ function StatementsTab() {
                 {renderPlData.other_expenses.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
-                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} />)}
+                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
@@ -2258,6 +2275,52 @@ function StatementsTab() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── DRILL-DOWN: transacciones de una cuenta ── */}
+      {drill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDrill(null)}>
+          <div className="card-luxury p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                {drill.code && <span className="font-mono text-sm mr-2" style={{ color: 'var(--ash)' }}>{drill.code}</span>}
+                {drill.name}
+              </h3>
+              <button onClick={() => setDrill(null)}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+              Saldo {fmtFull(drill.balance)} · {drillTxns.length} transacción(es)
+            </p>
+            {drillLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+            ) : drillTxns.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>No hay transacciones para esta cuenta.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs" style={{ color: 'var(--ash)' }}>
+                    <th className="pb-2 pr-3">Fecha</th>
+                    <th className="pb-2 pr-3">Descripción</th>
+                    <th className="pb-2 pr-3">Contraparte</th>
+                    <th className="pb-2 text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drillTxns.map((t: any) => (
+                    <tr key={t.id} className="border-t" style={{ borderColor: 'var(--cream)' }}>
+                      <td className="py-1.5 pr-3 whitespace-nowrap" style={{ color: 'var(--slate)' }}>{t.transaction_date}</td>
+                      <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{t.description || '—'}</td>
+                      <td className="py-1.5 pr-3" style={{ color: 'var(--slate)' }}>{t.counterparty_name || '—'}</td>
+                      <td className="py-1.5 text-right font-mono" style={{ color: t.is_income ? 'var(--success)' : 'var(--danger)' }}>
+                        {t.is_income ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount) || 0))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── SAVED REPORTS ── */}
@@ -2413,11 +2476,26 @@ function StatementsTab() {
   )
 }
 
-function ReportTreeNode({ node, depth }: {
-  node: ReportNode; depth: number
+function ReportTreeNode({ node, depth, onDrill }: {
+  node: ReportNode; depth: number; onDrill?: (node: ReportNode) => void
 }) {
   const hasChildren = (node.children || []).length > 0
   const indent = depth * 16
+
+  // A leaf account with a real id and a non-zero balance is drillable.
+  const canDrill = !!onDrill && !!node.id && !node.is_header && node.balance !== 0
+  const Amount = ({ value }: { value: number }) => (
+    canDrill ? (
+      <button
+        onClick={() => onDrill!(node)}
+        className="text-sm font-mono underline decoration-dotted hover:decoration-solid cursor-pointer"
+        style={{ color: value < 0 ? 'var(--danger)' : 'var(--gold-700)' }}
+        title="Ver transacciones de esta cuenta"
+      >{fmtFull(value)}</button>
+    ) : (
+      <span className="text-sm font-mono" style={{ color: value < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(value)}</span>
+    )
+  )
 
   if (hasChildren) {
     return (
@@ -2427,12 +2505,10 @@ function ReportTreeNode({ node, depth }: {
             {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
             {node.name}
           </span>
-          {node.balance !== 0 && !node.is_header && (
-            <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(node.balance)}</span>
-          )}
+          {node.balance !== 0 && !node.is_header && <Amount value={node.balance} />}
         </div>
         {node.children!.map(child => (
-          <ReportTreeNode key={child.id} node={child} depth={depth + 1} />
+          <ReportTreeNode key={child.id} node={child} depth={depth + 1} onDrill={onDrill} />
         ))}
         <div className="flex justify-between py-0.5 border-t" style={{ paddingLeft: indent, borderColor: '#e5e5e5' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
@@ -2452,7 +2528,7 @@ function ReportTreeNode({ node, depth }: {
         {node.code && <span className="font-mono text-xs mr-1" style={{ color: 'var(--ash)' }}>{node.code}</span>}
         {node.name}
       </span>
-      <span className="text-sm font-mono" style={{ color: node.balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(node.balance)}</span>
+      <Amount value={node.balance} />
     </div>
   )
 }

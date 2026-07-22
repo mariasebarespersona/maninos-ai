@@ -476,14 +476,24 @@ async def list_transactions(
     transaction_type: Optional[str] = None,
     flow: Optional[str] = None,  # 'income' | 'expense'
     search: Optional[str] = None,
+    account_id: Optional[str] = None,   # drill-down: legs of one chart account
+    account_code: Optional[str] = None,  # drill-down by code (resolved to id)
 ):
     """List capital transactions with filters and pagination."""
     try:
+        # Drill-down from the financial statements: resolve a code to its id.
+        if account_code and not account_id:
+            ac = sb.table("capital_accounts").select("id").eq("code", account_code).limit(1).execute()
+            if ac.data:
+                account_id = ac.data[0]["id"]
+
         q = sb.table("capital_transactions") \
             .select("*, capital_accounts(code, name), capital_bank_accounts(name, bank_name)") \
             .neq("status", "voided") \
             .order("transaction_date", desc=True)
 
+        if account_id:
+            q = q.eq("account_id", account_id)
         if start_date:
             q = q.gte("transaction_date", start_date)
         if end_date:
