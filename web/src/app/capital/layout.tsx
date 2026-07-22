@@ -74,7 +74,7 @@ const navigationSections: NavSection[] = [
   },
 ]
 
-const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail']
+const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz']
 
 function isCapitalAuthorized(email?: string | null): boolean {
   if (!email) return false

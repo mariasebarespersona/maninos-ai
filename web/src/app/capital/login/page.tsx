@@ -8,7 +8,8 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
 import { Loader2 } from 'lucide-react'
 
-const ALLOWED_EMAILS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez']
+// Debe coincidir con CAPITAL_ALLOWED_PATTERNS en web/src/app/capital/layout.tsx
+const ALLOWED_EMAILS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz']
 
 function isEmailAuthorized(email: string): boolean {
   const lower = email.toLowerCase()
