@@ -203,6 +203,7 @@ export default function PromissoryNoteDetailPage() {
 
   const [note, setNote] = useState<PromissoryNote | null>(null)
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
+  const [paidToDate, setPaidToDate] = useState<{ capital_to_date: number; interest_to_date: number; paid_to_date: number; remaining: number; elapsed_periods: number; term: number } | null>(null)
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'document' | 'schedule' | 'payments'>('document')
@@ -236,6 +237,7 @@ export default function PromissoryNoteDetailPage() {
       if (data.ok) {
         setNote(data.note)
         setSchedule(data.schedule || [])
+        setPaidToDate(data.paid_to_date || null)
         setPayments(data.payments || [])
         setEditData({
           annual_rate: String(data.note.annual_rate),
@@ -493,6 +495,37 @@ export default function PromissoryNoteDetailPage() {
             </div>
           ))}
         </div>
+
+        {/* A la fecha de hoy — devengado del cronograma (no de pagos manuales) */}
+        {paidToDate && (
+          <div className="mt-4 rounded-lg p-4" style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--sand)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>A la fecha de hoy</span>
+              <span className="text-xs" style={{ color: 'var(--ash)' }}>
+                ({paidToDate.elapsed_periods} de {paidToDate.term} meses transcurridos)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Debería estar pagado</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(paidToDate.paid_to_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Capital devuelto</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--navy-800)' }}>{fmt(paidToDate.capital_to_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Interés pagado</p>
+                <p className="font-serif font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(paidToDate.interest_to_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Queda por pagar</p>
+                <p className="font-serif font-semibold" style={{ color: paidToDate.remaining > 0 ? 'var(--error)' : 'var(--success)' }}>{fmt(paidToDate.remaining)}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Progress */}
         {note.status !== 'draft' && (

@@ -321,11 +321,20 @@ async def get_promissory_note(note_id: str):
         except Exception:
             pass
         
+        # Devengado a la fecha de hoy (calculado del cronograma): cuánto se le
+        # debería haber pagado al inversor hasta hoy y cuánto queda por pagar.
+        try:
+            from api.routes.capital.investors import _note_paid_to_date
+            paid_to_date = _note_paid_to_date(note)
+        except Exception:
+            paid_to_date = None
+
         return {
             "ok": True,
             "note": note,
             "schedule": calc["schedule"],
             "payments": payments,
+            "paid_to_date": paid_to_date,
         }
     except HTTPException:
         raise
