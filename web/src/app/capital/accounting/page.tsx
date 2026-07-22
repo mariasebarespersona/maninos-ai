@@ -416,12 +416,28 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTran
   summary: DashboardData['summary']; cashFlow: DashboardData['cash_flow']; maxCf: number
   bankAccounts: BankAccount[]; recentTransactions: Transaction[]
 }) {
+  const [drillFlow, setDrillFlow] = useState<'' | 'income' | 'expense'>('')
+  const [drillTxns, setDrillTxns] = useState<any[]>([])
+  const [drillLoading, setDrillLoading] = useState(false)
+
+  useEffect(() => {
+    if (!drillFlow) { setDrillTxns([]); return }
+    let cancelled = false
+    setDrillLoading(true)
+    fetch(`/api/capital/accounting/transactions?flow=${drillFlow}&per_page=200`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setDrillTxns(d.ok ? (d.transactions || []) : []) })
+      .catch(() => { if (!cancelled) setDrillTxns([]) })
+      .finally(() => { if (!cancelled) setDrillLoading(false) })
+    return () => { cancelled = true }
+  }, [drillFlow])
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard icon={TrendingUp} label="Ingresos Totales" value={fmt(s.total_income)} color="var(--success)" />
-        <KPICard icon={TrendingDown} label="Gastos Totales" value={fmt(s.total_expenses)} color="var(--danger)" />
+        <KPICard icon={TrendingUp} label="Ingresos Totales" value={fmt(s.total_income)} color="var(--success)" onClick={() => setDrillFlow('income')} />
+        <KPICard icon={TrendingDown} label="Gastos Totales" value={fmt(s.total_expenses)} color="var(--danger)" onClick={() => setDrillFlow('expense')} />
         <KPICard icon={DollarSign} label="Utilidad Neta" value={fmt(s.net_profit)} color={s.net_profit >= 0 ? 'var(--success)' : 'var(--danger)'} sub={`${s.margin_percent}% margen`} />
         <KPICard icon={Building2} label="Valor Portafolio" value={fmt(s.portfolio_value)} color="var(--gold-600)" sub={`${s.active_contracts} contratos activos`} />
       </div>
@@ -568,13 +584,55 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTran
           </div>
         </div>
       )}
+
+      {/* Drill-down desde las tarjetas de ingresos/gastos */}
+      {drillFlow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDrillFlow('')}>
+          <div className="card-luxury p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>
+                {drillFlow === 'income' ? 'Ingresos' : 'Gastos'} · {drillTxns.length} transacción(es)
+              </h3>
+              <button onClick={() => setDrillFlow('')}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+            </div>
+            {drillLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+            ) : drillTxns.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>No hay transacciones.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs" style={{ color: 'var(--ash)' }}>
+                    <th className="pb-2 pr-3">Fecha</th>
+                    <th className="pb-2 pr-3">Descripción</th>
+                    <th className="pb-2 pr-3">Cuenta</th>
+                    <th className="pb-2 text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drillTxns.map((t: any) => (
+                    <tr key={t.id} className="border-t" style={{ borderColor: 'var(--cream)' }}>
+                      <td className="py-1.5 pr-3 whitespace-nowrap" style={{ color: 'var(--slate)' }}>{t.transaction_date}</td>
+                      <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{t.description || '—'}</td>
+                      <td className="py-1.5 pr-3 text-xs" style={{ color: 'var(--slate)' }}>{t.capital_accounts ? `${t.capital_accounts.code} ${t.capital_accounts.name}` : '—'}</td>
+                      <td className="py-1.5 text-right font-mono" style={{ color: t.is_income ? 'var(--success)' : 'var(--danger)' }}>
+                        {t.is_income ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount) || 0))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function KPICard({ icon: Icon, label, value, color, sub }: { icon: React.ElementType; label: string; value: string; color: string; sub?: string }) {
+function KPICard({ icon: Icon, label, value, color, sub, onClick }: { icon: React.ElementType; label: string; value: string; color: string; sub?: string; onClick?: () => void }) {
   return (
-    <div className="card-luxury p-5">
+    <div className={`card-luxury p-5 ${onClick ? 'cursor-pointer hover:border-gold-400 transition-colors' : ''}`} onClick={onClick} title={onClick ? 'Ver transacciones' : undefined}>
       <div className="flex items-center gap-3 mb-2">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}15` }}>
           <Icon className="w-5 h-5" style={{ color }} />
@@ -3238,6 +3296,40 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
   const [confirmingReconcile, setConfirmingReconcile] = useState(false)
   const [reconcileDone, setReconcileDone] = useState(false)
 
+  // Manual linking (two-panel, parity with Homes "Ligado manual")
+  const [manualMode, setManualMode] = useState(false)
+  const [manualCandidates, setManualCandidates] = useState<any[]>([])
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualMvSel, setManualMvSel] = useState<string | null>(null)
+  const [manualSearch, setManualSearch] = useState('')
+  const [linking, setLinking] = useState(false)
+
+  const fetchManualCandidates = useCallback(async () => {
+    setManualLoading(true)
+    try {
+      const res = await fetch('/api/capital/accounting/reconciliation/unreconciled')
+      const d = await res.json()
+      setManualCandidates(d.transactions || d.unreconciled || d || [])
+    } catch { setManualCandidates([]) } finally { setManualLoading(false) }
+  }, [])
+
+  const linkManual = async (movementId: string, transactionId: string) => {
+    if (!activeStatement) return
+    setLinking(true)
+    try {
+      const res = await fetch(`/api/capital/accounting/bank-statements/${activeStatement}/reconcile/confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs: [{ movement_id: movementId, transaction_id: transactionId }] }),
+      })
+      if (res.ok) {
+        toast.success('Movimiento ligado')
+        setManualMvSel(null)
+        await openStatement(activeStatement)
+        fetchManualCandidates()
+      } else { toast.error('No se pudo ligar') }
+    } catch { toast.error('Error de conexión') } finally { setLinking(false) }
+  }
+
   const fetchBankAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/capital/accounting/bank-accounts')
@@ -3894,6 +3986,13 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                     {reconciling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                     {reconciling ? 'Buscando...' : 'Buscar coincidencias'}
                   </button>
+                  <button
+                    onClick={() => { const next = !manualMode; setManualMode(next); if (next) fetchManualCandidates() }}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border flex items-center gap-1.5 transition-colors"
+                    style={manualMode ? { backgroundColor: '#7c3aed', color: 'white', borderColor: '#7c3aed' } : { borderColor: 'var(--stone)', color: 'var(--charcoal)' }}
+                  >
+                    <Link2 className="w-3.5 h-3.5" /> Ligado manual
+                  </button>
                   <button onClick={() => setWizardStep(2)}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-stone-50"
                     style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
@@ -3993,6 +4092,57 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                       {confirmingReconcile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                       Confirmar {selectedMatches.size} coincidencias
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Ligado manual (dos columnas) ── */}
+              {manualMode && (
+                <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--sand)' }}>
+                  <p className="text-xs mb-3" style={{ color: 'var(--ash)' }}>
+                    Elegí un movimiento a la izquierda y luego la transacción de la app a la derecha para ligarlos.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Movimientos sin conciliar */}
+                    <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--sand)' }}>
+                      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider bg-stone-50" style={{ color: 'var(--slate)' }}>Movimientos del estado de cuenta</div>
+                      <div className="max-h-72 overflow-y-auto">
+                        {activeMovements.filter(m => ['pending', 'suggested'].includes(m.status)).map(m => (
+                          <button key={m.id} onClick={() => setManualMvSel(m.id)}
+                            className="w-full text-left px-3 py-2 border-b last:border-0 transition-colors"
+                            style={{ borderColor: 'var(--pearl)', backgroundColor: manualMvSel === m.id ? 'var(--gold-100)' : 'transparent' }}>
+                            <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{m.description}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--ash)' }}>{m.movement_date} · {m.is_credit ? '+' : '−'}${Math.abs(m.amount).toFixed(2)}</div>
+                          </button>
+                        ))}
+                        {activeMovements.filter(m => ['pending', 'suggested'].includes(m.status)).length === 0 && (
+                          <p className="text-xs text-center py-6" style={{ color: 'var(--ash)' }}>No hay movimientos sin conciliar.</p>
+                        )}
+                      </div>
+                    </div>
+                    {/* Candidatos: transacciones app sin conciliar */}
+                    <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--sand)' }}>
+                      <div className="px-3 py-2 bg-stone-50 flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Transacciones app</span>
+                        <input type="text" placeholder="Buscar…" value={manualSearch} onChange={e => setManualSearch(e.target.value)}
+                          className="flex-1 text-[11px] px-2 py-1 rounded border" style={{ borderColor: 'var(--stone)' }} />
+                      </div>
+                      <div className="max-h-72 overflow-y-auto">
+                        {manualLoading ? (
+                          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+                        ) : manualCandidates.filter((c: any) => !manualSearch || (c.description || '').toLowerCase().includes(manualSearch.toLowerCase()) || (c.counterparty_name || '').toLowerCase().includes(manualSearch.toLowerCase())).map((c: any) => (
+                          <button key={c.id} disabled={!manualMvSel || linking} onClick={() => manualMvSel && linkManual(manualMvSel, c.id)}
+                            className="w-full text-left px-3 py-2 border-b last:border-0 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                            style={{ borderColor: 'var(--pearl)' }}>
+                            <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{c.description || '—'}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--ash)' }}>{c.transaction_date} · {c.is_income ? '+' : '−'}${Math.abs(Number(c.amount) || 0).toFixed(2)} · {c.counterparty_name || ''}</div>
+                          </button>
+                        ))}
+                        {!manualLoading && manualCandidates.length === 0 && (
+                          <p className="text-xs text-center py-6" style={{ color: 'var(--ash)' }}>No hay transacciones sin conciliar.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
