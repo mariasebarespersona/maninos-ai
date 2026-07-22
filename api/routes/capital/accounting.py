@@ -3488,9 +3488,49 @@ async def post_capital_statement(statement_id: str):
 
 @router.delete("/bank-statements/{statement_id}")
 async def delete_capital_bank_statement(statement_id: str):
-    """Delete a Capital bank statement and all its movements."""
+    """Delete a Capital bank statement, its movements, AND the ledger transactions
+    that this statement posted (both legs of each double-entry pair).
+
+    Only removes transactions CREATED by posting this statement (identified by the
+    import notes on the P&L leg); pre-existing transactions that were merely
+    reconciled/matched to a movement are left untouched."""
+    removed = 0
+    try:
+        movements = sb.table("capital_statement_movements") \
+            .select("id, transaction_id").eq("statement_id", statement_id).execute().data or []
+        pnl_ids = [m["transaction_id"] for m in movements if m.get("transaction_id")]
+
+        to_delete: set = set()
+        if pnl_ids:
+            legs = sb.table("capital_transactions") \
+                .select("id, linked_transaction_id, notes") \
+                .in_("id", pnl_ids).execute().data or []
+            for l in legs:
+                notes = (l.get("notes") or "").lower()
+                # Statement-created legs carry these import markers; a pre-existing
+                # matched transaction does not — so those are never deleted.
+                if "estado de cuenta" in notes or "contrapartida" in notes:
+                    to_delete.add(l["id"])
+                    if l.get("linked_transaction_id"):
+                        to_delete.add(l["linked_transaction_id"])
+
+        if to_delete:
+            ids = list(to_delete)
+            # Break the pair cross-links first so deletes don't hit the FK.
+            for tid in ids:
+                sb.table("capital_transactions").update({"linked_transaction_id": None}).eq("id", tid).execute()
+            sb.table("capital_transactions").delete().in_("id", ids).execute()
+            removed = len(ids)
+    except Exception as e:
+        logger.error(f"[CapitalBankStmt] Error removing posted transactions for {statement_id}: {e}")
+
+    # Delete the movements, then the statement.
+    try:
+        sb.table("capital_statement_movements").delete().eq("statement_id", statement_id).execute()
+    except Exception:
+        pass
     sb.table("capital_bank_statements").delete().eq("id", statement_id).execute()
-    return {"message": "Statement deleted"}
+    return {"message": "Statement deleted", "transactions_removed": removed}
 
 
 # ============================================================================
