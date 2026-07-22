@@ -615,6 +615,62 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
   const [splitTxnId, setSplitTxnId] = useState<string | null>(null)
   const [splitParts, setSplitParts] = useState<{ amount: string; description: string }[]>([{ amount: '', description: '' }, { amount: '', description: '' }])
 
+  // Edit / reclassify / void / account-filter (parity with Homes)
+  const [editTxn, setEditTxn] = useState<Transaction | null>(null)
+  const [editForm, setEditForm] = useState<{ amount: string; description: string; counterparty_name: string }>({ amount: '', description: '', counterparty_name: '' })
+  const [reclassTxn, setReclassTxn] = useState<Transaction | null>(null)
+  const [reclassCode, setReclassCode] = useState('')
+  const [acctOptions, setAcctOptions] = useState<{ code: string; name: string; is_header?: boolean; account_type?: string }[]>([])
+  const [acctFilter, setAcctFilter] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/capital/accounting/accounts')
+      .then(r => r.json())
+      .then(d => setAcctOptions((d.accounts || d || []).filter((a: any) => !a.is_header)))
+      .catch(() => {})
+  }, [])
+
+  const openEdit = (t: Transaction) => {
+    setEditTxn(t)
+    setEditForm({ amount: String(Math.abs(t.amount)), description: t.description || '', counterparty_name: t.counterparty_name || '' })
+  }
+  const handleEditSave = async () => {
+    if (!editTxn) return
+    setBusyId(editTxn.id)
+    try {
+      const res = await fetch(`/api/capital/accounting/transactions/${editTxn.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parseFloat(editForm.amount) || 0, description: editForm.description, counterparty_name: editForm.counterparty_name }),
+      })
+      if (res.ok) { toast.success('Transacción actualizada'); setEditTxn(null); onRefresh() }
+      else { const e = await res.json().catch(() => ({})); toast.error(e.detail || 'Error al actualizar') }
+    } catch { toast.error('Error de conexión') } finally { setBusyId(null) }
+  }
+  const handleReclassify = async () => {
+    if (!reclassTxn || !reclassCode) return
+    setBusyId(reclassTxn.id)
+    try {
+      const res = await fetch(`/api/capital/accounting/transactions/${reclassTxn.id}/reclassify`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_code: reclassCode }),
+      })
+      if (res.ok) { toast.success('Cuenta reclasificada'); setReclassTxn(null); setReclassCode(''); onRefresh() }
+      else { const e = await res.json().catch(() => ({})); toast.error(e.detail || 'Error al reclasificar') }
+    } catch { toast.error('Error de conexión') } finally { setBusyId(null) }
+  }
+  const handleVoid = async (t: Transaction) => {
+    if (!confirm(`¿Anular esta transacción? Se anulará también su asiento vinculado.`)) return
+    setBusyId(t.id)
+    try {
+      const res = await fetch(`/api/capital/accounting/transactions/${t.id}`, { method: 'DELETE' })
+      if (res.ok) { toast.success('Transacción anulada'); onRefresh() }
+      else { const e = await res.json().catch(() => ({})); toast.error(e.detail || 'Error al anular') }
+    } catch { toast.error('Error de conexión') } finally { setBusyId(null) }
+  }
+
+  const shownTxns = acctFilter ? transactions.filter(t => t.capital_accounts?.code === acctFilter) : transactions
+
   useEffect(() => {
     const fetchReceiptStatus = async () => {
       try {
@@ -670,6 +726,11 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
           <option value="">Todos los tipos</option>
           {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        <select value={acctFilter} onChange={e => setAcctFilter(e.target.value)}
+          className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }} title="Filtrar por cuenta contable">
+          <option value="">Todas las cuentas</option>
+          {acctOptions.map(a => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+        </select>
         <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
           {[{ key: '', label: 'Todos' }, { key: 'income', label: 'Ingresos' }, { key: 'expense', label: 'Gastos' }].map(f => (
             <button key={f.key} onClick={() => setFlowFilter(f.key as any)}
@@ -701,7 +762,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                 </tr>
               </thead>
               <tbody>
-                {transactions.map(t => {
+                {shownTxns.map(t => {
                   const acc = t.capital_accounts
                   const bank = t.capital_bank_accounts
                   return (
@@ -731,6 +792,18 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                       <td className="px-4 py-3 text-center relative">
                         <div className="flex items-center justify-center gap-1">
                           {t.status !== 'voided' && (
+                            <button onClick={() => openEdit(t)} disabled={busyId === t.id}
+                              className="p-1 rounded text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-colors" title="Editar">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {t.status !== 'voided' && (
+                            <button onClick={() => { setReclassTxn(t); setReclassCode(t.capital_accounts?.code || '') }} disabled={busyId === t.id}
+                              className="p-1 rounded text-purple-500 hover:text-purple-700 hover:bg-purple-50 transition-colors" title="Cambiar cuenta (reclasificar)">
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {t.status !== 'voided' && (
                             <button onClick={() => { setSplitTxnId(splitTxnId === t.id ? null : t.id); setSplitParts([{ amount: '', description: '' }, { amount: '', description: '' }]) }}
                               className="p-1 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 transition-colors" title="Dividir">
                               <Scissors className="w-3.5 h-3.5" />
@@ -742,6 +815,12 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                             <Paperclip className="w-4 h-4" />
                             {txnsWithReceipts.has(t.id) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 absolute -top-0.5 -right-0.5" />}
                           </button>
+                          {t.status !== 'voided' && (
+                            <button onClick={() => handleVoid(t)} disabled={busyId === t.id}
+                              className="p-1 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Anular">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                         {/* Split popover */}
                         {splitTxnId === t.id && (
@@ -798,6 +877,67 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
 
       {/* Attachment modal */}
       {attachTxnId && <TransactionAttachments transactionId={attachTxnId} onClose={() => { setAttachTxnId(null); onRefresh() }} />}
+
+      {/* Edit modal */}
+      {editTxn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setEditTxn(null)}>
+          <div className="card-luxury p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Editar transacción</h3>
+              <button onClick={() => setEditTxn(null)}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Monto</label>
+                <input type="number" step="0.01" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Descripción</label>
+                <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Contraparte</label>
+                <input type="text" value={editForm.counterparty_name} onChange={e => setEditForm({ ...editForm, counterparty_name: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setEditTxn(null)} className="text-sm px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+                <button onClick={handleEditSave} disabled={busyId === editTxn.id} className="text-sm px-3 py-2 rounded-lg text-white disabled:opacity-50" style={{ backgroundColor: 'var(--gold-600)' }}>Guardar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reclassify modal */}
+      {reclassTxn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setReclassTxn(null)}>
+          <div className="card-luxury p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Reclasificar cuenta</h3>
+              <button onClick={() => setReclassTxn(null)}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+              Cambia la cuenta contable de esta transacción sin re-postear. El asiento del banco no se toca.
+            </p>
+            <div className="mb-3 text-sm" style={{ color: 'var(--slate)' }}>
+              Cuenta actual: <span className="font-mono">{reclassTxn.capital_accounts?.code} {reclassTxn.capital_accounts?.name}</span>
+            </div>
+            <label className="text-xs font-medium" style={{ color: 'var(--slate)' }}>Nueva cuenta</label>
+            <select value={reclassCode} onChange={e => setReclassCode(e.target.value)}
+              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Elegí una cuenta…</option>
+              {acctOptions.map(a => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+            </select>
+            <div className="flex justify-end gap-2 pt-4">
+              <button onClick={() => setReclassTxn(null)} className="text-sm px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--stone)' }}>Cancelar</button>
+              <button onClick={handleReclassify} disabled={!reclassCode || busyId === reclassTxn.id} className="text-sm px-3 py-2 rounded-lg text-white disabled:opacity-50" style={{ backgroundColor: 'var(--gold-600)' }}>Reclasificar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1815,7 +1955,12 @@ interface SavedStatement {
 
 function StatementsTab() {
   const toast = useToast()
-  const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl'>('balance')
+  const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl' | 'cashflow' | 'customer' | 'vendor'>('balance')
+  const [hideZeros, setHideZeros] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [cashFlow, setCashFlow] = useState<any | null>(null)
+  const [partySummary, setPartySummary] = useState<any | null>(null)
+  const [extraLoading, setExtraLoading] = useState(false)
   const [bsData, setBsData] = useState<BSTreeData | null>(null)
   const [plData, setPlData] = useState<PLTreeData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1916,7 +2061,22 @@ function StatementsTab() {
   useEffect(() => {
     setViewingSaved(null)
     setViewingSavedData(null)
-    loadReport(activeStatement)
+    if (activeStatement === 'balance' || activeStatement === 'pnl') {
+      loadReport(activeStatement)
+      return
+    }
+    // Cash flow / customer / vendor use their own endpoints.
+    setExtraLoading(true)
+    const url = activeStatement === 'cashflow'
+      ? '/api/capital/accounting/reports/cash-flow'
+      : activeStatement === 'customer'
+        ? '/api/capital/accounting/reports/customer-balance-summary'
+        : '/api/capital/accounting/reports/vendor-balance-summary'
+    fetch(url).then(r => r.json()).then(d => {
+      if (activeStatement === 'cashflow') { setCashFlow(d); setPartySummary(null) }
+      else { setPartySummary(d); setCashFlow(null) }
+    }).catch(() => { setCashFlow(null); setPartySummary(null) })
+      .finally(() => setExtraLoading(false))
   }, [activeStatement, loadReport])
 
   const handleSave = async () => {
@@ -2031,8 +2191,11 @@ function StatementsTab() {
         {[
             { key: 'balance', label: 'Balance Sheet' },
             { key: 'pnl', label: 'Profit and Loss' },
+            { key: 'cashflow', label: 'Cash Flow' },
+            { key: 'customer', label: 'Saldos Clientes' },
+            { key: 'vendor', label: 'Saldos Proveedores' },
         ].map(s => (
-            <button key={s.key} onClick={() => { setActiveStatement(s.key as 'balance' | 'pnl'); setViewingSaved(null); setViewingSavedData(null) }}
+            <button key={s.key} onClick={() => { setActiveStatement(s.key as any); setViewingSaved(null); setViewingSavedData(null) }}
             className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
               style={activeStatement === s.key && !isViewingSaved ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { backgroundColor: 'var(--pearl)', color: 'var(--charcoal)' }}>
             {s.label}
@@ -2041,6 +2204,20 @@ function StatementsTab() {
         </div>
         {!isViewingSaved && (
           <div className="flex items-center gap-2">
+            {(activeStatement === 'balance' || activeStatement === 'pnl') && (
+              <>
+                <button onClick={() => setCollapsed(c => !c)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+                  style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                  {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />} {collapsed ? 'Expandir' : 'Colapsar'}
+                </button>
+                <button onClick={() => setHideZeros(z => !z)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+                  style={hideZeros ? { borderColor: 'var(--gold-600)', color: 'var(--gold-700)' } : { borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+                  <Eye className="w-4 h-4" /> {hideZeros ? 'Mostrar ceros' : 'Ocultar ceros'}
+                </button>
+              </>
+            )}
             <button
               onClick={() => window.open(
                 activeStatement === 'balance'
@@ -2129,7 +2306,7 @@ function StatementsTab() {
                   {renderBsData.assets.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Asset cargadas aún</p>
                   )}
-                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
+                  {renderBsData.assets.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                   <div className="flex justify-between py-1.5 border-t font-bold text-sm mt-1" style={{ borderColor: 'var(--charcoal)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Assets</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_assets)}</span>
@@ -2145,7 +2322,7 @@ function StatementsTab() {
                   {renderBsData.liabilities.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Liability cargadas aún</p>
                   )}
-                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} />)}
+                  {renderBsData.liabilities.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Liabilities</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_liabilities)}</span>
@@ -2156,7 +2333,7 @@ function StatementsTab() {
                   {renderBsData.equity.length === 0 && (
                     <p className="text-xs italic pl-8 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Equity cargadas aún</p>
                   )}
-                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} />)}
+                  {renderBsData.equity.map(node => <ReportTreeNode key={node.id} node={node} depth={2} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm pl-4" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Equity</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderBsData.total_equity)}</span>
@@ -2198,7 +2375,7 @@ function StatementsTab() {
                   {renderPlData.income.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Income cargadas aún</p>
                   )}
-                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
+                  {renderPlData.income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Income</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_income)}</span>
@@ -2217,7 +2394,7 @@ function StatementsTab() {
                   {renderPlData.expenses.length === 0 && (
                     <p className="text-xs italic pl-4 py-1" style={{ color: 'var(--ash)' }}>No hay cuentas de tipo Expense cargadas aún</p>
                   )}
-                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
+                  {renderPlData.expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                   <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                     <span style={{ color: 'var(--ink)' }}>Total for Expenses</span>
                     <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_expenses)}</span>
@@ -2234,7 +2411,7 @@ function StatementsTab() {
                 {renderPlData.other_income.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Income</p>
-                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
+                    {renderPlData.other_income.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Income</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_income)}</span>
@@ -2246,7 +2423,7 @@ function StatementsTab() {
                 {renderPlData.other_expenses.length > 0 && (
                   <div className="mb-2 mt-2">
                     <p className="font-bold text-sm py-1" style={{ color: 'var(--ink)' }}>Other Expenses</p>
-                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} />)}
+                    {renderPlData.other_expenses.map(node => <ReportTreeNode key={node.id} node={node} depth={1} onDrill={setDrill} hideZeros={hideZeros} collapsed={collapsed} />)}
                     <div className="flex justify-between py-1 border-t font-semibold text-sm" style={{ borderColor: 'var(--sand)' }}>
                       <span style={{ color: 'var(--ink)' }}>Total for Other Expenses</span>
                       <span style={{ color: 'var(--ink)' }}>{fmtFull(renderPlData.total_other_expenses)}</span>
@@ -2275,6 +2452,86 @@ function StatementsTab() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── CASH FLOW ── */}
+      {activeStatement === 'cashflow' && !isViewingSaved && (
+        <div className="card-luxury p-6">
+          <h2 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Flujo de Caja</h2>
+          {extraLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+          ) : !cashFlow || !(cashFlow.months || cashFlow.periods || cashFlow.data || []).length ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>Sin datos de flujo de caja.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs" style={{ color: 'var(--ash)' }}>
+                  <th className="pb-2 pr-3">Período</th>
+                  <th className="pb-2 pr-3 text-right">Ingresos</th>
+                  <th className="pb-2 pr-3 text-right">Gastos</th>
+                  <th className="pb-2 text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(cashFlow.months || cashFlow.periods || cashFlow.data || []).map((m: any, i: number) => {
+                  const inc = Number(m.income ?? m.inflow ?? m.total_income ?? 0)
+                  const exp = Number(m.expense ?? m.outflow ?? m.total_expense ?? m.expenses ?? 0)
+                  const net = m.net != null ? Number(m.net) : inc - exp
+                  return (
+                    <tr key={i} className="border-t" style={{ borderColor: 'var(--cream)' }}>
+                      <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{m.label || m.month || m.period || `#${i + 1}`}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono" style={{ color: 'var(--success)' }}>{fmtFull(inc)}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono" style={{ color: 'var(--danger)' }}>{fmtFull(exp)}</td>
+                      <td className="py-1.5 text-right font-mono" style={{ color: net < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtFull(net)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── SALDOS POR CLIENTE / PROVEEDOR ── */}
+      {(activeStatement === 'customer' || activeStatement === 'vendor') && !isViewingSaved && (
+        <div className="card-luxury p-6">
+          <h2 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>
+            {activeStatement === 'customer' ? 'Saldos por Cliente (por cobrar)' : 'Saldos por Proveedor (por pagar)'}
+          </h2>
+          <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>Facturas abiertas agrupadas por contraparte.</p>
+          {extraLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--gold-600)' }} /></div>
+          ) : !partySummary || !(partySummary.parties || []).length ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>No hay saldos abiertos.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs" style={{ color: 'var(--ash)' }}>
+                  <th className="pb-2 pr-3">{activeStatement === 'customer' ? 'Cliente' : 'Proveedor'}</th>
+                  <th className="pb-2 pr-3 text-center">Facturas</th>
+                  <th className="pb-2 pr-3">Más antigua</th>
+                  <th className="pb-2 pr-3 text-right">Vencido</th>
+                  <th className="pb-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partySummary.parties.map((p: any, i: number) => (
+                  <tr key={i} className="border-t" style={{ borderColor: 'var(--cream)' }}>
+                    <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{p.counterparty_name}</td>
+                    <td className="py-1.5 pr-3 text-center" style={{ color: 'var(--slate)' }}>{p.invoice_count}</td>
+                    <td className="py-1.5 pr-3" style={{ color: 'var(--slate)' }}>{p.oldest_due_date || '—'}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono" style={{ color: p.overdue_due > 0 ? 'var(--danger)' : 'var(--ash)' }}>{fmtFull(p.overdue_due || 0)}</td>
+                    <td className="py-1.5 text-right font-mono font-semibold" style={{ color: 'var(--ink)' }}>{fmtFull(p.total_due || 0)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2" style={{ borderColor: 'var(--charcoal)' }}>
+                  <td className="py-2 font-bold" style={{ color: 'var(--ink)' }} colSpan={4}>Total</td>
+                  <td className="py-2 text-right font-mono font-bold" style={{ color: 'var(--ink)' }}>{fmtFull(partySummary.total || 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
 
       {/* ── DRILL-DOWN: transacciones de una cuenta ── */}
@@ -2476,11 +2733,15 @@ function StatementsTab() {
   )
 }
 
-function ReportTreeNode({ node, depth, onDrill }: {
+function ReportTreeNode({ node, depth, onDrill, hideZeros, collapsed }: {
   node: ReportNode; depth: number; onDrill?: (node: ReportNode) => void
+  hideZeros?: boolean; collapsed?: boolean
 }) {
   const hasChildren = (node.children || []).length > 0
   const indent = depth * 16
+
+  // Hide-zeros: skip a leaf with no balance (and no drillable movements).
+  if (hideZeros && !hasChildren && (node.balance || 0) === 0) return null
 
   // A leaf account with a real id and a non-zero balance is drillable.
   const canDrill = !!onDrill && !!node.id && !node.is_header && node.balance !== 0
@@ -2507,8 +2768,8 @@ function ReportTreeNode({ node, depth, onDrill }: {
           </span>
           {node.balance !== 0 && !node.is_header && <Amount value={node.balance} />}
         </div>
-        {node.children!.map(child => (
-          <ReportTreeNode key={child.id} node={child} depth={depth + 1} onDrill={onDrill} />
+        {!collapsed && node.children!.map(child => (
+          <ReportTreeNode key={child.id} node={child} depth={depth + 1} onDrill={onDrill} hideZeros={hideZeros} collapsed={collapsed} />
         ))}
         <div className="flex justify-between py-0.5 border-t" style={{ paddingLeft: indent, borderColor: '#e5e5e5' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
