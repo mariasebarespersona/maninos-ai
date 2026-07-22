@@ -893,57 +893,64 @@ async def get_investments_summary(period: Optional[str] = None):
             .execute()
         investors_data = investors_result.data or []
 
-        # Total captado = sum of all investor total_invested (capital raised)
-        total_captado = sum(float(i.get("total_invested", 0)) for i in investors_data)
-        total_disponible = sum(float(i.get("available_capital", 0)) for i in investors_data)
+        # ── UNIFIED: a promissory note IS the investor's money, so "invertido"
+        #    = active notes' principal + note-less investment tickets (the same
+        #    rule as the per-investor view). The old summary only summed the
+        #    investors.total_invested column (tickets), so pagaré-funded capital
+        #    showed as ~0. ──
+        INVESTED_NOTE_STATUSES = ("active", "overdue", "partial", "partial_return")
 
-        # Get promissory notes for interest/capital return breakdown
         notes_query = sb.table("promissory_notes") \
-            .select("id, investor_id, loan_amount, annual_rate, total_interest, total_due, paid_amount, status, term_months, created_at")
+            .select("id, investor_id, loan_amount, annual_rate, term_months, "
+                    "interest_only_months, amortization_months, start_date, created_at, status")
         if date_from:
             notes_query = notes_query.gte("created_at", date_from)
-        notes_result = notes_query.execute()
-        notes = notes_result.data or []
+        notes = notes_query.execute().data or []
 
-        # Get promissory note payments for capital vs interest breakdown
-        note_payments_query = sb.table("promissory_note_payments") \
-            .select("id, promissory_note_id, amount, paid_at")
-        if date_from:
-            note_payments_query = note_payments_query.gte("paid_at", date_from)
-        note_payments_result = note_payments_query.execute()
-        note_payments = note_payments_result.data or []
-
-        # Build note lookup for interest calculation
-        note_map = {n["id"]: n for n in notes}
-
-        # Calculate returns: for each note, paid_amount up to loan_amount = capital, rest = interest
-        total_retornado_capital = 0.0
-        total_retornado_interes = 0.0
-
-        # Group payments by note
-        all_notes_for_calc = sb.table("promissory_notes") \
-            .select("id, loan_amount, total_interest, paid_amount, status") \
-            .execute()
-        for n in (all_notes_for_calc.data or []):
-            paid = float(n.get("paid_amount", 0) or 0)
-            principal = float(n.get("loan_amount", 0))
-            if paid <= principal:
-                total_retornado_capital += paid
-            else:
-                total_retornado_capital += principal
-                total_retornado_interes += paid - principal
-
-        # Total invested in properties (actual deployed capital via investments table)
         inv_query = sb.table("investments") \
-            .select("id, amount, status, invested_at")
+            .select("investor_id, amount, status, invested_at, promissory_note_id")
         if date_from:
             inv_query = inv_query.gte("invested_at", date_from)
-        inv_result = inv_query.execute()
-        investments_data = inv_result.data or []
-        # Exclude superseded tickets (renegotiated/transferred) so capital isn't double-counted.
+        investments_data = inv_query.execute().data or []
         live_inv = [i for i in investments_data if i.get("status") not in ("renegotiated", "transferred")]
-        total_invertido = sum(float(i.get("amount", 0)) for i in live_inv)
         active_investments = [i for i in live_inv if i.get("status") == "active"]
+
+        # Invested per investor = active notes principal + note-less tickets.
+        invested_by_investor: dict = {}
+        for i in live_inv:
+            if not i.get("promissory_note_id"):
+                invested_by_investor[i["investor_id"]] = invested_by_investor.get(i["investor_id"], 0.0) + float(i.get("amount", 0) or 0)
+        notes_invested = 0.0
+        for n in notes:
+            if n.get("status") in INVESTED_NOTE_STATUSES:
+                amt = float(n.get("loan_amount", 0) or 0)
+                notes_invested += amt
+                invested_by_investor[n["investor_id"]] = invested_by_investor.get(n["investor_id"], 0.0) + amt
+        tickets_invested = sum(v for k, v in invested_by_investor.items()) - notes_invested
+        total_invertido = round(notes_invested + tickets_invested, 2)
+        total_captado = total_invertido
+
+        # Disponible = aportado NO desplegado (resta lo invertido para no duplicar).
+        total_disponible = round(sum(
+            max(0.0, float(iv.get("available_capital", 0) or 0) - invested_by_investor.get(iv["id"], 0.0))
+            for iv in investors_data
+        ), 2)
+
+        # Retorno a la fecha de HOY (del cronograma, no de paid_amount que está en 0).
+        total_retornado_capital = 0.0
+        total_retornado_interes = 0.0
+        total_obligacion = 0.0
+        for n in notes:
+            if n.get("status") in ("cancelled", "voided"):
+                continue
+            ptd = _note_paid_to_date(n)
+            total_retornado_capital += ptd["capital_to_date"]
+            total_retornado_interes += ptd["interest_to_date"]
+            total_obligacion += ptd["total_due"]
+        total_retornado_capital = round(total_retornado_capital, 2)
+        total_retornado_interes = round(total_retornado_interes, 2)
+        total_pagado_a_hoy = round(total_retornado_capital + total_retornado_interes, 2)
+        total_restante_por_pagar = round(total_obligacion - total_pagado_a_hoy, 2)
 
         # Tasa fondeo promedio (weighted average interest rate from active notes)
         active_notes = [n for n in notes if n.get("status") in ("active", "overdue")]
@@ -969,6 +976,9 @@ async def get_investments_summary(period: Optional[str] = None):
                 "total_disponible": total_disponible,
                 "total_retornado_capital": round(total_retornado_capital, 2),
                 "total_retornado_interes": round(total_retornado_interes, 2),
+                "total_pagado_a_hoy": total_pagado_a_hoy,
+                "total_obligacion": round(total_obligacion, 2),
+                "total_restante_por_pagar": total_restante_por_pagar,
                 "tasa_fondeo": tasa_fondeo,
                 "active_investments": len(active_investments),
                 "total_investments": len(investments_data),
