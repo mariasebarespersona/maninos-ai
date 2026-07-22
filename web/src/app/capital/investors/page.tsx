@@ -44,6 +44,9 @@ interface InvestmentsSummary {
   total_disponible: number
   total_retornado_capital: number
   total_retornado_interes: number
+  total_pagado_a_hoy: number
+  total_obligacion: number
+  total_restante_por_pagar: number
   tasa_fondeo: number
   active_investments: number
   total_investments: number
@@ -378,14 +381,7 @@ export default function InvestorsPage() {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Captado</span>
-              </div>
-              <div className="stat-value text-xl">{fmt(summary.total_captado)}</div>
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             <div className="stat-card">
               <div className="flex items-center gap-2 mb-2">
                 <Briefcase className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
@@ -403,16 +399,38 @@ export default function InvestorsPage() {
             <div className="stat-card">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4" style={{ color: 'var(--success)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Retornado Capital</span>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Pagado a hoy</span>
+              </div>
+              <div className="stat-value text-xl" style={{ color: 'var(--success)' }}>{fmt(summary.total_pagado_a_hoy)}</div>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>Calculado al día de hoy</p>
+            </div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4" style={{ color: 'var(--warning)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Queda por pagar</span>
+              </div>
+              <div className="stat-value text-xl" style={{ color: 'var(--warning)' }}>{fmt(summary.total_restante_por_pagar)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="w-4 h-4" style={{ color: 'var(--success)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Capital devuelto (a hoy)</span>
               </div>
               <div className="stat-value text-xl" style={{ color: 'var(--success)' }}>{fmt(summary.total_retornado_capital)}</div>
             </div>
             <div className="stat-card">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Retornado Interes</span>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Interés pagado (a hoy)</span>
               </div>
               <div className="stat-value text-xl" style={{ color: 'var(--gold-700)' }}>{fmt(summary.total_retornado_interes)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Obligación total</span>
+              </div>
+              <div className="stat-value text-xl">{fmt(summary.total_obligacion)}</div>
             </div>
             <div className="stat-card">
               <div className="flex items-center gap-2 mb-2">
