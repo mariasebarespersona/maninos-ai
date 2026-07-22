@@ -3379,11 +3379,17 @@ async def post_capital_statement(statement_id: str):
             logger.warning(f"[CapitalBankStmt] Skipped movement {mv['id']}: no account_id (desc: {desc})")
             continue
 
-        # Determine bank direction from account type, not is_credit
-        # Income account → money came in → bank increases (is_income=True)
-        # Expense account → money went out → bank decreases (is_income=False)
+        # The bank leg ALWAYS follows the cash direction of the movement:
+        # a credit (deposit) increases the bank (is_income=True), a debit
+        # (withdrawal) decreases it (is_income=False). Deriving it from the
+        # counter account's type breaks for balance-sheet counters (a deposit
+        # into a liability, or a withdrawal buying an asset), so use is_credit.
         pnl_acct_type = acct_type_map.get(account_id, "")
-        bank_is_income = pnl_acct_type in ("income",)
+        bank_is_income = mv["is_credit"]
+        # The counter leg follows is_credit too, EXCEPT for ASSET accounts, where
+        # a withdrawal (debit) that acquires the asset must INCREASE it. Ledger
+        # convention: balance = Σ(amount if is_income else −amount).
+        counter_is_income = (not mv["is_credit"]) if pnl_acct_type == "asset" else mv["is_credit"]
 
         try:
             abs_amount = abs(float(mv["amount"]))
@@ -3420,7 +3426,7 @@ async def post_capital_statement(statement_id: str):
                         'other_income', 'other_expense'
                     ) else "adjustment",
                     "amount": abs_amount,
-                    "is_income": mv["is_credit"],
+                    "is_income": counter_is_income,
                     "account_id": account_id,
                     "notes": f"Importado de estado de cuenta: {stmt_label}",
                     "status": "confirmed",
