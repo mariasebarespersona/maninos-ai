@@ -63,6 +63,9 @@ interface ReconcileMatch {
   score: number
   confidence: string
   partial?: boolean
+  reason?: string
+  caveat?: string
+  signals?: { amount_exact?: boolean; diff_days?: number | null; name_sim?: number }
   movement: StatementMovement
   transaction?: Transaction
   invoice?: { id: string; invoice_number?: string; counterparty_name?: string; total_amount?: number; balance_due?: number; direction?: string }
@@ -3922,7 +3925,8 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                             onChange={() => toggleMatchSelect(match.movement_id)}
                             onClick={e => e.stopPropagation()}
                             className="rounded border-stone-300" />
-                          <div className="flex-1 min-w-0 grid grid-cols-2 gap-4">
+                          <div className="flex-1 min-w-0">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-[9px] font-semibold uppercase tracking-wider text-stone-400">Estado de Cuenta</div>
                               <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{match.movement.description}</div>
@@ -3958,10 +3962,23 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                               </div>
                             )}
                           </div>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                            match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
-                            match.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'
-                          }`}>{match.score}pts</span>
+                          {(match.reason || match.caveat) && (
+                            <div className="mt-1">
+                              {match.reason && <div className="text-[10px]" style={{ color: 'var(--ash)' }}>{match.reason}</div>}
+                              {match.caveat && <div className="text-[10px] font-medium" style={{ color: 'var(--warning)' }}>⚠ {match.caveat}</div>}
+                            </div>
+                          )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                              match.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+                              match.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'
+                            }`}>{match.confidence} · {match.score}pts</span>
+                            {!selectedMatches.has(match.movement_id) && (
+                              <button onClick={e => { e.stopPropagation(); toggleMatchSelect(match.movement_id) }}
+                                className="text-[10px] text-emerald-600 hover:underline">✓ Aceptar</button>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
