@@ -1351,6 +1351,94 @@ def process_promissory_maturity_alerts(admin_email: str = "info@maninoscapital.c
         return {"ok": False, "error": str(e)}
 
 
+def _investor_payment_reminder_html(summary: dict) -> str:
+    """HTML for the monthly 'pagos a inversionistas del 15' reminder to treasury."""
+    from datetime import date as _date
+    try:
+        pd = _date.fromisoformat(summary["pay_date"])
+        pay_label = pd.strftime("%d/%m/%Y")
+    except Exception:
+        pay_label = summary.get("pay_date", "")
+    t = summary.get("totals", {})
+    rows = ""
+    for i in summary.get("investors", []):
+        rows += (
+            f'<tr>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #eee;">{i["name"]}</td>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">${i["total"]:,.2f}</td>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#555;">${i["principal"]:,.2f}</td>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;color:#b8860b;">${i["interest"]:,.2f}</td>'
+            f'</tr>'
+        )
+    return f"""
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#1a1a2e;">
+      <h2 style="color:#1a1a2e;">Pagos a inversionistas — {pay_label}</h2>
+      <p style="color:#444;">Recordatorio automático (día 12) para preparar los pagos que vencen el <strong>15</strong>.
+      Son <strong>{t.get('count', 0)}</strong> inversionistas, total <strong>${t.get('total', 0):,.2f}</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
+        <thead>
+          <tr style="background:#f5f2e8;">
+            <th style="padding:8px 10px;text-align:left;">Inversionista</th>
+            <th style="padding:8px 10px;text-align:right;">A pagar</th>
+            <th style="padding:8px 10px;text-align:right;">Capital</th>
+            <th style="padding:8px 10px;text-align:right;">Interés</th>
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+        <tfoot>
+          <tr style="background:#fafafa;font-weight:700;">
+            <td style="padding:10px;">TOTAL</td>
+            <td style="padding:10px;text-align:right;">${t.get('total', 0):,.2f}</td>
+            <td style="padding:10px;text-align:right;">${t.get('principal', 0):,.2f}</td>
+            <td style="padding:10px;text-align:right;">${t.get('interest', 0):,.2f}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p style="color:#888;font-size:12px;margin-top:16px;">
+        Calculado del cronograma de cada pagaré (regla de pago el día 15). Cifras a la fecha; verifica en Capital → Pagos del Mes.
+      </p>
+    </div>
+    """
+
+
+def process_investor_payment_reminder(admin_email: str = "aruiz@maninoscapital.com") -> dict:
+    """Monthly (day-12) reminder to treasury: who to pay on the 15th and how much.
+
+    Computes the per-investor breakdown via the shared `investor_payments_due`
+    (same day-15 schedule as every other view) and emails it to Abby.
+    """
+    try:
+        from api.routes.capital.investors import investor_payments_due
+        summary = investor_payments_due()
+        investors = summary.get("investors", [])
+        if not investors:
+            logger.info("[email_service] investor payment reminder: nothing due this cycle")
+            return {"ok": True, "sent": 0, "count": 0, "message": "No hay pagos programados este ciclo"}
+
+        total = summary.get("totals", {}).get("total", 0)
+        from datetime import date as _date
+        try:
+            pay_label = _date.fromisoformat(summary["pay_date"]).strftime("%d/%m/%Y")
+        except Exception:
+            pay_label = summary.get("pay_date", "")
+        subject = f"Pagos a inversionistas del {pay_label} — {len(investors)} inversionistas, ${total:,.0f}"
+        html = _investor_payment_reminder_html(summary)
+        email_result = send_email(to=[admin_email], subject=subject, html=html)
+        logger.info(f"[email_service] investor payment reminder sent to {admin_email}: "
+                    f"{len(investors)} investors, ${total:,.2f}, ok={email_result.get('ok', False)}")
+        return {
+            "ok": True,
+            "sent": 1 if email_result.get("ok") else 0,
+            "count": len(investors),
+            "total": total,
+            "pay_date": summary.get("pay_date"),
+            "email_sent": email_result.get("ok", False),
+        }
+    except Exception as e:
+        logger.error(f"[email_service] Error processing investor payment reminder: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # =============================================================================
 # INVESTOR EMAILS
 # =============================================================================

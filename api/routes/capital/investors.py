@@ -128,6 +128,91 @@ def _note_paid_to_date(note: dict, as_of=None) -> dict:
     }
 
 
+def investor_payments_due(as_of=None) -> dict:
+    """Summary of what each investor must be paid on the NEXT 15th (payment day),
+    grouped by investor. Designed to run on the 12th so treasury (Abby) prepares
+    the payments a few days ahead.
+
+    For each active note, the payment landing on that 15th is the schedule row for
+    the period whose 15th-of-month date is the target — derived with the same
+    day-15 rule as `_note_paid_to_date`, so it reconciles with every other view.
+    """
+    from datetime import date as _date
+    from api.routes.capital.promissory_notes import _note_schedule, _note_tranches
+    as_of = as_of or _date.today()
+    # Target payment date = the next 15th on/after `as_of` (on the 12th → this month).
+    if as_of.day <= 15:
+        pay_date = _date(as_of.year, as_of.month, 15)
+    else:
+        y = as_of.year + (1 if as_of.month == 12 else 0)
+        m = 1 if as_of.month == 12 else as_of.month + 1
+        pay_date = _date(y, m, 15)
+
+    notes = []
+    page = 0
+    while True:
+        q = sb.table("promissory_notes").select("*, investors(name, email)") \
+            .range(page * 1000, page * 1000 + 999).execute()
+        rows = q.data or []
+        notes.extend(rows)
+        if len(rows) < 1000:
+            break
+        page += 1
+
+    by_investor: dict = {}
+    for n in notes:
+        if n.get("status") not in ("active", "overdue", "partial", "partial_return"):
+            continue
+        loan = float(n.get("loan_amount", 0) or 0)
+        rate = float(n.get("annual_rate", 12) or 12)
+        io_m, amort_m = _note_tranches(n)
+        try:
+            sch = _note_schedule(loan, rate, io_m, amort_m)["schedule"]
+        except Exception:
+            continue
+        # Period whose 15th == pay_date (elapsed counts periods with 15th <= pay_date,
+        # so the payment due ON pay_date is the last one counted → index elapsed-1).
+        elapsed = _note_paid_to_date(n, pay_date)["elapsed_periods"]
+        if elapsed < 1 or elapsed > len(sch):
+            continue
+        row = sch[elapsed - 1]
+        inv = n.get("investors") or {}
+        name = inv.get("name") or n.get("lender_name") or "—"
+        iid = n.get("investor_id") or name
+        d = by_investor.setdefault(iid, {
+            "investor_id": n.get("investor_id"), "name": name, "email": inv.get("email"),
+            "total": 0.0, "principal": 0.0, "interest": 0.0, "notes": [],
+        })
+        d["total"] += row["payment"]
+        d["principal"] += row["principal"]
+        d["interest"] += row["interest"]
+        d["notes"].append({
+            "note_id": n.get("id"), "loan_amount": loan, "annual_rate": rate,
+            "period": elapsed, "term": len(sch),
+            "payment": round(row["payment"], 2), "principal": round(row["principal"], 2),
+            "interest": round(row["interest"], 2),
+        })
+
+    investors = []
+    for d in by_investor.values():
+        d["total"] = round(d["total"], 2)
+        d["principal"] = round(d["principal"], 2)
+        d["interest"] = round(d["interest"], 2)
+        investors.append(d)
+    investors.sort(key=lambda x: -x["total"])
+    return {
+        "pay_date": pay_date.isoformat(),
+        "month_label": pay_date.strftime("%Y-%m"),
+        "investors": investors,
+        "totals": {
+            "total": round(sum(i["total"] for i in investors), 2),
+            "principal": round(sum(i["principal"] for i in investors), 2),
+            "interest": round(sum(i["interest"] for i in investors), 2),
+            "count": len(investors),
+        },
+    }
+
+
 # =============================================================================
 # SCHEMAS
 # =============================================================================
@@ -243,6 +328,25 @@ async def list_investors(status: Optional[str] = "active"):
         return {"ok": True, "investors": investors}
     except Exception as e:
         logger.error(f"Error listing investors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payments-due")
+async def get_payments_due(month: Optional[int] = None, year: Optional[int] = None):
+    """Who to pay on the upcoming 15th and how much (per investor), for treasury.
+
+    Defined BEFORE /{investor_id} so this literal path isn't captured as an id.
+    Defaults to the next 15th relative to today; pass month/year to view a specific
+    month (uses the 12th of that month as reference, mirroring the monthly job).
+    """
+    try:
+        from datetime import date as _date
+        as_of = None
+        if month and year:
+            as_of = _date(int(year), int(month), 12)
+        return {"ok": True, **investor_payments_due(as_of)}
+    except Exception as e:
+        logger.error(f"Error computing payments due: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

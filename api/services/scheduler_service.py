@@ -344,6 +344,21 @@ def _job_accrue_investor_interest():
         return {"ok": False, "error": str(e)}
 
 
+def _job_investor_payment_reminder():
+    """Job: On the 12th, email treasury (Abby) who to pay on the 15th and how much."""
+    from api.services.email_service import process_investor_payment_reminder
+    try:
+        result = process_investor_payment_reminder()
+        _log_job("investor_payment_reminder", result)
+        if result.get("sent"):
+            logger.info(f"[scheduler] Investor payment reminder sent: {result.get('count')} investors, ${result.get('total', 0):,.2f}")
+        return result
+    except Exception as e:
+        logger.error(f"[scheduler] Error in investor_payment_reminder: {e}")
+        _log_job("investor_payment_reminder", {"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
+
+
 def _job_investor_followup_emails():
     """Job: Send monthly follow-up emails to all active investors."""
     from api.services.email_service import process_investor_followup_emails
@@ -606,6 +621,17 @@ def init_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day=1, hour=10, minute=30),
         id="investor_followup_emails",
         name="Monthly Investor Follow-up Emails",
+        replace_existing=True,
+    )
+
+    # Job: Investor payment reminder to treasury (Abby) — 12th of every month at
+    # 8:00 AM CT, a few days ahead of the 15th payment day. Summarizes who to pay
+    # and how much (per investor), derived from each note's schedule.
+    _scheduler.add_job(
+        _job_investor_payment_reminder,
+        trigger=CronTrigger(day=12, hour=8, minute=0),
+        id="investor_payment_reminder",
+        name="Capital: Recordatorio de pagos a inversionistas (día 12)",
         replace_existing=True,
     )
 

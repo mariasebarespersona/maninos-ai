@@ -23,6 +23,7 @@ import {
   Bell,
   Target,
   Home,
+  CalendarClock,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
@@ -62,6 +63,7 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Seguimiento', href: '/capital/investors', icon: Users },
       { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
+      { name: 'Pagos del Mes', href: '/capital/pagos-inversionistas', icon: CalendarClock },
     ],
   },
   {
