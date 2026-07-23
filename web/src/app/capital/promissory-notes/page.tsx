@@ -34,6 +34,7 @@ interface PromissoryNote {
   notes: string | null
   created_at: string
   investors?: Investor | null
+  paid_to_date?: { paid_to_date: number; pct_paid: number; remaining: number } | null
 }
 
 interface Summary {
@@ -43,6 +44,7 @@ interface Summary {
   total_issued: number
   total_due: number
   total_paid: number
+  total_paid_recorded?: number
   outstanding: number
 }
 
@@ -208,7 +210,7 @@ export default function PromissoryNotesPage() {
           {[
             { label: 'Total Emitido', value: fmt(summary.total_issued), icon: DollarSign, color: 'var(--navy-800)' },
             { label: 'Total a Pagar', value: fmt(summary.total_due), icon: TrendingUp, color: 'var(--gold-600)' },
-            { label: 'Pagado', value: fmt(summary.total_paid), icon: CheckCircle2, color: 'var(--success)' },
+            { label: 'Pagado a hoy', value: fmt(summary.total_paid), icon: CheckCircle2, color: 'var(--success)' },
             { label: 'Pendiente', value: fmt(summary.outstanding), icon: Clock, color: summary.overdue_notes > 0 ? 'var(--error)' : 'var(--info)' },
           ].map(kpi => (
             <div key={kpi.label} className="card-luxury p-4">

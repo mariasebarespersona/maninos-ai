@@ -209,14 +209,26 @@ async def list_promissory_notes(
         
         result = query.order("created_at", desc=True).execute()
         notes = result.data or []
-        
+
+        # Attach the canonical schedule-based "pagado a hoy" to every note so the
+        # list rows and the summary show the same figure as the seguimiento view
+        # (raw paid_amount is ~0 because payments were made off-app).
+        from api.routes.capital.investors import _note_paid_to_date
+        for n in notes:
+            n["paid_to_date"] = _note_paid_to_date(n)
+
         # Summary stats
         total_issued = sum(float(n.get("loan_amount", 0)) for n in notes)
         total_due = sum(float(n.get("total_due", 0)) for n in notes)
-        total_paid = sum(float(n.get("paid_amount", 0) or 0) for n in notes)
+        # "Pagado" = schedule-derived pagado a hoy (unified across the section).
+        total_paid = round(sum(
+            n["paid_to_date"]["paid_to_date"] for n in notes
+            if n.get("status") not in ("cancelled", "voided")
+        ), 2)
+        total_paid_recorded = sum(float(n.get("paid_amount", 0) or 0) for n in notes)
         active_notes = [n for n in notes if n.get("status") == "active"]
         overdue_notes = [n for n in notes if n.get("status") == "overdue"]
-        
+
         return {
             "ok": True,
             "notes": notes,
@@ -227,7 +239,8 @@ async def list_promissory_notes(
                 "total_issued": total_issued,
                 "total_due": total_due,
                 "total_paid": total_paid,
-                "outstanding": total_due - total_paid,
+                "total_paid_recorded": total_paid_recorded,
+                "outstanding": round(total_due - total_paid, 2),
             }
         }
     except Exception as e:

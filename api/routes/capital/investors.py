@@ -50,52 +50,81 @@ def _capital_account_balance(code: str, *, exclude_unsettled: bool = True) -> fl
 
 
 def _note_paid_to_date(note: dict, as_of=None) -> dict:
-    """What a promissory note SHOULD have paid the investor as of `as_of`
-    (default today), derived from its start_date + amortization schedule.
+    """Canonical "pagado a la fecha" for a promissory note — the SINGLE source of
+    truth for how much the investor has been paid, used by the seguimiento view,
+    the note detail/list and every summary so they never disagree.
 
-    Payments aren't tracked by hand (paid_amount is ~always 0), so this schedule-
-    based figure is the practical "pagado a la fecha": for the whole months elapsed
-    since start_date, sum the scheduled principal + interest. Returns the split
-    plus what remains to pay."""
+    Two inputs are combined so nothing is left dangling:
+      1. Schedule accrual: for the whole months elapsed since start_date, the
+         scheduled principal + interest (what SHOULD have been paid by `as_of`).
+         Because the app is new, real payments were made off-app on schedule, so
+         this accrual IS the effective "pagado a hoy".
+      2. Recorded payments: `paid_amount` / promissory_note_payments. If an actual
+         payment beyond the schedule was logged in-app (e.g. a prepayment), it
+         wins and is re-split into principal/interest via the same schedule walk.
+
+    Returns the principal/interest split, the effective paid_to_date, and what
+    remains, plus `scheduled_to_date`/`recorded_paid` for transparency."""
     from datetime import date as _date
-    from api.routes.capital.promissory_notes import _note_schedule, _note_tranches
+    from api.routes.capital.promissory_notes import _note_schedule, _note_tranches, _split_note_payment
     as_of = as_of or _date.today()
     loan = float(note.get("loan_amount", 0) or 0)
     rate = float(note.get("annual_rate", 12) or 12)
+    recorded = float(note.get("paid_amount", 0) or 0)
     io_m, amort_m = _note_tranches(note)
     try:
         sch = _note_schedule(loan, rate, io_m, amort_m)
     except Exception:
         return {"elapsed_periods": 0, "term": 0, "capital_to_date": 0.0, "interest_to_date": 0.0,
-                "paid_to_date": 0.0, "total_due": round(loan, 2), "total_interest": 0.0,
-                "loan_amount": loan, "remaining": round(loan, 2), "principal_remaining": round(loan, 2)}
+                "paid_to_date": round(recorded, 2), "total_due": round(loan, 2), "total_interest": 0.0,
+                "loan_amount": loan, "remaining": round(loan - recorded, 2), "principal_remaining": round(loan, 2),
+                "scheduled_to_date": 0.0, "recorded_paid": round(recorded, 2), "pct_paid": 0.0}
     rows = sch["schedule"]
-    # Whole months elapsed since start_date, capped at the schedule length.
+    total_due = sch["total_due"]
+    # Payments to investors always land on the 15th of each month, so a period
+    # counts as paid once its 15th-of-month payment date has passed. elapsed =
+    # number of 15ths strictly after start_date and on/before `as_of`, capped at
+    # the schedule length. (A month's 15th is "already elapsed" only if that day
+    # has arrived: day >= 15.)
+    _PAY_DAY = 15
     start_raw = note.get("start_date") or note.get("created_at")
     elapsed = 0
     if start_raw:
         try:
             start = _date.fromisoformat(str(start_raw)[:10])
-            months = (as_of.year - start.year) * 12 + (as_of.month - start.month)
-            if as_of.day < start.day:
-                months -= 1
-            elapsed = max(0, min(months, len(rows)))
+            a = as_of.year * 12 + as_of.month + (0 if as_of.day >= _PAY_DAY else -1)
+            b = start.year * 12 + start.month + (0 if start.day >= _PAY_DAY else -1)
+            elapsed = max(0, min(a - b, len(rows)))
         except Exception:
             elapsed = 0
     cap = round(sum(r["principal"] for r in rows[:elapsed]), 2)
     inte = round(sum(r["interest"] for r in rows[:elapsed]), 2)
-    paid = round(cap + inte, 2)
+    scheduled = round(cap + inte, 2)
+
+    # Effective paid = max(schedule accrual, recorded payments). When recorded
+    # payments run ahead of the schedule, re-derive the principal/interest split
+    # from the recorded amount so the split stays coherent.
+    paid = scheduled
+    if recorded > scheduled + 0.005:
+        try:
+            r_cap, r_int = _split_note_payment(note, 0.0, recorded)
+            cap, inte, paid = round(r_cap, 2), round(r_int, 2), round(recorded, 2)
+        except Exception:
+            paid = round(recorded, 2)
     return {
         "elapsed_periods": elapsed,
         "term": len(rows),
         "capital_to_date": cap,
         "interest_to_date": inte,
         "paid_to_date": paid,
-        "total_due": sch["total_due"],
+        "total_due": total_due,
         "total_interest": sch["total_interest"],
         "loan_amount": loan,
-        "remaining": round(sch["total_due"] - paid, 2),
+        "remaining": round(total_due - paid, 2),
         "principal_remaining": round(loan - cap, 2),
+        "scheduled_to_date": scheduled,
+        "recorded_paid": round(recorded, 2),
+        "pct_paid": round(paid / total_due * 100, 1) if total_due > 0 else 0.0,
     }
 
 
@@ -298,9 +327,12 @@ async def get_investor(investor_id: str):
         retornado_interes = 0.0
         total_obligacion = 0.0
         for n in notes_data:
+            # Attach the canonical paid-to-date to EVERY note so the per-note
+            # cards on the frontend show the same "pagado"/% as the summary.
+            ptd = _note_paid_to_date(n)
+            n["paid_to_date"] = ptd
             if n.get("status") in ("cancelled", "voided"):
                 continue
-            ptd = _note_paid_to_date(n)
             retornado_capital += ptd["capital_to_date"]
             retornado_interes += ptd["interest_to_date"]
             total_obligacion += ptd["total_due"]
@@ -308,6 +340,14 @@ async def get_investor(investor_id: str):
         retornado_interes = round(retornado_interes, 2)
         total_pagado_a_hoy = round(retornado_capital + retornado_interes, 2)
         total_restante_por_pagar = round(total_obligacion - total_pagado_a_hoy, 2)
+
+        # Propagate each note's paid-to-date onto the ticket that links to it, so the
+        # per-ticket "return" also uses the unified figure (not raw paid_amount).
+        _ptd_by_note = {n["id"]: n.get("paid_to_date") for n in notes_data}
+        for i in inv_data:
+            pn = i.get("promissory_notes")
+            if isinstance(pn, dict) and pn.get("id") in _ptd_by_note:
+                pn["paid_to_date"] = _ptd_by_note[pn["id"]]
 
         # Tasa fondeo for this investor (weighted avg of their notes)
         investor_active_notes = [n for n in notes_data if n.get("status") in ("active", "overdue") and n.get("annual_rate")]
@@ -360,8 +400,12 @@ async def get_investor(investor_id: str):
                 "roi_pct": round(((total_returned / total_invested * 100) - 100), 2) if total_invested > 0 else 0,
                 "notes_total_lent": total_lent,
                 "notes_total_due": total_due_notes,
-                "notes_total_paid": total_paid_notes,
-                "notes_outstanding": total_due_notes - total_paid_notes,
+                # Unified with the schedule-based "pagado a hoy" (not raw paid_amount,
+                # which is ~0 because payments were made off-app). Keeps the note
+                # cards and the "Pagado/Pendiente" summary consistent.
+                "notes_total_paid": total_pagado_a_hoy,
+                "notes_outstanding": total_restante_por_pagar,
+                "notes_total_paid_recorded": total_paid_notes,  # raw ledger of in-app payments
                 "active_notes": len(active_notes),
             },
         }

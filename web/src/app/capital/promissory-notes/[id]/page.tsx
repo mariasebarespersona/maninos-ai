@@ -425,7 +425,11 @@ export default function PromissoryNoteDetailPage() {
   }
 
   const s = STATUS_STYLES[note.status] || STATUS_STYLES.active
-  const paidAmount = Number(note.paid_amount || 0)
+  // Effective "pagado a hoy": the schedule-derived amount owed to date (payments
+  // were made off-app so paid_amount is ~0), or the recorded payments if they run
+  // ahead. This single value drives the KPI, the progress bar, the schedule
+  // coloring and "Meses Pagados" so everything agrees with the seguimiento view.
+  const paidAmount = Math.max(Number(note.paid_amount || 0), Number(paidToDate?.paid_to_date || 0))
   const remaining = Math.max(0, note.total_due - paidAmount)
   const paidPct = note.total_due > 0 ? (paidAmount / note.total_due * 100) : 0
   const daysToMaturity = Math.ceil((new Date(note.maturity_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -486,7 +490,7 @@ export default function PromissoryNoteDetailPage() {
             { label: 'Préstamo', value: fmt(note.loan_amount), color: 'var(--ink)' },
             { label: 'Interés Total', value: fmt(note.total_interest), color: 'var(--gold-700)' },
             { label: 'Total al Vencimiento', value: fmt(note.total_due), color: 'var(--navy-800)' },
-            { label: 'Pagado', value: fmt(paidAmount), color: 'var(--success)' },
+            { label: 'Pagado a hoy', value: fmt(paidAmount), color: 'var(--success)' },
             { label: 'Pendiente', value: fmt(remaining), color: remaining > 0 ? 'var(--error)' : 'var(--success)' },
           ].map(kpi => (
             <div key={kpi.label}>
@@ -508,7 +512,7 @@ export default function PromissoryNoteDetailPage() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>Debería estar pagado</p>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>Pagado a hoy</p>
                 <p className="font-serif font-semibold" style={{ color: 'var(--success)' }}>{fmt(paidToDate.paid_to_date)}</p>
               </div>
               <div>

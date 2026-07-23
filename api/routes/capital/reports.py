@@ -653,10 +653,18 @@ async def generate_investor_statement(investor_id: str, month: int = None, year:
         active_investments = [i for i in investments if i.get("status") == "active"]
         expected_return = sum(float(i.get("amount", 0)) * float(i.get("expected_return_rate", 0) or 0) / 100 for i in active_investments)
 
+        # Schedule-based "pagado a hoy" (single source of truth), so the statement
+        # agrees with the seguimiento/pagarés views (raw paid_amount is ~0).
+        from api.routes.capital.investors import _note_paid_to_date
+        notes_ptd = {n["id"]: _note_paid_to_date(n) for n in notes}
+
         active_notes = [n for n in notes if n.get("status") == "active"]
         total_notes_issued = sum(float(n.get("loan_amount", 0)) for n in notes)
         total_notes_due = sum(float(n.get("total_due", 0)) for n in active_notes)
-        total_notes_paid = sum(float(n.get("paid_amount", 0) or 0) for n in notes)
+        total_notes_paid = round(sum(
+            notes_ptd[n["id"]]["paid_to_date"] for n in notes
+            if n.get("status") not in ("cancelled", "voided")
+        ), 2)
 
         month_inflows = sum(abs(float(f.get("amount", 0))) for f in flows if float(f.get("amount", 0)) > 0)
         month_outflows = sum(abs(float(f.get("amount", 0))) for f in flows if float(f.get("amount", 0)) < 0)
@@ -695,7 +703,11 @@ async def generate_investor_statement(investor_id: str, month: int = None, year:
                     "annual_rate": float(n.get("annual_rate", 0)),
                     "term_months": n.get("term_months"),
                     "total_due": float(n.get("total_due", 0)),
-                    "paid_amount": float(n.get("paid_amount", 0) or 0),
+                    # "paid" now = schedule-based pagado a hoy (consistent everywhere);
+                    # paid_recorded keeps the raw in-app ledger for reference.
+                    "paid_amount": notes_ptd[n["id"]]["paid_to_date"],
+                    "paid_recorded": float(n.get("paid_amount", 0) or 0),
+                    "paid_to_date": notes_ptd[n["id"]],
                     "status": n.get("status"),
                     "maturity_date": n.get("maturity_date"),
                 } for n in notes],

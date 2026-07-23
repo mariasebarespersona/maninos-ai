@@ -46,7 +46,7 @@ interface Investment {
   property_code?: string | null   // manual house code (old houses not linked to a property record)
   properties?: { address: string; city: string; property_code?: string } | null
   rto_contracts?: { client_id: string; clients?: { name: string } } | null
-  promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string; paid_amount?: number | null; annual_rate?: number | null; total_due?: number | null; total_interest?: number | null } | null
+  promissory_notes?: { id: string; loan_amount: number; status: string; maturity_date: string; paid_amount?: number | null; annual_rate?: number | null; total_due?: number | null; total_interest?: number | null; paid_to_date?: { paid_to_date: number } | null } | null
 }
 
 interface PromissoryNote {
@@ -62,6 +62,7 @@ interface PromissoryNote {
   status: string
   paid_amount: number | null
   created_at: string
+  paid_to_date?: { paid_to_date: number; pct_paid: number; capital_to_date: number; interest_to_date: number; remaining: number; elapsed_periods: number; term: number } | null
 }
 
 interface Metrics {
@@ -339,8 +340,11 @@ export default function InvestorDetailPage() {
   const investmentLabel = (inv: Investment, idx: number) =>
     inv.properties?.property_code || inv.property_code || inv.rto_contracts?.clients?.name || `Inversión ${idx + 1}`
   // The investor's return comes from the linked promissory note's payments (not RTO rent).
+  // Use the unified schedule-based "pagado a hoy"; fall back to raw only if absent.
   const ticketReturn = (inv: Investment) =>
-    inv.promissory_notes ? Number(inv.promissory_notes.paid_amount || 0) : Number(inv.return_amount || 0)
+    inv.promissory_notes
+      ? Number(inv.promissory_notes.paid_to_date?.paid_to_date ?? inv.promissory_notes.paid_amount ?? 0)
+      : Number(inv.return_amount || 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
   // Rendimiento real vs esperado (#7)
@@ -1188,8 +1192,10 @@ export default function InvestorDetailPage() {
                 {promissoryNotes.map(note => {
                   const ns = NOTE_STATUS[note.status] || NOTE_STATUS.active
                   const days = daysUntilMaturity(note.maturity_date)
-                  const paid = Number(note.paid_amount || 0)
-                  const pctPaid = note.total_due > 0 ? (paid / note.total_due * 100) : 0
+                  // Schedule-derived "pagado a hoy" (consistent with the note detail
+                  // and summary); falls back to raw paid_amount only if missing.
+                  const paid = note.paid_to_date ? Number(note.paid_to_date.paid_to_date || 0) : Number(note.paid_amount || 0)
+                  const pctPaid = note.paid_to_date ? Number(note.paid_to_date.pct_paid || 0) : (note.total_due > 0 ? (paid / note.total_due * 100) : 0)
                   return (
                     <Link
                       key={note.id}
