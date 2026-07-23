@@ -647,11 +647,7 @@ async def generate_investor_statement(investor_id: str, month: int = None, year:
             .order("flow_date") \
             .execute().data or []
 
-        # Calculate totals
-        total_invested = sum(float(i.get("amount", 0)) for i in investments)
-        total_returned = sum(float(i.get("return_amount", 0) or 0) for i in investments)
         active_investments = [i for i in investments if i.get("status") == "active"]
-        expected_return = sum(float(i.get("amount", 0)) * float(i.get("expected_return_rate", 0) or 0) / 100 for i in active_investments)
 
         # Schedule-based "pagado a hoy" (single source of truth), so the statement
         # agrees with the seguimiento/pagarés views (raw paid_amount is ~0).
@@ -664,6 +660,28 @@ async def generate_investor_statement(investor_id: str, month: int = None, year:
         total_notes_paid = round(sum(
             notes_ptd[n["id"]]["paid_to_date"] for n in notes
             if n.get("status") not in ("cancelled", "voided")
+        ), 2)
+
+        # Unified totals (mirror the seguimiento view): a pagaré IS the investor's
+        # money, so "invertido" = active notes' principal + note-less tickets, and
+        # "retornado" = schedule-based pagado a hoy. The old ticket-only sums showed
+        # $0 for pagaré investors.
+        _INVESTED_NOTE_STATUSES = ("active", "overdue", "partial", "partial_return")
+        _live_inv = [i for i in investments if i.get("status") not in ("renegotiated", "transferred")]
+        notes_invested = sum(float(n.get("loan_amount", 0)) for n in notes if n.get("status") in _INVESTED_NOTE_STATUSES)
+        tickets_noteless = sum(float(i.get("amount", 0) or 0) for i in _live_inv if not i.get("promissory_note_id"))
+        total_invested = round(notes_invested + tickets_noteless, 2)
+        total_returned = total_notes_paid
+        total_obligacion = round(sum(
+            notes_ptd[n["id"]]["total_due"] for n in notes
+            if n.get("status") not in ("cancelled", "voided")
+        ), 2)
+        net_outstanding = round(total_obligacion - total_notes_paid, 2)
+        # Expected annual return = weighted note interest for the first year proxy;
+        # keep the interest total esperado for reference.
+        expected_return = round(sum(
+            float(n.get("total_due", 0) or 0) - float(n.get("loan_amount", 0) or 0)
+            for n in notes if n.get("status") not in ("cancelled", "voided")
         ), 2)
 
         month_inflows = sum(abs(float(f.get("amount", 0))) for f in flows if float(f.get("amount", 0)) > 0)
@@ -682,7 +700,7 @@ async def generate_investor_statement(investor_id: str, month: int = None, year:
                 "summary": {
                     "total_invested": total_invested,
                     "total_returned": total_returned,
-                    "net_outstanding": total_invested - total_returned,
+                    "net_outstanding": net_outstanding,
                     "active_investments": len(active_investments),
                     "expected_annual_return": expected_return,
                     "notes_outstanding": total_notes_due,

@@ -347,14 +347,17 @@ export default function InvestorDetailPage() {
       : Number(inv.return_amount || 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
-  // Rendimiento real vs esperado (#7)
+  // Rendimiento real vs esperado — driven by the promissory-note figures (the old
+  // ticket-based return_amount/expected_rate are empty for note investors, which
+  // showed a misleading −100% ROI / $0). All values come from the unified metrics.
   const totalInvested = metrics?.total_invested || 0
-  const totalReturned = metrics?.total_returned || 0
-  const expectedReturns = metrics?.expected_returns || 0
-  const realRoi = totalInvested > 0 ? ((totalReturned / totalInvested) * 100 - 100) : 0
-  const expectedRoiAvg = investments.length > 0
-    ? investments.reduce((s, i) => s + Number(i.expected_return_rate || 0), 0) / investments.length
-    : 0
+  const interestEarnedToDate = metrics?.total_retornado_interes || 0        // yield real a hoy
+  const principalReturnedToDate = metrics?.total_retornado_capital || 0
+  const paidToDateTotal = metrics?.total_pagado_a_hoy || 0
+  const expectedInterestTotal = Math.max(0, (metrics?.notes_total_due || 0) - (metrics?.notes_total_lent || 0))
+  const tasaEsperada = metrics?.tasa_fondeo || 0
+  const principalPending = Math.max(0, totalInvested - principalReturnedToDate)
+  const totalToRepay = metrics?.notes_total_due || 0
 
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl">
@@ -725,32 +728,30 @@ export default function InvestorDetailPage() {
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>ROI Real</span>
-                <p className="font-serif text-xl font-semibold" style={{
-                  color: realRoi >= 0 ? 'var(--success)' : 'var(--error)'
-                }}>
-                  {realRoi > 0 ? '+' : ''}{realRoi.toFixed(1)}%
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Interés Ganado a Hoy</span>
+                <p className="font-serif text-xl font-semibold" style={{ color: 'var(--success)' }}>
+                  {fmt(interestEarnedToDate)}
                 </p>
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                  Retornado: {fmt(totalReturned)}
+                  de {fmt(expectedInterestTotal)} esperado
                 </p>
               </div>
               <div>
                 <span className="text-xs" style={{ color: 'var(--slate)' }}>Tasa Esperada Prom.</span>
                 <p className="font-serif text-xl font-semibold" style={{ color: 'var(--gold-700)' }}>
-                  {expectedRoiAvg.toFixed(1)}%
+                  {tasaEsperada.toFixed(1)}%
                 </p>
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                  Esperado: {fmt(expectedReturns)}
+                  anual (pagarés)
                 </p>
               </div>
               <div>
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Capital Pendiente</span>
+                <span className="text-xs" style={{ color: 'var(--slate)' }}>Capital sin Devolver</span>
                 <p className="font-serif text-xl font-semibold" style={{ color: 'var(--navy-800)' }}>
-                  {fmt(metrics?.net_outstanding || 0)}
+                  {fmt(principalPending)}
                 </p>
                 <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                  En inversiones activas
+                  de {fmt(totalInvested)} prestado
                 </p>
               </div>
               <div>
@@ -766,19 +767,19 @@ export default function InvestorDetailPage() {
               </div>
             </div>
 
-            {/* ROI visual bar */}
-            {totalInvested > 0 && (
+            {/* Progreso de repago (pagado a hoy sobre el total a devolver) */}
+            {totalToRepay > 0 && (
               <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--sand)' }}>
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--ash)' }}>
-                      <span>Retorno real: {fmt(totalReturned)}</span>
-                      <span>de {fmt(totalInvested)} invertido</span>
+                      <span>Retornado a hoy: {fmt(paidToDateTotal)}</span>
+                      <span>de {fmt(totalToRepay)} total</span>
                     </div>
                     <div className="w-full h-3 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
                       <div className="h-full rounded-full transition-all" style={{
-                        width: `${Math.min(100, totalInvested > 0 ? (totalReturned / totalInvested) * 100 : 0)}%`,
-                        backgroundColor: totalReturned >= totalInvested ? 'var(--success)' : 'var(--gold-600)',
+                        width: `${Math.min(100, totalToRepay > 0 ? (paidToDateTotal / totalToRepay) * 100 : 0)}%`,
+                        backgroundColor: paidToDateTotal >= totalToRepay ? 'var(--success)' : 'var(--gold-600)',
                       }} />
                     </div>
                   </div>
@@ -981,8 +982,8 @@ export default function InvestorDetailPage() {
                               )}
                             </td>
                             <td>
-                              {inv.return_amount ? (
-                                <span style={{ color: 'var(--success)' }}>{fmt(inv.return_amount)}</span>
+                              {ticketReturn(inv) > 0 ? (
+                                <span style={{ color: 'var(--success)' }}>{fmt(ticketReturn(inv))}</span>
                               ) : (
                                 <span style={{ color: 'var(--ash)' }}>Pendiente</span>
                               )}
