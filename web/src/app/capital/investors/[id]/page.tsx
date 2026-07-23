@@ -1263,6 +1263,29 @@ export default function InvestorDetailPage() {
             <div className="text-center py-12" style={{ color: 'var(--slate)' }}>Cargando estado de cuenta…</div>
           ) : (
             <>
+              {/* Aviso: la vista contable solo cuenta lo confirmado en el libro mayor.
+                  Si hay pagarés cuyo depósito aún no se confirma, esta vista sale en $0
+                  aunque el "pagado a hoy" operativo (cronograma) sí exista. */}
+              {(() => {
+                const invested = metrics?.total_invertido || 0
+                const confirmed = statement.principal?.deposited || 0
+                const unconfirmed = Math.round((invested - confirmed) * 100) / 100
+                if (unconfirmed <= 1) return null
+                return (
+                  <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: 'var(--warning-light)', border: '1px solid var(--warning)' }}>
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
+                    <div className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                      <p className="font-semibold" style={{ color: 'var(--ink)' }}>Contabilidad pendiente de confirmar</p>
+                      <p className="mt-0.5">
+                        Esta vista muestra <strong>solo lo confirmado en el libro mayor</strong>. Hay {fmt(unconfirmed)} en
+                        pagarés cuyo depósito todavía no está confirmado en contabilidad, por eso aparece en $0.
+                        El <strong>pagado a hoy</strong> del cronograma sí se ve en las pestañas «Resumen» y «Notas».
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="card-luxury p-5">
                   <h3 className="font-serif text-base mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
