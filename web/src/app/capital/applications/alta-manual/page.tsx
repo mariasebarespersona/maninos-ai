@@ -19,7 +19,17 @@ import {
 import { useToast } from '@/components/ui/Toast'
 
 interface ExistingClient { id: string; name: string; email: string | null; phone: string | null }
-interface ExistingProperty { id: string; property_code: string | null; address: string; city: string | null; sale_price: number | null }
+// Casas reutilizables = SOLO las de "Casas Financiadas" de Capital (ventas RTO),
+// nunca el inventario general de Homes (esas no son operaciones RTO).
+interface ExistingProperty {
+  id: string
+  property_code: string | null
+  address: string
+  city: string | null
+  sale_price: number | null
+  client_name?: string | null
+  bucket?: string | null
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n || 0)
@@ -82,8 +92,28 @@ export default function AltaManualPage() {
     fetch('/api/clients').then(r => r.json())
       .then(d => setExistingClients(Array.isArray(d) ? d : (d.clients || [])))
       .catch(() => {})
-    fetch('/api/properties?limit=100').then(r => r.json())
-      .then(d => setExistingProps(Array.isArray(d) ? d : (d.properties || [])))
+    // Casas existentes = las de Casas Financiadas (ventas RTO de Capital),
+    // deduplicadas por propiedad. El inventario general de Homes NO aplica aquí.
+    fetch('/api/capital/financed-houses').then(r => r.json())
+      .then(d => {
+        const seen = new Set<string>()
+        const props: ExistingProperty[] = []
+        for (const h of (d.houses || [])) {
+          const p = h.property || {}
+          if (!p.id || seen.has(p.id)) continue
+          seen.add(p.id)
+          props.push({
+            id: p.id,
+            property_code: p.code || null,
+            address: p.address || '—',
+            city: p.city || null,
+            sale_price: h.terms?.sale_price ?? null,
+            client_name: h.client?.name || null,
+            bucket: h.bucket || null,
+          })
+        }
+        setExistingProps(props)
+      })
       .catch(() => {})
   }, [])
 
@@ -344,6 +374,9 @@ export default function AltaManualPage() {
                   <input className="input w-full pl-10" placeholder="Buscar por código (H13) o dirección…"
                     value={propSearch} onChange={e => setPropSearch(e.target.value)} />
                 </div>
+                <p className="text-xs" style={{ color: 'var(--ash)' }}>
+                  Solo se muestran casas de <strong>Casas Financiadas</strong> (operaciones RTO de Capital). Si la casa del cliente antiguo no está aquí, créala nueva.
+                </p>
                 <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--sand)' }}>
                   {filteredProps.map(p => (
                     <button key={p.id} onClick={() => setSelectedPropId(p.id)}
@@ -353,12 +386,20 @@ export default function AltaManualPage() {
                         <span className="font-medium block" style={{ color: 'var(--charcoal)' }}>
                           {p.property_code ? `${p.property_code} · ` : ''}{p.address}
                         </span>
-                        <span className="text-xs" style={{ color: 'var(--ash)' }}>{p.city || ''} {p.sale_price ? `· ${fmt(p.sale_price)}` : ''}</span>
+                        <span className="text-xs" style={{ color: 'var(--ash)' }}>
+                          {p.city || ''} {p.sale_price ? `· ${fmt(p.sale_price)}` : ''}
+                          {p.client_name ? ` · cliente actual: ${p.client_name}` : ''}
+                          {p.bucket === 'activa' ? ' · ⚠ contrato activo' : p.bucket === 'liquidada' ? ' · liquidada' : ''}
+                        </span>
                       </span>
                       {selectedPropId === p.id && <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />}
                     </button>
                   ))}
-                  {filteredProps.length === 0 && <p className="p-3 text-sm" style={{ color: 'var(--ash)' }}>Sin resultados — créala nueva</p>}
+                  {filteredProps.length === 0 && (
+                    <p className="p-3 text-sm" style={{ color: 'var(--ash)' }}>
+                      No hay casas financiadas que coincidan — créala nueva (pestaña &ldquo;Casa nueva&rdquo;)
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
