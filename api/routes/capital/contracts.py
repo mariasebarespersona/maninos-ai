@@ -74,6 +74,16 @@ class ContractActivate(BaseModel):
     signed_by_company: str = "Maninos Homes LLC"
 
 
+class TermsUpdate(BaseModel):
+    """Edit agreed terms with automatic cascade (contract → sale → payments → PDF)."""
+    monthly_rent: Optional[float] = None
+    term_months: Optional[int] = None
+    down_payment: Optional[float] = None
+    purchase_price: Optional[float] = None
+    payment_due_day: Optional[int] = None
+    updated_by: Optional[str] = "capital"
+
+
 class DownPaymentInstallment(BaseModel):
     """Single installment in a down payment split."""
     amount: float
@@ -330,6 +340,184 @@ async def update_contract(contract_id: str, data: ContractUpdate):
         raise
     except Exception as e:
         logger.error(f"Error updating contract {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{contract_id}/update-terms")
+async def update_terms_cascade(contract_id: str, data: TermsUpdate):
+    """Edita los términos pactados con CASCADA automática:
+
+    contrato (registro + end_date) → venta (campos RTO; precio solo en ventas
+    manual_capital para no descuadrar facturas de Homes) → cronograma (los pagos
+    YA COBRADOS son intocables; los pendientes sin dinero se regeneran con la
+    nueva mensualidad/plazo/día, y sus auto-facturas abiertas se eliminan para
+    que el facturador re-emita con el monto correcto) → PDF del contrato (se
+    regenera solo si es un PDF GENERADO; un escaneado firmado nunca se toca).
+    """
+    try:
+        c_res = sb.table("rto_contracts").select("*").eq("id", contract_id).single().execute()
+        if not c_res.data:
+            raise HTTPException(status_code=404, detail="Contrato no encontrado")
+        c = c_res.data
+        if c["status"] in ("completed", "delivered", "terminated"):
+            raise HTTPException(status_code=400, detail=f"No se pueden editar términos de un contrato {c['status']}")
+
+        new_rent = float(data.monthly_rent) if data.monthly_rent is not None else float(c["monthly_rent"])
+        new_term = int(data.term_months) if data.term_months is not None else int(c["term_months"])
+        new_down = float(data.down_payment) if data.down_payment is not None else float(c.get("down_payment") or 0)
+        new_price = float(data.purchase_price) if data.purchase_price is not None else float(c["purchase_price"])
+        new_due_day = int(data.payment_due_day) if data.payment_due_day is not None else int(c.get("payment_due_day") or 15)
+        if new_rent <= 0 or new_term <= 0 or new_price <= 0:
+            raise HTTPException(status_code=400, detail="Mensualidad, plazo y precio deben ser > 0")
+
+        # ── Cronograma actual: proteger todo lo que ya tiene dinero ─────────
+        pays = sb.table("rto_payments").select("id, payment_number, status, paid_amount, is_historical") \
+            .eq("rto_contract_id", contract_id).order("payment_number").execute().data or []
+        protected = [p for p in pays if p.get("status") == "paid" or float(p.get("paid_amount") or 0) > 0
+                     or p.get("is_historical")]
+        removable = [p for p in pays if p not in protected]
+        protected_numbers = {p["payment_number"] for p in protected}
+        if protected_numbers and new_term < max(protected_numbers):
+            raise HTTPException(
+                status_code=400,
+                detail=f"El plazo no puede ser menor a {max(protected_numbers)} meses: "
+                       f"ya hay pagos cobrados hasta la mensualidad #{max(protected_numbers)}.",
+            )
+
+        # ── 1. Contrato ──────────────────────────────────────────────────────
+        start = _safe_date(c["start_date"]) or date.today()
+        end = start + relativedelta(months=new_term)
+        sb.table("rto_contracts").update({
+            "monthly_rent": new_rent, "term_months": new_term, "down_payment": new_down,
+            "purchase_price": new_price, "payment_due_day": new_due_day,
+            "end_date": end.isoformat(),
+            "notes": ((c.get("notes") or "") +
+                      f"\n[TÉRMINOS EDITADOS {date.today().isoformat()} por {data.updated_by}] "
+                      f"${new_rent:,.0f}/mes × {new_term}m, enganche ${new_down:,.0f}, precio ${new_price:,.0f}").strip(),
+        }).eq("id", contract_id).execute()
+
+        # ── 2. Venta (sync) ──────────────────────────────────────────────────
+        sale_note = None
+        if c.get("sale_id"):
+            sale = sb.table("sales").select("id, source").eq("id", c["sale_id"]).single().execute().data or {}
+            sale_update = {"rto_monthly_payment": new_rent, "rto_term_months": new_term,
+                           "rto_down_payment": new_down, "financed_down_payment": new_down}
+            if sale.get("source") == "manual_capital":
+                # Venta solo-Capital: sin contabilidad Homes → el precio se sincroniza.
+                sale_update["sale_price"] = new_price
+                sale_update["financed_remaining"] = max(0.0, round(new_price - new_down, 2))
+            elif data.purchase_price is not None and abs(new_price - float(c["purchase_price"])) > 0.005:
+                sale_note = ("El precio se actualizó en el contrato pero NO en la venta/facturas de Homes "
+                             "(ya emitidas); ajústalas manualmente si aplica.")
+            sb.table("sales").update(sale_update).eq("id", c["sale_id"]).execute()
+
+        # ── 3. Pagos pendientes: eliminar (con sus auto-facturas) y regenerar ─
+        invoices_removed = 0
+        if removable:
+            rem_ids = [p["id"] for p in removable]
+            open_invs = sb.table("capital_invoices").select("id") \
+                .in_("rto_payment_id", rem_ids) \
+                .in_("status", ["sent", "partial", "overdue", "draft"]).execute().data or []
+            if open_invs:
+                from api.routes.capital.accounting_invoices import delete_capital_invoice
+                for inv in open_invs:
+                    try:
+                        await delete_capital_invoice(inv["id"])
+                        invoices_removed += 1
+                    except Exception as de:
+                        logger.warning(f"[update-terms] Could not remove invoice {inv['id']}: {de}")
+            sb.table("rto_payments").delete().in_("id", rem_ids).execute()
+
+        today = date.today()
+        new_rows = []
+        for n in range(1, new_term + 1):
+            if n in protected_numbers:
+                continue
+            due_base = start + relativedelta(months=n - 1)
+            try:
+                due = due_base.replace(day=new_due_day)
+            except ValueError:
+                nxt = due_base + relativedelta(months=1)
+                due = nxt.replace(day=1) - timedelta(days=1)
+            if due < today:
+                status = "late"
+            elif (due - today).days <= 5:
+                status = "pending"
+            else:
+                status = "scheduled"
+            new_rows.append({
+                "rto_contract_id": contract_id, "client_id": c["client_id"],
+                "payment_number": n, "amount": new_rent, "due_date": due.isoformat(),
+                "status": status,
+            })
+        if new_rows:
+            sb.table("rto_payments").insert(new_rows).execute()
+
+        # ── 4. Enganche: actualizar solo cuotas SIN pagar ────────────────────
+        try:
+            insts = sb.table("capital_down_payment_installments").select("id, status") \
+                .eq("contract_id", contract_id).execute().data or []
+            unpaid = [i for i in insts if i.get("status") not in ("paid",)]
+            if data.down_payment is not None and len(insts) == 1 and len(unpaid) == 1:
+                sb.table("capital_down_payment_installments").update({"amount": new_down}) \
+                    .eq("id", unpaid[0]["id"]).execute()
+        except Exception:
+            pass
+
+        # ── 5. PDF: regenerar SOLO si es generado (nunca un escaneado) ───────
+        pdf_regenerated = False
+        pdf_url = c.get("contract_pdf_url") or ""
+        if "/scanned_" not in pdf_url:
+            try:
+                from api.services.pdf_service import generate_rto_contract
+                client_data = sb.table("clients").select("name").eq("id", c["client_id"]).single().execute()
+                prop = (sb.table("properties").select("address, hud_number, year")
+                        .eq("id", c["property_id"]).single().execute()).data or {}
+                pdf_bytes = generate_rto_contract(
+                    tenant_name=(client_data.data or {}).get("name", "N/A"),
+                    property_address=prop.get("address", "N/A"),
+                    hud_number=prop.get("hud_number"), property_year=prop.get("year"),
+                    lease_term_months=new_term, monthly_rent=new_rent, down_payment=new_down,
+                    purchase_price=new_price, start_date=start, end_date=end,
+                    payment_due_day=new_due_day,
+                    late_fee_per_day=float(c.get("late_fee_per_day", 15) or 15),
+                    grace_period_days=c.get("grace_period_days", 5) or 5,
+                    signed_by_company=c.get("signed_by_company"),
+                    signed_by_client=c.get("signed_by_client"), signed_at=c.get("signed_at"),
+                )
+                bucket = "transaction-documents"
+                storage_path = f"rto-contracts/{contract_id}/RTO_Contract_{contract_id[:8]}.pdf"
+                try:
+                    sb.storage.from_(bucket).remove([storage_path])
+                except Exception:
+                    pass
+                sb.storage.from_(bucket).upload(storage_path, pdf_bytes, {"content-type": "application/pdf"})
+                url = sb.storage.from_(bucket).get_public_url(storage_path)
+                sb.table("rto_contracts").update({
+                    "contract_pdf_url": url[:-1] if url and url.endswith("?") else url,
+                }).eq("id", contract_id).execute()
+                pdf_regenerated = True
+            except Exception as pdf_err:
+                logger.warning(f"[update-terms] Could not regenerate PDF: {pdf_err}")
+
+        logger.info(f"[update-terms] {contract_id}: rent={new_rent} term={new_term} "
+                    f"regen={len(new_rows)} kept={len(protected)} invoices_removed={invoices_removed} pdf={pdf_regenerated}")
+        return {
+            "ok": True,
+            "message": f"Términos actualizados: {len(new_rows)} mensualidades regeneradas, "
+                       f"{len(protected)} pagos cobrados intactos"
+                       + (f", {invoices_removed} facturas re-emitibles" if invoices_removed else "")
+                       + (". PDF del contrato regenerado." if pdf_regenerated else ". El PDF escaneado no se tocó — sube uno nuevo si re-firmaron."),
+            "payments_regenerated": len(new_rows),
+            "payments_protected": len(protected),
+            "invoices_removed": invoices_removed,
+            "pdf_regenerated": pdf_regenerated,
+            "warning": sale_note,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating terms for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

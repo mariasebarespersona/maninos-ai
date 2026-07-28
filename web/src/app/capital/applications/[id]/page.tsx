@@ -362,6 +362,51 @@ export default function ApplicationDetailPage() {
 
   // ========== Documents ==========
 
+  // Editar datos básicos del cliente (nombre, email, teléfono, ingreso)
+  const [showEditClient, setShowEditClient] = useState(false)
+  const [clientForm, setClientForm] = useState({ name: '', email: '', phone: '', monthly_income: '' })
+  const [savingClient, setSavingClient] = useState(false)
+
+  const openEditClient = () => {
+    setClientForm({
+      name: app?.clients?.name || '',
+      email: app?.clients?.email || '',
+      phone: app?.clients?.phone || '',
+      monthly_income: app?.clients?.monthly_income != null ? String(app.clients.monthly_income) : '',
+    })
+    setShowEditClient(true)
+  }
+
+  const handleSaveClient = async () => {
+    if (!clientForm.name.trim()) { toast.warning('El nombre es obligatorio'); return }
+    const email = clientForm.email.trim()
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast.warning(`El email "${email}" no es válido (ej. cliente@gmail.com)`); return
+    }
+    setSavingClient(true)
+    try {
+      const res = await fetch(`/api/clients/${app?.clients?.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: clientForm.name.trim(),
+          email: email || null,
+          phone: clientForm.phone.trim() || null,
+          monthly_income: clientForm.monthly_income ? parseFloat(clientForm.monthly_income) : null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.ok === false) throw new Error(data.detail || data.error || 'Error guardando')
+      toast.success('Datos del cliente actualizados')
+      setShowEditClient(false)
+      loadApplication()
+    } catch (err: any) {
+      toast.error(err.message || 'Error guardando los datos')
+    } finally {
+      setSavingClient(false)
+    }
+  }
+
   // Enviar por email el link para que el cliente llene su solicitud de crédito
   const handleSendCreditApp = async () => {
     setSendingCreditApp(true)
@@ -1094,6 +1139,13 @@ export default function ApplicationDetailPage() {
               <h3 className="font-semibold text-sm mb-3 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
                 <User className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
                 Datos del Cliente
+                <button
+                  onClick={openEditClient}
+                  className="ml-auto px-2.5 py-1 rounded-lg border text-xs font-medium"
+                  style={{ borderColor: 'var(--gold-600)', color: 'var(--gold-700)' }}
+                >
+                  ✎ Editar
+                </button>
               </h3>
               <div className="space-y-2">
                 <InfoRow label="Nombre" value={app.clients?.name} />
@@ -1548,10 +1600,19 @@ export default function ApplicationDetailPage() {
             return (
               <div className="space-y-4">
                 <div className="card-luxury p-5" style={{ borderLeft: '4px solid var(--navy-800)' }}>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <FileSignature className="w-5 h-5" style={{ color: 'var(--navy-800)' }} />
                     <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Términos Pactados</h2>
                     <span className="badge text-[10px]" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>Alta manual — cliente antiguo</span>
+                    {app?.sales?.rto_contract_id && (
+                      <button
+                        onClick={() => window.location.href = `/capital/contracts/${app.sales.rto_contract_id}`}
+                        className="ml-auto px-3 py-1 rounded-lg border text-xs font-medium"
+                        style={{ borderColor: 'var(--gold-600)', color: 'var(--gold-700)' }}
+                      >
+                        ✎ Editar términos (en el contrato)
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div><p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Mensualidad</p>
@@ -1564,7 +1625,8 @@ export default function ApplicationDetailPage() {
                       <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{fmt(pactadoPrecio)}</p></div>
                   </div>
                   <p className="text-xs mt-3" style={{ color: 'var(--ash)' }}>
-                    Estos términos vienen del contrato capturado en el alta manual. Para cambiarlos, edita el contrato.
+                    Al editar los términos, el contrato, la venta y las mensualidades pendientes se
+                    actualizan en cadena; los pagos ya cobrados no se tocan.
                   </p>
                 </div>
                 <div className="card-luxury p-5">
@@ -2457,14 +2519,19 @@ export default function ApplicationDetailPage() {
             const allTransfers: any[] = transferData?.all || []
             const clientName = app.clients?.name || ''
 
-            // Phase 1: Homes → Capital (Capital's own documents for the property)
+            // Phase 1: expediente de Capital — transfer tipo 'sale' entre compañías
+            // (se crea como "Maninos Homes LLC → Maninos Homes LLC", tanto en el
+            // flujo automático como en el alta manual; el matcher anterior exigía
+            // to_name con "Capital" y por eso NUNCA encontraba el expediente).
+            const isCompany = (n: string | null | undefined) =>
+              !!n && (n.includes('Homes') || n.includes('Capital'))
             const capitalTransfer = allTransfers.find(
-              (t: any) => t.to_name?.includes('Capital') && t.from_name?.includes('Homes')
+              (t: any) => t.transfer_type === 'sale' && isCompany(t.from_name) && isCompany(t.to_name)
             ) || null
 
-            // Phase 2: Capital → Client (title transfer to client after RTO completion)
+            // Phase 2: transferencia al CLIENTE (to_name = persona, no compañía)
             const clientTransfer = allTransfers.find(
-              (t: any) => t.from_name?.includes('Capital') && !t.to_name?.includes('Capital') && !t.to_name?.includes('Homes')
+              (t: any) => t.transfer_type === 'sale' && isCompany(t.from_name) && !isCompany(t.to_name)
             ) || null
 
             const DOC_LABELS: Record<string, { label: string; description: string }> = {
@@ -2707,6 +2774,35 @@ export default function ApplicationDetailPage() {
               </>
             )
           })()}
+        </div>
+      )}
+
+      {/* Modal: editar datos del cliente */}
+      {showEditClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-luxury p-6 w-full max-w-md space-y-4" style={{ backgroundColor: 'white' }}>
+            <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Editar Datos del Cliente</h3>
+            <div className="space-y-3">
+              <div><label className="label">Nombre *</label>
+                <input className="input w-full" value={clientForm.name}
+                  onChange={e => setClientForm(f => ({ ...f, name: e.target.value }))} /></div>
+              <div><label className="label">Email</label>
+                <input className="input w-full" type="email" value={clientForm.email}
+                  onChange={e => setClientForm(f => ({ ...f, email: e.target.value }))} placeholder="cliente@gmail.com" /></div>
+              <div><label className="label">Teléfono</label>
+                <input className="input w-full" value={clientForm.phone}
+                  onChange={e => setClientForm(f => ({ ...f, phone: e.target.value }))} /></div>
+              <div><label className="label">Ingreso mensual</label>
+                <input className="input w-full" type="number" value={clientForm.monthly_income}
+                  onChange={e => setClientForm(f => ({ ...f, monthly_income: e.target.value }))} /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost btn-sm" onClick={() => setShowEditClient(false)} disabled={savingClient}>Cancelar</button>
+              <button className="btn-primary btn-sm" onClick={handleSaveClient} disabled={savingClient}>
+                {savingClient ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

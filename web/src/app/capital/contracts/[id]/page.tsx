@@ -85,6 +85,10 @@ export default function ContractDetailPage() {
   const [showPaidUntil, setShowPaidUntil] = useState(false)
   const [paidUntilDate, setPaidUntilDate] = useState('')
   const [savingPaidUntil, setSavingPaidUntil] = useState(false)
+  // Editar términos pactados (cascada: contrato → venta → pagos → PDF)
+  const [showEditTerms, setShowEditTerms] = useState(false)
+  const [termsForm, setTermsForm] = useState({ monthly_rent: '', term_months: '', down_payment: '', purchase_price: '', payment_due_day: '' })
+  const [savingTerms, setSavingTerms] = useState(false)
   // Down payment split
   const [dpInstallments, setDpInstallments] = useState<any[]>([])
   const [dpPaidTotal, setDpPaidTotal] = useState(0)
@@ -137,6 +141,46 @@ export default function ContractDetailPage() {
       toast.error(err.message || 'Error subiendo el contrato')
     } finally {
       setUploadingScan(false)
+    }
+  }
+
+  // Editar términos con cascada automática (pagos cobrados quedan intactos)
+  const openEditTerms = () => {
+    if (!contract) return
+    setTermsForm({
+      monthly_rent: String(contract.monthly_rent ?? ''),
+      term_months: String(contract.term_months ?? ''),
+      down_payment: String(contract.down_payment ?? ''),
+      purchase_price: String(contract.purchase_price ?? ''),
+      payment_due_day: String(contract.payment_due_day ?? 15),
+    })
+    setShowEditTerms(true)
+  }
+
+  const handleSaveTerms = async () => {
+    setSavingTerms(true)
+    try {
+      const res = await fetch(`/api/capital/contracts/${id}/update-terms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          monthly_rent: parseFloat(termsForm.monthly_rent),
+          term_months: parseInt(termsForm.term_months),
+          down_payment: parseFloat(termsForm.down_payment || '0'),
+          purchase_price: parseFloat(termsForm.purchase_price),
+          payment_due_day: parseInt(termsForm.payment_due_day || '15'),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Error actualizando términos')
+      toast.success(data.message)
+      if (data.warning) toast.warning(data.warning)
+      setShowEditTerms(false)
+      loadContract()
+    } catch (err: any) {
+      toast.error(err.message || 'Error actualizando términos')
+    } finally {
+      setSavingTerms(false)
     }
   }
 
@@ -425,6 +469,18 @@ export default function ContractDetailPage() {
             >
               <CheckCircle2 className="w-4 h-4" />
               Marcar Pagados Hasta…
+            </button>
+          )}
+
+          {/* Edit agreed terms with cascade (all non-terminal contracts) */}
+          {!['completed', 'delivered', 'terminated'].includes(contract.status) && (
+            <button
+              onClick={openEditTerms}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all"
+              style={{ color: 'var(--gold-700)', border: '1px solid var(--gold-600)' }}
+            >
+              <Scissors className="w-4 h-4" />
+              Editar Términos
             </button>
           )}
 
@@ -963,6 +1019,44 @@ export default function ContractDetailPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: editar términos pactados con cascada */}
+      {showEditTerms && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-luxury p-6 w-full max-w-lg space-y-4" style={{ backgroundColor: 'white' }}>
+            <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Editar Términos Pactados</h3>
+            <div className="rounded-lg p-3 text-xs" style={{ backgroundColor: 'var(--warning-light)', color: 'var(--charcoal)' }}>
+              Al guardar se actualizan <strong>en cadena</strong>: el contrato, la venta y el cronograma —
+              las mensualidades <strong>ya cobradas no se tocan</strong>; las pendientes se regeneran con los
+              nuevos términos. El PDF generado se rehace; un contrato escaneado nunca se modifica.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="label">Mensualidad *</label>
+                <input className="input w-full" type="number" value={termsForm.monthly_rent}
+                  onChange={e => setTermsForm(f => ({ ...f, monthly_rent: e.target.value }))} /></div>
+              <div><label className="label">Plazo (meses) *</label>
+                <input className="input w-full" type="number" value={termsForm.term_months}
+                  onChange={e => setTermsForm(f => ({ ...f, term_months: e.target.value }))} /></div>
+              <div><label className="label">Enganche</label>
+                <input className="input w-full" type="number" value={termsForm.down_payment}
+                  onChange={e => setTermsForm(f => ({ ...f, down_payment: e.target.value }))} /></div>
+              <div><label className="label">Precio de venta *</label>
+                <input className="input w-full" type="number" value={termsForm.purchase_price}
+                  onChange={e => setTermsForm(f => ({ ...f, purchase_price: e.target.value }))} /></div>
+              <div><label className="label">Día de pago</label>
+                <input className="input w-full" type="number" min="1" max="28" value={termsForm.payment_due_day}
+                  onChange={e => setTermsForm(f => ({ ...f, payment_due_day: e.target.value }))} /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost btn-sm" onClick={() => setShowEditTerms(false)} disabled={savingTerms}>Cancelar</button>
+              <button className="btn-primary btn-sm" onClick={handleSaveTerms}
+                disabled={savingTerms || !termsForm.monthly_rent || !termsForm.term_months || !termsForm.purchase_price}>
+                {savingTerms ? 'Aplicando cascada…' : 'Guardar y Regenerar Pagos'}
+              </button>
+            </div>
           </div>
         </div>
       )}
