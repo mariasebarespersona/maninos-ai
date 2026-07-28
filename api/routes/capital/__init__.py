@@ -18,6 +18,7 @@ from .accounting import router as accounting_router
 from .accounting_invoices import router as accounting_invoices_router
 from .payment_orders import router as capital_payment_orders_router
 from .financed_houses import router as financed_houses_router
+from .manual_intake import router as manual_intake_router
 
 router = APIRouter()
 
@@ -35,4 +36,5 @@ router.include_router(accounting_router)
 router.include_router(accounting_invoices_router)
 router.include_router(capital_payment_orders_router)
 router.include_router(financed_houses_router)
+router.include_router(manual_intake_router)
 

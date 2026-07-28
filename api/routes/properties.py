@@ -225,6 +225,11 @@ async def list_properties(
     """List all properties with optional status filter."""
     query = sb.table("properties").select("*")
 
+    # Hide legacy houses created manually from Capital (source='manual_capital'):
+    # they belong to old RTO clients and are only visible in the Capital portal.
+    # NULL-safe: a plain .neq() would also drop rows with source IS NULL.
+    query = query.or_("source.is.null,source.neq.manual_capital")
+
     if is_consignment is not None:
         query = query.eq("is_consignment", is_consignment)
 
@@ -252,9 +257,10 @@ async def financial_summary():
     Returns costs, sale data, payment totals — used by Resumen Financiero page (admin only).
     """
     try:
-        # 1. All properties
+        # 1. All properties (excluding Capital-only legacy houses, NULL-safe)
         props_result = sb.table("properties") \
             .select("id, address, property_code, city, status, purchase_price, sale_price, renovation_cost, move_cost, commission, margin") \
+            .or_("source.is.null,source.neq.manual_capital") \
             .order("created_at", desc=True) \
             .execute()
         properties = props_result.data or []
@@ -627,8 +633,9 @@ async def financial_detail(property_id: str):
 async def get_property_stats():
     """Get property statistics for the dashboard."""
     try:
-        # Get all properties
-        result = sb.table("properties").select("status, purchase_price, sale_price, city").execute()
+        # Get all properties (excluding Capital-only legacy houses, NULL-safe)
+        result = sb.table("properties").select("status, purchase_price, sale_price, city") \
+            .or_("source.is.null,source.neq.manual_capital").execute()
         
         properties = result.data or []
         

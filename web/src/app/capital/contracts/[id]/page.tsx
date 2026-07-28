@@ -81,6 +81,10 @@ export default function ContractDetailPage() {
   const [activating, setActivating] = useState(false)
   const [delivering, setDelivering] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [uploadingScan, setUploadingScan] = useState(false)
+  const [showPaidUntil, setShowPaidUntil] = useState(false)
+  const [paidUntilDate, setPaidUntilDate] = useState('')
+  const [savingPaidUntil, setSavingPaidUntil] = useState(false)
   // Down payment split
   const [dpInstallments, setDpInstallments] = useState<any[]>([])
   const [dpPaidTotal, setDpPaidTotal] = useState(0)
@@ -112,6 +116,50 @@ export default function ContractDetailPage() {
       console.error('Error loading contract:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Subir el PDF escaneado del contrato en papel (clientes antiguos / alta manual)
+  const handleUploadScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadingScan(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/capital/manual-intake/contracts/${id}/upload-contract`, { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Error subiendo el PDF')
+      toast.success('Contrato escaneado subido')
+      loadContract()
+    } catch (err: any) {
+      toast.error(err.message || 'Error subiendo el contrato')
+    } finally {
+      setUploadingScan(false)
+    }
+  }
+
+  // Marcar en bloque mensualidades históricas como pagadas (sin asientos)
+  const handlePaidUntil = async () => {
+    if (!paidUntilDate) { toast.warning('Selecciona la fecha'); return }
+    setSavingPaidUntil(true)
+    try {
+      const res = await fetch(`/api/capital/manual-intake/contracts/${id}/mark-paid-until`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paid_through: paidUntilDate }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Error marcando pagos')
+      toast.success(data.message)
+      setShowPaidUntil(false)
+      setPaidUntilDate('')
+      loadContract()
+    } catch (err: any) {
+      toast.error(err.message || 'Error marcando pagos históricos')
+    } finally {
+      setSavingPaidUntil(false)
     }
   }
 
@@ -350,6 +398,34 @@ export default function ContractDetailPage() {
               <FileSignature className="w-4 h-4" />
               Ver PDF Guardado
             </a>
+          )}
+
+          {/* Upload scanned paper contract (legacy/manual clients) */}
+          <label
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all cursor-pointer"
+            style={{ color: 'var(--gold-700)', border: '1px solid var(--gold-600)', opacity: uploadingScan ? 0.6 : 1 }}
+          >
+            <FileSignature className="w-4 h-4" />
+            {uploadingScan ? 'Subiendo…' : 'Subir Contrato Escaneado'}
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              disabled={uploadingScan}
+              onChange={handleUploadScan}
+            />
+          </label>
+
+          {/* Bulk mark historical payments (legacy/manual clients) */}
+          {['active', 'holdover'].includes(contract.status) && (
+            <button
+              onClick={() => setShowPaidUntil(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all"
+              style={{ color: 'var(--navy-800)', border: '1px solid var(--stone)' }}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Marcar Pagados Hasta…
+            </button>
           )}
 
           {contract.status === 'draft' && (
@@ -887,6 +963,32 @@ export default function ContractDetailPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: marcar pagos históricos en bloque */}
+      {showPaidUntil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="card-luxury p-6 w-full max-w-md space-y-4" style={{ backgroundColor: 'white' }}>
+            <h3 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Marcar pagados hasta…</h3>
+            <p className="text-sm" style={{ color: 'var(--slate)' }}>
+              Para clientes antiguos: las mensualidades con vencimiento hasta la fecha elegida se marcan como
+              <strong> pagadas (históricas)</strong>, sin generar asientos contables. Si alguna tenía auto-factura
+              abierta, se elimina para no dejar cuentas por cobrar fantasma.
+            </p>
+            <div>
+              <label className="label">Pagado hasta</label>
+              <input type="date" className="input w-full" value={paidUntilDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={e => setPaidUntilDate(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost btn-sm" onClick={() => setShowPaidUntil(false)} disabled={savingPaidUntil}>Cancelar</button>
+              <button className="btn-primary btn-sm" onClick={handlePaidUntil} disabled={savingPaidUntil || !paidUntilDate}>
+                {savingPaidUntil ? 'Guardando…' : 'Marcar Pagados'}
+              </button>
+            </div>
           </div>
         </div>
       )}

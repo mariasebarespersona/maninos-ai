@@ -104,13 +104,18 @@ export default function ApplicationsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>
-          Clientes RTO
-        </h1>
-        <p className="mt-1" style={{ color: 'var(--slate)' }}>
-          Solicitudes, verificación de identidad y capacidad de pago
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>
+            Clientes RTO
+          </h1>
+          <p className="mt-1" style={{ color: 'var(--slate)' }}>
+            Solicitudes, verificación de identidad y capacidad de pago
+          </p>
+        </div>
+        <Link href="/capital/applications/alta-manual" className="btn-primary btn-sm flex-shrink-0">
+          ＋ Alta Manual (cliente antiguo)
+        </Link>
       </div>
 
       {/* Stats row */}

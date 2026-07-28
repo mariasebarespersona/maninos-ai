@@ -128,7 +128,11 @@ async def list_sales(
 ):
     """List all sales with optional filters."""
     query = sb.table("sales").select("*")
-    
+
+    # Hide legacy sales created manually from Capital (Capital-only records).
+    # NULL-safe: .neq() alone would also drop rows with source IS NULL.
+    query = query.or_("source.is.null,source.neq.manual_capital")
+
     if status:
         query = query.eq("status", status.value)
     
@@ -162,7 +166,8 @@ async def list_sales(
 @router.get("/stats/summary")
 async def get_sales_summary():
     """Get summary statistics for sales dashboard."""
-    all_sales = sb.table("sales").select("status, sale_price, sale_type, sold_before_renovation").execute()
+    all_sales = sb.table("sales").select("status, sale_price, sale_type, sold_before_renovation") \
+        .or_("source.is.null,source.neq.manual_capital").execute()
     
     stats = {
         "total_sales": 0,

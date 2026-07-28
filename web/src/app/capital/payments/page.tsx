@@ -319,6 +319,10 @@ export default function PaymentsPage() {
         <div>
           <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Gestión de Pagos</h1>
           <p style={{ color: 'var(--slate)' }}>Cobros mensuales, morosidad y seguimiento</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>
+            ¿Cliente antiguo con pagos previos a la app? Márcalos en bloque desde su contrato
+            (&ldquo;Marcar Pagados Hasta…&rdquo;) — sin asientos contables.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto">
