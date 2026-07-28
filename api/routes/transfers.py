@@ -129,27 +129,31 @@ async def list_transfers(
 ):
     """List all title transfers with optional filters"""
     query = sb.table("title_transfers").select(
-        "*, properties(address, city, state, property_code)"
+        "*, properties(address, city, state, property_code, source)"
     )
-    
+
     if status:
         query = query.eq("status", status)
     if transfer_type:
         query = query.eq("transfer_type", transfer_type)
     if property_id:
         query = query.eq("property_id", property_id)
-    
+
     result = query.order("created_at", desc=True).execute()
-    
+
     # Format response
     transfers = []
     for t in result.data:
-        prop = t.pop("properties", {})
+        prop = t.pop("properties", {}) or {}
+        # Hide document containers of Capital-only legacy houses (alta manual):
+        # they live only in Capital's Documentos tab, never in Homes → Títulos.
+        if prop.get("source") == "manual_capital":
+            continue
         t["property_address"] = prop.get("address", "Unknown")
         t["property_code"] = prop.get("property_code", "")
         t["property_location"] = f"{prop.get('city', '')}, {prop.get('state', '')}"
         transfers.append(t)
-    
+
     return transfers
 
 
@@ -264,22 +268,26 @@ async def create_transfer(data: TransferCreate):
 async def list_pending_transfers():
     """Get all pending or in-progress transfers"""
     result = sb.table("title_transfers").select(
-        "*, properties(address, city, state)"
+        "*, properties(address, city, state, source)"
     ).in_("status", ["pending", "in_progress"]).order("created_at").execute()
-    
+
     transfers = []
     for t in result.data:
-        prop = t.pop("properties", {})
+        prop = t.pop("properties", {}) or {}
+        if prop.get("source") == "manual_capital":
+            continue  # Capital-only legacy container — not a Homes pending transfer
         t["property_address"] = prop.get("address", "Unknown")
         transfers.append(t)
-    
+
     return transfers
 
 
 @router.get("/stats")
 async def get_transfer_stats():
     """Get transfer statistics"""
-    result = sb.table("title_transfers").select("status, transfer_type").execute()
+    result = sb.table("title_transfers").select("status, transfer_type, properties(source)").execute()
+    # Exclude Capital-only legacy containers from Homes stats
+    result.data = [t for t in result.data if (t.pop("properties", {}) or {}).get("source") != "manual_capital"]
     
     stats = {
         "total": len(result.data),

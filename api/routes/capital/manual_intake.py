@@ -306,6 +306,28 @@ async def create_manual_intake(data: ManualIntake):
         created["payments_created"] = len(rows)
         created["historical_paid"] = historical
 
+        # ── 6b. Contenedor de documentos del título (checklist SUBIBLE en la
+        #     pestaña Documentos; cero contabilidad). Se filtra de Homes→Títulos
+        #     porque la casa es source=manual_capital. ─────────────────────────
+        try:
+            sb.table("title_transfers").insert({
+                "property_id": property_id,
+                "sale_id": sale_id,
+                "transfer_type": "sale",
+                "from_name": "Maninos Homes LLC",
+                "to_name": "Maninos Homes LLC",
+                "status": "in_progress",
+                "documents_checklist": {
+                    "bill_of_sale": False, "titulo": False, "title_application": False,
+                    "tax_receipt": False, "id_copies": False, "lien_release": False,
+                    "notarized_forms": False,
+                },
+                "notes": "[ALTA MANUAL] Expediente de documentos del cliente RTO antiguo (solo checklist).",
+            }).execute()
+            created["title_transfer"] = True
+        except Exception as tt_err:
+            logger.warning(f"[manual-intake] Could not create document container: {tt_err}")
+
         # ── 7. Enganche (tracking; ingreso de Homes → nunca contabilidad aquí)
         if t.down_payment > 0:
             dp_paid = bool(data.down_payment_paid)
@@ -359,6 +381,8 @@ def _rollback_created(created: dict):
         return
     try:
         cid = created.get("contract_id")
+        if created.get("title_transfer") and created.get("sale_id"):
+            sb.table("title_transfers").delete().eq("sale_id", created["sale_id"]).execute()
         if cid:
             sb.table("capital_down_payment_installments").delete().eq("contract_id", cid).execute()
             sb.table("rto_payments").delete().eq("rto_contract_id", cid).execute()

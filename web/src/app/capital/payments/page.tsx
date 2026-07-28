@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { 
   CreditCard, DollarSign, AlertTriangle, CheckCircle2,
   Clock, Filter, Calendar, User, Shield, ChevronRight,
-  Phone, XCircle, Coins, Plus, Bell
+  Phone, XCircle, Plus, Bell
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -61,32 +61,16 @@ interface MoraSummary {
   total_late_fees: number
 }
 
-interface Commission {
-  id: string
-  rto_contract_id: string
-  amount: number
-  commission_type: string
-  status: string
-  paid_at: string | null
-  notes: string | null
-  created_by: string | null
-  created_at: string
-  client_name?: string
-  property_address?: string
-}
-
 export default function PaymentsPage() {
   const searchParams = useSearchParams()
   const toast = useToast()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'all' | 'overdue' | 'mora' | 'commissions'>(
+  const [view, setView] = useState<'all' | 'overdue' | 'mora'>(
     searchParams.get('filter') === 'overdue' ? 'overdue' : 'all'
   )
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [moraSummary, setMoraSummary] = useState<MoraSummary | null>(null)
-  const [commissions, setCommissions] = useState<Commission[]>([])
-  const [commissionsLoading, setCommissionsLoading] = useState(false)
   
   // Client-reported payments notification
   const [reportedPayments, setReportedPayments] = useState<any[]>([])
@@ -113,7 +97,6 @@ export default function PaymentsPage() {
     loadMoraSummary()
     loadReportedPayments()
     loadReportedDpInstallments()
-    if (view === 'commissions') loadCommissions()
   }, [view, statusFilter])
 
   const recordId = searchParams.get('record')
@@ -148,19 +131,6 @@ export default function PaymentsPage() {
       console.error('Error loading payments:', err)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadCommissions = async () => {
-    setCommissionsLoading(true)
-    try {
-      const res = await fetch('/api/capital/payments/commissions')
-      const data = await res.json()
-      if (data.ok) setCommissions(data.commissions || [])
-    } catch (err) {
-      console.error('Error loading commissions:', err)
-    } finally {
-      setCommissionsLoading(false)
     }
   }
 
@@ -347,14 +317,6 @@ export default function PaymentsPage() {
             >
               <Shield className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
               Mora
-            </button>
-            <button 
-              onClick={() => setView('commissions')}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap`}
-              style={{ backgroundColor: view === 'commissions' ? 'var(--gold-700)' : 'var(--white)', color: view === 'commissions' ? 'white' : 'var(--slate)' }}
-            >
-              <Coins className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
-              Comisiones
             </button>
           </div>
 
@@ -758,103 +720,6 @@ export default function PaymentsPage() {
             </div>
           )}
         </>
-      )}
-
-      {/* Commissions View */}
-      {view === 'commissions' && (
-        <div className="space-y-4">
-          {commissionsLoading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--gold-600)' }} />
-            </div>
-          ) : commissions.length === 0 ? (
-            <div className="card-luxury p-12 text-center">
-              <Coins className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--ash)' }} />
-              <h3 className="font-serif text-lg" style={{ color: 'var(--charcoal)' }}>Sin Comisiones</h3>
-              <p className="mt-2" style={{ color: 'var(--slate)' }}>
-                Las comisiones se generan al activar contratos RTO ($1,000 por venta)
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Commission Summary */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="stat-card">
-                  <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Total Comisiones</p>
-                  <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{fmt(commissions.reduce((s, c) => s + c.amount, 0))}</p>
-                </div>
-                <div className="stat-card">
-                  <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Pagadas</p>
-                  <p className="text-2xl font-bold mt-1" style={{ color: 'var(--success)' }}>
-                    {fmt(commissions.filter(c => c.status === 'paid').reduce((s, c) => s + c.amount, 0))}
-                  </p>
-                </div>
-                <div className="stat-card">
-                  <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Pendientes</p>
-                  <p className="text-2xl font-bold mt-1" style={{ color: 'var(--warning)' }}>
-                    {fmt(commissions.filter(c => c.status === 'pending').reduce((s, c) => s + c.amount, 0))}
-                  </p>
-                </div>
-              </div>
-
-              {/* Commission List */}
-              <div className="card-luxury overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Contrato</th>
-                        <th>Cliente / Propiedad</th>
-                        <th>Monto</th>
-                        <th>Tipo</th>
-                        <th>Estado</th>
-                        <th>Creado</th>
-                        <th>Notas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {commissions.map(c => {
-                        const isPaid = c.status === 'paid'
-                        return (
-                          <tr key={c.id}>
-                            <td>
-                              <Link href={`/capital/contracts/${c.rto_contract_id}`} className="text-navy-600 hover:underline text-sm">
-                                {c.rto_contract_id.slice(0, 8)}...
-                              </Link>
-                            </td>
-                            <td>
-                              <p className="font-medium text-sm">{c.client_name || 'N/A'}</p>
-                              <p className="text-xs" style={{ color: 'var(--ash)' }}>{c.property_address || ''}</p>
-                            </td>
-                            <td className="font-bold">{fmt(c.amount)}</td>
-                            <td className="text-xs">
-                              {c.commission_type === 'rto_sale' ? 'Venta RTO' :
-                               c.commission_type === 'referral' ? 'Referido' : 'Otro'}
-                            </td>
-                            <td>
-                              <span className="badge text-xs" style={{
-                                backgroundColor: isPaid ? 'var(--success-light)' : 'var(--warning-light)',
-                                color: isPaid ? 'var(--success)' : 'var(--warning)'
-                              }}>
-                                {isPaid ? '✓ Pagada' : '⏳ Pendiente'}
-                              </span>
-                            </td>
-                            <td className="text-xs" style={{ color: 'var(--ash)' }}>
-                              {new Date(c.created_at).toLocaleDateString('es-MX')}
-                            </td>
-                            <td className="text-xs" style={{ color: 'var(--slate)' }}>
-                              {c.notes || '-'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
       )}
 
       {/* Record Payment Modal */}

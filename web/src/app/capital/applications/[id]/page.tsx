@@ -85,6 +85,7 @@ export default function ApplicationDetailPage() {
 
   // Active section
   const [activeTab, setActiveTab] = useState<'identity' | 'capacity' | 'payments' | 'documents'>('identity')
+  const [sendingCreditApp, setSendingCreditApp] = useState(false)
   
   // KYC
   const [kycStatus, setKycStatus] = useState<string>('unverified')
@@ -360,6 +361,26 @@ export default function ApplicationDetailPage() {
   }
 
   // ========== Documents ==========
+
+  // Enviar por email el link para que el cliente llene su solicitud de crédito
+  const handleSendCreditApp = async () => {
+    setSendingCreditApp(true)
+    try {
+      const res = await fetch(`/api/capital/applications/${id}/send-credit-application`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Error enviando el email')
+      toast.success(data.message || 'Solicitud enviada al cliente')
+    } catch (err: any) {
+      toast.error(err.message || 'No se pudo enviar la solicitud')
+    } finally {
+      setSendingCreditApp(false)
+    }
+  }
+
+  // Alta manual (cliente RTO antiguo): los términos ya están pactados, así que
+  // el "recomendado" del cálculo no aplica — se muestran los términos del
+  // contrato y un análisis de capacidad como referencia.
+  const isManualIntake = app?.sales?.source === 'manual_capital'
 
   const loadDocuments = async (propertyId: string) => {
     setDocsLoading(true)
@@ -1350,16 +1371,26 @@ export default function ApplicationDetailPage() {
                   <Clock className="w-5 h-5" style={{ color: 'var(--ash)' }} />
                   <div>
                     <p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>El cliente aún no ha completado la solicitud de crédito</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>La solicitud se envía al cliente después de verificar su identidad (KYC).</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--ash)' }}>Envíasela por email, o llénala manualmente aquí (clientes antiguos).</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowTemplate(!showTemplate)}
-                  className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors hover:bg-gray-50"
-                  style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-                >
-                  {showTemplate ? 'Ocultar plantilla' : 'Ver plantilla vacía'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSendCreditApp}
+                    disabled={sendingCreditApp}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors"
+                    style={{ backgroundColor: 'var(--gold-700)', opacity: sendingCreditApp ? 0.6 : 1 }}
+                  >
+                    {sendingCreditApp ? 'Enviando…' : '✉ Enviar al Cliente'}
+                  </button>
+                  <button
+                    onClick={() => setShowTemplate(!showTemplate)}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors hover:bg-gray-50"
+                    style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                  >
+                    {showTemplate ? 'Ocultar plantilla' : 'Ver plantilla vacía'}
+                  </button>
+                </div>
               </div>
               {showTemplate && (
                 <div className="px-5 pb-5 border-t space-y-5" style={{ borderColor: 'var(--sand)' }}>
@@ -1506,8 +1537,65 @@ export default function ApplicationDetailPage() {
           )}
 
 
-          {/* RTO Calculation — Auto-computed from backend */}
-          {rtoAnalysisLoading ? (
+          {/* Alta manual: términos ya pactados + análisis de capacidad como referencia */}
+          {isManualIntake && (() => {
+            const pactadoMensual = parseFloat(app?.sales?.rto_monthly_payment || 0)
+            const pactadoPlazo = parseInt(app?.sales?.rto_term_months || 0)
+            const pactadoEnganche = parseFloat(app?.sales?.rto_down_payment || 0)
+            const pactadoPrecio = parseFloat(app?.sales?.sale_price || 0)
+            const cap = rtoAnalysis?.client?.payment_capacity_40pct || 0
+            const dentro = cap > 0 ? pactadoMensual <= cap : null
+            return (
+              <div className="space-y-4">
+                <div className="card-luxury p-5" style={{ borderLeft: '4px solid var(--navy-800)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileSignature className="w-5 h-5" style={{ color: 'var(--navy-800)' }} />
+                    <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Términos Pactados</h2>
+                    <span className="badge text-[10px]" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>Alta manual — cliente antiguo</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div><p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Mensualidad</p>
+                      <p className="font-serif text-3xl font-bold" style={{ color: 'var(--navy-800)' }}>{fmt(pactadoMensual)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Plazo</p>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{pactadoPlazo} meses</p></div>
+                    <div><p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Enganche</p>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{fmt(pactadoEnganche)}{pactadoPrecio > 0 ? ` (${Math.round(pactadoEnganche / pactadoPrecio * 100)}%)` : ''}</p></div>
+                    <div><p className="text-xs uppercase tracking-wider" style={{ color: 'var(--ash)' }}>Precio de venta</p>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{fmt(pactadoPrecio)}</p></div>
+                  </div>
+                  <p className="text-xs mt-3" style={{ color: 'var(--ash)' }}>
+                    Estos términos vienen del contrato capturado en el alta manual. Para cambiarlos, edita el contrato.
+                  </p>
+                </div>
+                <div className="card-luxury p-5">
+                  <h3 className="font-serif text-base mb-2" style={{ color: 'var(--ink)' }}>Análisis de Capacidad (referencia)</h3>
+                  {dentro === null ? (
+                    <p className="text-sm" style={{ color: 'var(--slate)' }}>
+                      Sin datos de ingresos del cliente — llena la solicitud de crédito (arriba) para verificar
+                      si la mensualidad pactada está dentro de su capacidad de pago.
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="badge" style={{
+                        backgroundColor: dentro ? 'var(--success-light)' : 'var(--error-light)',
+                        color: dentro ? 'var(--success)' : 'var(--error)',
+                      }}>
+                        {dentro ? '✓ Dentro de capacidad' : '⚠ Excede capacidad'}
+                      </span>
+                      <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                        Mensualidad pactada {fmt(pactadoMensual)} vs. capacidad de pago {fmt(cap)}/mes
+                        <span className="text-xs" style={{ color: 'var(--ash)' }}> (40% del ingreso disponible)</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* RTO Calculation — Auto-computed from backend (flujo automático:
+              herramienta de decisión previa a aprobar; oculta en altas manuales) */}
+          {isManualIntake ? null : rtoAnalysisLoading ? (
             <div className="card-luxury p-10 flex items-center justify-center gap-3">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--slate)' }} />
               <span className="text-sm" style={{ color: 'var(--slate)' }}>Calculando escenarios RTO...</span>

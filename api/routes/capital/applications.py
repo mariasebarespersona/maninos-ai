@@ -473,6 +473,58 @@ async def review_application(application_id: str, review: ApplicationReview):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{application_id}/send-credit-application")
+async def send_credit_application_link(application_id: str):
+    """Email the client a direct link to fill their credit application in the
+    client portal (used from the Cálculo RTO tab when the form is still empty)."""
+    try:
+        import os
+        app_result = sb.table("rto_applications") \
+            .select("id, clients(id, name, email)") \
+            .eq("id", application_id).single().execute()
+        if not app_result.data:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+        client = app_result.data.get("clients") or {}
+        if not client.get("email"):
+            raise HTTPException(status_code=400, detail="El cliente no tiene email registrado. Agrégalo primero en su ficha.")
+
+        from api.services.email_service import _base_template
+        from tools.email_tool import send_email
+        app_url = os.getenv("APP_URL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+        link = f"{app_url}/clientes/mi-cuenta"
+        content = f"""
+        <div class="header">
+            <h1>Completa tu Solicitud de Crédito</h1>
+            <p>Un paso más para tu casa Rent-to-Own</p>
+        </div>
+        <div class="body">
+            <p>Hola <strong>{client.get('name', '')}</strong>,</p>
+            <p>Para continuar con tu proceso Rent-to-Own necesitamos que completes tu
+            solicitud de crédito (ingresos, gastos y referencias). Toma unos 10 minutos.</p>
+            <p style="text-align: center; margin-top: 24px;">
+                <a href="{link}" class="btn">Completar mi Solicitud</a>
+            </p>
+            <p style="font-size: 13px; color: #718096; margin-top: 16px;">
+                Entra con tu correo a tu cuenta de Maninos y verás la solicitud pendiente.
+            </p>
+        </div>
+        """
+        result = send_email(
+            to=[client["email"]],
+            subject="Completa tu solicitud de crédito — Maninos",
+            html=_base_template(content),
+        )
+        if not result.get("ok", True):
+            raise HTTPException(status_code=500, detail=f"No se pudo enviar el email: {result.get('error')}")
+        logger.info(f"[capital] Credit application link sent to {client['email']} (app {application_id})")
+        return {"ok": True, "message": f"Solicitud enviada a {client['email']}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending credit application link for {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{application_id}/credit-application")
 async def get_credit_application(application_id: str):
     """Get the credit application filled by the client."""
