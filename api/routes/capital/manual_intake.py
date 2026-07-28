@@ -157,6 +157,16 @@ async def create_manual_intake(data: ManualIntake):
                 raise HTTPException(status_code=404, detail="Cliente no encontrado")
             client_id, client_name = cl.data["id"], cl.data["name"]
         elif data.client:
+            # Email: si viene, debe ser válido (si no, el envío de solicitudes /
+            # portal del cliente fallará después con errores crípticos de Resend).
+            if data.client.email and data.client.email.strip():
+                import re
+                if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", data.client.email.strip()):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El email '{data.client.email.strip()}' no tiene un formato válido "
+                               f"(ej. cliente@gmail.com). Corrígelo o déjalo vacío.",
+                    )
             # Duplicados: mismo email o teléfono → error explícito (el frontend
             # ofrece buscar primero; aquí es la última defensa).
             if data.client.email:

@@ -152,6 +152,8 @@ export default function AltaManualPage() {
     if (s === 1) {
       if (clientMode === 'existing' && !selectedClientId) return 'Selecciona un cliente existente'
       if (clientMode === 'new' && !cName.trim()) return 'El nombre del cliente es obligatorio'
+      if (clientMode === 'new' && cEmail.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cEmail.trim()))
+        return `El email "${cEmail.trim()}" no es válido (ej. cliente@gmail.com). Corrígelo o déjalo vacío.`
     }
     if (s === 2) {
       if (propMode === 'existing' && !selectedPropId) return 'Selecciona una casa existente'

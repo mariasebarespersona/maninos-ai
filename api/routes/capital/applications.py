@@ -485,8 +485,18 @@ async def send_credit_application_link(application_id: str):
         if not app_result.data:
             raise HTTPException(status_code=404, detail="Solicitud no encontrada")
         client = app_result.data.get("clients") or {}
-        if not client.get("email"):
+        email = (client.get("email") or "").strip()
+        if not email:
             raise HTTPException(status_code=400, detail="El cliente no tiene email registrado. Agrégalo primero en su ficha.")
+        # Validate BEFORE hitting Resend so the employee gets a clear, actionable
+        # error instead of Resend's "Invalid `to` field".
+        import re
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            raise HTTPException(
+                status_code=400,
+                detail=f"El email guardado del cliente no es válido: '{email}'. "
+                       f"Corrígelo en la ficha del cliente y vuelve a intentar.",
+            )
 
         from api.services.email_service import _base_template
         from tools.email_tool import send_email
@@ -510,14 +520,14 @@ async def send_credit_application_link(application_id: str):
         </div>
         """
         result = send_email(
-            to=[client["email"]],
+            to=[email],
             subject="Completa tu solicitud de crédito — Maninos",
             html=_base_template(content),
         )
         if not result.get("ok", True):
             raise HTTPException(status_code=500, detail=f"No se pudo enviar el email: {result.get('error')}")
-        logger.info(f"[capital] Credit application link sent to {client['email']} (app {application_id})")
-        return {"ok": True, "message": f"Solicitud enviada a {client['email']}"}
+        logger.info(f"[capital] Credit application link sent to {email} (app {application_id})")
+        return {"ok": True, "message": f"Solicitud enviada a {email}"}
     except HTTPException:
         raise
     except Exception as e:
