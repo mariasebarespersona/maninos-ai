@@ -535,7 +535,7 @@ export default function PromissoryNoteDetailPage() {
         {note.status !== 'draft' && (
           <div className="mt-4">
             <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--ash)' }}>
-              <span>Pagado: {paidPct.toFixed(1)}%</span>
+              <span>Pagado a hoy: {paidPct.toFixed(1)}%</span>
               <span>{fmt(paidAmount)} / {fmt(note.total_due)}</span>
             </div>
             <div className="w-full h-2 rounded-full" style={{ backgroundColor: 'var(--sand)' }}>
@@ -547,6 +547,10 @@ export default function PromissoryNoteDetailPage() {
                 }}
               />
             </div>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>
+              Devengado del cronograma (pagos del día 15, hechos fuera de la app). Los pagos
+              registrados dentro de la app aparecen en el historial de abajo{Number(note.paid_amount || 0) > 0 ? '' : ' (hoy: $0)'}.
+            </p>
           </div>
         )}
 

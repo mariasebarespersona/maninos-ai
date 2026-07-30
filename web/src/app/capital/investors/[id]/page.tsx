@@ -465,7 +465,7 @@ export default function InvestorDetailPage() {
           { label: 'Queda por pagar', value: fmt(metrics?.total_restante_por_pagar || 0), icon: Clock, color: 'var(--warning)', hint: 'Obligación − pagado a hoy' },
           { label: 'Capital devuelto (a hoy)', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
           { label: 'Interés pagado (a hoy)', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
-          { label: 'Obligación total', value: fmt(metrics?.total_obligacion || 0), icon: DollarSign, color: 'var(--gold-600)' },
+          { label: 'Obligación total', value: fmt(metrics?.total_obligacion || 0), icon: DollarSign, color: 'var(--gold-600)', hint: 'Capital + interés total del plazo' },
           { label: 'Tasa Fondeo', value: `${metrics?.tasa_fondeo || 0}%`, icon: PieChart, color: 'var(--charcoal)' },
         ].map((kpi) => (
           <div key={kpi.label} className="card-luxury p-4">
