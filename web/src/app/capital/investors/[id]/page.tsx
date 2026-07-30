@@ -8,9 +8,10 @@ import {
   DollarSign, TrendingUp, Calendar, MapPin, FileText,
   PieChart, BarChart3, Edit2, Save, X, Clock, AlertTriangle,
   ArrowRight, CheckCircle2, Plus, Activity, ArrowUpRight,
-  ArrowDownLeft, Pause, Play, Ban, RefreshCw, Scale
+  ArrowDownLeft, Pause, Play, Ban, RefreshCw, Scale, HelpCircle
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { KPI_EXPLANATIONS } from '@/components/capital/kpiExplanations'
 
 interface Investor {
   id: string
@@ -139,6 +140,7 @@ export default function InvestorDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState({ notes: '', available_capital: 0, name: '', email: '', phone: '', company: '' })
   const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'notes' | 'estado_cuenta'>('overview')
+  const [explainCard, setExplainCard] = useState<string | null>(null)
   const [statement, setStatement] = useState<any>(null)
   const [activeInvestmentId, setActiveInvestmentId] = useState<string>('all')
   const [savingStatus, setSavingStatus] = useState(false)
@@ -347,6 +349,18 @@ export default function InvestorDetailPage() {
       : Number(inv.return_amount || 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
+  // Tarjetas KPI clicables: clic = mostrar qué significa la cifra.
+  const KPI_CARDS = [
+    { label: 'Total Invertido', value: fmt(metrics?.total_invertido || metrics?.total_invested || 0), icon: Briefcase, color: 'var(--navy-800)' },
+    { label: 'Total Disponible', value: fmt(metrics?.total_disponible || 0), icon: Landmark, color: 'var(--info)' },
+    { label: 'Pagado a hoy', value: fmt(metrics?.total_pagado_a_hoy || 0), icon: TrendingUp, color: 'var(--success)', hint: 'Calculado al día de hoy' },
+    { label: 'Queda por pagar', value: fmt(metrics?.total_restante_por_pagar || 0), icon: Clock, color: 'var(--warning)', hint: 'Obligación − pagado a hoy' },
+    { label: 'Capital devuelto (a hoy)', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
+    { label: 'Interés pagado (a hoy)', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
+    { label: 'Obligación total', value: fmt(metrics?.total_obligacion || 0), icon: DollarSign, color: 'var(--gold-600)', hint: 'Capital + interés total del plazo' },
+    { label: 'Tasa Fondeo', value: `${metrics?.tasa_fondeo || 0}%`, icon: PieChart, color: 'var(--charcoal)' },
+  ]
+
   // Rendimiento real vs esperado — driven by the promissory-note figures (the old
   // ticket-based return_amount/expected_rate are empty for note investors, which
   // showed a misleading −100% ROI / $0). All values come from the unified metrics.
@@ -456,28 +470,42 @@ export default function InvestorDetailPage() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — clic en una tarjeta para ver qué significa */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Total Invertido', value: fmt(metrics?.total_invertido || totalInvested), icon: Briefcase, color: 'var(--navy-800)' },
-          { label: 'Total Disponible', value: fmt(metrics?.total_disponible || 0), icon: Landmark, color: 'var(--info)' },
-          { label: 'Pagado a hoy', value: fmt(metrics?.total_pagado_a_hoy || 0), icon: TrendingUp, color: 'var(--success)', hint: 'Calculado al día de hoy' },
-          { label: 'Queda por pagar', value: fmt(metrics?.total_restante_por_pagar || 0), icon: Clock, color: 'var(--warning)', hint: 'Obligación − pagado a hoy' },
-          { label: 'Capital devuelto (a hoy)', value: fmt(metrics?.total_retornado_capital || 0), icon: TrendingUp, color: 'var(--success)' },
-          { label: 'Interés pagado (a hoy)', value: fmt(metrics?.total_retornado_interes || 0), icon: TrendingUp, color: 'var(--gold-700)' },
-          { label: 'Obligación total', value: fmt(metrics?.total_obligacion || 0), icon: DollarSign, color: 'var(--gold-600)', hint: 'Capital + interés total del plazo' },
-          { label: 'Tasa Fondeo', value: `${metrics?.tasa_fondeo || 0}%`, icon: PieChart, color: 'var(--charcoal)' },
-        ].map((kpi) => (
-          <div key={kpi.label} className="card-luxury p-4">
+        {KPI_CARDS.map((kpi) => (
+          <button
+            key={kpi.label}
+            onClick={() => setExplainCard(explainCard === kpi.label ? null : kpi.label)}
+            className="card-luxury p-4 text-left transition-all"
+            style={{
+              cursor: 'pointer',
+              outline: explainCard === kpi.label ? '2px solid var(--gold-600)' : 'none',
+            }}
+            title="Clic para ver qué significa"
+          >
             <div className="flex items-center gap-2 mb-2">
               <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
               <span className="text-xs" style={{ color: 'var(--slate)' }}>{kpi.label}</span>
+              <HelpCircle className="w-3 h-3 ml-auto flex-shrink-0" style={{ color: 'var(--ash)', opacity: 0.6 }} />
             </div>
             <p className="font-serif text-xl font-semibold" style={{ color: 'var(--ink)' }}>{kpi.value}</p>
             {kpi.hint && <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>{kpi.hint}</p>}
-          </div>
+          </button>
         ))}
       </div>
+
+      {/* Explicación de la tarjeta seleccionada */}
+      {explainCard && KPI_EXPLANATIONS[explainCard] && (
+        <div className="rounded-lg p-4 flex items-start gap-3 animate-fade-in"
+             style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--gold-600)' }}>
+          <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--gold-700)' }} />
+          <div className="text-sm" style={{ color: 'var(--charcoal)' }}>
+            <p className="font-semibold" style={{ color: 'var(--ink)' }}>{explainCard}</p>
+            <p className="mt-0.5">{KPI_EXPLANATIONS[explainCard]}</p>
+          </div>
+          <button onClick={() => setExplainCard(null)} className="ml-auto text-xs flex-shrink-0" style={{ color: 'var(--ash)' }}>✕</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto" style={{ borderBottom: '1px solid var(--sand)' }}>

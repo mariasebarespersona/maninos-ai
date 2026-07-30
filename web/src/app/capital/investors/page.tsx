@@ -6,9 +6,10 @@ import Link from 'next/link'
 import {
   Landmark, Plus, User, DollarSign, Briefcase, Phone, Mail,
   TrendingUp, ArrowRight, FileText, Search, AlertTriangle,
-  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle, Trash2
+  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle, Trash2, HelpCircle
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { KPI_EXPLANATIONS } from '@/components/capital/kpiExplanations'
 
 interface Investor {
   id: string
@@ -87,6 +88,7 @@ export default function InvestorsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [showAlerts, setShowAlerts] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [explainCard, setExplainCard] = useState<string | null>(null)
   const [period, setPeriod] = useState<string>('all')
   const [deleteTarget, setDeleteTarget] = useState<Investor | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -382,64 +384,46 @@ export default function InvestorsPage() {
             ))}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Briefcase className="w-4 h-4" style={{ color: 'var(--navy-700)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Invertido</span>
-              </div>
-              <div className="stat-value text-xl">{fmt(summary.total_invertido)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Landmark className="w-4 h-4" style={{ color: 'var(--info)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Total Disponible</span>
-              </div>
-              <div className="stat-value text-xl">{fmt(summary.total_disponible)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4" style={{ color: 'var(--success)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Pagado a hoy</span>
-              </div>
-              <div className="stat-value text-xl" style={{ color: 'var(--success)' }}>{fmt(summary.total_pagado_a_hoy)}</div>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>Calculado al día de hoy</p>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-4 h-4" style={{ color: 'var(--warning)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Queda por pagar</span>
-              </div>
-              <div className="stat-value text-xl" style={{ color: 'var(--warning)' }}>{fmt(summary.total_restante_por_pagar)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4" style={{ color: 'var(--success)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Capital devuelto (a hoy)</span>
-              </div>
-              <div className="stat-value text-xl" style={{ color: 'var(--success)' }}>{fmt(summary.total_retornado_capital)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Interés pagado (a hoy)</span>
-              </div>
-              <div className="stat-value text-xl" style={{ color: 'var(--gold-700)' }}>{fmt(summary.total_retornado_interes)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-4 h-4" style={{ color: 'var(--gold-600)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Obligación total</span>
-              </div>
-              <div className="stat-value text-xl">{fmt(summary.total_obligacion)}</div>
-            </div>
-            <div className="stat-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Landmark className="w-4 h-4" style={{ color: 'var(--charcoal)' }} />
-                <span className="text-xs" style={{ color: 'var(--slate)' }}>Tasa Fondeo</span>
-              </div>
-              <div className="stat-value text-xl">{summary.tasa_fondeo}%</div>
-            </div>
+            {[
+              { label: 'Total Invertido', value: fmt(summary.total_invertido), icon: Briefcase, color: 'var(--navy-700)' },
+              { label: 'Total Disponible', value: fmt(summary.total_disponible), icon: Landmark, color: 'var(--info)' },
+              { label: 'Pagado a hoy', value: fmt(summary.total_pagado_a_hoy), icon: TrendingUp, color: 'var(--success)', hint: 'Calculado al día de hoy' },
+              { label: 'Queda por pagar', value: fmt(summary.total_restante_por_pagar), icon: Clock, color: 'var(--warning)' },
+              { label: 'Capital devuelto (a hoy)', value: fmt(summary.total_retornado_capital), icon: TrendingUp, color: 'var(--success)' },
+              { label: 'Interés pagado (a hoy)', value: fmt(summary.total_retornado_interes), icon: TrendingUp, color: 'var(--gold-700)' },
+              { label: 'Obligación total', value: fmt(summary.total_obligacion), icon: DollarSign, color: 'var(--gold-600)', hint: 'Capital + interés total del plazo' },
+              { label: 'Tasa Fondeo', value: `${summary.tasa_fondeo}%`, icon: Landmark, color: 'var(--charcoal)' },
+            ].map(k => (
+              <button
+                key={k.label}
+                onClick={() => setExplainCard(explainCard === k.label ? null : k.label)}
+                className="stat-card text-left transition-all"
+                style={{ cursor: 'pointer', outline: explainCard === k.label ? '2px solid var(--gold-600)' : 'none' }}
+                title="Clic para ver qué significa"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <k.icon className="w-4 h-4" style={{ color: k.color }} />
+                  <span className="text-xs" style={{ color: 'var(--slate)' }}>{k.label}</span>
+                  <HelpCircle className="w-3 h-3 ml-auto flex-shrink-0" style={{ color: 'var(--ash)', opacity: 0.6 }} />
+                </div>
+                <div className="stat-value text-xl" style={{ color: k.color === 'var(--navy-700)' || k.color === 'var(--charcoal)' ? undefined : k.color }}>{k.value}</div>
+                {k.hint && <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>{k.hint}</p>}
+              </button>
+            ))}
           </div>
+
+          {/* Explicación de la tarjeta seleccionada */}
+          {explainCard && KPI_EXPLANATIONS[explainCard] && (
+            <div className="rounded-lg p-4 mt-3 flex items-start gap-3 animate-fade-in"
+                 style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--gold-600)' }}>
+              <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--gold-700)' }} />
+              <div className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                <p className="font-semibold" style={{ color: 'var(--ink)' }}>{explainCard}</p>
+                <p className="mt-0.5">{KPI_EXPLANATIONS[explainCard]}</p>
+              </div>
+              <button onClick={() => setExplainCard(null)} className="ml-auto text-xs flex-shrink-0" style={{ color: 'var(--ash)' }}>✕</button>
+            </div>
+          )}
         </div>
       )}
 
