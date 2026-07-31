@@ -3010,7 +3010,7 @@ async def get_income_statement(
     acct_type_by_id = {a["id"]: a.get("account_type", "") for a in accounts}
     # property_id -> location (via property_code prefix; the yards table is unused)
     try:
-        props = sb.table("properties").select("id, property_code").execute().data or []
+        props = sb.table("properties").select("id, property_code").or_("source.is.null,source.neq.manual_capital").execute().data or []
     except Exception:
         props = []
     loc_by_prop = {p["id"]: _location_for_code(p.get("property_code")) for p in props}
@@ -3119,7 +3119,7 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
     # property_id → yard location (same derivation as the P&L: from the
     # property_code prefix) so the Balance Sheet can show per-yard columns.
     try:
-        _props = sb.table("properties").select("id, property_code").execute().data or []
+        _props = sb.table("properties").select("id, property_code").or_("source.is.null,source.neq.manual_capital").execute().data or []
     except Exception:
         _props = []
     loc_by_prop = {p["id"]: _location_for_code(p.get("property_code")) for p in _props}
@@ -3992,6 +3992,7 @@ async def sync_from_existing_data():
     # 1. Purchases + auto-create per-property inventory sub-accounts
     props = (sb.table("properties")
              .select("id, address, city, purchase_price, status, yard_id, created_at")
+             .or_("source.is.null,source.neq.manual_capital")
              .not_.is_("purchase_price", "null").execute()).data or []
     for prop in props:
         # Auto-create inventory sub-accounts for this property (idempotent)
@@ -4027,6 +4028,7 @@ async def sync_from_existing_data():
     # 2. Sales
     sales = (sb.table("sales")
              .select("id, property_id, client_id, sale_price, sale_type, status, payment_method, created_at, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, yard_id)")
+             .or_("source.is.null,source.neq.manual_capital")
              .in_("status", ["paid", "completed", "rto_approved", "rto_active"]).execute()).data or []
     for sale in sales:
         key = f"sale:{sale['id']}"
@@ -5213,7 +5215,7 @@ async def _do_classify(statement_id: str):
 
     # Pre-load properties for property_id detection
     try:
-        props_raw = sb.table("properties").select("id, property_code, address").execute()
+        props_raw = sb.table("properties").select("id, property_code, address").or_("source.is.null,source.neq.manual_capital").execute()
         properties_list = props_raw.data or []
     except Exception:
         properties_list = []

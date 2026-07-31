@@ -35,6 +35,7 @@ async def sync_homes_to_capital():
             .select("id, property_id, client_id, sale_price, status") \
             .eq("sale_type", "rto") \
             .in_("status", ["pending", "rto_pending"]) \
+            .or_("source.is.null,source.neq.manual_capital") \
             .execute()
         
         if not rto_sales.data:
@@ -220,6 +221,7 @@ async def check_portal_health():
             .select("id, property_id, client_id, status") \
             .eq("sale_type", "rto") \
             .in_("status", ["pending", "rto_pending"]) \
+            .or_("source.is.null,source.neq.manual_capital") \
             .execute()
         
         missing_apps = []

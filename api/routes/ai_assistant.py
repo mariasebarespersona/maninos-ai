@@ -484,7 +484,7 @@ def _exec_query_properties(args: dict) -> dict:
     query = sb.table("properties").select(
         "id, status, sale_price, purchase_price, city, state, address, "
         "year, square_feet, bedrooms, bathrooms, photos"
-    )
+    ).or_("source.is.null,source.neq.manual_capital")
     if args.get("status"):
         query = query.eq("status", args["status"])
     if args.get("city"):
@@ -535,7 +535,7 @@ def _exec_query_sales(args: dict) -> dict:
     select_fields = "id, status, sale_type, sale_price, payment_method, created_at, client_id, property_id"
     if args.get("include_details"):
         select_fields += ", clients(name, email), properties(address, city)"
-    query = sb.table("sales").select(select_fields)
+    query = sb.table("sales").select(select_fields).or_("source.is.null,source.neq.manual_capital")
 
     if args.get("sale_type"):
         query = query.eq("sale_type", args["sale_type"])
@@ -985,13 +985,16 @@ def _exec_query_commissions(args: dict) -> dict:
 
 def _exec_query_title_transfers(args: dict) -> dict:
     query = sb.table("title_transfers").select(
-        "id, property_id, status, transfer_type, from_entity, to_entity, properties(address, city)"
+        "id, property_id, status, transfer_type, from_name, to_name, properties(address, city, source)"
     )
     if args.get("status"):
         query = query.eq("status", args["status"])
 
     result = query.execute()
-    data = result.data or []
+    # Excluir contenedores de casas solo-Capital (alta manual) — no son
+    # traspasos de Homes y el chat de Homes no debe mencionarlos.
+    data = [t for t in (result.data or [])
+            if ((t.get("properties") or {}).get("source")) != "manual_capital"]
 
     status_counts = {}
     for t in data:
@@ -1005,8 +1008,8 @@ def _exec_query_title_transfers(args: dict) -> dict:
             {
                 "property_address": t.get("properties", {}).get("address") if t.get("properties") else None,
                 "status": t.get("status"),
-                "from_entity": t.get("from_entity"),
-                "to_entity": t.get("to_entity"),
+                "from_entity": t.get("from_name"),
+                "to_entity": t.get("to_name"),
             }
             for t in data[:20]
         ],

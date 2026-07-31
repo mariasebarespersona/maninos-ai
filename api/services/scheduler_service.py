@@ -190,6 +190,7 @@ def _job_portal_sync():
             .select("id, property_id, client_id") \
             .eq("sale_type", "rto") \
             .in_("status", ["pending", "rto_pending"]) \
+            .or_("source.is.null,source.neq.manual_capital") \
             .execute()
 
         for sale in (rto_sales.data or []):

@@ -1892,6 +1892,7 @@ async def commission_report(
         .gte("created_at", start_date)\
         .lt("created_at", end_date)\
         .in_("status", ["paid", "completed", "rto_active", "rto_approved"])\
+        .or_("source.is.null,source.neq.manual_capital")\
         .execute()
     
     if not sales.data:

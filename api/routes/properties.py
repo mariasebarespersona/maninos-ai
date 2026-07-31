@@ -1103,6 +1103,7 @@ def _get_market_value_data(city: str) -> dict:
         hist = sb.table("sales") \
             .select("sale_price, properties!inner(city)") \
             .eq("status", "completed") \
+            .or_("source.is.null,source.neq.manual_capital") \
             .execute()
         if hist.data:
             # Filter to matching city if possible

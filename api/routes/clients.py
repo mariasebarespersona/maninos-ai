@@ -39,7 +39,7 @@ async def list_clients(
     # If filtering by sale_type, first find client_ids that have sales of that type
     filtered_client_ids = None
     if sale_type:
-        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).execute()
+        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).or_("source.is.null,source.neq.manual_capital").execute()
         filtered_client_ids = list({s["client_id"] for s in (type_sales.data or [])})
         if not filtered_client_ids:
             return []
@@ -64,7 +64,7 @@ async def list_clients(
     client_ids = [c["id"] for c in clients_result.data]
     sales_query = sb.table("sales").select(
         "client_id, status, created_at, property_id, sale_type"
-    ).in_("client_id", client_ids)
+    ).in_("client_id", client_ids).or_("source.is.null,source.neq.manual_capital")
     if sale_type:
         sales_query = sales_query.eq("sale_type", sale_type)
     sales_result = sales_query.execute()
@@ -106,7 +106,7 @@ async def get_clients_summary(
     # If filtering by sale_type, get only client_ids with that sale type
     filtered_client_ids = None
     if sale_type:
-        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).execute()
+        type_sales = sb.table("sales").select("client_id").eq("sale_type", sale_type).or_("source.is.null,source.neq.manual_capital").execute()
         filtered_client_ids = {s["client_id"] for s in (type_sales.data or [])}
 
     # Count by status
@@ -368,7 +368,7 @@ async def get_client_history(client_id: str):
         raise HTTPException(status_code=404, detail="Client not found")
     
     # Get all sales with payment info
-    sales = sb.table("sales").select("*").eq("client_id", client_id).order("created_at", desc=True).execute()
+    sales = sb.table("sales").select("*").eq("client_id", client_id).or_("source.is.null,source.neq.manual_capital").order("created_at", desc=True).execute()
     
     # Get property info for sales
     property_info = {}
