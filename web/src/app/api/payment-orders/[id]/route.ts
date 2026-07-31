@@ -35,3 +35,17 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: String(error) }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const res = await fetch(`${API_URL}/api/payment-orders/${id}`, { method: 'DELETE' })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 })
+  }
+}

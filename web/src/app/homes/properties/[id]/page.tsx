@@ -1663,15 +1663,19 @@ ${price}
               </h3>
               <div className="space-y-2 text-sm">
                 {(() => {
-                  const purchase = Math.round(Number(property.purchase_price || 0));
-                  const reno = Math.round(Number(costBreakdown?.renovation_cost || 0));
-                  const move = Math.round(Number(costBreakdown?.move_cost || 0));
-                  const commission = Math.round(Number(costBreakdown?.commission ?? 0));
-                  const margin = Math.round(Number(costBreakdown?.margin ?? 9500));
-                  const totalInversion = purchase + reno + move;
-                  const precioMinimo = totalInversion + commission + margin;
-                  const salePrice = Math.round(Number(property.sale_price || 0));
-                  const ganancia = salePrice > 0 ? salePrice - precioMinimo + margin : 0;
+                  // Con centavos: los costos reales del ledger traen decimales y
+                  // redondearlos descuadraba la ficha contra la contabilidad.
+                  const r2 = (n: number) => Math.round(n * 100) / 100;
+                  const fmtC = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const purchase = r2(Number(property.purchase_price || 0));
+                  const reno = r2(Number(costBreakdown?.renovation_cost || 0));
+                  const move = r2(Number(costBreakdown?.move_cost || 0));
+                  const commission = r2(Number(costBreakdown?.commission ?? 0));
+                  const margin = r2(Number(costBreakdown?.margin ?? 9500));
+                  const totalInversion = r2(purchase + reno + move);
+                  const precioMinimo = r2(totalInversion + commission + margin);
+                  const salePrice = r2(Number(property.sale_price || 0));
+                  const ganancia = salePrice > 0 ? r2(salePrice - precioMinimo + margin) : 0;
 
                   // Editable field helper
                   const EditableField = ({ label, value, field, bold, color }: { label: string; value: number; field: string; bold?: boolean; color?: string }) => {
@@ -1680,7 +1684,7 @@ ${price}
 
                     const save = async () => {
                       setEditing(false);
-                      const num = Math.round(Number(val) || 0);
+                      const num = Math.round((Number(val) || 0) * 100) / 100;
                       if (num === value) return;
                       try {
                         await fetch(`/api/properties/${property.id}`, {
@@ -1700,6 +1704,7 @@ ${price}
                         {editing ? (
                           <input
                             type="number"
+                            step="0.01"
                             className="w-24 px-2 py-0.5 border border-blue-300 rounded text-right text-sm bg-blue-50"
                             value={val}
                             onChange={e => setVal(e.target.value)}
@@ -1713,7 +1718,7 @@ ${price}
                             onClick={() => { setVal(String(value)); setEditing(true); }}
                             title="Click para editar"
                           >
-                            ${value.toLocaleString()}
+                            ${fmtC(value)}
                             <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover:opacity-50" />
                           </span>
                         )}
@@ -1731,13 +1736,13 @@ ${price}
                       <div className="pt-2 border-t border-navy-100">
                         <div className="flex justify-between items-center text-xs text-navy-400">
                           <span>Total inversión</span>
-                          <span>${totalInversion.toLocaleString()}</span>
+                          <span>${fmtC(totalInversion)}</span>
                         </div>
                       </div>
                       <div className="pt-1">
                         <div className="flex justify-between items-center">
                           <span className="text-navy-500 font-medium">Precio mínimo venta</span>
-                          <span className="font-bold text-amber-600">${precioMinimo.toLocaleString()}</span>
+                          <span className="font-bold text-amber-600">${fmtC(precioMinimo)}</span>
                         </div>
                       </div>
                       <div className="pt-2 border-t border-navy-100">
@@ -1748,7 +1753,7 @@ ${price}
                           <div className="flex justify-between items-center">
                             <span className="text-navy-500">Ganancia real</span>
                             <span className={`font-bold ${ganancia >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              ${ganancia.toLocaleString()}
+                              ${fmtC(ganancia)}
                             </span>
                           </div>
                         </div>

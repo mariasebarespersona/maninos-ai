@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Hammer,
   ExternalLink,
+  Trash2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
@@ -371,6 +372,44 @@ export default function NotificacionesPage() {
     }
   }
 
+  // ── Eliminar requisición (cualquier estado, con reversa contable) ─────
+  const [deleteOrderTarget, setDeleteOrderTarget] = useState<PaymentOrder | null>(null)
+  const [deletingOrder, setDeletingOrder] = useState(false)
+
+  const handleDeleteOrder = async () => {
+    if (!deleteOrderTarget) return
+    setDeletingOrder(true)
+    try {
+      const res = await fetch(`/api/payment-orders/${deleteOrderTarget.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Error eliminando')
+      toast.success(data.message || 'Requisición eliminada')
+      setDeleteOrderTarget(null)
+      fetchOrders()
+    } catch (e: any) {
+      toast.error(e.message || 'Error eliminando la requisición')
+    } finally {
+      setDeletingOrder(false)
+    }
+  }
+
+  // ── Descartar cotización de renovación (sin efecto contable) ──────────
+  const handleRejectRenovation = async (propertyId: string) => {
+    if (!window.confirm('¿Descartar esta cotización de renovación? Volverá a borrador (sin efecto contable).')) return
+    setApprovingId(propertyId)
+    try {
+      const res = await fetch(`/api/renovation/${propertyId}/reject`, { method: 'PATCH' })
+      const data = await res.json()
+      if (!res.ok || data.ok === false) throw new Error(data.detail || 'Error descartando')
+      toast.success(data.message || 'Cotización descartada')
+      fetchPendingRenovations()
+    } catch (e: any) {
+      toast.error(e.message || 'Error descartando la cotización')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
   // ── Approve renovation (admin only) ──────────────────────────────────
   const handleApproveRenovation = async (propertyId: string) => {
     setApprovingId(propertyId)
@@ -561,6 +600,15 @@ export default function NotificacionesPage() {
                         <ShieldCheck className="w-4 h-4" />
                       )}
                       Aprobar
+                    </button>
+                    <button
+                      onClick={() => handleRejectRenovation(reno.property_id)}
+                      disabled={approvingId === reno.property_id}
+                      className="px-4 py-2 rounded-lg text-xs font-medium border transition-colors hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      style={{ borderColor: 'var(--error)', color: 'var(--error)' }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Descartar
                     </button>
                     <Link
                       href={`/homes/properties/${reno.property_id}/renovate`}
@@ -1075,6 +1123,17 @@ export default function NotificacionesPage() {
                       Completar Pago
                     </button>
                   )}
+                  {/* Admin: eliminar requisición en cualquier estado (con reversa) */}
+                  {canSeePending && ['pending', 'approved', 'completed'].includes(order.status) && (
+                    <button
+                      onClick={() => setDeleteOrderTarget(order)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:bg-red-50 flex items-center gap-2 justify-center"
+                      style={{ borderColor: 'var(--error)', color: 'var(--error)' }}
+                      title="Eliminar requisición"
+                    >
+                      <Trash2 className="w-4 h-4" /> Eliminar
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1082,6 +1141,48 @@ export default function NotificacionesPage() {
         </div>
       )
       })()}
+
+      {/* Modal: eliminar requisición (mensaje según estado) */}
+      {deleteOrderTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !deletingOrder && setDeleteOrderTarget(null)} />
+          <div className="relative bg-white rounded-xl p-6 w-full max-w-md space-y-4 shadow-xl">
+            <h3 className="font-semibold text-lg flex items-center gap-2" style={{ color: 'var(--error)' }}>
+              <Trash2 className="w-5 h-5" /> Eliminar requisición
+            </h3>
+            <div className="text-sm space-y-2" style={{ color: 'var(--charcoal)' }}>
+              <p>
+                <strong>{deleteOrderTarget.payee_name}</strong> — ${Number(deleteOrderTarget.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {deleteOrderTarget.property_address ? ` · ${deleteOrderTarget.property_address}` : ''}
+              </p>
+              {deleteOrderTarget.status === 'completed' ? (
+                <div className="rounded-lg p-3 text-xs" style={{ backgroundColor: '#fef2f2', color: '#991b1b' }}>
+                  Este pago YA se ejecutó. Al eliminarlo se <strong>revierte el asiento contable completo</strong>:
+                  el saldo del banco se restaura, el costo de la casa (ficha Financiero, Resumen, P&L) baja
+                  automáticamente, y su factura de Por Pagar desaparece. Si era el pago de una consignación,
+                  la deuda al dueño vuelve a quedar abierta.
+                </div>
+              ) : (
+                <div className="rounded-lg p-3 text-xs" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
+                  Aún no hay asientos contables (el asiento se crea al completar el pago). Se elimina la
+                  requisición y su factura automática de <strong>Por Pagar</strong> — no afecta nada más.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteOrderTarget(null)} disabled={deletingOrder}
+                className="px-4 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}>
+                Cancelar
+              </button>
+              <button onClick={handleDeleteOrder} disabled={deletingOrder}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: 'var(--error)' }}>
+                {deletingOrder ? 'Eliminando…' : 'Eliminar Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Complete Payment Modal */}
       {completing && (

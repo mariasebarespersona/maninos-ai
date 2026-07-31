@@ -615,6 +615,103 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     }
 
 
+@router.delete("/{order_id}")
+async def delete_payment_order(order_id: str, deleted_by: Optional[str] = None):
+    """Elimina una requisición de pago EN CUALQUIER ESTADO, revirtiendo todo lo
+    que generó — así nada queda colgado en contabilidad ni en otras secciones:
+
+      • pendiente/aprobada: aún no hay asiento → se borra la orden y su factura
+        automática [PO:] (desaparece de "Por Pagar" y de Facturación).
+      • realizada (pago ejecutado): además se ELIMINAN las dos piernas del
+        asiento contable (des-linkeando estados de cuenta y el par), con lo que
+        el saldo bancario derivado se restaura y el costo de la casa (ficha
+        Financiero / Resumen / P&L, que leen del ledger) baja solo.
+      • Si era la compra que marcó consignment_paid_at y no queda otra compra
+        completada de esa casa, se des-marca (la deuda al dueño vuelve a abierta).
+      • Notificaciones ligadas a la orden: eliminadas.
+    """
+    order_res = sb.table("payment_orders").select("*").eq("id", order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Orden de pago no encontrada")
+    order = order_res.data[0]
+    status_was = order.get("status")
+
+    # ── 1. Piernas del ledger (entity + accounting_transaction_id + pares) ──
+    leg_ids: set = set()
+    legs = sb.table("accounting_transactions").select("id, linked_transaction_id") \
+        .eq("entity_type", "payment_order").eq("entity_id", order_id).execute().data or []
+    for l in legs:
+        leg_ids.add(l["id"])
+        if l.get("linked_transaction_id"):
+            leg_ids.add(l["linked_transaction_id"])
+    if order.get("accounting_transaction_id"):
+        leg_ids.add(order["accounting_transaction_id"])
+        pair = sb.table("accounting_transactions").select("linked_transaction_id") \
+            .eq("id", order["accounting_transaction_id"]).execute().data or []
+        if pair and pair[0].get("linked_transaction_id"):
+            leg_ids.add(pair[0]["linked_transaction_id"])
+    legs_removed = 0
+    if leg_ids:
+        ids = list(leg_ids)
+        try:
+            sb.table("statement_movements").update({"transaction_id": None, "status": "pending"}) \
+                .in_("transaction_id", ids).execute()
+            sb.table("statement_movements").update({"matched_transaction_id": None}) \
+                .in_("matched_transaction_id", ids).execute()
+        except Exception as e:
+            logger.warning(f"[payment_orders] delete: statement unlink failed: {e}")
+        sb.table("payment_orders").update({"accounting_transaction_id": None}).eq("id", order_id).execute()
+        sb.table("accounting_transactions").update({"linked_transaction_id": None}).in_("id", ids).execute()
+        deleted = sb.table("accounting_transactions").delete().in_("id", ids).execute().data or []
+        legs_removed = len(deleted)
+
+    # ── 2. Factura automática [PO:] fuera (de Por Pagar y de Facturación) ──
+    invoice_removed = False
+    tag = f"[PO:{order_id}]"
+    bills = sb.table("accounting_invoices").select("id").ilike("notes", f"%{tag}%").execute().data or []
+    if bills:
+        sb.table("accounting_invoices").delete().in_("id", [b["id"] for b in bills]).execute()
+        invoice_removed = True
+
+    # ── 3. Consignación: des-marcar el pago al dueño si esta era LA compra ──
+    consignment_reverted = False
+    pid = order.get("property_id")
+    if pid and (order.get("concept") or "").lower() == "compra" and status_was == "completed":
+        try:
+            prop = (sb.table("properties").select("is_consignment, consignment_paid_at")
+                    .eq("id", pid).single().execute()).data or {}
+            if prop.get("is_consignment") and prop.get("consignment_paid_at"):
+                others = sb.table("payment_orders").select("id").eq("property_id", pid) \
+                    .eq("concept", "compra").eq("status", "completed").neq("id", order_id) \
+                    .execute().data or []
+                if not others:
+                    sb.table("properties").update({"consignment_paid_at": None}).eq("id", pid).execute()
+                    consignment_reverted = True
+        except Exception as e:
+            logger.warning(f"[payment_orders] delete: consignment revert check failed: {e}")
+
+    # ── 4. Notificaciones ligadas + la orden ────────────────────────────────
+    try:
+        sb.table("notifications").delete().eq("related_entity_type", "payment_order") \
+            .eq("related_entity_id", order_id).execute()
+    except Exception:
+        pass
+    sb.table("payment_orders").delete().eq("id", order_id).execute()
+
+    logger.info(f"[payment_orders] DELETED order {order_id} (was {status_was}) by {deleted_by}: "
+                f"legs={legs_removed}, invoice={invoice_removed}, consignment_reverted={consignment_reverted}")
+    msg = "Requisición eliminada"
+    if legs_removed:
+        msg += f" y contabilidad revertida ({legs_removed} asientos; saldos y costos de la casa actualizados)"
+    elif invoice_removed:
+        msg += " (su factura por pagar también se eliminó)"
+    if consignment_reverted:
+        msg += ". La deuda de consignación al dueño vuelve a estar abierta."
+    return {"ok": True, "message": msg, "status_was": status_was,
+            "legs_removed": legs_removed, "invoice_removed": invoice_removed,
+            "consignment_reverted": consignment_reverted}
+
+
 @router.patch("/{order_id}/cancel")
 async def cancel_payment_order(order_id: str, cancelled_by: Optional[str] = None):
     """Cancel a pending payment order."""

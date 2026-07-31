@@ -385,6 +385,36 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
     }
 
 
+@router.patch("/{property_id}/reject")
+async def reject_renovation_quote(property_id: str, rejected_by: Optional[str] = None):
+    """Descartar una cotización de renovación pendiente de aprobación.
+
+    Solo cambia el estado del quote a 'draft' (con nota de rechazo) para que
+    salga del banner de Notificaciones — NO toca contabilidad (el dinero de una
+    renovación solo se contabiliza al pagarla vía orden de pago)."""
+    try:
+        reno_result = sb.table("renovations").select("id, materials").eq(
+            "property_id", property_id
+        ).order("created_at", desc=True).limit(1).execute()
+        if not reno_result.data:
+            raise HTTPException(status_code=404, detail="No hay cotización de renovación para esta propiedad")
+        reno = reno_result.data[0]
+        materials = reno.get("materials") or {}
+        if materials.get("approval_status") != "pending_approval":
+            raise HTTPException(status_code=400, detail=f"La cotización no está pendiente (estado: {materials.get('approval_status', 'draft')})")
+        materials["approval_status"] = "draft"
+        materials["rejected_by"] = rejected_by or ""
+        materials["rejected_at"] = _now_iso()
+        sb.table("renovations").update({"materials": materials}).eq("id", reno["id"]).execute()
+        logger.info(f"[renovation] Quote for {property_id} rejected/discarded by {rejected_by}")
+        return {"ok": True, "message": "Cotización descartada (vuelve a borrador; sin efecto contable)"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[renovation] Error rejecting quote: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{property_id}/approval-status")
 async def get_approval_status(property_id: str):
     """Get the approval status of a renovation quote."""
