@@ -424,14 +424,20 @@ async def get_accounting_dashboard(
         logger.warning(f"[accounting] Could not fetch accounting_transactions: {e}")
 
     # ---- Pull from existing tables ----
+    # NB: todas las lecturas excluyen las cadenas 'manual_capital' (clientes RTO
+    # antiguos dados de alta desde Capital): son operaciones solo-Capital sin
+    # dinero de Homes. Filtro NULL-safe (un .neq a secas ocultaría los NULL).
+    _NOT_MANUAL = "source.is.null,source.neq.manual_capital"
     sales_q = sb.table("sales") \
         .select("id, sale_price, sale_type, status, payment_method, created_at, property_id, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, city, yard_id, purchase_price)") \
+        .or_(_NOT_MANUAL) \
         .gte("created_at", start_str) \
         .lte("created_at", end_str + "T23:59:59")
     sales = (sales_q.execute()).data or []
 
     props_q = sb.table("properties") \
         .select("id, property_code, address, city, purchase_price, sale_price, status, yard_id, created_at") \
+        .or_(_NOT_MANUAL) \
         .gte("created_at", start_str) \
         .lte("created_at", end_str + "T23:59:59")
     properties = (props_q.execute()).data or []
@@ -671,6 +677,7 @@ async def get_accounting_dashboard(
                      .select("id, property_code, address, status, purchase_price, "
                              "renovation_cost, move_cost, commission, sale_price")
                      .neq("status", "sold")
+                     .or_("source.is.null,source.neq.manual_capital")
                      .order("property_code").execute()).data or []
 
         # Per-house cost balances = ACTUAL money posted to the ledger (NOT the
@@ -714,6 +721,7 @@ async def get_accounting_dashboard(
             sold_rows = (sb.table("sales")
                          .select("property_id, sale_price, status, created_at")
                          .neq("status", "cancelled")
+                         .or_("source.is.null,source.neq.manual_capital")
                          .order("created_at", desc=True)
                          .execute()).data or []
             for s in sold_rows:
@@ -846,6 +854,7 @@ async def get_accounting_dashboard(
               .select("id, property_id, sale_type, status, sale_price, amount_paid, "
                       "amount_pending, financed_remaining, capital_payment_status, "
                       "created_at, clients(name), properties(address, city, property_code)")
+              .or_("source.is.null,source.neq.manual_capital")
               .execute()).data or []
         for s in sr:
             status = (s.get("status") or "").lower()
@@ -1033,7 +1042,9 @@ async def dashboard_drilldown(
               .select("id, sale_price, sale_type, status, created_at, property_id, "
                       "clients(name), properties(property_code, address)")
               .gte("created_at", start_str).lte("created_at", end_str + "T23:59:59")
-              .neq("status", "cancelled").execute()).data or []
+              .neq("status", "cancelled")
+              .or_("source.is.null,source.neq.manual_capital")
+              .execute()).data or []
         for x in sq:
             if float(x.get("sale_price") or 0) <= 0:
                 continue
