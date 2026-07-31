@@ -146,6 +146,11 @@ class PaymentOrderComplete(BaseModel):
     bank_account_id: Optional[str] = None  # which bank account paid from
     completed_by: Optional[str] = None
     notes: Optional[str] = None
+    # Pago PARCIAL (petición de Abby): monto a pagar ahora. Si es menor al total
+    # de la orden, esta se completa por lo pagado y el resto se auto-crea como
+    # nueva requisición YA APROBADA (el total se autorizó una vez — decisión de
+    # Abby 2026-07-31). None/igual al total = pago completo (comportamiento actual).
+    paid_amount: Optional[float] = None
 
 
 class PaymentOrderUpdate(BaseModel):
@@ -474,6 +479,21 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
 
     now = datetime.utcnow().isoformat()
 
+    # ── Pago parcial: validar el monto y calcular el saldo ──────────────────
+    full_amount = round(float(order["amount"]), 2)
+    pay = round(float(req.paid_amount), 2) if req.paid_amount is not None else full_amount
+    if pay <= 0:
+        raise HTTPException(status_code=400, detail="El monto a pagar debe ser mayor a $0")
+    if pay > full_amount + 0.005:
+        raise HTTPException(status_code=400,
+                            detail=f"El monto a pagar (${pay:,.2f}) no puede superar el total de la orden (${full_amount:,.2f})")
+    remainder = round(full_amount - pay, 2)
+    is_partial = remainder > 0.005
+    if is_partial:
+        # Esta orden pasa a representar SOLO el abono de hoy (1 orden = 1 pago =
+        # 1 asiento = 1 referencia); el saldo vivirá en una orden nueva.
+        order["amount"] = pay
+
     # Create double-entry accounting pair via the unified ledger writer.
     # Concept on the payment_order drives the event type:
     #   compra      → property_purchase_paid  (debit 11000 Inventory, credit bank)
@@ -546,6 +566,9 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
         "completed_by": req.completed_by,
         "completed_at": now,
     }
+    if is_partial:
+        # La orden completada queda por lo realmente pagado hoy.
+        update["amount"] = pay
     if req.bank_account_id:
         update["bank_account_id"] = req.bank_account_id
     if req.notes:
@@ -558,7 +581,49 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
         raise HTTPException(status_code=500, detail="Error updating payment order")
 
     # Mark the auto-generated "por pagar" bill as paid (drops off Por Pagar).
+    # En pago parcial la factura de ESTA orden queda por el abono pagado; el
+    # saldo tendrá su propia factura abierta (la de la orden nueva de abajo).
     _sync_payable_invoice({**order, **update}, "paid")
+
+    # ── Pago parcial: auto-crear la requisición del SALDO, ya aprobada ──────
+    remainder_order_id = None
+    if is_partial:
+        try:
+            rem_insert = {
+                "property_id": order.get("property_id"),
+                "property_address": order.get("property_address"),
+                "payee_id": order.get("payee_id"),
+                "payee_name": order.get("payee_name"),
+                "bank_name": order.get("bank_name"),
+                "routing_number": order.get("routing_number"),
+                "account_number": order.get("account_number"),
+                "routing_number_last4": order.get("routing_number_last4"),
+                "account_number_last4": order.get("account_number_last4"),
+                "account_type": order.get("account_type"),
+                "payee_address": order.get("payee_address"),
+                "bank_address": order.get("bank_address"),
+                "amount": remainder,
+                "method": order.get("method"),
+                "concept": order.get("concept"),
+                "direction": order.get("direction") or "outbound",
+                # Nace APROBADA: el total ya se autorizó una vez (decisión de Abby).
+                "status": "approved",
+                "approved_by": order.get("approved_by") or req.completed_by,
+                "approved_at": now,
+                "created_by": req.completed_by or "tesoreria",
+                "notes": f"[SALDO:{order_id}] Saldo pendiente tras abono de ${pay:,.2f} "
+                         f"(ref {req.reference}). Total original: ${full_amount:,.2f}.",
+            }
+            rem_insert = {k: v for k, v in rem_insert.items() if v is not None}
+            rem_res = sb.table("payment_orders").insert(rem_insert).execute()
+            if rem_res.data:
+                remainder_order_id = rem_res.data[0]["id"]
+                # Su factura por pagar abierta → "Por Pagar" muestra lo que se debe.
+                _sync_payable_invoice(rem_res.data[0], "open")
+                logger.info(f"[payment_orders] Partial pay ${pay:,.2f} of ${full_amount:,.2f}: "
+                            f"remainder order {remainder_order_id} (${remainder:,.2f}) created as approved")
+        except Exception as re_err:
+            logger.error(f"[payment_orders] Could not create remainder order for {order_id}: {re_err}")
 
     # Update property status + consignment paid flag.
     property_id = order.get("property_id")
@@ -574,10 +639,18 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
             if prop_row.get("status") == "pending_payment":
                 prop_update["status"] = "purchased"
             # Paying a 'compra' order for a consignment house settles the debt to
-            # the previous owner → stamp consignment_paid_at.
+            # the previous owner → stamp consignment_paid_at. Con pagos PARCIALES,
+            # solo se marca con el ÚLTIMO abono: ni cuando este pago deja saldo,
+            # ni si queda otra orden de compra viva (pendiente/aprobada) de la casa.
             if (order.get("concept") or "").lower() == "compra" \
-                    and prop_row.get("is_consignment") and not prop_row.get("consignment_paid_at"):
-                prop_update["consignment_paid_at"] = now
+                    and prop_row.get("is_consignment") and not prop_row.get("consignment_paid_at") \
+                    and not is_partial:
+                open_compras = sb.table("payment_orders").select("id") \
+                    .eq("property_id", property_id).eq("concept", "compra") \
+                    .in_("status", ["pending", "approved"]).neq("id", order_id) \
+                    .execute().data or []
+                if not open_compras:
+                    prop_update["consignment_paid_at"] = now
             if prop_update:
                 sb.table("properties").update(prop_update).eq("id", property_id).execute()
                 logger.info(f"[payment_orders] Property {property_id} updated: {prop_update}")
@@ -608,10 +681,17 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     except Exception:
         pass
 
+    msg = f"Pago completado. Ref: {req.reference}"
+    if is_partial:
+        msg = (f"Abono de ${pay:,.2f} registrado (ref {req.reference}). "
+               f"Saldo de ${remainder:,.2f} creado como requisición APROBADA — "
+               f"lista para el siguiente abono sin re-aprobación.")
     return {
         "ok": True,
         "data": result.data[0],
-        "message": f"Pago completado. Ref: {req.reference}",
+        "remainder_order_id": remainder_order_id,
+        "remainder": remainder if is_partial else 0,
+        "message": msg,
     }
 
 

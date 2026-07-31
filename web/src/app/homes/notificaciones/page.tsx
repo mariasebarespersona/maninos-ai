@@ -74,7 +74,7 @@ export default function NotificacionesPage() {
 
   // Completion modal state
   const [completing, setCompleting] = useState<PaymentOrder | null>(null)
-  const [completeForm, setCompleteForm] = useState({ reference: '', payment_date: '', bank_account_id: '' })
+  const [completeForm, setCompleteForm] = useState({ reference: '', payment_date: '', bank_account_id: '', paid_amount: '' })
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [submitting, setSubmitting] = useState(false)
 
@@ -437,23 +437,29 @@ export default function NotificacionesPage() {
   // ── Complete (treasury) ───────────────────────────────────────────────
   const openCompleteModal = (order: PaymentOrder) => {
     setCompleting(order)
-    setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '' })
+    setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '', paid_amount: '' })
     if (bankAccounts.length === 0) fetchBankAccounts()
   }
 
   const handleComplete = async () => {
     if (!completing || !completeForm.reference) return
+    // Pago parcial: validar el monto antes de enviar
+    const total = Number(completing.amount)
+    const payNum = completeForm.paid_amount ? parseFloat(completeForm.paid_amount) : total
+    if (isNaN(payNum) || payNum <= 0) { toast.error('El monto a pagar debe ser mayor a $0'); return }
+    if (payNum > total + 0.005) { toast.error(`El monto no puede superar el total ($${total.toLocaleString('en-US', { minimumFractionDigits: 2 })})`); return }
     setSubmitting(true)
     try {
       const res = await fetch(`/api/payment-orders/${completing.id}/complete`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(completeForm),
+        body: JSON.stringify({ ...completeForm, paid_amount: payNum }),
       })
       const data = await res.json()
       if (data.ok) {
-        toast.success('Pago completado')
+        toast.success(data.message || 'Pago completado')
         setCompleting(null)
+        setCompleteForm(f => ({ ...f, paid_amount: '' }))
         fetchOrders()
       } else {
         toast.error(data.detail || 'Error al completar')
@@ -1195,6 +1201,30 @@ export default function NotificacionesPage() {
               </div>
             </div>
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Monto a pagar ahora
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={completing.amount}
+                  value={completeForm.paid_amount}
+                  onChange={e => setCompleteForm(prev => ({ ...prev, paid_amount: e.target.value }))}
+                  placeholder={`Total: $${Number(completing.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500"
+                  style={{ borderColor: 'var(--stone)' }}
+                />
+                {completeForm.paid_amount && parseFloat(completeForm.paid_amount) > 0 &&
+                 parseFloat(completeForm.paid_amount) < Number(completing.amount) - 0.005 && (
+                  <p className="text-xs mt-1.5 rounded-lg p-2" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
+                    Pago parcial: el saldo de <strong>${(Number(completing.amount) - parseFloat(completeForm.paid_amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> quedará
+                    como requisición <strong>ya aprobada</strong> para el siguiente abono (sin re-aprobación),
+                    y seguirá contando en Por Pagar.
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
                   Numero de confirmacion *
