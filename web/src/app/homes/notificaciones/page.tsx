@@ -538,94 +538,6 @@ export default function NotificacionesPage() {
 
       {/* Actividad Reciente removed per user request — all actions go through the 4 tabs below */}
 
-      {/* ── ADMIN / Abigail: Renovation quotes pending approval ───────── */}
-      {canSeePending && pendingRenovations.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-            <h2 className="font-serif text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-              Cotizaciones de Renovación por Aprobar
-            </h2>
-            <span className="ml-auto bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-1 rounded-full">
-              {pendingRenovations.length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {pendingRenovations.map((reno: any) => (
-              <div key={reno.renovation_id} className="bg-white rounded-xl border-2 border-purple-200 p-5 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Hammer className="w-4 h-4 text-purple-500" />
-                      <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-                        Cotización de Renovación
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                        <Clock className="w-3 h-3" />
-                        Pendiente
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
-                      {reno.property_id ? (
-                        <Link href={`/homes/properties/${reno.property_id}`} className="text-sm truncate hover:underline" style={{ color: 'var(--navy-600)' }}>
-                          {reno.address || reno.property_id} →
-                        </Link>
-                      ) : (
-                        <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-                          {reno.address || 'Propiedad'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 mb-2">
-                      <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                        ${reno.total_cost?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--slate)' }}>
-                      {reno.responsable && <span>Responsable: <strong>{reno.responsable}</strong></span>}
-                      {reno.created_at && <span>Creada: {new Date(reno.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleApproveRenovation(reno.property_id)}
-                      disabled={approvingId === reno.property_id}
-                      className="px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-                      style={{ backgroundColor: 'var(--navy-800)' }}
-                    >
-                      {approvingId === reno.property_id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="w-4 h-4" />
-                      )}
-                      Aprobar
-                    </button>
-                    <button
-                      onClick={() => handleRejectRenovation(reno.property_id)}
-                      disabled={approvingId === reno.property_id}
-                      className="px-4 py-2 rounded-lg text-xs font-medium border transition-colors hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      style={{ borderColor: 'var(--error)', color: 'var(--error)' }}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Descartar
-                    </button>
-                    <Link
-                      href={`/homes/properties/${reno.property_id}/renovate`}
-                      className="px-4 py-2 rounded-lg text-xs font-medium text-center transition-colors border flex items-center justify-center gap-1.5"
-                      style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Ver detalle
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── ADMIN / Abigail: Unapproved transfers to approve ──────────── */}
       {canSeePending && unapprovedTransfers.length > 0 && (
         <div className="mb-8">
@@ -925,11 +837,14 @@ export default function NotificacionesPage() {
         const displayOrders = activeTab === 'approved'
           ? orders.filter((o: any) => o.direction !== 'inbound')
           : orders
+        // Cotizaciones de renovación: integradas en "Por Aprobar" como card
+        // propia (morada) — aprueban el PLAN, no un pago (sin contabilidad).
+        const displayRenos = activeTab === 'pending' && canSeePending ? pendingRenovations : []
         return loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--slate)' }} />
         </div>
-      ) : displayOrders.length === 0 ? (
+      ) : (displayOrders.length === 0 && displayRenos.length === 0) ? (
         <div className="text-center py-20 bg-white rounded-xl border" style={{ borderColor: 'var(--sand)' }}>
           <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
             {activeTab === 'pending' ? <Clock className="w-6 h-6 text-gray-400" /> :
@@ -944,6 +859,65 @@ export default function NotificacionesPage() {
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Cotizaciones de renovación (aprobar el plan — sin efecto contable) */}
+          {displayRenos.map((reno: any) => (
+            <div key={reno.renovation_id} className="bg-white rounded-xl border-2 border-purple-200 p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Hammer className="w-4 h-4 text-purple-500" />
+                    <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>Cotización de Renovación</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      Aprueba el plan — no mueve dinero
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-4 h-4" style={{ color: 'var(--navy-600)' }} />
+                    {reno.property_id ? (
+                      <Link href={`/homes/properties/${reno.property_id}`} className="text-sm truncate hover:underline" style={{ color: 'var(--navy-600)' }}>
+                        {reno.address || reno.property_id} →
+                      </Link>
+                    ) : (
+                      <span className="text-sm truncate" style={{ color: 'var(--charcoal)' }}>{reno.address || 'Propiedad'}</span>
+                    )}
+                  </div>
+                  <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
+                    ${reno.total_cost?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
+                  </span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2" style={{ color: 'var(--slate)' }}>
+                    {reno.responsable && <span>Responsable: <strong>{reno.responsable}</strong></span>}
+                    {reno.created_at && <span>Creada: {new Date(reno.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => handleApproveRenovation(reno.property_id)}
+                    disabled={approvingId === reno.property_id}
+                    className="px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                    style={{ backgroundColor: 'var(--navy-800)' }}
+                  >
+                    {approvingId === reno.property_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                    Aprobar
+                  </button>
+                  <button
+                    onClick={() => handleRejectRenovation(reno.property_id)}
+                    disabled={approvingId === reno.property_id}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border transition-colors hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    style={{ borderColor: 'var(--error)', color: 'var(--error)' }}
+                  >
+                    <Trash2 className="w-3 h-3" /> Descartar
+                  </button>
+                  <Link
+                    href={`/homes/properties/${reno.property_id}/renovate`}
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-center transition-colors border flex items-center justify-center gap-1.5"
+                    style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
+                  >
+                    <ExternalLink className="w-3 h-3" /> Ver detalle
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ))}
           {displayOrders.map(order => (
             <div key={order.id} className="bg-white rounded-xl border p-5 hover:shadow-sm transition-shadow" style={{ borderColor: 'var(--sand)' }}>
               <div className="flex items-start justify-between gap-4">
