@@ -218,10 +218,13 @@ async def get_capital_payments():
     When Capital approves an RTO, it effectively purchases the house from Homes.
     This endpoint returns all such transactions visible to Homes employees.
     """
-    # Get all RTO-approved sales
+    # Get all RTO-approved sales — excluding Capital-only legacy sales (alta
+    # manual): su pago Capital→Homes ocurrió fuera de la app y no es visible
+    # para Homes. NULL-safe (un .neq() a secas ocultaría las filas con NULL).
     rto_sales = sb.table("sales").select("*") \
         .eq("sale_type", "rto") \
         .in_("status", ["rto_approved", "rto_active", "completed"]) \
+        .or_("source.is.null,source.neq.manual_capital") \
         .order("created_at", desc=True) \
         .execute()
     
