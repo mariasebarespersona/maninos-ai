@@ -5,8 +5,9 @@ import Link from 'next/link'
 import {
   Users, Search, ShieldCheck, DollarSign, Home,
   Clock, CheckCircle2, XCircle, ArrowRight, Loader2,
-  AlertTriangle, Filter,
+  AlertTriangle, Filter, Trash2,
 } from 'lucide-react'
+import DeleteChainModal from '@/components/capital/DeleteChainModal'
 
 interface Application {
   id: string
@@ -53,6 +54,7 @@ export default function ApplicationsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
 
   useEffect(() => {
     loadApplications()
@@ -244,12 +246,31 @@ export default function ApplicationsPage() {
                   >
                     <DollarSign className="w-4 h-4" style={{ color: hasIncome ? 'var(--success)' : 'var(--ash)' }} />
                   </div>
+                  {app.sales?.id && (
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteSaleId(app.sales.id) }}
+                      className="w-8 h-8 rounded-full flex items-center justify-center hover:opacity-80"
+                      title="Eliminar operación RTO completa"
+                      aria-label="Eliminar operación RTO completa"
+                    >
+                      <Trash2 className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                    </button>
+                  )}
                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--slate)' }} />
                 </div>
               </Link>
             )
           })}
         </div>
+      )}
+
+      {/* Modal de borrado en cascada */}
+      {deleteSaleId && (
+        <DeleteChainModal
+          saleId={deleteSaleId}
+          onClose={() => setDeleteSaleId(null)}
+          onDeleted={() => { setDeleteSaleId(null); loadApplications() }}
+        />
       )}
     </div>
   )

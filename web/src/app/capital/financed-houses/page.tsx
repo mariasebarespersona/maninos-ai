@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Home, User, MapPin, DollarSign, Clock, Filter, Users, AlertTriangle } from 'lucide-react'
+import { Home, User, MapPin, DollarSign, Clock, Filter, Users, AlertTriangle, Trash2 } from 'lucide-react'
+import DeleteChainModal from '@/components/capital/DeleteChainModal'
 
 interface InvestorLink {
   investment_id: string
@@ -71,6 +72,7 @@ export default function FinancedHousesPage() {
   const [buckets, setBuckets] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
+  const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
 
   useEffect(() => { loadHouses() }, [filter])
 
@@ -183,10 +185,20 @@ export default function FinancedHousesPage() {
                         </p>
                       </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap"
-                          style={{ backgroundColor: s.bg, color: s.color }}>
-                      {s.label}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap"
+                            style={{ backgroundColor: s.bg, color: s.color }}>
+                        {s.label}
+                      </span>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteSaleId(h.sale_id) }}
+                        className="p-1.5 rounded hover:opacity-80"
+                        title="Eliminar operación RTO completa"
+                        aria-label="Eliminar operación RTO completa"
+                      >
+                        <Trash2 className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Client */}
@@ -243,6 +255,15 @@ export default function FinancedHousesPage() {
             )
           })}
         </div>
+      )}
+
+      {/* Modal de borrado en cascada */}
+      {deleteSaleId && (
+        <DeleteChainModal
+          saleId={deleteSaleId}
+          onClose={() => setDeleteSaleId(null)}
+          onDeleted={() => { setDeleteSaleId(null); loadHouses() }}
+        />
       )}
     </div>
   )
