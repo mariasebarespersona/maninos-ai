@@ -295,6 +295,22 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
         "materials": materials,
     }).eq("id", reno["id"]).execute()
 
+    # Al aprobar el PLAN, el presupuesto suma al costo de la casa aunque no se
+    # haya pagado (petición de Abby): se escribe en el override
+    # properties.renovation_cost, que gana sobre el ledger en la ficha
+    # Financiero y en Resumen de Casas. Sin doble conteo (esas vistas usan
+    # override O ledger, nunca la suma) y SIN tocar contabilidad — el dinero
+    # solo postea cuando se paga vía requisición. El campo sigue siendo
+    # editable a mano en la ficha si el costo final difiere.
+    try:
+        approved_total = float(reno.get("total_cost") or 0)
+        if approved_total > 0:
+            sb.table("properties").update({"renovation_cost": approved_total}) \
+                .eq("id", property_id).execute()
+            logger.info(f"[renovation] renovation_cost override set to {approved_total} on approval ({property_id})")
+    except Exception as e:
+        logger.warning(f"[renovation] Could not set renovation_cost override: {e}")
+
     # Send notification to treasury (Abigail)
     _send_approved_notification(property_id, reno.get("total_cost", 0))
 
