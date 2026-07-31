@@ -326,10 +326,18 @@ async def delete_chain(sale_id: str, deleted_by: str = "capital"):
         property_action = "sin casa"
         if prop:
             if is_manual:
-                sb.table("title_transfers").delete().eq("property_id", prop["id"]).execute()
-                sb.table("notifications").delete().eq("property_id", prop["id"]).execute()
-                sb.table("properties").delete().eq("id", prop["id"]).execute()
-                property_action = "eliminada"
+                # Solo eliminar la casa si NINGUNA otra venta la usa (una casa
+                # manual puede tener varias operaciones — p.ej. un alta
+                # duplicada). Si queda otra, se conserva la casa Y sus
+                # expedientes/notificaciones (pertenecen a la operación viva).
+                other_manual = sb.table("sales").select("id").eq("property_id", prop["id"]).execute().data or []
+                if other_manual:
+                    property_action = "conservada (otra operación RTO la usa)"
+                else:
+                    sb.table("title_transfers").delete().eq("property_id", prop["id"]).execute()
+                    sb.table("notifications").delete().eq("property_id", prop["id"]).execute()
+                    sb.table("properties").delete().eq("id", prop["id"]).execute()
+                    property_action = "eliminada"
             else:
                 other = sb.table("sales").select("id").eq("property_id", prop["id"]) \
                     .neq("status", "cancelled").execute().data or []

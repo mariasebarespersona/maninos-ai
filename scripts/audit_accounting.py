@@ -77,7 +77,10 @@ if orphan:
 
 # ---- 3: invoices vs ledger ---------------------------------------------
 invs = fetch_all("accounting_invoices",
-                 "id,invoice_number,direction,total_amount,amount_paid,balance_due,status,property_id,counterparty_name")
+                 "id,invoice_number,direction,total_amount,amount_paid,balance_due,status,property_id,counterparty_name,notes")
+# Las facturas [PO:] son documento-only por diseño (la orden de pago postea el
+# ledger; la factura solo documenta) — no deben tener accrual propio.
+invs = [i for i in invs if not str(i.get("notes") or "").startswith("[PO:")]
 acc_by_inv = defaultdict(float)   # entity_id -> posted P&L accrual (signed abs)
 for t in txns:
     if t.get("entity_type") == "invoice" and t.get("entity_id"):
