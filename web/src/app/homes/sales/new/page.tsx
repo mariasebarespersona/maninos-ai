@@ -278,11 +278,20 @@ function NewSaleContent() {
 
   const handleCreateSale = async () => {
     if (!selectedProperty) return
-    
+
+    // Sin precio de venta NO hay venta (con precio null el mínimo del 30% daba
+    // $0 y cualquier enganche "pasaba" — además el backend lo rechazaría).
+    const propPrice = Number(selectedProperty.sale_price || 0)
+    if (propPrice <= 0) {
+      setError('Esta casa no tiene precio de venta. Ponle el precio en su ficha antes de vender.')
+      toast.error('La casa no tiene precio de venta')
+      return
+    }
+
     // Validate RTO down payment minimum 30%
     if (paymentType === 'rto' && selectedProperty) {
       const dp = parseFloat(rtoDownPayment || '0')
-      const minDp = selectedProperty.sale_price * 0.30
+      const minDp = propPrice * 0.30
       if (dp < minDp) {
         setError(`El enganche mínimo es 30% del precio de venta ($${Math.ceil(minDp).toLocaleString()})`)
         toast.error(`Enganche mínimo: $${Math.ceil(minDp).toLocaleString()} (30%)`)
@@ -935,8 +944,12 @@ function NewSaleContent() {
                 </div>
               </div>
 
-              {/* RTO fields */}
-              {paymentType === 'rto' && selectedProperty && (
+              {/* RTO fields — TODO uso de sale_price es null-safe: una casa sin
+                  precio tumbaba la página entera (bug del video de Abby). */}
+              {paymentType === 'rto' && selectedProperty && (() => {
+                const propPrice = Number(selectedProperty.sale_price || 0)
+                const minDown = Math.ceil(propPrice * 0.3)
+                return (
                 <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
                   <p className="text-sm font-semibold text-purple-800">Términos Financiados</p>
                   <div className="grid grid-cols-3 gap-3">
@@ -949,16 +962,16 @@ function NewSaleContent() {
                         value={rtoDownPayment}
                         onChange={e => setRtoDownPayment(e.target.value)}
                         className={`w-full border rounded-lg px-3 py-2 text-sm ${
-                          rtoDownPayment && parseFloat(rtoDownPayment) < selectedProperty.sale_price * 0.3
+                          rtoDownPayment && propPrice > 0 && parseFloat(rtoDownPayment) < minDown
                             ? 'border-red-400 bg-red-50'
                             : 'border-purple-300'
                         }`}
-                        placeholder={`Mín. $${Math.ceil(selectedProperty.sale_price * 0.3).toLocaleString()}`}
-                        min={Math.ceil(selectedProperty.sale_price * 0.3)}
+                        placeholder={propPrice > 0 ? `Mín. $${minDown.toLocaleString()}` : 'Pon primero el precio de venta'}
+                        min={minDown}
                       />
-                      {rtoDownPayment && parseFloat(rtoDownPayment) < selectedProperty.sale_price * 0.3 && (
+                      {rtoDownPayment && propPrice > 0 && parseFloat(rtoDownPayment) < minDown && (
                         <p className="text-xs text-red-600 mt-1">
-                          Mínimo: ${Math.ceil(selectedProperty.sale_price * 0.3).toLocaleString()} (30% de ${selectedProperty.sale_price.toLocaleString()})
+                          Mínimo: ${minDown.toLocaleString()} (30% de ${propPrice.toLocaleString()})
                         </p>
                       )}
                     </div>
@@ -985,32 +998,55 @@ function NewSaleContent() {
                       </select>
                     </div>
                   </div>
-                  {rtoDownPayment && (
+                  {rtoDownPayment && propPrice > 0 && (
                     <div className="text-xs text-purple-700 bg-purple-100 rounded-lg p-3 space-y-1">
                       <div className="flex justify-between">
                         <span>Enganche (Homes recibe)</span>
-                        <span className="font-bold">${parseFloat(rtoDownPayment).toLocaleString()}</span>
+                        <span className="font-bold">${(parseFloat(rtoDownPayment) || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Restante (Capital paga a Homes)</span>
-                        <span className="font-bold">${(selectedProperty.sale_price - parseFloat(rtoDownPayment)).toLocaleString()}</span>
+                        <span className="font-bold">${(propPrice - (parseFloat(rtoDownPayment) || 0)).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between border-t border-purple-300 pt-1 mt-1">
                         <span>Total que recibe Homes</span>
-                        <span className="font-bold">${selectedProperty.sale_price.toLocaleString()}</span>
+                        <span className="font-bold">${propPrice.toLocaleString()}</span>
                       </div>
                     </div>
                   )}
                 </div>
-              )}
+                )
+              })()}
 
               {/* Price */}
-              <div className="p-4 bg-gold-50 rounded-lg border border-gold-200">
-                <p className="text-sm text-gold-600">Precio de Venta</p>
-                <p className="text-2xl font-bold text-gold-700">
-                  ${selectedProperty?.sale_price?.toLocaleString()}
-                </p>
-              </div>
+              {Number(selectedProperty?.sale_price || 0) > 0 ? (
+                <div className="p-4 bg-gold-50 rounded-lg border border-gold-200">
+                  <p className="text-sm text-gold-600">Precio de Venta</p>
+                  <p className="text-2xl font-bold text-gold-700">
+                    ${Number(selectedProperty?.sale_price || 0).toLocaleString()}
+                  </p>
+                </div>
+              ) : (
+                /* CARTEL ROJO: sin precio no se puede vender (petición explícita
+                   — que a Abby no se le olvide ponerlo primero) */
+                <div data-testid="no-price-banner" className="p-5 rounded-xl border-4 border-red-500 bg-red-50 text-center space-y-2">
+                  <p className="text-2xl font-extrabold text-red-600">⚠️ ESTA CASA NO TIENE PRECIO DE VENTA</p>
+                  <p className="text-sm font-medium text-red-700">
+                    No se puede confirmar la venta sin precio. Ve a la ficha de la propiedad,
+                    ponle el precio de venta y vuelve aquí.
+                  </p>
+                  {selectedProperty?.id && (
+                    <a
+                      href={`/homes/properties/${selectedProperty.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-1 px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700"
+                    >
+                      Abrir la ficha para poner el precio →
+                    </a>
+                  )}
+                </div>
+              )}
 
               {/* Employees & Commission */}
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -1060,8 +1096,9 @@ function NewSaleContent() {
             </button>
             <button
               onClick={handleCreateSale}
-              disabled={loading}
-              className="btn-gold"
+              disabled={loading || Number(selectedProperty?.sale_price || 0) <= 0}
+              title={Number(selectedProperty?.sale_price || 0) <= 0 ? 'La casa no tiene precio de venta' : undefined}
+              className="btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
