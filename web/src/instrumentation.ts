@@ -8,6 +8,7 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
+  ;(globalThis as any).__lockRegisterRan = true
 
   const key = process.env.INTERNAL_API_KEY
   const targets = [process.env.API_URL, process.env.NEXT_PUBLIC_API_URL]
@@ -30,4 +31,5 @@ export async function register() {
     }
     return origFetch(input as any, init)
   }) as typeof fetch
+  ;(globalThis.fetch as any).__lockWrapped = true
 }
