@@ -6,6 +6,9 @@ const nextConfig = {
     return `build-${Date.now()}`
   },
   experimental: {
+    // Habilita src/instrumentation.ts (añade X-Internal-Key a los fetch
+    // server-side hacia el backend — candado del API)
+    instrumentationHook: true,
     // Allow useSearchParams() in client components without Suspense boundary
     missingSuspenseWithCSRBailout: false,
     serverActions: {

@@ -63,13 +63,65 @@ async def lifespan(app: FastAPI):
     logger.info("👋 Maninos AI Backend stopped")
 
 
+# Candado del API: si INTERNAL_API_KEY está definida (producción), toda
+# request debe traerla en X-Internal-Key. El único cliente legítimo es el
+# proxy de Next en Vercel (que la añade server-side vía instrumentation.ts);
+# el navegador nunca la ve. Sin la variable (dev local) el API queda abierto.
+_INTERNAL_KEY = os.getenv("INTERNAL_API_KEY", "")
+
 app = FastAPI(
     title="Maninos AI",
     description="Backend API for Maninos Homes & Capital",
     version="2.0.0",
     lifespan=lifespan,
     redirect_slashes=False,
+    # En producción (con candado) la documentación interactiva se apaga:
+    # era un mapa completo del API abierto a internet.
+    docs_url=None if _INTERNAL_KEY else "/docs",
+    redoc_url=None if _INTERNAL_KEY else "/redoc",
+    openapi_url=None if _INTERNAL_KEY else "/openapi.json",
 )
+
+
+@app.middleware("http")
+async def require_internal_key(request, call_next):
+    if _INTERNAL_KEY:
+        p = request.url.path
+        exempt = (
+            p == "/health"
+            or request.method == "OPTIONS"
+            # La clasificación AI de estados de cuenta tarda >60s y el
+            # navegador la llama directo a Railway (Vercel corta a 60s).
+            # No expone datos (devuelve conteos) y requiere un UUID de
+            # statement imposible de adivinar.
+            or (p.startswith("/api/accounting/bank-statements/") and p.endswith("/classify"))
+        )
+        if not exempt and request.headers.get("x-internal-key") != _INTERNAL_KEY:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "No autorizado"}, status_code=401)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def sign_private_storage_urls(request, call_next):
+    """Los buckets kyc-documents y transaction-documents son privados: toda
+    URL pública guardada históricamente se convierte en URL firmada (2h) al
+    salir en cualquier respuesta JSON. Ver api/utils/storage_sign.py."""
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if not ctype.startswith("application/json"):
+        return response
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+    if b"/storage/v1/object/public/" in body:
+        from api.utils.storage_sign import sign_private_urls
+        body = sign_private_urls(body)
+    from fastapi import Response as _Resp
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+    return _Resp(content=body, status_code=response.status_code,
+                 headers=headers, media_type="application/json")
 
 # CORS — allow Vercel production, preview deploys, and local dev
 _app_url = os.getenv("APP_URL", "").rstrip("/")
