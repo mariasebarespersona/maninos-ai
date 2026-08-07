@@ -437,15 +437,8 @@ async def initiate_rto(request: RTOInitRequest):
                 detail="Esta propiedad no tiene precio de venta definido"
             )
         
-        # Validate minimum 30% down payment if provided
-        if request.desired_down_payment is not None:
-            rto_sale_price = float(property_data["sale_price"])
-            min_dp = rto_sale_price * 0.30
-            if request.desired_down_payment < min_dp:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"El enganche mínimo es 30% del precio de venta (${min_dp:,.0f})"
-                )
+        # Enganche libre: el equipo quitó el mínimo del 30% en todo el flujo
+        # (el enganche propuesto se evalúa al revisar la aplicación).
         
         # 2. Check if client already exists by email
         # Use order desc + limit 1 to match the same client the login lookup returns

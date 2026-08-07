@@ -701,7 +701,7 @@ export default function ApplicationDetailPage() {
     else if (dtiRatio > 35) warnings.push('DTI entre 35-50%: Riesgo moderado')
     if (disposableRatio > 60) warnings.push('Cuota > 60% del ingreso disponible: Alto riesgo')
     if (totalIncome < 2000) warnings.push('Ingreso mensual bajo (<$2,000)')
-    if (dp < salePrice * 0.30) warnings.push('Enganche < 30% del precio de venta (mínimo requerido)')
+    if (dp < salePrice * 0.30) warnings.push('Enganche < 30% del precio de venta (recomendado)')
     if ((client?.time_at_job_years ?? 0) < 1 && (client?.time_at_job_months ?? 0) < 6)
       warnings.push('Menos de 6 meses en empleo actual')
     if (!client?.employer_name) warnings.push('Sin información de empleador')

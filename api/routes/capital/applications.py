@@ -183,13 +183,8 @@ async def review_application(application_id: str, review: ApplicationReview):
             term_months = review.term_months or 36
             down_payment = review.down_payment or 0
 
-            # Validate minimum 30% down payment
-            if sale_price > 0 and down_payment < sale_price * 0.30:
-                min_dp = round(sale_price * 0.30, 2)
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"El enganche mínimo es 30% del precio de venta (${min_dp:,.2f})"
-                )
+            # Enganche libre: el equipo quitó el mínimo del 30% (queda solo
+            # como factor de riesgo informativo en el análisis).
 
             # Affordability gate: the approved monthly cannot exceed the
             # client's payment capacity (40% of disposable income) unless the

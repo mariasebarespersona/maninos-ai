@@ -1537,7 +1537,59 @@ async def cancel_sale(sale_id: str):
     sb.table("clients").update({
         "status": ClientStatus.LEAD.value,
     }).eq("id", sale.data["client_id"]).execute()
-    
+
+    # ── Limpieza de artefactos de la venta ─────────────────────────────
+    # Al crear la venta se generan comisiones (fila + factura [COMM:] con su
+    # devengo Comisión <CODE>→A/P) y, si es RTO, la orden de enganche. Si la
+    # venta se cancela hay que revertirlos también — si no, la comisión queda
+    # "activa" inflando por-pagar y el costo de la casa (bug H42 de Abby).
+    # Solo se borra lo que NO ha movido dinero: comisiones pending, facturas
+    # con $0 pagado y órdenes de enganche aún pending. Lo ya pagado/aprobado
+    # se conserva para que Tesorería lo revierta a mano con conocimiento.
+    try:
+        comm_rows = sb.table("commission_payments").select("id, status, amount, payee_name") \
+            .eq("sale_id", sale_id).execute().data or []
+        pending_comm = [c["id"] for c in comm_rows if c.get("status") == "pending"]
+        if pending_comm:
+            sb.table("commission_payments").delete().in_("id", pending_comm).execute()
+            logger.info(f"[sales] Cancelled sale {sale_id}: removed {len(pending_comm)} pending commission(s)")
+        paid_comm = [c for c in comm_rows if c.get("status") != "pending"]
+        if paid_comm:
+            logger.warning(f"[sales] Cancelled sale {sale_id}: {len(paid_comm)} commission(s) already paid — kept, revert manually")
+    except Exception as e:
+        logger.warning(f"[sales] Could not clean commissions for cancelled sale {sale_id}: {e}")
+
+    try:
+        from api.routes.accounting import delete_invoice as _delete_invoice
+        invs = sb.table("accounting_invoices").select("id, invoice_number, total_amount, amount_paid") \
+            .eq("sale_id", sale_id).execute().data or []
+        for inv_row in invs:
+            if float(inv_row.get("amount_paid") or 0) == 0:
+                await _delete_invoice(inv_row["id"])
+                logger.info(f"[sales] Cancelled sale {sale_id}: deleted invoice {inv_row.get('invoice_number')} + ledger accrual")
+            else:
+                logger.warning(f"[sales] Cancelled sale {sale_id}: invoice {inv_row.get('invoice_number')} has payments — kept, revert manually")
+    except Exception as e:
+        logger.warning(f"[sales] Could not clean invoices for cancelled sale {sale_id}: {e}")
+
+    try:
+        # Orden de enganche RTO aún sin aprobar (no ha posteado nada al ledger).
+        # No hay sale_id en payment_orders: se identifica por casa + concepto.
+        stale_orders = sb.table("payment_orders").select("id") \
+            .eq("property_id", sale.data["property_id"]) \
+            .eq("concept", "enganche").eq("status", "pending").execute().data or []
+        for o in stale_orders:
+            sb.table("notifications").delete() \
+                .eq("related_entity_type", "payment_order").eq("related_entity_id", o["id"]).execute()
+            sb.table("payment_orders").delete().eq("id", o["id"]).execute()
+        if stale_orders:
+            sb.table("notifications").delete() \
+                .eq("related_entity_type", "sale").eq("related_entity_id", sale_id) \
+                .eq("type", "down_payment_received").execute()
+            logger.info(f"[sales] Cancelled sale {sale_id}: removed {len(stale_orders)} pending enganche order(s)")
+    except Exception as e:
+        logger.warning(f"[sales] Could not clean enganche orders for cancelled sale {sale_id}: {e}")
+
     # Get property and client info for response
     prop = sb.table("properties").select("address").eq("id", sale.data["property_id"]).single().execute()
     client = sb.table("clients").select("name").eq("id", sale.data["client_id"]).single().execute()

@@ -288,16 +288,7 @@ function NewSaleContent() {
       return
     }
 
-    // Validate RTO down payment minimum 30%
-    if (paymentType === 'rto' && selectedProperty) {
-      const dp = parseFloat(rtoDownPayment || '0')
-      const minDp = propPrice * 0.30
-      if (dp < minDp) {
-        setError(`El enganche mínimo es 30% del precio de venta ($${Math.ceil(minDp).toLocaleString()})`)
-        toast.error(`Enganche mínimo: $${Math.ceil(minDp).toLocaleString()} (30%)`)
-        return
-      }
-    }
+    // El enganche RTO es libre: el equipo pidió quitar el mínimo del 30%.
 
     setLoading(true)
     setError('')
@@ -948,32 +939,22 @@ function NewSaleContent() {
                   precio tumbaba la página entera (bug del video de Abby). */}
               {paymentType === 'rto' && selectedProperty && (() => {
                 const propPrice = Number(selectedProperty.sale_price || 0)
-                const minDown = Math.ceil(propPrice * 0.3)
                 return (
                 <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
                   <p className="text-sm font-semibold text-purple-800">Términos Financiados</p>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs text-purple-600 mb-1">
-                        Enganche ($) <span className="text-purple-400">— mín. 30%</span>
+                        Enganche ($)
                       </label>
                       <input
                         type="number"
                         value={rtoDownPayment}
                         onChange={e => setRtoDownPayment(e.target.value)}
-                        className={`w-full border rounded-lg px-3 py-2 text-sm ${
-                          rtoDownPayment && propPrice > 0 && parseFloat(rtoDownPayment) < minDown
-                            ? 'border-red-400 bg-red-50'
-                            : 'border-purple-300'
-                        }`}
-                        placeholder={propPrice > 0 ? `Mín. $${minDown.toLocaleString()}` : 'Pon primero el precio de venta'}
-                        min={minDown}
+                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm"
+                        placeholder={propPrice > 0 ? 'Ej. 5,000' : 'Pon primero el precio de venta'}
+                        min={0}
                       />
-                      {rtoDownPayment && propPrice > 0 && parseFloat(rtoDownPayment) < minDown && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Mínimo: ${minDown.toLocaleString()} (30% de ${propPrice.toLocaleString()})
-                        </p>
-                      )}
                     </div>
                     <div>
                       <label className="block text-xs text-purple-600 mb-1">Mensualidad ($)</label>
