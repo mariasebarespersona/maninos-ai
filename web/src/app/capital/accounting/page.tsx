@@ -2024,7 +2024,16 @@ interface SavedStatement {
 
 function StatementsTab() {
   const toast = useToast()
-  const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl' | 'cashflow' | 'customer' | 'vendor'>('balance')
+  const [activeStatement, setActiveStatement] = useState<'balance' | 'pnl' | 'cashflow' | 'customer' | 'vendor' | 'matrix'>('balance')
+  // Customizable multi-column P&L (matrix): date range + mode
+  const now0 = new Date()
+  const [mxFrom, setMxFrom] = useState(`${now0.getFullYear()}-01-01`)
+  const [mxTo, setMxTo] = useState(now0.toISOString().slice(0, 10))
+  const [mxMode, setMxMode] = useState<'compare' | 'month' | 'property'>('compare')
+  const [mxCompare, setMxCompare] = useState<'prev_period' | 'prev_year'>('prev_period')
+  const [mxData, setMxData] = useState<any | null>(null)
+  const [mxLoading, setMxLoading] = useState(false)
+  const [mxDrill, setMxDrill] = useState<{ id: string; name: string } | null>(null)
   const [hideZeros, setHideZeros] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [cashFlow, setCashFlow] = useState<any | null>(null)
@@ -2051,6 +2060,29 @@ function StatementsTab() {
       .finally(() => { if (!cancelled) setDrillLoading(false) })
     return () => { cancelled = true }
   }, [drill?.id])
+
+  // Load the P&L matrix whenever its controls change (and the tab is active).
+  const loadMatrix = useCallback(async () => {
+    setMxLoading(true)
+    try {
+      const qs = new URLSearchParams({ start_date: mxFrom, end_date: mxTo, group_by: mxMode, compare: mxCompare })
+      const res = await fetch(`/api/capital/accounting/reports/pnl-matrix?${qs.toString()}`)
+      const d = await res.json()
+      setMxData(d.ok ? d : null)
+    } catch { setMxData(null) } finally { setMxLoading(false) }
+  }, [mxFrom, mxTo, mxMode, mxCompare])
+  useEffect(() => { if (activeStatement === 'matrix') loadMatrix() }, [activeStatement, loadMatrix])
+
+  // Matrix drill-down: click an account → its transactions in the range
+  const [mxDrillTxns, setMxDrillTxns] = useState<any[]>([])
+  useEffect(() => {
+    if (!mxDrill?.id) { setMxDrillTxns([]); return }
+    let cancelled = false
+    fetch(`/api/capital/accounting/transactions?account_id=${mxDrill.id}&start_date=${mxFrom}&end_date=${mxTo}&per_page=200`)
+      .then(r => r.json()).then(d => { if (!cancelled) setMxDrillTxns(d.ok ? (d.transactions || []) : []) })
+      .catch(() => { if (!cancelled) setMxDrillTxns([]) })
+    return () => { cancelled = true }
+  }, [mxDrill?.id, mxFrom, mxTo])
 
   // Save / Saved reports state
   const [saving, setSaving] = useState(false)
@@ -2260,6 +2292,7 @@ function StatementsTab() {
         {[
             { key: 'balance', label: 'Balance Sheet' },
             { key: 'pnl', label: 'Profit and Loss' },
+            { key: 'matrix', label: 'Personalizado' },
             { key: 'cashflow', label: 'Cash Flow' },
             { key: 'customer', label: 'Saldos Clientes' },
             { key: 'vendor', label: 'Saldos Proveedores' },
@@ -2557,6 +2590,111 @@ function StatementsTab() {
                 })}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* ── P&L PERSONALIZADO (matriz multi-columna) ── */}
+      {activeStatement === 'matrix' && !isViewingSaved && (
+        <div className="space-y-4">
+          {/* Controls */}
+          <div className="card-luxury p-4 flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--ash)' }}>Desde</label>
+              <input type="date" value={mxFrom} onChange={e => setMxFrom(e.target.value)} className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--ash)' }}>Hasta</label>
+              <input type="date" value={mxTo} onChange={e => setMxTo(e.target.value)} className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--ash)' }}>Columnas</label>
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+                {([['compare', 'Comparativo'], ['month', 'Por Mes'], ['property', 'Por Casa']] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setMxMode(k)} className="px-3 py-2 text-sm font-medium" style={mxMode === k ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>{l}</button>
+                ))}
+              </div>
+            </div>
+            {mxMode === 'compare' && (
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: 'var(--ash)' }}>Comparar con</label>
+                <select value={mxCompare} onChange={e => setMxCompare(e.target.value as any)} className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }}>
+                  <option value="prev_period">Periodo anterior</option>
+                  <option value="prev_year">Año anterior</option>
+                </select>
+              </div>
+            )}
+            {mxLoading && <Loader2 className="w-5 h-5 animate-spin mb-2" style={{ color: 'var(--gold-600)' }} />}
+          </div>
+
+          {/* Matrix table */}
+          <div className="card-luxury p-6 overflow-x-auto">
+            {!mxData || !mxData.columns?.length ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--slate)' }}>{mxLoading ? 'Cargando…' : 'Sin datos para el rango seleccionado.'}</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs border-b" style={{ color: 'var(--ash)', borderColor: 'var(--stone)' }}>
+                    <th className="pb-2 pr-3 text-left">Cuenta</th>
+                    {mxData.columns.map((c: any) => <th key={c.key} className="pb-2 px-2 text-right whitespace-nowrap">{c.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(['income', 'expenses', 'other_income', 'other_expenses'] as const).map(sec => {
+                    const rows = mxData.sections[sec] || []
+                    if (!rows.length) return null
+                    const secLabel = { income: 'Ingresos', expenses: 'Gastos', other_income: 'Otros Ingresos', other_expenses: 'Otros Gastos' }[sec]
+                    return (
+                      <React.Fragment key={sec}>
+                        <tr><td colSpan={mxData.columns.length + 1} className="pt-3 pb-1 font-serif text-sm" style={{ color: 'var(--ink)' }}>{secLabel}</td></tr>
+                        {rows.map((r: any) => (
+                          <tr key={r.account_id} className="hover:bg-sand/40 cursor-pointer border-b" style={{ borderColor: 'var(--sand)' }} onClick={() => setMxDrill({ id: r.account_id, name: `${r.code} ${r.name}` })}>
+                            <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{r.code} — {r.name}</td>
+                            {mxData.columns.map((c: any) => <td key={c.key} className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{r.columns[c.key] ? fmtFull(r.columns[c.key]) : '—'}</td>)}
+                          </tr>
+                        ))}
+                        <tr className="font-medium" style={{ color: 'var(--ink)' }}>
+                          <td className="py-1.5 pr-3">Total {secLabel}</td>
+                          {mxData.columns.map((c: any) => <td key={c.key} className="py-1.5 px-2 text-right tabular-nums">{fmtFull(mxData.totals[sec][c.key] || 0)}</td>)}
+                        </tr>
+                      </React.Fragment>
+                    )
+                  })}
+                  <tr className="border-t-2 font-serif" style={{ borderColor: 'var(--gold-600)' }}>
+                    <td className="py-2 pr-3" style={{ color: 'var(--ink)' }}>Utilidad Neta</td>
+                    {mxData.columns.map((c: any) => {
+                      const v = mxData.totals.net_income[c.key] || 0
+                      return <td key={c.key} className="py-2 px-2 text-right tabular-nums font-semibold" style={{ color: v >= 0 ? '#059669' : '#dc2626' }}>{fmtFull(v)}</td>
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Drill-down drawer */}
+          {mxDrill && (
+            <div className="card-luxury p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-serif text-sm" style={{ color: 'var(--ink)' }}>{mxDrill.name} · {mxDrillTxns.length} transacción(es)</h3>
+                <button onClick={() => setMxDrill(null)}><X className="w-4 h-4" style={{ color: 'var(--ash)' }} /></button>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-left" style={{ color: 'var(--ash)' }}><th className="pb-1 pr-2">Fecha</th><th className="pb-1 pr-2">Descripción</th><th className="pb-1 text-right">Monto</th></tr></thead>
+                  <tbody>
+                    {mxDrillTxns.map((t: any) => (
+                      <tr key={t.id} className="border-t" style={{ borderColor: 'var(--sand)' }}>
+                        <td className="py-1 pr-2 whitespace-nowrap" style={{ color: 'var(--slate)' }}>{t.transaction_date}</td>
+                        <td className="py-1 pr-2" style={{ color: 'var(--charcoal)' }}>{t.description}</td>
+                        <td className="py-1 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{fmtFull(Number(t.amount) || 0)}</td>
+                      </tr>
+                    ))}
+                    {!mxDrillTxns.length && <tr><td colSpan={3} className="py-3 text-center" style={{ color: 'var(--slate)' }}>Sin transacciones en el rango.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       )}

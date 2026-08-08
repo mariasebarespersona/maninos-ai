@@ -2246,6 +2246,141 @@ async def get_profit_loss_tree(
         }
 
 
+@router.get("/reports/pnl-matrix")
+async def get_pnl_matrix(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    group_by: str = "month",     # month | property | compare
+    compare: str = "prev_period",  # prev_period | prev_year (only when group_by=compare)
+):
+    """Customizable P&L: same accounts as the P&L tree, but each account's amount
+    is split into COLUMNS — by month, by property/house, or comparative (current
+    vs previous period/year). Powers the QuickBooks-style multi-column view."""
+    from datetime import timedelta
+    now = date.today()
+    sd = start_date or date(now.year, 1, 1).isoformat()
+    ed = end_date or now.isoformat()
+
+    # --- P&L leaf accounts (income/expense/cogs), non-header --------------------
+    accts = sb.table("capital_accounts").select("id,code,name,account_type,category,parent_account_id,is_header") \
+        .eq("is_active", True).in_("account_type", ["income", "expense", "cogs"]).order("code").execute().data or []
+    leaf = [a for a in accts if not a.get("is_header")]
+    acct_by_id = {a["id"]: a for a in leaf}
+
+    # --- Column model ----------------------------------------------------------
+    def months_between(a: str, b: str):
+        ya, ma = int(a[:4]), int(a[5:7])
+        yb, mb = int(b[:4]), int(b[5:7])
+        out = []
+        while (ya, ma) <= (yb, mb):
+            out.append(f"{ya:04d}-{ma:02d}")
+            ma += 1
+            if ma > 12:
+                ma = 1; ya += 1
+        return out
+
+    query_start = sd  # widened below for compare
+    columns: list[dict] = []
+    MONTH_ES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+    if group_by == "month":
+        for m in months_between(sd, ed):
+            columns.append({"key": m, "label": f"{MONTH_ES[int(m[5:7])]} {m[:4]}"})
+        def col_of(t):
+            d = (t.get("transaction_date") or "")[:7]
+            return d if any(c["key"] == d for c in columns) else None
+    elif group_by == "property":
+        # columns filled after we see which properties appear
+        def col_of(t):
+            return t.get("property_id") or "__general__"
+    else:  # compare
+        d0 = date.fromisoformat(sd); d1 = date.fromisoformat(ed)
+        if compare == "prev_year":
+            prev_start = d0.replace(year=d0.year - 1).isoformat()
+            prev_end = d1.replace(year=d1.year - 1).isoformat()
+        else:  # prev_period — same duration immediately before
+            span = (d1 - d0)
+            prev_end = (d0 - timedelta(days=1)).isoformat()
+            prev_start = (d0 - timedelta(days=1) - span).isoformat()
+        query_start = prev_start
+        columns = [{"key": "previous", "label": f"Anterior ({prev_start} → {prev_end})"},
+                   {"key": "current", "label": f"Actual ({sd} → {ed})"}]
+        def col_of(t):
+            td = t.get("transaction_date") or ""
+            if sd <= td <= ed:
+                return "current"
+            if prev_start <= td <= prev_end:
+                return "previous"
+            return None
+
+    # --- Fetch txns & bucket ---------------------------------------------------
+    rows = []
+    startpage = 0
+    while True:
+        page = sb.table("capital_transactions").select("account_id,amount,is_income,transaction_date,property_id") \
+            .gte("transaction_date", query_start).lte("transaction_date", ed) \
+            .neq("status", "voided").range(startpage, startpage + 999).execute().data or []
+        rows += page
+        if len(page) < 1000:
+            break
+        startpage += 1000
+
+    # per-account per-column sums (same raw-amount convention as the P&L tree)
+    cell: dict[str, dict[str, float]] = {}
+    prop_ids = set()
+    for t in rows:
+        aid = t.get("account_id")
+        if aid not in acct_by_id:
+            continue
+        ck = col_of(t)
+        if not ck:
+            continue
+        if group_by == "property":
+            prop_ids.add(ck)
+        cell.setdefault(aid, {}).setdefault(ck, 0.0)
+        cell[aid][ck] += float(t.get("amount") or 0)
+
+    if group_by == "property":
+        labels = {"__general__": "General"}
+        real_ids = [p for p in prop_ids if p != "__general__"]
+        if real_ids:
+            props = sb.table("properties").select("id,property_code,address").in_("id", real_ids).execute().data or []
+            for p in props:
+                labels[p["id"]] = (f"{p.get('property_code')} — " if p.get("property_code") else "") + (p.get("address") or p["id"][:8])
+        ordered = ([pid for pid in real_ids] + (["__general__"] if "__general__" in prop_ids else []))
+        columns = [{"key": pid, "label": labels.get(pid, pid[:8])} for pid in ordered]
+
+    col_keys = [c["key"] for c in columns]
+
+    def section_of(a):
+        t = a["account_type"]; other = a.get("category") == "other"
+        if t == "income":
+            return "other_income" if other else "income"
+        return "other_expenses" if other else "expenses"
+
+    sections: dict[str, list] = {"income": [], "expenses": [], "other_income": [], "other_expenses": []}
+    totals = {s: {k: 0.0 for k in col_keys} for s in sections}
+    for a in leaf:
+        cols = {k: round(cell.get(a["id"], {}).get(k, 0.0), 2) for k in col_keys}
+        if not any(cols.values()):
+            continue
+        sec = section_of(a)
+        sections[sec].append({"code": a["code"], "name": a["name"], "account_type": a["account_type"],
+                              "account_id": a["id"], "columns": cols})
+        for k in col_keys:
+            totals[sec][k] += cols[k]
+    net_income = {k: round(totals["income"][k] - totals["expenses"][k]
+                           + totals["other_income"][k] - totals["other_expenses"][k], 2) for k in col_keys}
+    for s in totals:
+        totals[s] = {k: round(v, 2) for k, v in totals[s].items()}
+
+    return {
+        "ok": True, "group_by": group_by, "period": {"start": sd, "end": ed},
+        "columns": columns, "sections": sections,
+        "totals": {**totals, "net_income": net_income},
+    }
+
+
 # ============================================================================
 # SAVED FINANCIAL STATEMENTS — Snapshots of Balance Sheet & P&L
 # ============================================================================
