@@ -30,6 +30,7 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from api.services.ledger import (
@@ -40,6 +41,8 @@ from api.services.ledger import (
     get_bank_balance as _get_bank_balance,
     post_to_ledger as _post_to_ledger,
 )
+
+logger = logging.getLogger(__name__)
 
 # Chart codes (capital_accounts.code — numeric QuickBooks codes).
 # SOURCE OF TRUTH: Maninos_Capital_Model_Account_List_updated.xlsx (migration 107).

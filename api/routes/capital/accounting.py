@@ -2026,7 +2026,7 @@ async def get_balance_sheet_tree():
         try:
             txns = sb.table("capital_transactions") \
                 .select("account_id, amount, is_income") \
-                .neq("status", "voided") \
+                .not_.in_("status", ["voided", "pending_confirmation", "draft"]) \
                 .execute().data or []
             for t in txns:
                 aid = t.get("account_id")
@@ -2152,7 +2152,7 @@ async def get_profit_loss_tree(
                 .select("account_id, amount, is_income") \
                 .gte("transaction_date", sd) \
                 .lte("transaction_date", ed) \
-                .neq("status", "voided") \
+                .not_.in_("status", ["voided", "pending_confirmation", "draft"]) \
                 .execute().data or []
             for t in txns:
                 aid = t.get("account_id")
@@ -2319,7 +2319,7 @@ async def get_pnl_matrix(
     while True:
         page = sb.table("capital_transactions").select("account_id,amount,is_income,transaction_date,property_id") \
             .gte("transaction_date", query_start).lte("transaction_date", ed) \
-            .neq("status", "voided").range(startpage, startpage + 999).execute().data or []
+            .not_.in_("status", ["voided", "pending_confirmation", "draft"]).range(startpage, startpage + 999).execute().data or []
         rows += page
         if len(page) < 1000:
             break
@@ -3538,9 +3538,11 @@ async def post_capital_statement(statement_id: str):
 
         try:
             abs_amount = abs(float(mv["amount"]))
+            # NOTE: bank_account_id lives ONLY on the bank leg. Putting it on the
+            # counter (P&L/asset) leg too double-counts the derived bank balance
+            # (get_bank_balance sums every row with this bank_account_id).
             common_fields = {
                 "transaction_date": mv["movement_date"],
-                "bank_account_id": statement.get("bank_account_id"),
                 "payment_method": mv.get("payment_method"),
                 "payment_reference": mv.get("reference"),
                 "counterparty_name": mv.get("counterparty"),
@@ -3592,6 +3594,7 @@ async def post_capital_statement(statement_id: str):
                     "amount": abs_amount,
                     "is_income": bank_is_income,
                     "account_id": bank_accounting_account_id,
+                    "bank_account_id": statement.get("bank_account_id"),
                     "linked_transaction_id": pnl_txn_id,
                     "notes": f"Contrapartida bancaria: {stmt_label}",
                     "status": "confirmed",
