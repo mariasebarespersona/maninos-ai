@@ -222,6 +222,7 @@ export default function CapitalAccountingPage() {
   const [txnTypeFilter, setTxnTypeFilter] = useState('')
   const [txnFlowFilter, setTxnFlowFilter] = useState<'' | 'income' | 'expense'>('')
   const [showNewTxnModal, setShowNewTxnModal] = useState(false)
+  const [showJEModal, setShowJEModal] = useState(false)
   const [showNewBankModal, setShowNewBankModal] = useState(false)
   const [syncing, setSyncing] = useState(false)
 
@@ -336,6 +337,12 @@ export default function CapitalAccountingPage() {
             <ArrowRightLeft className="w-4 h-4" />
             Mapear Cuentas
           </button>
+          <button onClick={() => setShowJEModal(true)}
+            title="Asiento contable manual (débitos = créditos)"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
+            style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
+            <BookOpen className="w-4 h-4" /> Asiento
+          </button>
           <button onClick={() => setShowNewTxnModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg"
             style={{ backgroundColor: 'var(--gold-600)' }}>
@@ -403,6 +410,7 @@ export default function CapitalAccountingPage() {
 
       {/* Modals */}
       {showNewTxnModal && <NewTransactionModal bankAccounts={dashboard?.bank_accounts || []} onClose={() => setShowNewTxnModal(false)} onCreated={() => { setShowNewTxnModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
+      {showJEModal && <NewJournalEntryModal onClose={() => setShowJEModal(false)} onCreated={() => { setShowJEModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
       {showNewBankModal && <NewBankAccountModal onClose={() => setShowNewBankModal(false)} onCreated={() => { setShowNewBankModal(false); fetchDashboard() }} />}
     </div>
   )
@@ -4841,18 +4849,24 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
     account_id: '',
     description: '',
     bank_account_id: '',
+    property_id: '',
     payment_method: '',
     counterparty_name: '',
     notes: '',
   })
   const [saving, setSaving] = useState(false)
   const [accounts, setAccounts] = useState<{ id: string; code: string; name: string; account_type: string; is_header: boolean }[]>([])
+  const [properties, setProperties] = useState<{ id: string; property_code?: string; address?: string }[]>([])
 
   // Fetch from accounts/tree — the SAME source used by P&L and Balance Sheet
   useEffect(() => {
     fetch('/api/capital/accounting/accounts/tree')
       .then(r => r.json())
       .then(d => setAccounts(d.flat || []))
+      .catch(() => {})
+    fetch('/api/properties?limit=200')
+      .then(r => r.json())
+      .then(d => setProperties(Array.isArray(d) ? d : (d.properties || d.data || [])))
       .catch(() => {})
   }, [])
 
@@ -4922,6 +4936,7 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
           amount: parseFloat(form.amount),
           bank_account_id: form.bank_account_id || undefined,
           account_id: form.account_id || undefined,
+          property_id: form.property_id || undefined,
         }),
       })
       if (res.ok) {
@@ -5054,14 +5069,24 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
               className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="Descripción del movimiento" />
           </div>
 
-          {/* Row 6: Bank Account */}
-          <div>
-            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Bancaria</label>
-            <select value={form.bank_account_id} onChange={e => setForm({ ...form, bank_account_id: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
-              <option value="">Sin asignar</option>
-              {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name} ({b.bank_name || b.account_type})</option>)}
-            </select>
+          {/* Row 6: Bank Account + Property */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Cuenta Bancaria</label>
+              <select value={form.bank_account_id} onChange={e => setForm({ ...form, bank_account_id: e.target.value })}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+                <option value="">Sin asignar</option>
+                {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name} ({b.bank_name || b.account_type})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Propiedad</label>
+              <select value={form.property_id} onChange={e => setForm({ ...form, property_id: e.target.value })}
+                className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+                <option value="">General (sin propiedad)</option>
+                {properties.map(p => <option key={p.id} value={p.id}>{p.property_code ? `${p.property_code} — ` : ''}{p.address || p.id.slice(0, 8)}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* Row 7: Payment + Counterparty */}
@@ -5104,6 +5129,153 @@ function NewTransactionModal({ bankAccounts, onClose, onCreated }: { bankAccount
   )
 }
 
+
+// ────────────────────────────────────────────────────────────────────────────
+//  JOURNAL ENTRY MODAL — balanced multi-line entry (QuickBooks-style)
+// ────────────────────────────────────────────────────────────────────────────
+type JEAccount = { id: string; code: string; name: string; account_type: string; is_header: boolean }
+type JELine = { account_id: string; debit: string; credit: string }
+
+function NewJournalEntryModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const toast = useToast()
+  const [entity, setEntity] = useState<'capital' | 'homes'>('capital')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [memo, setMemo] = useState('')
+  const [propertyId, setPropertyId] = useState('')
+  const [lines, setLines] = useState<JELine[]>([
+    { account_id: '', debit: '', credit: '' },
+    { account_id: '', debit: '', credit: '' },
+  ])
+  const [capAccounts, setCapAccounts] = useState<JEAccount[]>([])
+  const [homesAccounts, setHomesAccounts] = useState<JEAccount[]>([])
+  const [properties, setProperties] = useState<{ id: string; property_code?: string; address?: string }[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/capital/accounting/accounts/tree').then(r => r.json()).then(d => setCapAccounts(d.flat || [])).catch(() => {})
+    fetch('/api/properties?limit=200').then(r => r.json()).then(d => setProperties(Array.isArray(d) ? d : (d.properties || d.data || []))).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (entity === 'homes' && homesAccounts.length === 0) {
+      fetch('/api/accounting/accounts/tree').then(r => r.json()).then(d => setHomesAccounts(d.flat || [])).catch(() => {})
+    }
+  }, [entity, homesAccounts.length])
+
+  const accounts = (entity === 'capital' ? capAccounts : homesAccounts).filter(a => !a.is_header)
+  const num = (s: string) => { const n = parseFloat(s); return isNaN(n) ? 0 : n }
+  const totalDebit = lines.reduce((s, l) => s + num(l.debit), 0)
+  const totalCredit = lines.reduce((s, l) => s + num(l.credit), 0)
+  const diff = Math.round((totalDebit - totalCredit) * 100) / 100
+  const balanced = Math.abs(diff) < 0.005 && totalDebit > 0
+
+  const setLine = (i: number, patch: Partial<JELine>) => setLines(ls => ls.map((l, idx) => idx === i ? { ...l, ...patch } : l))
+  const addLine = () => setLines(ls => [...ls, { account_id: '', debit: '', credit: '' }])
+  const removeLine = (i: number) => setLines(ls => ls.length > 2 ? ls.filter((_, idx) => idx !== i) : ls)
+
+  const grouped = (() => {
+    const g: Record<string, JEAccount[]> = { income: [], expense: [], cogs: [], asset: [], liability: [], equity: [] }
+    accounts.forEach(a => { (g[a.account_type] || (g[a.account_type] = [])).push(a) })
+    return g
+  })()
+  const GROUP_LABEL: Record<string, string> = { income: '📈 Ingresos', expense: '📉 Gastos', cogs: '📦 Costo de Ventas', asset: '🏦 Activos', liability: '📋 Pasivos', equity: '💼 Patrimonio' }
+
+  const handleSubmit = async () => {
+    if (!balanced) { toast.warning('El asiento no cuadra: débitos deben igualar créditos.'); return }
+    if (lines.some(l => l.account_id === '' && (num(l.debit) > 0 || num(l.credit) > 0))) { toast.warning('Cada línea con monto necesita una cuenta.'); return }
+    const payloadLines = lines.filter(l => l.account_id && (num(l.debit) > 0 || num(l.credit) > 0))
+      .map(l => ({ account_id: l.account_id, debit: num(l.debit), credit: num(l.credit), property_id: propertyId || undefined }))
+    if (payloadLines.length < 2) { toast.warning('Un asiento necesita al menos 2 líneas con cuenta y monto.'); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/capital/accounting/journal-entries', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, memo, entity, lines: payloadLines }),
+      })
+      if (res.ok) { toast.success(`Asiento registrado (${payloadLines.length} líneas)`); onCreated() }
+      else { const e = await res.json().catch(() => ({})); toast.error(e.detail || 'Error al registrar el asiento') }
+    } catch { toast.error('Error de conexión') } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-serif text-lg flex items-center gap-2" style={{ color: 'var(--ink)' }}><BookOpen className="w-5 h-5" /> Nuevo Asiento Contable</h2>
+          <button onClick={onClose}><X className="w-5 h-5" style={{ color: 'var(--ash)' }} /></button>
+        </div>
+
+        <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: 'var(--ivory)', color: 'var(--slate)' }}>
+          💡 Un asiento mueve dinero entre cuentas sin tocar el banco necesariamente. La suma de <strong>Débitos</strong> debe igualar la de <strong>Créditos</strong>.
+        </div>
+
+        {/* Header row: company, date, property, memo */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Empresa</label>
+            <div className="flex rounded-lg border overflow-hidden mt-1" style={{ borderColor: 'var(--stone)' }}>
+              <button onClick={() => setEntity('capital')} className="flex-1 py-2 text-sm font-medium" style={entity === 'capital' ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>Capital</button>
+              <button onClick={() => setEntity('homes')} className="flex-1 py-2 text-sm font-medium" style={entity === 'homes' ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>Homes</button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Fecha</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} />
+          </div>
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Propiedad (o general)</label>
+            <select value={propertyId} onChange={e => setPropertyId(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">General (sin propiedad)</option>
+              {properties.map(p => <option key={p.id} value={p.id}>{p.property_code ? `${p.property_code} — ` : ''}{p.address || p.id.slice(0, 8)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Memo / Concepto</label>
+            <input type="text" value={memo} onChange={e => setMemo(e.target.value)} placeholder="Descripción del asiento" className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} />
+          </div>
+        </div>
+
+        {/* Lines grid */}
+        <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+          <div className="grid grid-cols-[1fr_120px_120px_32px] gap-2 px-3 py-2 text-xs font-medium" style={{ backgroundColor: 'var(--ivory)', color: 'var(--slate)' }}>
+            <span>Cuenta</span><span className="text-right">Débito</span><span className="text-right">Crédito</span><span />
+          </div>
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_120px_120px_32px] gap-2 px-3 py-2 items-center border-t" style={{ borderColor: 'var(--sand)' }}>
+              <select value={l.account_id} onChange={e => setLine(i, { account_id: e.target.value })} className="px-2 py-1.5 text-sm rounded border" style={{ borderColor: 'var(--stone)' }}>
+                <option value="">Cuenta…</option>
+                {Object.entries(grouped).filter(([, arr]) => arr.length > 0).map(([k, arr]) => (
+                  <optgroup key={k} label={GROUP_LABEL[k] || k}>
+                    {arr.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <input type="number" step="0.01" value={l.debit} onChange={e => setLine(i, { debit: e.target.value, credit: e.target.value ? '' : l.credit })} placeholder="0.00" className="px-2 py-1.5 text-sm rounded border text-right" style={{ borderColor: 'var(--stone)' }} />
+              <input type="number" step="0.01" value={l.credit} onChange={e => setLine(i, { credit: e.target.value, debit: e.target.value ? '' : l.debit })} placeholder="0.00" className="px-2 py-1.5 text-sm rounded border text-right" style={{ borderColor: 'var(--stone)' }} />
+              <button onClick={() => removeLine(i)} disabled={lines.length <= 2} className="text-red-400 disabled:opacity-30"><X className="w-4 h-4" /></button>
+            </div>
+          ))}
+          <div className="grid grid-cols-[1fr_120px_120px_32px] gap-2 px-3 py-2 items-center border-t font-medium" style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--ivory)' }}>
+            <button onClick={addLine} className="text-left text-sm flex items-center gap-1" style={{ color: 'var(--gold-600)' }}><Plus className="w-3.5 h-3.5" /> Agregar línea</button>
+            <span className="text-right text-sm" style={{ color: 'var(--ink)' }}>{fmtFull(totalDebit)}</span>
+            <span className="text-right text-sm" style={{ color: 'var(--ink)' }}>{fmtFull(totalCredit)}</span>
+            <span />
+          </div>
+        </div>
+
+        <div className="mt-2 text-sm text-center" style={{ color: balanced ? '#059669' : '#dc2626' }}>
+          {balanced ? '✓ Balanceado' : `Diferencia: ${fmtFull(diff)} — débitos y créditos deben ser iguales`}
+        </div>
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving || !balanced} className="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: 'var(--gold-600)' }}>
+            {saving ? 'Guardando...' : 'Guardar Asiento'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function NewBankAccountModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const toast = useToast()
