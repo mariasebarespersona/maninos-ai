@@ -167,29 +167,33 @@ def _get_period_dates(period: str, year: int, month: int):
 # Format: transaction_type → account_code (from capital_accounts)
 # ============================================================================
 
+# SOURCE OF TRUTH: Maninos_Capital_Model_Account_List_updated.xlsx (migration 107).
 # ── INCOME transaction types → account codes ──
 INCOME_ACCOUNT_MAP: dict[str, str] = {
-    "rto_payment":      "41000",   # RTO Rental Income (placeholder — needs account)
-    "down_payment":     "42000",   # Down Payment Income (placeholder — needs account)
-    "late_fee":         "43000",   # Late Fee Income (placeholder — needs account)
-    "other_income":     "70000",   # OTHER INCOME (exists)
+    "rto_payment":      "41000",   # Rent Income
+    "down_payment":     "42000",   # Operating Income:Sales (RTO enganche, cash-basis)
+    "late_fee":         "72200",   # OTHER INCOME:Late Payment Fee (mora)
+    "other_income":     "70000",   # OTHER INCOME
 }
 
 # ── EXPENSE transaction types → account codes ──
 EXPENSE_ACCOUNT_MAP: dict[str, str] = {
-    "acquisition":       "14300",  # RTO Properties (postable; 14100 is a header)
+    "acquisition":       "13010",  # Properties:Mobile Homes (RTO property asset)
     "investor_interest": "71400",  # Interest paid — interest portion of a return
-    "commission":        "60100",  # Commissions & fees (exists)
-    "operating_expense": "60500",  # Office expenses (exists)
-    "insurance":         "60500",  # Office expenses (fallback — update when account exists)
-    "tax":               "60500",  # Office expenses (fallback — update when account exists)
-    "other_expense":     "71000",  # Other Business Expenses (header child — exists)
+    "commission":        "60100",  # Commissions & fees
+    "operating_expense": "60500",  # Office expenses
+    "insurance":         "65100",  # Insurance
+    "tax":               "71100",  # Other Business Expenses:Taxes paid
+    "other_expense":     "71000",  # Other Business Expenses
 }
 
 # ── BALANCE SHEET transaction types → account codes ──
+# Investor notes live in per-investor children of 23000; a specific deposit/return
+# is routed to the investor's own account by the ledger (see resolve_investor_note_account_id).
+# 23000 here is only the safe fallback header for classification/summaries.
 BALANCE_ACCOUNT_MAP: dict[str, str] = {
-    "investor_deposit":  "23900",  # Investor Notes Payable (postable; 23000 is a header)
-    "investor_return":   "23900",  # Return of PRINCIPAL reduces the same liability
+    "investor_deposit":  "23000",  # Debt Securities (parent; per-investor child resolved at post)
+    "investor_return":   "23000",  # Return of PRINCIPAL reduces the same liability
     "transfer":          "10100",  # Bank and Cash Equivalents (inter-account transfer)
 }
 
@@ -3165,14 +3169,20 @@ async def classify_capital_statement(statement_id: str):
     acct_by_id = {a["id"]: a for a in accounts_list}
 
     # Build accounts reference for the AI. Capital books several movements to the
-    # BALANCE SHEET (investor deposits → 23900 liability, house acquisitions →
-    # 14300 asset), so the reference must include those accounts — not just P&L —
-    # or the model is forced to mis-book them as income/expense.
-    CAPITAL_BS_CLASSIFY_CODES = {"14300", "12000", "23900", "23950"}
+    # BALANCE SHEET (investor deposits → 23000 Debt Securities liability, house
+    # acquisitions → 13010 asset), so the reference must include those accounts —
+    # not just P&L — or the model is forced to mis-book them as income/expense.
+    # SOURCE OF TRUTH codes (migration 107).
+    CAPITAL_BS_CLASSIFY_CODES = {"13010", "12000", "12100", "20000", "20100", "21100", "23000"}
+    # Per-investor Debt Securities children (23000's children) must be offered so
+    # investor deposits/returns classify to the specific investor's own account.
+    _ds_parent_id = next((a["id"] for a in all_accounts if a["code"] == "23000"), None)
+    _investor_note_codes = {a["code"] for a in accounts_list if a.get("parent_account_id") == _ds_parent_id}
     classify_accounts = [
         a for a in accounts_list
         if a["account_type"] in ("income", "expense", "cogs")
         or a["code"] in CAPITAL_BS_CLASSIFY_CODES
+        or a["code"] in _investor_note_codes
     ]
     accounts_ref = "\n".join([
         f"- {a['code']}: {a['name']} (type={a['account_type']}, cat={a.get('category', '')})"
@@ -3835,18 +3845,18 @@ CHART OF ACCOUNTS (use ONLY these exact codes — no others, never leave empty):
 CAPITAL CLASSIFICATION RULES (description → account, most specific wins):
 
 INCOMING MONEY (credits / deposits):
-- Investor capital in — "aporte inversionista", "pagaré", "nota", "depósito inversión", "investor deposit/wire" → 23900 Investor Notes Payable. THIS IS A LIABILITY, NOT INCOME — it is money Capital OWES the investor. transaction_type=investor_deposit.
-- RTO monthly payment — "pago mensual", "mensualidad", "renta RTO", "rent-to-own payment" → 41000 RTO Rental Income. transaction_type=rto_payment. (Do NOT use "Interest earned" for a monthly RTO payment.)
-- Down payment / "enganche" — → 42000 Down Payment Income. transaction_type=down_payment.
-- Late fee / "mora" / "cargo por atraso" — → 43000 Late Fee Income. transaction_type=late_fee.
-- Anything else clearly income with no better fit → 70000 Other Income. transaction_type=other_income.
+- Investor capital in — "aporte inversionista", "pagaré", "nota", "depósito inversión", "investor deposit/wire" → the investor's OWN Debt Securities account (a 23001–23999 child of "23000 Debt Securities", matched by the investor's NAME in the description). THIS IS A LIABILITY, NOT INCOME — money Capital OWES the investor. transaction_type=investor_deposit. If you cannot tell which investor, use 23000. NEVER use 23900 (does not exist).
+- RTO monthly payment — "pago mensual", "mensualidad", "renta RTO", "rent-to-own payment" → 41000 Rent Income. transaction_type=rto_payment. (Do NOT use "Interest earned" for a monthly RTO payment.)
+- Down payment / "enganche" — → 42000 Sales. transaction_type=down_payment.
+- Late fee / "mora" / "cargo por atraso" — → 72200 Late Payment Fee. transaction_type=late_fee.
+- Anything else clearly income with no better fit → 70000 OTHER INCOME (or 49000 Uncategorized Income). transaction_type=other_income.
 
 OUTGOING MONEY (debits / withdrawals):
-- Paying Homes for a financed house — "pago a Homes", "financiamiento", "adquisición", "compra casa/propiedad" → 14300 RTO Properties. THIS IS AN ASSET (the house Capital now owns), NOT an expense. transaction_type=acquisition.
+- Paying Homes for a financed house — "pago a Homes", "financiamiento", "adquisición", "compra casa/propiedad" → 13010 Mobile Homes (Properties). THIS IS AN ASSET (the house), NOT an expense. transaction_type=acquisition. NEVER use 14300.
 - Interest paid to an investor — "pago intereses inversionista", "interés" → 71400 Interest paid. transaction_type=investor_interest.
-- Returning an investor's principal — "devolución capital", "retiro inversionista", "return of principal" → 23900 Investor Notes Payable (reduces the liability). transaction_type=investor_return.
+- Returning an investor's principal — "devolución capital", "retiro inversionista", "return of principal" → the investor's OWN Debt Securities account (23001–23999 child, matched by name; 23000 if unknown), reducing the liability. transaction_type=investor_return.
 - Commission — "comisión", "commission" → 60100 Commissions & fees. transaction_type=commission.
-- Bank fee / "comisión bancaria" / "service charge" → 60600 Bank fees & service charges (or the closest bank-fee account). transaction_type=operating_expense.
+- Bank fee / "comisión bancaria" / "service charge" → 65010 Bank fees & service charges. transaction_type=operating_expense.
 - Generic operating expense — software, office, legal, consulting → 60500 Office expenses. transaction_type=operating_expense.
 - Anything else clearly an expense with no better fit → 71000 Other Business Expenses. transaction_type=other_expense.
 
@@ -3855,9 +3865,9 @@ BANK TRANSFERS between Capital's own accounts → transaction_type="transfer".
 RECONCILED MOVEMENTS: those marked "RECONCILED with app transaction: ..." carry a known internal description — trust it as the PRIMARY signal and map it with the same rules above.
 
 BUSINESS CONTEXT:
-- Capital finances mobile homes for clients via RTO contracts, funded by investors who lend money (promissory notes).
-- Investor money in is a LIABILITY (23900), never income. Interest paid to investors is an expense (71400). Houses Capital buys from Homes to finance are ASSETS (14300).
-- Client money in is income: monthly RTO = 41000, enganche = 42000, mora = 43000.
+- Capital finances mobile homes for clients via RTO contracts, funded by investors who lend money (promissory notes / pagarés).
+- Investor money in is a LIABILITY booked to that investor's own Debt Securities account (child of 23000), never income. Interest paid to investors is an expense (71400). Houses Capital buys from Homes to finance are ASSETS (13010 Mobile Homes).
+- Client money in is income: monthly RTO = 41000 Rent Income, enganche = 42000 Sales, mora = 72200 Late Payment Fee.
 - Related party: Maninos Homes (Capital pays Homes for each financed house).
 
 {f"HUMAN CORRECTIONS (the accountant overrode the AI — follow these patterns):{chr(10)}{corrections_reference}{chr(10)}" if corrections_reference else ""}MOVEMENTS:
@@ -3876,7 +3886,7 @@ Return a JSON array with one object per movement (in order):
     response = client.chat.completions.create(
         model="gpt-5",
         messages=[
-            {"role": "system", "content": "You are an expert accountant for a mobile-home RTO financing company (Maninos Capital). Investor money in is a LIABILITY (23900), houses bought to finance are ASSETS (14300) — never book those as income/expense. Return valid JSON arrays only."},
+            {"role": "system", "content": "You are an expert accountant for a mobile-home RTO financing company (Maninos Capital). Investor money in is a LIABILITY booked to that investor's own Debt Securities account (a child of 23000), houses bought to finance are ASSETS (13010 Mobile Homes) — never book those as income/expense. Use only codes present in the provided chart. Return valid JSON arrays only."},
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=8192,

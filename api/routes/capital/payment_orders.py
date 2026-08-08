@@ -60,8 +60,8 @@ _INBOUND_EVENT_MAP = {
     "otro_ingreso": "manual_income_received",
 }
 
-_DEFAULT_EXPENSE_CODE = "60900"   # Operating Expenses (General)
-_DEFAULT_INCOME_CODE = "70000"    # OTHER INCOME
+_DEFAULT_EXPENSE_CODE = "69000"   # Uncategorized Expense (source of truth leaf)
+_DEFAULT_INCOME_CODE = "49000"    # Uncategorized Income (source of truth leaf)
 
 
 def _sync_payable_invoice(order: dict, state: str) -> None:
@@ -352,6 +352,11 @@ async def approve_capital_payment_order(
                 )
                 if event_type == "manual_income_received":
                     kwargs["income_account_code"] = _DEFAULT_INCOME_CODE
+                if event_type == "investor_deposit_received" and order.get("investor_id"):
+                    from api.services.capital_ledger import resolve_investor_note_account_id
+                    note_acct = resolve_investor_note_account_id(investor_id=order.get("investor_id"))
+                    if note_acct:
+                        kwargs["credit_account_id_override"] = note_acct
                 debit_id, credit_id = post_to_capital_ledger(**kwargs)
                 sb.table("capital_payment_orders").update({
                     "accounting_transaction_id": debit_id,
@@ -418,6 +423,11 @@ async def complete_capital_payment_order(order_id: str, req: CapitalPaymentOrder
         )
         if event_type == "manual_expense_paid":
             kwargs["expense_account_code"] = order.get("expense_account_code") or _DEFAULT_EXPENSE_CODE
+        if event_type == "investor_return_paid" and order.get("investor_id"):
+            from api.services.capital_ledger import resolve_investor_note_account_id
+            note_acct = resolve_investor_note_account_id(investor_id=order.get("investor_id"))
+            if note_acct:
+                kwargs["debit_account_id_override"] = note_acct
 
         debit_id, credit_id = post_to_capital_ledger(**kwargs)
         # Bank leg for outbound events is the credit side — that's what

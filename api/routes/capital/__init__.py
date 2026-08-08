@@ -16,6 +16,7 @@ from .analysis import router as analysis_router
 from .promissory_notes import router as promissory_notes_router
 from .accounting import router as accounting_router
 from .accounting_invoices import router as accounting_invoices_router
+from .journal_entries import router as journal_entries_router
 from .payment_orders import router as capital_payment_orders_router
 from .financed_houses import router as financed_houses_router
 from .manual_intake import router as manual_intake_router
@@ -35,6 +36,7 @@ router.include_router(analysis_router)
 router.include_router(promissory_notes_router)
 router.include_router(accounting_router)
 router.include_router(accounting_invoices_router)
+router.include_router(journal_entries_router)
 router.include_router(capital_payment_orders_router)
 router.include_router(financed_houses_router)
 router.include_router(manual_intake_router)

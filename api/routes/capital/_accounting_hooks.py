@@ -155,6 +155,17 @@ def record_txn(
                     kwargs["income_account_code"] = DEFAULT_INCOME_CODE
                 if event == "manual_expense_paid":
                     kwargs["expense_account_code"] = DEFAULT_EXPENSE_CODE
+                # Investor notes post to the investor's OWN Debt Securities child
+                # account (child of 23000), not a single control account. Resolve
+                # it and override the counter leg; fall back to the 23000 header.
+                if event in ("investor_deposit_received", "investor_return_paid") and investor_id:
+                    from api.services.capital_ledger import resolve_investor_note_account_id
+                    note_acct = resolve_investor_note_account_id(investor_id=investor_id)
+                    if note_acct:
+                        if event == "investor_deposit_received":
+                            kwargs["credit_account_id_override"] = note_acct
+                        else:  # investor_return_paid
+                            kwargs["debit_account_id_override"] = note_acct
                 debit_id, credit_id = post_to_capital_ledger(**kwargs)
                 bank_leg_id = debit_id if is_income else credit_id
                 row = sb.table("capital_transactions").select("*").eq("id", bank_leg_id).execute()

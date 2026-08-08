@@ -41,20 +41,28 @@ from api.services.ledger import (
     post_to_ledger as _post_to_ledger,
 )
 
-# Chart codes (capital_accounts.code — numeric, from migrations 042 + 097):
+# Chart codes (capital_accounts.code — numeric QuickBooks codes).
+# SOURCE OF TRUTH: Maninos_Capital_Model_Account_List_updated.xlsx (migration 107).
 #   12000  Accounts Receivable (A/R)
-#   14300  RTO Properties (asset)
-#   21000  Accounts Payable (A/P)
-#   23900  Investor Notes Payable
+#   12100  Rents Receivable
+#   13010  Properties:Mobile Homes (RTO property asset — was 14300)
+#   20000  Accounts Payable A/P (was 21000)
+#   20100  Accrued Expenses (accrued-interest payable — was 23950)
+#   21000  Deferred Rents        21100  Downpayment (liability, unused in cash-basis)
+#   23000  Debt Securities (parent) — investor notes live in per-investor children 23001..
 #   34000  Opening balance equity
-#   41000  RTO Rental Income
-#   42000  Down Payment Income
-#   43000  Late Fee Income
+#   41000  Rent Income (RTO)
+#   42000  Operating Income:Sales (RTO enganche, cash-basis)
 #   60100  Commissions & fees
-#   60600  Bank fees & service charges
-#   60900  Operating Expenses (General)
-#   70000  OTHER INCOME
-#   71400  Interest paid
+#   65010  Bank fees & service charges (was 60600)
+#   70000  OTHER INCOME          71000  Other Business Expenses
+#   71400  Interest paid         72200  OTHER INCOME:Late Payment Fee (mora — was 43000)
+#
+# Investor notes are NO LONGER a single 23900 account. Each investor/pagaré has
+# its OWN child account under 23000 Debt Securities. The investor_deposit /
+# investor_return events resolve that account at post time and pass it via
+# debit/credit_account_id_override — the spec code below is only a safe fallback.
+INVESTOR_NOTES_PARENT = "23000"   # Debt Securities (header); children are per-investor
 
 CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Inbound (cash enters a Capital bank) ------------------------------
@@ -74,14 +82,17 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     ),
     "late_fee_received": EventSpec(
         debit=BANK,
-        credit="43000",
+        credit="72200",   # OTHER INCOME:Late Payment Fee (source of truth)
         transaction_type="late_fee",
         is_income_on_bank_side=True,
         description_template="Cargo por mora: {counterparty}",
     ),
     "investor_deposit_received": EventSpec(
         debit=BANK,
-        credit="23900",
+        # Per-investor child under 23000 Debt Securities; the route passes
+        # credit_account_id_override to the specific investor account. 23000
+        # (header) is only a safe fallback if the override is ever missing.
+        credit=INVESTOR_NOTES_PARENT,
         transaction_type="investor_deposit",
         is_income_on_bank_side=True,
         description_template="Depósito inversionista: {counterparty}",
@@ -102,7 +113,8 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     ),
     # ---- Outbound (cash leaves a Capital bank) -----------------------------
     "investor_return_paid": EventSpec(
-        debit="23900",
+        # Per-investor child under 23000; route passes debit_account_id_override.
+        debit=INVESTOR_NOTES_PARENT,
         credit=BANK,
         transaction_type="investor_return",
         is_income_on_bank_side=False,
@@ -121,21 +133,21 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     # ---- Accrual-basis interest (no bank) ----------------------------------
     "interest_accrued": EventSpec(
         debit="71400",              # Interest expense recognized over time
-        credit="23950",             # Accrued Interest Payable (liability)
-        transaction_type="adjustment",   # DB-allowed; distinguished by account 23950
+        credit="20100",             # Accrued Expenses (accrued-interest payable)
+        transaction_type="adjustment",   # DB-allowed; distinguished by account 20100
         is_income_on_bank_side=False,
         description_template="Interés devengado: {counterparty}",
         requires_bank=False,
     ),
     "interest_settled": EventSpec(
-        debit="23950",              # settle the accrued liability
+        debit="20100",              # settle the accrued liability
         credit=BANK,                # cash leaves the bank
-        transaction_type="investor_return",   # DB-allowed; distinguished by account 23950
+        transaction_type="investor_return",   # DB-allowed; distinguished by account 20100
         is_income_on_bank_side=False,
         description_template="Pago interés devengado: {counterparty}",
     ),
     "acquisition_paid": EventSpec(
-        debit="14300",
+        debit="13010",              # Properties:Mobile Homes (source of truth)
         credit=BANK,
         transaction_type="acquisition",
         is_income_on_bank_side=False,
@@ -149,7 +161,7 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
         description_template="Comisión: {counterparty}",
     ),
     "bank_fee_paid": EventSpec(
-        debit="60600",
+        debit="65010",   # General business expenses:Bank fees & service charges
         credit=BANK,
         transaction_type="bank_fee",
         is_income_on_bank_side=False,
@@ -163,7 +175,7 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
         description_template="Gasto: {concept}",
     ),
     "invoice_paid_out": EventSpec(
-        debit="21000",
+        debit="20000",   # Accounts Payable A/P (source of truth)
         credit=BANK,
         transaction_type="invoice_ap",
         is_income_on_bank_side=False,
@@ -180,7 +192,7 @@ CAPITAL_EVENT_REGISTRY: dict[str, EventSpec] = {
     ),
     "invoice_received_ap": EventSpec(
         debit="__caller__",    # expense account chosen by caller
-        credit="21000",
+        credit="20000",   # Accounts Payable A/P (source of truth)
         transaction_type="invoice_ap",
         is_income_on_bank_side=False,
         description_template="Factura recibida {invoice_number}: {counterparty}",
@@ -218,14 +230,103 @@ CAPITAL_CONFIG = LedgerConfig(
 
 # Default posting accounts for caller-chosen legs when the route has nothing
 # better (keeps auto-flows working even without explicit classification).
-DEFAULT_EXPENSE_CODE = "60900"   # Operating Expenses (General)
-DEFAULT_INCOME_CODE = "70000"    # OTHER INCOME
+DEFAULT_EXPENSE_CODE = "69000"   # Uncategorized Expense (source of truth leaf)
+DEFAULT_INCOME_CODE = "49000"    # Uncategorized Income (source of truth leaf)
 
 
 def post_to_capital_ledger(event_type: str, amount: float, **kwargs: Any) -> tuple[str, str]:
     """post_to_ledger against Capital's tables. Same signature/guarantees."""
     kwargs["config"] = CAPITAL_CONFIG
     return _post_to_ledger(event_type, amount, **kwargs)
+
+
+def resolve_investor_note_account_id(
+    investor_id: Optional[str] = None,
+    note_id: Optional[str] = None,
+    *,
+    db: Any = None,
+) -> Optional[str]:
+    """Return capital_accounts.id of the investor's / pagaré's own Debt Securities
+    child account (child of 23000). Resolves via `chart_account_code` stored on
+    promissory_notes / investors (populated by the WS7 data-fix and by new-note
+    creation). Returns None if the investor isn't linked yet — callers then fall
+    back to the 23000 header from the EventSpec."""
+    if db is None:
+        from tools.supabase_client import sb
+        db = sb
+    code = None
+    try:
+        if note_id:
+            r = db.table("promissory_notes").select("chart_account_code").eq("id", note_id).limit(1).execute()
+            code = (r.data[0].get("chart_account_code") if r.data else None)
+        if not code and investor_id:
+            r = db.table("investors").select("chart_account_code").eq("id", investor_id).limit(1).execute()
+            code = (r.data[0].get("chart_account_code") if r.data else None)
+        if not code:
+            return None
+        a = db.table("capital_accounts").select("id").eq("code", code).limit(1).execute()
+        return a.data[0]["id"] if a.data else None
+    except Exception as e:
+        logger.warning(f"resolve_investor_note_account_id failed (investor={investor_id}, note={note_id}): {e}")
+        return None
+
+
+def ensure_investor_note_account(
+    investor_name: str,
+    *,
+    investor_id: Optional[str] = None,
+    note_id: Optional[str] = None,
+    db: Any = None,
+) -> Optional[str]:
+    """Controlled creation of a per-investor Debt Securities child account under
+    23000 — the ONLY sanctioned way to add a Capital account outside migration
+    107. Uses the next free 23xxx code, names it 'Debt Securities:<NAME>', links
+    it back onto promissory_notes/investors.chart_account_code, and returns the
+    code. Never invents accounts elsewhere in the tree."""
+    if db is None:
+        from tools.supabase_client import sb
+        db = sb
+    try:
+        parent = db.table("capital_accounts").select("id").eq("code", INVESTOR_NOTES_PARENT).limit(1).execute()
+        parent_id = parent.data[0]["id"] if parent.data else None
+        existing = (
+            db.table("capital_accounts").select("code")
+            .gte("code", "23001").lte("code", "23999").execute().data or []
+        )
+        used = {c["code"] for c in existing}
+        next_code = None
+        for n in range(23001, 24000):
+            if str(n) not in used:
+                next_code = str(n)
+                break
+        if not next_code:
+            logger.error("ensure_investor_note_account: no free 23xxx code left")
+            return None
+        row = {
+            "code": next_code,
+            "name": (investor_name or "Investor").strip(),
+            "account_type": "liability",
+            "category": "investor_debt",
+            "subtype": "Long Term Liabilities",
+            "detail_type": "Notes Payable",
+            "normal_balance": "credit",
+            "report_section": "balance_sheet",
+            "statement_group": "Balance General - Pasivo No Circulante",
+            "is_header": False,
+            "is_active": True,
+            "parent_account_id": parent_id,
+            "description": f"Pagaré / nota de inversionista: {investor_name}.",
+        }
+        db.table("capital_accounts").insert(row).execute()
+        if note_id:
+            db.table("promissory_notes").update({"chart_account_code": next_code}).eq("id", note_id).execute()
+        if investor_id:
+            db.table("investors").update({"chart_account_code": next_code}).eq("id", investor_id).execute()
+        logger.info(f"ensure_investor_note_account created {next_code} for {investor_name}")
+        return next_code
+    except Exception as e:
+        logger.error(f"ensure_investor_note_account failed for {investor_name}: {e}")
+        return None
 
 
 def get_capital_bank_balance(bank_account_id: str, *, as_of: Optional[str] = None, db: Any = None) -> float:
