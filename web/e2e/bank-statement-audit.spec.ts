@@ -233,7 +233,7 @@ test.describe.serial('Bank Statement Reconciliation - Full Audit', () => {
     try {
       await page.waitForFunction(() => {
         const btns = document.querySelectorAll('button');
-        for (const b of btns) {
+        for (const b of Array.from(btns)) {
           if (b.textContent?.includes('Clasificando')) return false;
         }
         return true;

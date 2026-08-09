@@ -38,7 +38,7 @@ async function snap(page: any, name: string) {
 
 async function dumpText(page: any, selector: string, maxLen = 300, minLen = 5, max = 40): Promise<string[]> {
   return await page.locator(selector).evaluateAll(
-    (els: Element[], { mn, mx }) =>
+    (els: Element[], { mn, mx }: { mn: number; mx: number }) =>
       els
         .map((e) => (e.textContent || '').trim().replace(/\s+/g, ' '))
         .filter((t) => t.length >= mn && t.length <= mx),
