@@ -58,18 +58,23 @@ PID_NODE=$!
 if wait "$PID_PY"; then echo "[python] OK"; else echo "[python] AVISO: falló"; tail -15 /tmp/setup_python.log; fi
 if wait "$PID_NODE"; then echo "[node] OK"; else echo "[node] AVISO: falló"; tail -15 /tmp/setup_node.log; fi
 
-# --- Navegador de Playwright ------------------------------------------------
-# Los 45 specs E2E usan @playwright/test con chromium. La imagen base trae
-# chromedriver, pero NO los navegadores de Playwright.
+# --- Navegadores de Playwright ----------------------------------------------
+# Los 45 specs E2E usan @playwright/test. La imagen base trae chromedriver,
+# pero NO los navegadores de Playwright.
+#
+# Se instalan dos porque en la nube NO se usa chromium: detrás del proxy su
+# handshake TLS muere con ERR_CONNECTION_RESET, así que playwright.config.ts
+# selecciona webkit cuando hay proxy (ver CLAUDE.md, "Sesiones en la nube").
+# Chromium se mantiene para poder reproducir lo que corre en local.
 #
 # Se llama SIEMPRE, sin guarda de "ya existe": el instalador de Playwright es
 # idempotente y termina en un instante si el build correcto ya está en caché.
-# Comprobar solo que exista "algún" chromium sería un error — el del entorno
+# Comprobar solo que exista "algún" navegador sería un error — el del entorno
 # puede ser de otra versión, y entonces los tests fallan con "browser not found".
 # Sin --with-deps: las librerías de sistema (apt, lo lento) las deja cacheadas el
-# Setup script del entorno. Aquí solo se asegura el binario que pide el repo.
-echo "[playwright] asegurando chromium de la versión del repo"
-( cd "$REPO/web" && npx playwright install chromium >/dev/null 2>&1 ) \
+# Setup script del entorno, que sí corre como root. Aquí solo van los binarios.
+echo "[playwright] asegurando webkit y chromium de la versión del repo"
+( cd "$REPO/web" && npx playwright install webkit chromium >/dev/null 2>&1 ) \
   || echo "[playwright] AVISO: falló; los E2E no correrán"
 
 # Los scrapers de Python usan el Playwright de Python, con su propia descarga.
