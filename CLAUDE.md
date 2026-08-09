@@ -161,12 +161,15 @@ variables, mismos tests. Las dependencias se instalan en dos sitios, y el repart
 
 - **Setup script del entorno** (se configura en claude.ai/code): solo provisiona la VM. Corre
   **antes de que se clone el repo**, así que **no puede referirse a ficheros del proyecto** — los
-  entornos se reutilizan entre repositorios. Aquí va únicamente el navegador de Playwright, que se
-  cachea en el snapshot del entorno.
+  entornos se reutilizan entre repositorios. Aquí van los navegadores de Playwright **con sus
+  librerías de sistema** (`npx --yes playwright install --with-deps webkit chromium`) — es lo lento,
+  va por `apt`, necesita root, y queda cacheado en el snapshot del entorno.
 - **Hook SessionStart** (`.claude/settings.json`, versionado): lanza `scripts/cloud_setup.sh` con el
   repo ya clonado, vía `$CLAUDE_PROJECT_DIR`. Ahí van `pip install -r requirements.txt` y `npm ci`.
   El script sale de inmediato si `CLAUDE_CODE_REMOTE != true`, así que en local no hace nada, y trae
-  guardas de idempotencia para no reinstalar en cada sesión.
+  guardas de idempotencia para no reinstalar en cada sesión. También asegura los **binarios** de
+  webkit y chromium (`npx playwright install webkit chromium`, sin `--with-deps`: el hook no corre
+  como root y las libs ya vienen del snapshot).
 
 **Los E2E corren contra PRODUCCIÓN.** `playwright.config.ts` usa `baseURL =
 https://maninos-ai.vercel.app` y los specs pegan al Railway de producción y a la Supabase de
@@ -176,6 +179,25 @@ producción con el `SERVICE_ROLE_KEY`. No hay staging (`STAGING_SUPABASE_URL` es
   pero no la lances "por si acaso": lánzala cuando quieras verificar algo concreto.
 - Prefiere el spec concreto al barrido completo: `npx playwright test e2e/<archivo>.spec.ts`.
 - Si una corrida deja basura, existe `scripts/cleanup_e2e_test_data.py`.
+
+**En la nube los E2E corren en WebKit, no en Chromium** — y no es un capricho, no lo "arregles".
+Todo el tráfico saliente pasa por un proxy, y a Chromium hay que pasárselo explícitamente
+(no lee `HTTPS_PROXY`), pero eso no basta: el túnel `CONNECT` se abre bien
+(`HTTP/1.1 200 Connection Established`) y el handshake TLS muere justo después con
+`ERR_CONNECTION_RESET`, antes del ServerHello. La causa está en el netlog: Chromium 145 manda un
+ClientHello de **1753 bytes**, de los que **1263 son el `key_share` X25519MLKEM768** (intercambio de
+claves post-cuántico), y el otro extremo corta la conexión. curl por ese mismo proxy funciona porque
+su ClientHello es pequeño y clásico.
+
+Ese `key_share` **ya no se puede desactivar** en Chromium 145: no lo reducen `--disable-features`
+(`PostQuantumKyber`, `PostQuantumKeyAgreement`, `TLS13KyberSupport`, `UseMLKEMForPostQuantum`), ni
+`--ssl-version-max=tls1.2`, ni la política empresarial `PostQuantumKeyAgreementEnabled`. Firefox
+tampoco vale: llega al proxy (un `http://` devuelve 405) pero todo `https` se cuelga hasta el
+timeout. WebKit construye un ClientHello clásico y pasa la suite entera contra producción.
+
+Por eso `playwright.config.ts` elige el proyecto según haya proxy o no: **webkit** en la nube,
+**chromium** en local, sin tocar nada de lo de siempre en el portátil. Es una limitación del proxy
+del entorno, no del repo.
 
 **Deploy desde una sesión de nube.** El proxy de GitHub solo permite `git push` contra la rama de
 trabajo de la propia sesión: **no se puede pushear a `main` directamente**. Como Railway y Vercel
