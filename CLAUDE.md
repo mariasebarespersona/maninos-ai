@@ -157,8 +157,16 @@ pida explícitamente.
 ## Sesiones en la nube (móvil / claude.ai/code)
 
 El entorno de nube está configurado para **paridad con el portátil**: mismas dependencias, mismas
-variables, mismos tests. Setup script del entorno: `bash scripts/cloud_setup.sh` (instala
-requirements.txt, `npm ci` en `web/` y el chromium de Playwright).
+variables, mismos tests. Las dependencias se instalan en dos sitios, y el reparto importa:
+
+- **Setup script del entorno** (se configura en claude.ai/code): solo provisiona la VM. Corre
+  **antes de que se clone el repo**, así que **no puede referirse a ficheros del proyecto** — los
+  entornos se reutilizan entre repositorios. Aquí va únicamente el navegador de Playwright, que se
+  cachea en el snapshot del entorno.
+- **Hook SessionStart** (`.claude/settings.json`, versionado): lanza `scripts/cloud_setup.sh` con el
+  repo ya clonado, vía `$CLAUDE_PROJECT_DIR`. Ahí van `pip install -r requirements.txt` y `npm ci`.
+  El script sale de inmediato si `CLAUDE_CODE_REMOTE != true`, así que en local no hace nada, y trae
+  guardas de idempotencia para no reinstalar en cada sesión.
 
 **Los E2E corren contra PRODUCCIÓN.** `playwright.config.ts` usa `baseURL =
 https://maninos-ai.vercel.app` y los specs pegan al Railway de producción y a la Supabase de
