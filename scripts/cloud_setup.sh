@@ -61,14 +61,16 @@ if wait "$PID_NODE"; then echo "[node] OK"; else echo "[node] AVISO: falló"; ta
 # --- Navegador de Playwright ------------------------------------------------
 # Los 45 specs E2E usan @playwright/test con chromium. La imagen base trae
 # chromedriver, pero NO los navegadores de Playwright.
-# Si el "Setup script" del entorno ya los dejó cacheados, esto no descarga nada.
-if ls "$HOME"/.cache/ms-playwright/chromium-* >/dev/null 2>&1; then
-  echo "[playwright] navegador ya presente, salto"
-else
-  echo "[playwright] descargando chromium"
-  ( cd "$REPO/web" && npx --yes playwright install --with-deps chromium >/dev/null 2>&1 ) \
-    || echo "[playwright] AVISO: falló; los E2E no correrán"
-fi
+#
+# Se llama SIEMPRE, sin guarda de "ya existe": el instalador de Playwright es
+# idempotente y termina en un instante si el build correcto ya está en caché.
+# Comprobar solo que exista "algún" chromium sería un error — el del entorno
+# puede ser de otra versión, y entonces los tests fallan con "browser not found".
+# Sin --with-deps: las librerías de sistema (apt, lo lento) las deja cacheadas el
+# Setup script del entorno. Aquí solo se asegura el binario que pide el repo.
+echo "[playwright] asegurando chromium de la versión del repo"
+( cd "$REPO/web" && npx playwright install chromium >/dev/null 2>&1 ) \
+  || echo "[playwright] AVISO: falló; los E2E no correrán"
 
 # Los scrapers de Python usan el Playwright de Python, con su propia descarga.
 # No se instala aquí para no alargar el arranque. Si hace falta, en la sesión:
