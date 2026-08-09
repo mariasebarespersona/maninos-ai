@@ -1,8 +1,16 @@
 # CLAUDE.md — Maninos AI Project Context
 
-> **This is the primary context file for Claude Code Desktop.**
-> Read this ENTIRE document before making any changes to the codebase.
-> Last updated: March 24, 2026
+> ⚠️ **DOCUMENTO OBSOLETO — NO es la fuente de verdad.**
+> El contexto vigente está en **`/CLAUDE.md` (raíz del repo)**. Léelo primero.
+>
+> Este archivo no se actualiza desde el **24 de marzo de 2026** y contiene afirmaciones falsas
+> verificadas contra el código (agosto 2026). Entre ellas: describe una integración de Stripe
+> (PaymentIntents, Stripe Identity, `tools/stripe_payments.py`, `tools/stripe_identity.py`,
+> `StripePaymentForm.tsx`) que **no existe** — esos archivos solo sobreviven en un worktree viejo y
+> no hay un solo import del SDK de Stripe en el repo.
+>
+> Útil todavía como referencia estructural e histórica, pero **verifica contra el código** antes de
+> actuar sobre cualquier afirmación de aquí.
 
 ---
 
@@ -29,7 +37,7 @@
 | **Database** | Supabase (PostgreSQL) | Managed, accessed via `supabase-py` |
 | **Auth** | Supabase Auth | Employee login + client portal auth |
 | **Storage** | Supabase Storage | Property photos, documents (buckets: `property-photos`, `documents`) |
-| **Payments** | Stripe | PaymentIntents for sales, Stripe Identity for KYC |
+| **Payments** | ~~Stripe~~ — **sin integración** | "stripe" es solo una etiqueta de `payment_method`. Sin SDK, sin PaymentIntents. KYC = subida manual de documentos. Cobros offline (Zelle/transferencia) |
 | **Email** | Resend | Transactional emails |
 | **AI/LLM** | OpenAI GPT-4o / GPT-4o-mini | AI agents, voice (Whisper), embeddings |
 | **Scraping** | Playwright + BeautifulSoup | MHVillage, Craigslist, 21st Mortgage, VMF Homes |

@@ -80,7 +80,8 @@ web/src/app/api/legacy/
 web/src/app/legacy/
 
 # Sensitive data / sample files (do not commit)
-scripts/backup_before_cleanup_*.json
+# OJO: repo PUBLICO. Los backups llevan datos reales de cuentas/contabilidad.
+scripts/backup_*.json
 *.xlsx
 *.xls
 eStmt*.pdf
@@ -89,3 +90,10 @@ test-photos/
 
 # Office lock files
 ~$*
+
+# Artefactos de test y temporales
+test-screenshots/
+web/test-results/
+web/playwright-report/
+web/e2e/_tmp_*.spec.ts
+.claude/scheduled_tasks.lock
