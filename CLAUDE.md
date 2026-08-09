@@ -208,6 +208,17 @@ que el PR no está en `main`, no hay deploy.
 Los scrapers de Python necesitan su propio navegador, que no viene en el setup por presupuesto de
 tiempo. Si hace falta: `python -m playwright install chromium`.
 
+## Contexto acumulado
+
+`docs/context/` contiene 31 notas sobre cómo funciona realmente este proyecto: decisiones, trampas y
+reglas que no se deducen del código. **Empieza por [`docs/context/README.md`](docs/context/README.md)**,
+que las indexa por tema. Si vas a tocar contabilidad, inversionistas o RTO, léelas antes: ahí está la
+mayor parte del riesgo.
+
+Son observaciones fechadas, no estado vivo — verifica contra el código antes de dar por buena una
+referencia a un fichero o un flag. Están redactadas para repo público (sin nombres de terceros,
+importes concretos ni dígitos de cuentas): **no reintroduzcas esos datos**.
+
 ## Documentación relacionada
 
 - `docs/CLAUDE.md` — documento largo y detallado, pero **desactualizado desde marzo de 2026** y con
