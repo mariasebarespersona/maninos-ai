@@ -154,6 +154,30 @@ pida explícitamente.
 
 ---
 
+## Sesiones en la nube (móvil / claude.ai/code)
+
+El entorno de nube está configurado para **paridad con el portátil**: mismas dependencias, mismas
+variables, mismos tests. Setup script del entorno: `bash scripts/cloud_setup.sh` (instala
+requirements.txt, `npm ci` en `web/` y el chromium de Playwright).
+
+**Los E2E corren contra PRODUCCIÓN.** `playwright.config.ts` usa `baseURL =
+https://maninos-ai.vercel.app` y los specs pegan al Railway de producción y a la Supabase de
+producción con el `SERVICE_ROLE_KEY`. No hay staging (`STAGING_SUPABASE_URL` está vacío). Es decir:
+
+- Correr la suite completa **escribe y borra datos reales**. Es intencional y así lo quiere Maria,
+  pero no la lances "por si acaso": lánzala cuando quieras verificar algo concreto.
+- Prefiere el spec concreto al barrido completo: `npx playwright test e2e/<archivo>.spec.ts`.
+- Si una corrida deja basura, existe `scripts/cleanup_e2e_test_data.py`.
+
+**Deploy desde una sesión de nube.** El proxy de GitHub solo permite `git push` contra la rama de
+trabajo de la propia sesión: **no se puede pushear a `main` directamente**. Como Railway y Vercel
+despliegan desde `main`, desplegar significa: crear el PR y mergearlo. El merge lo hace Maria desde
+el móvil (app de GitHub o la UI de la sesión). No prometas "ya está desplegado" tras un push: hasta
+que el PR no está en `main`, no hay deploy.
+
+Los scrapers de Python necesitan su propio navegador, que no viene en el setup por presupuesto de
+tiempo. Si hace falta: `python -m playwright install chromium`.
+
 ## Documentación relacionada
 
 - `docs/CLAUDE.md` — documento largo y detallado, pero **desactualizado desde marzo de 2026** y con
