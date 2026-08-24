@@ -83,11 +83,24 @@ class MockQuery:
     def gte(self, *a, **kw): return self
     def lte(self, *a, **kw): return self
     def in_(self, *a, **kw): return self
+    def is_(self, *a, **kw): return self
     def order(self, *a, **kw): return self
+    def range(self, *a, **kw): return self
+    def limit(self, *a, **kw): return self
     def update(self, *a, **kw): return self
     def insert(self, *a, **kw): return self
     def delete(self, *a, **kw): return self
     def execute(self): return MockExecute(self._data)
+
+    # En supabase-py `not_` es una PROPIEDAD que niega el filtro encadenado
+    # detrás (`.not_.is_(...)`, `.not_.in_(...)`), no un método. El mock no
+    # filtra nada, así que devolverse a sí mismo basta.
+    #
+    # Su ausencia tenía los 8 tests de este fichero en rojo: el código de
+    # producción lanzaba AttributeError, un `except` lo convertía en un warning
+    # y los balances volvían a 0, así que cada aserción de importe fallaba.
+    @property
+    def not_(self): return self
 
 
 def setup_mock(accounts, txns):

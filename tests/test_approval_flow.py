@@ -133,6 +133,11 @@ class TestCompletePaymentOrder:
             reference="REF-12345",
             payment_date="2026-03-19",
             completed_by="treasury-1",
+            # El motor de ledger exige el lado banco para 'manual_expense_paid':
+            # el abono va contra una cuenta bancaria concreta. Sin esto el
+            # endpoint corta con un 400 antes de postear, que es lo que tenía
+            # estos tres tests en rojo.
+            bank_account_id="bank-1",
         )
 
     def test_complete_works_on_approved_order(self):
@@ -160,16 +165,23 @@ class TestCompletePaymentOrder:
         _chain(mock_sb, select_data=[order], update_data=[completed],
                insert_data=[{"id": "acct-txn-1"}])
 
-        with patch("api.routes.payment_orders.sb", mock_sb):
+        # Completar una orden ya NO inserta a mano en accounting_transactions:
+        # delega en el motor de ledger, que postea el par debe/haber. Verificar
+        # el insert directo era comprobar un mecanismo que ya no existe, y por
+        # eso este test estaba en rojo. Lo que importa ahora es que se postea al
+        # ledger con el importe correcto.
+        with patch("api.routes.payment_orders.sb", mock_sb), \
+             patch("api.services.ledger.post_to_ledger") as mock_post:
+            mock_post.return_value = ("debit-txn-1", "credit-txn-1")
             from api.routes.payment_orders import complete_payment_order
             _run(complete_payment_order("ord-1", self._make_complete_req()))
 
-        # Verify insert was called for accounting_transactions
-        insert_calls = mock_sb.table.return_value.insert.call_args_list
-        assert len(insert_calls) >= 1
-        txn_data = insert_calls[0][0][0]
-        assert txn_data["amount"] == 8000
-        assert txn_data["status"] == "confirmed"
+        assert mock_post.call_count == 1, "completar la orden debe postear al ledger"
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["amount"] == 8000
+        assert kwargs.get("bank_account_id") == "bank-1", (
+            "el asiento debe salir de la cuenta bancaria indicada al completar"
+        )
 
     def test_cannot_complete_already_completed_order(self):
         mock_sb = _make_mock_sb()

@@ -4,17 +4,39 @@ in the income statement and balance sheet endpoints.
 If either of these tests starts failing, the books DON'T cuadrar on screen
 even if they do internally — that's exactly the trap we keep falling into.
 
-Tests run against live prod via the public API, no DB writes."""
+Tests run against live prod via the API, no DB writes.
+
+Desde 2026-08-07 el backend exige la cabecera `X-Internal-Key` en toda request
+(ver el candado del API en `api/main.py`), así que estos tests necesitan
+`INTERNAL_API_KEY` en el entorno — cópiala de Railway > Variables. Sin ella se
+saltan en vez de fallar: un 401 no dice nada sobre si los libros cuadran, y
+disfrazarlo de fallo real fue justo lo que mantuvo esta guardia muerta desde
+entonces sin que nadie lo notara.
+"""
 import os
 import urllib.request
 import json
 import pytest
 
 API = os.getenv("E2E_API_URL", "https://maninos-ai-production.up.railway.app")
+INTERNAL_KEY = os.getenv("INTERNAL_API_KEY")
+
+pytestmark = pytest.mark.skipif(
+    not INTERNAL_KEY,
+    reason=(
+        "Falta INTERNAL_API_KEY. El backend exige X-Internal-Key en producción; "
+        "sin ella estos tests solo comprobarían que el candado responde 401. "
+        "Cópiala de Railway > Variables."
+    ),
+)
 
 
 def _get(path: str) -> dict:
-    with urllib.request.urlopen(f"{API}{path}", timeout=30) as resp:
+    req = urllib.request.Request(
+        f"{API}{path}",
+        headers={"X-Internal-Key": INTERNAL_KEY or ""},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.load(resp)
 
 
