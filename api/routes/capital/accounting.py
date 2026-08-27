@@ -547,6 +547,9 @@ async def get_accounting_dashboard(
             "acquisition_spend": round(acquisition_spend, 2),
             "investor_returns": round(investor_returns, 2),
             "commissions_paid": round(commissions_paid, 2),
+            # El interés pagado al inversionista SÍ es gasto (el principal no).
+            # Sin esta clave el desglose de gastos no sumaba su propio total.
+            "investor_interest": round(investor_interest, 2),
             "operating_expenses": round(operating_expenses, 2),
             "manual_income": round(manual_income, 2),
             "manual_expense": round(manual_expense, 2),

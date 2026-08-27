@@ -21,7 +21,7 @@ interface DashboardData {
     total_income: number; total_expenses: number; net_profit: number; margin_percent: number
     rto_income: number; down_payment_income: number; late_fee_income: number
     investor_deposits: number; acquisition_spend: number; investor_returns: number
-    commissions_paid: number; operating_expenses: number
+    commissions_paid: number; investor_interest: number; operating_expenses: number
     manual_income: number; manual_expense: number
     accounts_receivable: number; accounts_receivable_overdue: number
     accounts_payable: number
@@ -498,7 +498,6 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTran
             <BreakdownRow label="Pagos RTO" value={s.rto_income} total={s.total_income} color="#059669" />
             <BreakdownRow label="Enganches" value={s.down_payment_income} total={s.total_income} color="#0d9488" />
             <BreakdownRow label="Moras" value={s.late_fee_income} total={s.total_income} color="#d97706" />
-            <BreakdownRow label="Depósitos Inversionistas" value={s.investor_deposits} total={s.total_income} color="#2563eb" />
             <BreakdownRow label="Otros" value={s.manual_income} total={s.total_income} color="#6b7280" />
             <div className="pt-2 border-t" style={{ borderColor: 'var(--sand)' }}>
               <div className="flex justify-between font-bold"><span>Total</span><span>{fmtFull(s.total_income)}</span></div>
@@ -508,14 +507,36 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTran
         <div className="card-luxury p-5">
           <h3 className="font-serif text-lg mb-4" style={{ color: 'var(--ink)' }}>Gastos</h3>
           <div className="space-y-3">
-            <BreakdownRow label="Adquisiciones" value={s.acquisition_spend} total={s.total_expenses} color="#dc2626" />
-            <BreakdownRow label="Retornos Inversionistas" value={s.investor_returns} total={s.total_expenses} color="#7c3aed" />
             <BreakdownRow label="Comisiones" value={s.commissions_paid} total={s.total_expenses} color="#ea580c" />
+            <BreakdownRow label="Intereses a Inversionistas" value={s.investor_interest} total={s.total_expenses} color="#7c3aed" />
             <BreakdownRow label="Gastos Operativos" value={s.operating_expenses} total={s.total_expenses} color="#64748b" />
             <BreakdownRow label="Otros" value={s.manual_expense} total={s.total_expenses} color="#6b7280" />
             <div className="pt-2 border-t" style={{ borderColor: 'var(--sand)' }}>
               <div className="flex justify-between font-bold"><span>Total</span><span>{fmtFull(s.total_expenses)}</span></div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Movimientos de balance — deliberadamente FUERA de Ingresos y Gastos:
+          no son resultado, y mezclarlos falseaba la utilidad neta. */}
+      <div className="card-luxury p-5">
+        <h3 className="font-serif text-lg mb-1" style={{ color: 'var(--ink)' }}>Movimientos de Balance</h3>
+        <p className="text-xs mb-4" style={{ color: 'var(--slate)' }}>
+          No afectan a la utilidad: comprar una casa es un activo, y el dinero del inversionista es un pasivo que se le debe. Solo el interés que se le paga es gasto.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Depósitos Inversionistas</p>
+            <p className="font-serif text-xl" style={{ color: 'var(--ink)' }}>{fmtFull(s.investor_deposits)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Adquisiciones</p>
+            <p className="font-serif text-xl" style={{ color: 'var(--ink)' }}>{fmtFull(s.acquisition_spend)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>Retornos de Principal</p>
+            <p className="font-serif text-xl" style={{ color: 'var(--ink)' }}>{fmtFull(s.investor_returns)}</p>
           </div>
         </div>
       </div>
