@@ -11,6 +11,7 @@ Features:
   - Export CSV
 """
 
+from collections import defaultdict
 import csv
 import io
 import json
@@ -200,6 +201,37 @@ BALANCE_ACCOUNT_MAP: dict[str, str] = {
 # Combined lookup for convenience
 _FULL_ACCOUNT_MAP = {**INCOME_ACCOUNT_MAP, **EXPENSE_ACCOUNT_MAP, **BALANCE_ACCOUNT_MAP}
 
+# ── Clasificación por TIPO DE CUENTA (mecanismo de Homes) ───────────────────
+# Homes (api/routes/accounting.py) decide qué es ingreso y qué es gasto por el
+# account_type de la cuenta, no por el tipo de operación. Ese es el mecanismo
+# que hace que su Resumen cuadre con sus estados financieros.
+#
+# Los conjuntos NO se importan de Homes: su chart usa etiquetas de QuickBooks
+# ("Income", "Other Expense") y el de Capital usa las minúsculas de la
+# migración 107. Reutilizarlos dejaría 'other_income' y 'other_expense' fuera
+# de toda clasificación, y su importe desaparecería del P&L.
+CAPITAL_INCOME_TYPES = {"income", "other_income", "Income", "Other Income"}
+CAPITAL_EXPENSE_TYPES = {"expense", "other_expense", "cogs",
+                         "Expenses", "Other Expense", "Cost of Goods Sold"}
+CAPITAL_PL_TYPES = CAPITAL_INCOME_TYPES | CAPITAL_EXPENSE_TYPES
+
+# Cuentas de balance que el Resumen muestra como informativas: comprar una casa
+# es un activo y el principal del inversionista es un pasivo — ninguno es P&L.
+ACQUISITION_ASSET_CODE = EXPENSE_ACCOUNT_MAP["acquisition"]      # 13010
+INVESTOR_NOTES_CODE_PREFIX = BALANCE_ACCOUNT_MAP["investor_deposit"][:3]  # "230"
+
+
+def _capital_signed_balance(amt: float, account_type: str, is_income: bool) -> float:
+    """Signo de una línea del ledger. Misma regla que `_signed_balance` de
+    Homes, con el vocabulario de tipos de Capital.
+
+    Partida doble: en cuentas de gasto el cargo (is_income=False) suma y el
+    abono resta (contra-gasto); en el resto, al revés.
+    """
+    if account_type in CAPITAL_EXPENSE_TYPES:
+        return amt if not is_income else -amt
+    return amt if is_income else -amt
+
 # Cache: code → account_id (populated lazily from DB)
 _account_id_cache: dict[str, str | None] = {}
 
@@ -296,35 +328,101 @@ async def get_accounting_dashboard(
         logger.warning(f"[capital-accounting] Could not fetch capital_flows: {e}")
 
     # ---- Commissions ----
-    commissions_paid = 0
+    # Ya NO se leen de la tabla `commissions`: esa consulta sumaba TODAS las
+    # comisiones pagadas de la historia, sin filtrar por periodo, y ensuciaba el
+    # P&L del mes. Las comisiones salen ahora del ledger como cualquier otro
+    # gasto, por su cuenta contable (60100) y dentro del periodo pedido.
+
+    # ---- Compute P&L ---------------------------------------------------
+    # MECANISMO PORTADO DE HOMES (api/routes/accounting.py): manda el TIPO DE
+    # CUENTA del plan contable, no una lista de flow_type escrita a mano.
+    #
+    # La versión anterior sumaba `capital_flows` por flow_type y tenía tres
+    # fallos que solo se notaban cuando había datos en el periodo:
+    #   1. Buscaba 'down_payment_received', 'acquisition_out' y
+    #      'operating_expense', que NINGÚN sitio del backend escribe nunca:
+    #      esos importes eran cero por construcción, no por falta de actividad.
+    #   2. Metía en gastos la compra de casas (un ACTIVO, 13010) y la
+    #      devolución de principal al inversionista (reduce un PASIVO). Solo el
+    #      interés (71400) es gasto.
+    #   3. Doble conteo del ingreso RTO: lo sumaba de `rto_payments` Y otra vez
+    #      de `capital_transactions`, donde ya está (todas las llamadas a
+    #      _record_flow usan skip_accounting=True precisamente porque el
+    #      capital_transaction ya se escribió).
+    #
+    # Ahora hay una sola fuente —el ledger— y el Resumen cuadra con Estados
+    # Financieros porque ambos leen lo mismo con el mismo filtro de estado.
+    acct_by_id: dict[str, dict] = {}
     try:
-        comms = sb.table("commissions") \
-            .select("amount, status") \
-            .eq("status", "paid") \
-            .execute().data or []
-        commissions_paid = sum(float(c.get("amount", 0)) for c in comms)
-    except Exception:
-        pass
+        for a in sb.table("capital_accounts").select("id, code, account_type").execute().data or []:
+            acct_by_id[a["id"]] = a
+    except Exception as e:
+        logger.warning(f"[capital-accounting] Could not fetch capital_accounts: {e}")
 
-    # ---- Compute P&L ----
-    # Income
-    rto_income = sum(float(p.get("paid_amount", 0) or 0) for p in rto_payments if p.get("status") == "paid")
-    down_payment_income = sum(float(f.get("amount", 0)) for f in capital_flows if f.get("flow_type") == "down_payment_received")
-    late_fee_income = sum(float(p.get("late_fee_amount", 0) or 0) for p in rto_payments if p.get("status") == "paid" and p.get("late_fee_amount"))
-    investor_deposits = sum(abs(float(f.get("amount", 0))) for f in capital_flows if f.get("flow_type") == "investment_in")
-    manual_income = sum(float(t["amount"]) for t in manual_txns if t["is_income"])
-    other_income = sum(abs(float(f.get("amount", 0))) for f in capital_flows
-                       if f.get("flow_type") in ("rent_income", "late_fee_income") and float(f.get("amount", 0)) > 0)
+    # Mismo filtro de estado que el árbol de P&L, o el Resumen y Estados
+    # Financieros mostrarían cifras distintas de los mismos libros.
+    pl_txns = [t for t in manual_txns
+               if (t.get("status") or "") not in ("pending_confirmation", "draft")]
 
-    total_income = rto_income + down_payment_income + late_fee_income + manual_income + other_income
+    income_by_code: dict[str, float] = defaultdict(float)
+    expense_by_code: dict[str, float] = defaultdict(float)
+    total_income = 0.0
+    total_expenses = 0.0
+    unclassified_income = 0.0
+    unclassified_expense = 0.0
+    acquisition_spend = 0.0      # activo, informativo: NO es gasto
+    investor_deposits = 0.0      # pasivo, informativo: NO es ingreso
+    investor_returns = 0.0       # pasivo, informativo: NO es gasto
 
-    # Expenses
-    acquisition_spend = sum(abs(float(f.get("amount", 0))) for f in capital_flows if f.get("flow_type") == "acquisition_out")
-    investor_returns = sum(abs(float(f.get("amount", 0))) for f in capital_flows if f.get("flow_type") == "return_out")
-    operating_expenses = sum(abs(float(f.get("amount", 0))) for f in capital_flows if f.get("flow_type") == "operating_expense")
-    manual_expense = sum(float(t["amount"]) for t in manual_txns if not t["is_income"])
+    for t in pl_txns:
+        amt = float(t.get("amount") or 0)
+        is_inc = bool(t.get("is_income"))
+        acct = acct_by_id.get(t.get("account_id"))
+        if not acct:
+            # Sin cuenta contable no se puede clasificar por tipo; se respeta
+            # la marca is_income para no perder el importe del total.
+            if is_inc:
+                unclassified_income += amt
+                total_income += amt
+            else:
+                unclassified_expense += amt
+                total_expenses += amt
+            continue
 
-    total_expenses = acquisition_spend + investor_returns + commissions_paid + operating_expenses + manual_expense
+        atype = acct.get("account_type") or ""
+        code = acct.get("code") or ""
+        signed = _capital_signed_balance(amt, atype, is_inc)
+
+        if atype in CAPITAL_INCOME_TYPES:
+            total_income += signed
+            income_by_code[code] += signed
+        elif atype in CAPITAL_EXPENSE_TYPES:
+            total_expenses += signed
+            expense_by_code[code] += signed
+        elif code == ACQUISITION_ASSET_CODE:
+            acquisition_spend += abs(signed)
+        elif code.startswith(INVESTOR_NOTES_CODE_PREFIX):
+            # Un abono aumenta el pasivo (entra dinero del inversionista);
+            # un cargo lo reduce (se le devuelve principal).
+            if is_inc:
+                investor_deposits += abs(amt)
+            else:
+                investor_returns += abs(amt)
+
+    # Desglose de ingresos. `manual_income` es el resto: lo que no cae en
+    # ninguno de los códigos conocidos, incluido lo que no tiene cuenta.
+    rto_income = income_by_code.get(INCOME_ACCOUNT_MAP["rto_payment"], 0.0)
+    down_payment_income = income_by_code.get(INCOME_ACCOUNT_MAP["down_payment"], 0.0)
+    late_fee_income = income_by_code.get(INCOME_ACCOUNT_MAP["late_fee"], 0.0)
+    manual_income = total_income - rto_income - down_payment_income - late_fee_income
+
+    # Desglose de gastos. El interés pagado al inversionista sí es gasto (el
+    # principal no), y hasta ahora no se mostraba en ninguna parte.
+    commissions_paid = expense_by_code.get(EXPENSE_ACCOUNT_MAP["commission"], 0.0)
+    investor_interest = expense_by_code.get(EXPENSE_ACCOUNT_MAP["investor_interest"], 0.0)
+    operating_expenses = total_expenses - commissions_paid - investor_interest - unclassified_expense
+    manual_expense = unclassified_expense
+
     net_profit = total_income - total_expenses
 
     # ---- Receivables ----

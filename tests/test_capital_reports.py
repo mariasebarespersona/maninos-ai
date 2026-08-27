@@ -440,3 +440,63 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# ── Test 13: el Resumen clasifica por TIPO DE CUENTA, no por flow_type ──
+@pytest.mark.asyncio
+async def test_dashboard_summary_classifies_by_account_type():
+    """Guardia del arreglo del Resumen (mecanismo portado de Homes).
+
+    Antes sumaba `capital_flows` por flow_type y por eso:
+      - metía la compra de una casa (ACTIVO) en los gastos,
+      - metía la devolución de principal (PASIVO) en los gastos,
+      - contaba el ingreso RTO dos veces (de rto_payments y del ledger).
+
+    Ahora manda el account_type: solo income/expense entran en el P&L, y
+    activo y pasivo se exponen como informativos.
+    """
+    print("TEST 13: el Resumen clasifica por tipo de cuenta...")
+
+    accounts = [
+        make_account("inc-rto",    "41000", "Rent Income",    "income"),
+        make_account("asset-home", "13010", "Mobile Homes",   "asset"),
+        make_account("exp-int",    "71400", "Interest paid",  "expense"),
+        make_account("liab-note",  "23001", "Investor note",  "liability"),
+    ]
+    txns = [
+        make_txn("inc-rto",    1000, True),    # ingreso real
+        make_txn("asset-home", 5000, False),   # compra de casa: ACTIVO, no gasto
+        make_txn("exp-int",     200, False),   # interés al inversionista: sí gasto
+        make_txn("liab-note", 10000, True),    # depósito: PASIVO, no ingreso
+    ]
+    setup_mock(accounts, txns)
+
+    result = await accounting_mod.get_accounting_dashboard(period="all")
+    s = result["summary"]
+
+    assert s["total_income"] == 1000, f"el depósito del inversionista no es ingreso, got {s['total_income']}"
+    assert s["total_expenses"] == 200, f"la compra de la casa no es gasto, got {s['total_expenses']}"
+    assert s["net_profit"] == 800
+    assert s["rto_income"] == 1000
+    # Informativos: visibles, pero fuera del P&L
+    assert s["acquisition_spend"] == 5000
+    assert s["investor_deposits"] == 10000
+
+
+# ── Test 14: los estados excluidos del P&L no cuentan ──
+@pytest.mark.asyncio
+async def test_dashboard_excludes_pending_and_draft():
+    """El Resumen debe usar el MISMO filtro de estado que el árbol de P&L, o
+    los dos mostrarían cifras distintas de los mismos libros."""
+    print("TEST 14: el Resumen excluye pending_confirmation y draft...")
+
+    accounts = [make_account("inc-1", "41000", "Rent Income", "income")]
+    txns = [
+        make_txn("inc-1", 1000, True, status="confirmed"),
+        make_txn("inc-1", 7777, True, status="pending_confirmation"),
+        make_txn("inc-1", 8888, True, status="draft"),
+    ]
+    setup_mock(accounts, txns)
+
+    result = await accounting_mod.get_accounting_dashboard(period="all")
+    assert result["summary"]["total_income"] == 1000
