@@ -397,7 +397,7 @@ export default function CapitalAccountingPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} bankAccounts={dashboard?.bank_accounts || []} recentTransactions={dashboard?.recent_transactions || []} />}
+      {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} bankAccounts={dashboard?.bank_accounts || []} recentTransactions={dashboard?.recent_transactions || []} periodRange={dashboard?.period} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab bankAccounts={dashboard?.bank_accounts || []} />}
       {activeTab === 'statements' && <StatementsTab />}
@@ -420,9 +420,10 @@ export default function CapitalAccountingPage() {
 // ════════════════════════════════════════════════════════════════════════
 //  OVERVIEW TAB
 // ════════════════════════════════════════════════════════════════════════
-function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTransactions }: {
+function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTransactions, periodRange }: {
   summary: DashboardData['summary']; cashFlow: DashboardData['cash_flow']; maxCf: number
   bankAccounts: BankAccount[]; recentTransactions: Transaction[]
+  periodRange?: { start_date?: string; end_date?: string }
 }) {
   const [drillFlow, setDrillFlow] = useState<'' | 'income' | 'expense'>('')
   const [drillTxns, setDrillTxns] = useState<any[]>([])
@@ -432,13 +433,20 @@ function OverviewTab({ summary: s, cashFlow: cf, maxCf, bankAccounts, recentTran
     if (!drillFlow) { setDrillTxns([]); return }
     let cancelled = false
     setDrillLoading(true)
-    fetch(`/api/capital/accounting/transactions?flow=${drillFlow}&per_page=200`)
+    // El drill-down tiene que acotarse al MISMO periodo que la cifra pulsada.
+    // Sin estas fechas la tarjeta mostraba el total del mes y al abrirla salían
+    // TODAS las transacciones de la historia: el número y su detalle no
+    // cuadraban.
+    const rango = new URLSearchParams({ flow: drillFlow, per_page: '200' })
+    if (periodRange?.start_date) rango.set('start_date', periodRange.start_date)
+    if (periodRange?.end_date) rango.set('end_date', periodRange.end_date)
+    fetch(`/api/capital/accounting/transactions?${rango}`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setDrillTxns(d.ok ? (d.transactions || []) : []) })
       .catch(() => { if (!cancelled) setDrillTxns([]) })
       .finally(() => { if (!cancelled) setDrillLoading(false) })
     return () => { cancelled = true }
-  }, [drillFlow])
+  }, [drillFlow, periodRange?.start_date, periodRange?.end_date])
 
   return (
     <div className="space-y-6">
