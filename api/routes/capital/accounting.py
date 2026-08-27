@@ -450,6 +450,29 @@ async def get_accounting_dashboard(
         accounts_payable = 0
 
     # ---- Cash Flow (12 months) ----
+    # La gráfica recorre 12 meses, así que necesita SU PROPIA ventana de datos.
+    # Antes reutilizaba `capital_flows` y `rto_payments`, que vienen filtrados
+    # por el periodo seleccionado: con el filtro por defecto (mes) once de los
+    # doce meses salían a cero por construcción, no por falta de actividad.
+    cf_window_start = (date(y, m, 1) - timedelta(days=30 * 11)).replace(day=1).isoformat()
+    cf_flows, cf_rto = [], []
+    try:
+        cf_flows = sb.table("capital_flows") \
+            .select("amount, flow_date") \
+            .gte("flow_date", cf_window_start) \
+            .lte("flow_date", end_date) \
+            .execute().data or []
+    except Exception as e:
+        logger.warning(f"[capital-accounting] Could not fetch capital_flows for chart: {e}")
+    try:
+        cf_rto = sb.table("rto_payments") \
+            .select("paid_amount, status, paid_date, due_date") \
+            .gte("due_date", cf_window_start) \
+            .lte("due_date", end_date) \
+            .execute().data or []
+    except Exception as e:
+        logger.warning(f"[capital-accounting] Could not fetch rto_payments for chart: {e}")
+
     cash_flow = []
     for i in range(11, -1, -1):
         cf_date = date(y, m, 1) - timedelta(days=30 * i)
@@ -458,12 +481,12 @@ async def get_accounting_dashboard(
         month_label = f"{cf_m:02d}/{cf_y}"
 
         # Quick calculation from capital_flows
-        month_in = sum(abs(float(f.get("amount", 0))) for f in capital_flows
+        month_in = sum(abs(float(f.get("amount", 0))) for f in cf_flows
                        if cf_start <= (f.get("flow_date") or "") <= cf_end and float(f.get("amount", 0)) > 0)
-        month_out = sum(abs(float(f.get("amount", 0))) for f in capital_flows
+        month_out = sum(abs(float(f.get("amount", 0))) for f in cf_flows
                         if cf_start <= (f.get("flow_date") or "") <= cf_end and float(f.get("amount", 0)) < 0)
         # Add RTO payments for this month
-        month_rto = sum(float(p.get("paid_amount", 0) or 0) for p in rto_payments
+        month_rto = sum(float(p.get("paid_amount", 0) or 0) for p in cf_rto
                         if p.get("status") == "paid" and cf_start <= (p.get("paid_date") or p.get("due_date") or "") <= cf_end)
         month_in += month_rto
 
