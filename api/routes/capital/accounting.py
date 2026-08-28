@@ -43,6 +43,9 @@ class TransactionCreate(BaseModel):
     description: str
     investor_id: Optional[str] = None
     property_id: Optional[str] = None
+    # Corregir a qué banco se atribuye un apunte. Úsalo con cuidado: el saldo
+    # derivado suma toda fila que lleve ese bank_account_id.
+    bank_account_id: Optional[str] = None
     rto_contract_id: Optional[str] = None
     client_id: Optional[str] = None
     payment_method: Optional[str] = None
@@ -3664,6 +3667,22 @@ async def post_capital_statement(statement_id: str):
     if not bank_accounting_account_id:
         logger.warning(f"[CapitalBankStmt] No accounting_account_id linked to bank_account — bank-side entries will be skipped")
 
+    # Mapa cuenta-contable-de-banco → banco. Necesario para los TRASPASOS: ahí la
+    # "contrapartida" no es una cuenta de resultado, es la cuenta contable de OTRO
+    # banco tuyo, y esa pata también es una pata bancaria. Sin estamparle su banco,
+    # el dinero sale del banco origen y no entra en ninguno: el saldo derivado del
+    # destino se queda corto y el widget de bancos deja de cuadrar con el Balance.
+    # No hay doble conteo: es un banco distinto del de la pata de origen.
+    bank_by_account: dict[str, str] = {}
+    try:
+        for _b in (sb.table("capital_bank_accounts")
+                   .select("id, accounting_account_id")
+                   .not_.is_("accounting_account_id", "null").execute().data or []):
+            if _b.get("accounting_account_id"):
+                bank_by_account[_b["accounting_account_id"]] = _b["id"]
+    except Exception as e:
+        logger.warning(f"[CapitalBankStmt] No se pudo mapear bancos a cuentas contables: {e}")
+
     posted = 0
     skipped = 0
     errors = []
@@ -3738,6 +3757,10 @@ async def post_capital_statement(statement_id: str):
                     "notes": f"Importado de estado de cuenta: {stmt_label}",
                     "status": "confirmed",
                 }
+                # Traspaso entre bancos propios: esta pata es la del banco DESTINO.
+                _dest_bank = bank_by_account.get(account_id)
+                if _dest_bank and _dest_bank != statement.get("bank_account_id"):
+                    txn_data["bank_account_id"] = _dest_bank
                 txn_result = sb.table("capital_transactions").insert(txn_data).execute()
                 if txn_result.data:
                     pnl_txn_id = txn_result.data[0]["id"]
