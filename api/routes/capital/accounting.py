@@ -1207,20 +1207,49 @@ async def reset_account_balances(request: Request):
 
         scope_account_ids = [a["id"] for a in accounts if a.get("account_type") in target_types]
 
+        # Se ANULAN, no se borran — mismo criterio que Homes
+        # (reset_homes_account_balances en api/routes/accounting.py).
+        #
+        # Hasta 2026-08-28 esto ejecutaba un DELETE sobre todas las cuentas del
+        # scope, es decir el ledger entero: sin filtrar por extracto, ni por
+        # origen, ni por fecha, y sin escribir auditoría. Un vaciado se llevó
+        # por delante los depósitos de inversionistas de meses anteriores y no
+        # dejó forma de recuperarlos ni rastro de quién lo hizo.
+        #
+        # Anular cumple el mismo objetivo visible (los estados financieros
+        # muestran $0, porque toda lectura excluye 'voided') y además es
+        # reversible, auditable y deja los importes consultables.
         deleted_count = 0
         if scope_account_ids:
-            # Clear linked_transaction_id self-references before deleting (avoid FK constraint)
-            sb.table("capital_transactions") \
-                .update({"linked_transaction_id": None}) \
-                .in_("account_id", scope_account_ids) \
-                .execute()
+            # El bucle acota el tamaño de cada UPDATE; se corta en cuanto un
+            # lote no cambia nada, y el tope evita girar para siempre si el
+            # backend dejara de reportar filas afectadas.
+            for _ in range(20):
+                voided = sb.table("capital_transactions") \
+                    .update({"status": "voided", "amount": 0}) \
+                    .in_("account_id", scope_account_ids) \
+                    .neq("status", "voided") \
+                    .execute()
+                batch = len(voided.data or [])
+                deleted_count += batch
+                if batch == 0:
+                    break
 
-            # Delete ALL transactions for the scoped accounts
-            deleted = sb.table("capital_transactions") \
-                .delete() \
-                .in_("account_id", scope_account_ids) \
-                .execute()
-            deleted_count = len(deleted.data or [])
+        # Auditoría: que un vaciado quede registrado. Su ausencia es la razón de
+        # que no hubiera rastro de lo ocurrido.
+        try:
+            sb.table("capital_audit_log").insert({
+                "table_name": "capital_transactions",
+                # record_id es NOT NULL y esto es una operacion masiva sin una
+                # fila concreta: se usa el UUID cero como centinela de "lote".
+                "record_id": "00000000-0000-0000-0000-000000000000",
+                # 'void' esta en el CHECK de la tabla (migracion 097) y describe
+                # exactamente lo que ahora ocurre.
+                "action": "void",
+                "description": f"Vaciar Cifras (scope={scope}): {deleted_count} transacciones anuladas, {reset_count} cuentas reseteadas",
+            }).execute()
+        except Exception as e:
+            logger.warning(f"[capital-accounting] No se pudo registrar el vaciado en auditoria: {e}")
 
         scope_labels = {"all": "todas", "profit_loss": "P&L", "balance_sheet": "Balance Sheet"}
         return {
@@ -1228,7 +1257,7 @@ async def reset_account_balances(request: Request):
             "reset_count": reset_count,
             "deleted_transactions": deleted_count,
             "scope": scope,
-            "message": f"Cifras vaciadas: {deleted_count} transacciones eliminadas, {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
+            "message": f"Cifras vaciadas: {deleted_count} transacciones anuladas (reversibles), {reset_count} cuentas reseteadas ({scope_labels.get(scope, scope)})",
         }
 
     except Exception as e:
