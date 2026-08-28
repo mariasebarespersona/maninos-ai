@@ -465,23 +465,32 @@ async def get_accounting_dashboard(
     # por el periodo seleccionado: con el filtro por defecto (mes) once de los
     # doce meses salían a cero por construcción, no por falta de actividad.
     cf_window_start = (date(y, m, 1) - timedelta(days=30 * 11)).replace(day=1).isoformat()
-    cf_flows, cf_rto = [], []
+    # La gráfica se alimenta del LEDGER, no de tablas operativas. Antes sumaba
+    # `capital_flows` y `rto_payments`: dos tablas que el importador de extractos
+    # NO escribe, así que la gráfica salía vacía aunque hubiera movimientos
+    # bancarios reales contabilizados. Es el mismo error de raíz que tenía el
+    # resto del Resumen.
+    #
+    # Flujo de caja = movimiento de las cuentas de banco. Se toman las líneas con
+    # bank_account_id (las patas bancarias del asiento): abono = entra dinero,
+    # cargo = sale.
+    cf_txns = []
     try:
-        cf_flows = sb.table("capital_flows") \
-            .select("amount, flow_date") \
-            .gte("flow_date", cf_window_start) \
-            .lte("flow_date", end_date) \
+        cf_txns = sb.table("capital_transactions") \
+            .select("amount, is_income, transaction_date, status, bank_account_id") \
+            .not_.is_("bank_account_id", "null") \
+            .gte("transaction_date", cf_window_start) \
+            .lte("transaction_date", end_date) \
             .execute().data or []
+        # El `bank_account_id` se filtra también aquí, no solo en la consulta:
+        # la regla "solo las patas bancarias mueven caja" es del cálculo, y si
+        # dependiera únicamente del WHERE, la contrapartida de resultado se
+        # colaría y cada movimiento contaría doble.
+        cf_txns = [t for t in cf_txns
+                   if t.get("bank_account_id")
+                   and (t.get("status") or "") not in ("voided", "pending_confirmation", "draft")]
     except Exception as e:
-        logger.warning(f"[capital-accounting] Could not fetch capital_flows for chart: {e}")
-    try:
-        cf_rto = sb.table("rto_payments") \
-            .select("paid_amount, status, paid_date, due_date") \
-            .gte("due_date", cf_window_start) \
-            .lte("due_date", end_date) \
-            .execute().data or []
-    except Exception as e:
-        logger.warning(f"[capital-accounting] Could not fetch rto_payments for chart: {e}")
+        logger.warning(f"[capital-accounting] Could not fetch ledger for chart: {e}")
 
     cash_flow = []
     for i in range(11, -1, -1):
@@ -490,15 +499,10 @@ async def get_accounting_dashboard(
         cf_start, cf_end = _get_period_dates("month", cf_y, cf_m)
         month_label = f"{cf_m:02d}/{cf_y}"
 
-        # Quick calculation from capital_flows
-        month_in = sum(abs(float(f.get("amount", 0))) for f in cf_flows
-                       if cf_start <= (f.get("flow_date") or "") <= cf_end and float(f.get("amount", 0)) > 0)
-        month_out = sum(abs(float(f.get("amount", 0))) for f in cf_flows
-                        if cf_start <= (f.get("flow_date") or "") <= cf_end and float(f.get("amount", 0)) < 0)
-        # Add RTO payments for this month
-        month_rto = sum(float(p.get("paid_amount", 0) or 0) for p in cf_rto
-                        if p.get("status") == "paid" and cf_start <= (p.get("paid_date") or p.get("due_date") or "") <= cf_end)
-        month_in += month_rto
+        _mes = [t for t in cf_txns
+                if cf_start <= (t.get("transaction_date") or "") <= cf_end]
+        month_in = sum(abs(float(t.get("amount") or 0)) for t in _mes if t.get("is_income"))
+        month_out = sum(abs(float(t.get("amount") or 0)) for t in _mes if not t.get("is_income"))
 
         cash_flow.append({
             "month": f"{cf_y}-{cf_m:02d}",

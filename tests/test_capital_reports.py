@@ -500,3 +500,49 @@ async def test_dashboard_excludes_pending_and_draft():
 
     result = await accounting_mod.get_accounting_dashboard(period="all")
     assert result["summary"]["total_income"] == 1000
+
+
+# ── Test 15: la gráfica de flujo de caja se alimenta del LEDGER ──
+@pytest.mark.asyncio
+async def test_dashboard_cash_flow_reads_ledger():
+    """La gráfica de 12 meses leía `capital_flows` y `rto_payments`, dos tablas
+    que el importador de extractos NO escribe: salía vacía aunque hubiera
+    movimientos bancarios contabilizados. Ahora sale de las patas bancarias del
+    ledger (las líneas con bank_account_id)."""
+    print("TEST 15: el flujo de caja sale del ledger...")
+
+    accounts = [make_account("bank-1", "10120", "BOA CAPITAL", "asset")]
+    entra = make_txn("bank-1", 5000, True, txn_date="2026-02-10")
+    sale = make_txn("bank-1", 1200, False, txn_date="2026-02-20")
+    for t in (entra, sale):
+        t["bank_account_id"] = "banco-uuid-1"
+    setup_mock(accounts, [entra, sale])
+
+    result = await accounting_mod.get_accounting_dashboard(period="all", year=2026, month=2)
+    meses = {c["month"]: c for c in result["cash_flow"]}
+
+    assert "2026-02" in meses, f"falta el mes con movimiento: {list(meses)}"
+    assert meses["2026-02"]["income"] == 5000
+    assert meses["2026-02"]["expense"] == 1200
+    assert meses["2026-02"]["net"] == 3800
+
+
+# ── Test 16: las líneas sin banco no son flujo de caja ──
+@pytest.mark.asyncio
+async def test_cash_flow_ignores_non_bank_legs():
+    """Solo las patas bancarias mueven caja. La contrapartida de resultado
+    (sin bank_account_id) no debe contarse, o cada movimiento valdría doble."""
+    print("TEST 16: el flujo de caja ignora las patas sin banco...")
+
+    accounts = [
+        make_account("bank-1", "10120", "BOA CAPITAL", "asset"),
+        make_account("inc-1", "41000", "Rent Income", "income"),
+    ]
+    pata_banco = make_txn("bank-1", 700, True, txn_date="2026-02-10")
+    pata_banco["bank_account_id"] = "banco-uuid-1"
+    pata_pyg = make_txn("inc-1", 700, True, txn_date="2026-02-10")  # sin banco
+    setup_mock(accounts, [pata_banco, pata_pyg])
+
+    result = await accounting_mod.get_accounting_dashboard(period="all", year=2026, month=2)
+    meses = {c["month"]: c for c in result["cash_flow"]}
+    assert meses["2026-02"]["income"] == 700, "la pata de P&L no debe sumar a caja"
