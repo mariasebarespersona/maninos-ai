@@ -3840,13 +3840,20 @@ async def delete_capital_bank_statement(statement_id: str):
         to_delete: set = set()
         if pnl_ids:
             legs = sb.table("capital_transactions") \
-                .select("id, linked_transaction_id, notes") \
+                .select("id, linked_transaction_id, notes, source") \
                 .in_("id", pnl_ids).execute().data or []
             for l in legs:
                 notes = (l.get("notes") or "").lower()
-                # Statement-created legs carry these import markers; a pre-existing
-                # matched transaction does not — so those are never deleted.
-                if "estado de cuenta" in notes or "contrapartida" in notes:
+                # Marcador primario: la columna `source`, que el posteo rellena
+                # con "bank_statement" y que nadie reescribe al editar un apunte.
+                # Antes esto se decidía SOLO por el texto de `notes`: bastaba con
+                # editar la nota de un apunte para que el borrado dejara de
+                # reconocerlo y lo abandonara huérfano junto con su pata (pasó con
+                # un traspaso, y dejó un banco en saldo negativo).
+                # El texto se mantiene como respaldo para los apuntes anteriores a
+                # este cambio, que no llevan `source`.
+                if (l.get("source") == "bank_statement"
+                        or "estado de cuenta" in notes or "contrapartida" in notes):
                     to_delete.add(l["id"])
                     if l.get("linked_transaction_id"):
                         to_delete.add(l["linked_transaction_id"])
