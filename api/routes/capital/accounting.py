@@ -63,6 +63,13 @@ class TransactionUpdate(BaseModel):
     counterparty_name: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[str] = None
+    # Vínculo con la ficha del inversionista / la propiedad. Son columnas reales
+    # de capital_transactions (el /sync las rellena al crear), pero faltaban
+    # aquí, así que un apunte importado de un extracto se quedaba suelto y no
+    # aparecía en el estado de cuenta del inversionista aunque el importe
+    # estuviera bien contabilizado.
+    investor_id: Optional[str] = None
+    property_id: Optional[str] = None
 
 
 class AccountCreate(BaseModel):
