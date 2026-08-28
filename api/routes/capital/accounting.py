@@ -43,9 +43,6 @@ class TransactionCreate(BaseModel):
     description: str
     investor_id: Optional[str] = None
     property_id: Optional[str] = None
-    # Corregir a qué banco se atribuye un apunte. Úsalo con cuidado: el saldo
-    # derivado suma toda fila que lleve ese bank_account_id.
-    bank_account_id: Optional[str] = None
     rto_contract_id: Optional[str] = None
     client_id: Optional[str] = None
     payment_method: Optional[str] = None
@@ -73,6 +70,9 @@ class TransactionUpdate(BaseModel):
     # estuviera bien contabilizado.
     investor_id: Optional[str] = None
     property_id: Optional[str] = None
+    # Corregir a qué banco se atribuye un apunte ya posteado. Úsalo con cuidado:
+    # el saldo derivado suma toda fila que lleve ese bank_account_id.
+    bank_account_id: Optional[str] = None
 
 
 class AccountCreate(BaseModel):
