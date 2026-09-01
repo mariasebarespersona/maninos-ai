@@ -2261,7 +2261,12 @@ async def get_balance_sheet_tree():
         # discrepar nunca.
         net_income = 0.0
         try:
-            _pl = await get_profit_loss_tree()
+            # Rango ACUMULADO explícito. get_profit_loss_tree() sin fechas
+            # devuelve solo el MES EN CURSO, y un balance acumulado necesita el
+            # resultado acumulado: llamarlo sin argumentos descuadraba el Balance
+            # en cuanto había resultado en meses anteriores.
+            _pl_start, _pl_end = _get_period_dates("all", date.today().year, date.today().month)
+            _pl = await get_profit_loss_tree(start_date=_pl_start, end_date=_pl_end)
             net_income = round(float(_pl.get("net_income") or 0), 2)
         except Exception as e:
             logger.warning(f"[balance-sheet-tree] No se pudo obtener el resultado del período: {e}")
