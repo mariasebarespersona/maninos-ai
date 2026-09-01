@@ -19,6 +19,7 @@ Never raises to the caller — accrual is best-effort and must not block a payme
 or a scheduler tick.
 """
 import logging
+from calendar import monthrange
 from datetime import date, datetime
 from typing import Optional
 
@@ -78,6 +79,33 @@ def _already_accrued_count(note_id: str) -> int:
         return 0
 
 
+def _period_end_date(note: dict, period_index: int, cap: date) -> str:
+    """Fecha contable del devengo del periodo `period_index` (0-based).
+
+    El interés de un periodo se reconoce al CIERRE de ese periodo: start_date
+    más (period_index + 1) meses. Antes todos los periodos de una misma
+    ejecución compartían la fecha del día en que corría el job, así que una
+    puesta al día amontonaba meses de gasto en la fecha de ejecución en vez de
+    repartirlo por los meses a los que pertenece.
+
+    Nunca devuelve una fecha futura: se limita a `cap` (normalmente hoy).
+    """
+    start_raw = note.get("start_date") or note.get("created_at")
+    try:
+        start = date.fromisoformat(str(start_raw)[:10])
+    except Exception:
+        return cap.isoformat()
+
+    total_month = start.month - 1 + (period_index + 1)
+    year = start.year + total_month // 12
+    month = total_month % 12 + 1
+    # Ajuste de fin de mes: un pagaré que arranca el 31 no puede vencer el 31 de
+    # un mes de 30 días.
+    last_day = monthrange(year, month)[1]
+    d = date(year, month, min(start.day, last_day))
+    return (d if d <= cap else cap).isoformat()
+
+
 def accrue_note(note: dict, up_to_period: int, *, as_of: Optional[str] = None) -> float:
     """Accrue scheduled interest for periods [already_accrued, up_to_period).
 
@@ -101,6 +129,10 @@ def accrue_note(note: dict, up_to_period: int, *, as_of: Optional[str] = None) -
         return 0.0
 
     when = as_of or date.today().isoformat()
+    try:
+        _cap_date = date.fromisoformat(when[:10])
+    except Exception:
+        _cap_date = date.today()
     investor_name = (note.get("investors") or {}).get("name") or note.get("lender_name") or ""
     total = 0.0
     from api.services.capital_ledger import post_to_capital_ledger
@@ -112,7 +144,7 @@ def accrue_note(note: dict, up_to_period: int, *, as_of: Optional[str] = None) -
             post_to_capital_ledger(
                 event_type="interest_accrued",
                 amount=interest,
-                date=when,
+                date=_period_end_date(note, i, _cap_date),
                 counterparty_name=investor_name,
                 description_override=f"Interés devengado {investor_name} — período {i + 1} — ${interest:,.2f}",
                 notes=f"accrual|{note_id}|{i}",
