@@ -76,7 +76,12 @@ const navigationSections: NavSection[] = [
   },
 ]
 
-const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz']
+// La comprobación es `email.includes(patrón)`, así que un patrón corto abre la
+// puerta a cualquier email que lo contenga. Para altas nuevas se usa el email
+// COMPLETO: da acceso a esa persona y a nadie más. Los patrones cortos de
+// arriba son los históricos y se dejan como están.
+const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz',
+  'jorge@delatoro.com']
 
 function isCapitalAuthorized(email?: string | null): boolean {
   if (!email) return false
