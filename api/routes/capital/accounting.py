@@ -2248,16 +2248,47 @@ async def get_balance_sheet_tree():
         total_liabilities = sum(r.get("subtotal", 0) for r in liabilities)
         total_equity = sum(r.get("subtotal", 0) for r in equity)
 
+        # El RESULTADO DEL PERÍODO es parte del patrimonio. Sin esta línea el
+        # Balance no cuadra: la ecuación es A = P + PN + Resultado, y aquí se
+        # devolvía solo P + PN. El fallo estuvo siempre, pero era invisible
+        # mientras el P&L valía cero; en cuanto hubo resultado (el devengo
+        # mensual de intereses), el Balance apareció descuadrado por su importe
+        # exacto. Homes ya lo hace así: inyecta el resultado como una línea más
+        # del patrimonio (ver get_balance_sheet en api/routes/accounting.py).
+        #
+        # Se toma del propio árbol de P&L, no se recalcula: así lo que muestra
+        # el Balance y lo que muestra el Estado de Resultados no pueden
+        # discrepar nunca.
+        net_income = 0.0
+        try:
+            _pl = await get_profit_loss_tree()
+            net_income = round(float(_pl.get("net_income") or 0), 2)
+        except Exception as e:
+            logger.warning(f"[balance-sheet-tree] No se pudo obtener el resultado del período: {e}")
+
+        equity_display = list(equity)
+        if abs(net_income) > 0.005:
+            equity_display.append({
+                "id": "NET_INCOME", "code": "", "name": "Resultado del período",
+                "account_type": "equity", "is_header": False,
+                "balance": net_income, "subtotal": net_income, "children": [],
+            })
+        total_equity_con_resultado = round(total_equity + net_income, 2)
+
         return {
             "ok": True,
             "date": date.today().isoformat(),
             "assets": assets,
             "liabilities": liabilities,
-            "equity": equity,
+            "equity": equity_display,
             "total_assets": round(total_assets, 2),
             "total_liabilities": round(total_liabilities, 2),
-            "total_equity": round(total_equity, 2),
-            "total_liabilities_and_equity": round(total_liabilities + total_equity, 2),
+            # total_equity YA incluye el resultado, para que la suma de la
+            # columna coincida con el total que se imprime debajo.
+            "total_equity": total_equity_con_resultado,
+            "equity_before_net_income": round(total_equity, 2),
+            "net_income": net_income,
+            "total_liabilities_and_equity": round(total_liabilities + total_equity_con_resultado, 2),
         }
 
     except Exception as e:

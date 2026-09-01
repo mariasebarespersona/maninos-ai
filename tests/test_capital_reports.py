@@ -546,3 +546,41 @@ async def test_cash_flow_ignores_non_bank_legs():
     result = await accounting_mod.get_accounting_dashboard(period="all", year=2026, month=2)
     meses = {c["month"]: c for c in result["cash_flow"]}
     assert meses["2026-02"]["income"] == 700, "la pata de P&L no debe sumar a caja"
+
+
+# ── Test 17: el Balance cuadra CUANDO HAY RESULTADO ──
+@pytest.mark.asyncio
+async def test_balance_sheet_balances_with_net_income():
+    """El Balance devolvía total_liabilities_and_equity = P + PN, sin el
+    resultado del período. Cuadraba solo mientras el P&L valía cero; en cuanto
+    hubo resultado (el devengo mensual de intereses) apareció descuadrado por
+    su importe exacto. La ecuación correcta es A = P + PN + Resultado.
+    """
+    print("TEST 17: el Balance cuadra con resultado distinto de cero...")
+
+    accounts = [
+        make_account("ast-1", "10120", "Banco",     "asset"),
+        make_account("eq-1",  "34000", "Apertura",  "equity"),
+        make_account("inc-1", "41000", "Ingresos",  "income"),
+        make_account("exp-1", "71400", "Intereses", "expense"),
+    ]
+    txns = [
+        make_txn("ast-1", 10000, True),   # activo +10.000
+        make_txn("eq-1",   7000, True),   # patrimonio +7.000
+        make_txn("inc-1",  5000, True),   # ingreso  +5.000
+        make_txn("exp-1",  2000, False),  # gasto     2.000 → resultado +3.000
+    ]
+    setup_mock(accounts, txns)
+
+    bs = await accounting_mod.get_balance_sheet_tree()
+
+    assert bs["net_income"] == 3000, f"resultado esperado 3000, got {bs['net_income']}"
+    assert bs["equity_before_net_income"] == 7000
+    assert bs["total_equity"] == 10000, "el patrimonio debe incluir el resultado"
+    assert abs(bs["total_assets"] - bs["total_liabilities_and_equity"]) < 0.01, (
+        f"EL BALANCE NO CUADRA: activos {bs['total_assets']} != "
+        f"pasivo+patrimonio {bs['total_liabilities_and_equity']}"
+    )
+    # y el resultado aparece como línea visible dentro del patrimonio
+    assert any(n.get("id") == "NET_INCOME" for n in bs["equity"]), \
+        "falta la línea 'Resultado del período' en el patrimonio"
