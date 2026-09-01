@@ -164,13 +164,14 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
       {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 z-50 h-full w-72
+        flex flex-col
         bg-white border-r transform transition-transform duration-200
         lg:translate-x-0 
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `} style={{ borderColor: 'var(--sand)' }}>
         
         {/* Header */}
-        <div className="h-20 flex items-center justify-between px-6 border-b" style={{ borderColor: 'var(--sand)' }}>
+        <div className="h-20 flex-none flex items-center justify-between px-6 border-b" style={{ borderColor: 'var(--sand)' }}>
           <Link href="/capital" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
                  style={{ backgroundColor: 'var(--gold-700)' }}>
@@ -205,7 +206,7 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
         </div>
 
         {/* Navigation — grouped by section */}
-        <nav className="p-4 space-y-5">
+        <nav className="p-4 space-y-5 flex-1 min-h-0 overflow-y-auto">
           {navigationSections.map((section) => (
             <div key={section.title}>
               <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest"
@@ -244,7 +245,7 @@ export default function CapitalLayout({ children }: { children: React.ReactNode 
         </nav>
 
         {/* User section */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t" style={{ borderColor: 'var(--sand)' }}>
+        <div className="flex-none p-4 border-t" style={{ borderColor: 'var(--sand)' }}>
           {user && (
             <div className="mb-3 px-4 py-2">
               <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--ash)' }}>
