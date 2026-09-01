@@ -29,11 +29,11 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Clientes',
+    title: 'Fondeo',
     items: [
-      { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
-      { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
-      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
+      { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
+      { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
+      { name: 'Pagos del Mes', href: '/capital/pagos-inversionistas', icon: CalendarClock },
     ],
   },
   {
@@ -43,19 +43,11 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Fondeo',
+    title: 'Clientes',
     items: [
-      { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
-      { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
-      { name: 'Pagos del Mes', href: '/capital/pagos-inversionistas', icon: CalendarClock },
-    ],
-  },
-  {
-    title: 'Entrega',
-    items: [
-      { name: 'Casas Entregadas', href: '/capital/casas-entregadas', icon: Home },
-      { name: 'Lealtad de Cliente', href: '/capital/lealtad-cliente', icon: Heart },
-      { name: 'Encuestas', href: '/capital/encuestas', icon: ClipboardList },
+      { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
+      { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
+      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
     ],
   },
   {
@@ -64,6 +56,14 @@ const navigationSections: NavSection[] = [
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
       { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
+    ],
+  },
+  {
+    title: 'Entrega',
+    items: [
+      { name: 'Casas Entregadas', href: '/capital/casas-entregadas', icon: Home },
+      { name: 'Lealtad de Cliente', href: '/capital/lealtad-cliente', icon: Heart },
+      { name: 'Encuestas', href: '/capital/encuestas', icon: ClipboardList },
     ],
   },
 ]
