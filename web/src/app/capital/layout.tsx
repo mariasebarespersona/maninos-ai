@@ -47,12 +47,12 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
-      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
     ],
   },
   {
     title: 'Cartera',
     items: [
+      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
       { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
