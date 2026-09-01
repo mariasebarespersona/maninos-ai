@@ -3,28 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { 
-  LayoutDashboard,
-  FileCheck,
-  FileSignature,
-  CreditCard,
-  Landmark,
-  Menu, 
-  X,
-  ChevronRight,
-  LogOut,
-  Loader2,
-  AlertTriangle,
-  BarChart3,
-  ArrowRightLeft,
-  FileText,
-  Users,
-  BookOpen,
-  Bell,
-  Target,
-  Home,
-  CalendarClock,
-} from 'lucide-react'
+import { LayoutDashboard, FileCheck, FileSignature, CreditCard, Landmark, Menu, X, ChevronRight, LogOut, Loader2, AlertTriangle, BarChart3, ArrowRightLeft, FileText, Users, BookOpen, Bell, Target, Home, CalendarClock, Heart, ClipboardList } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
 import AIChatWidget from '@/components/AIChatWidget'
@@ -54,20 +33,33 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
-      { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
       { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
     ],
   },
   {
-    title: 'Inversionistas',
+    title: 'Compra',
     items: [
-      { name: 'Seguimiento', href: '/capital/investors', icon: Users },
+      { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
+    ],
+  },
+  {
+    title: 'Fondeo',
+    items: [
+      { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
       { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
       { name: 'Pagos del Mes', href: '/capital/pagos-inversionistas', icon: CalendarClock },
     ],
   },
   {
-    title: 'Reportes',
+    title: 'Entrega',
+    items: [
+      { name: 'Casas Entregadas', href: '/capital/casas-entregadas', icon: Home },
+      { name: 'Lealtad de Cliente', href: '/capital/lealtad-cliente', icon: Heart },
+      { name: 'Encuestas', href: '/capital/encuestas', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Cartera',
     items: [
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
@@ -355,8 +347,11 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     kyc: 'Verificación KYC',
     contracts: 'Contratos',
     'financed-houses': 'Casas Financiadas',
+    'casas-entregadas': 'Casas Entregadas',
+    'lealtad-cliente': 'Lealtad de Cliente',
+    encuestas: 'Encuestas',
     payments: 'Pagos',
-    investors: 'Seguimiento',
+    investors: 'Seguimiento de inversionistas',
     'promissory-notes': 'Promissory Notes',
     reports: 'Reportes',
     accounting: 'Contabilidad',
