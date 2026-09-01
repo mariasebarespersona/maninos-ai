@@ -6,7 +6,22 @@ import { useParams } from 'next/navigation'
 import {
   Home, User, MapPin, ArrowLeft, Users, Plus, X, Loader2,
   Building2, TrendingUp, Wallet, AlertTriangle, Check,
+  FileSignature, ShieldCheck, Clock, FileText,
 } from 'lucide-react'
+
+/** Traspaso de título. Vive en Homes (title_transfers); Capital solo lo LEE. */
+interface TitleTransfer {
+  id: string
+  transfer_type: 'purchase' | 'sale'
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  from_name: string
+  to_name: string
+  tracking_number?: string | null
+  submitted_at?: string | null
+  completed_at?: string | null
+  expected_completion?: string | null
+  documents_checklist?: Record<string, unknown> | null
+}
 
 interface InvestorLink {
   investment_id: string
@@ -74,6 +89,23 @@ const payStyles: Record<string, { color: string; label: string }> = {
   failed: { color: 'var(--error)', label: 'Fallido' },
 }
 
+const ESTADO_TITULO: Record<string, string> = {
+  pending: 'Pendiente', in_progress: 'En trámite', completed: 'Completado', cancelled: 'Cancelado',
+}
+const estadoStyle = (s: string): React.CSSProperties =>
+  s === 'completed' ? { backgroundColor: 'var(--success-light)', color: 'var(--success)' }
+  : s === 'cancelled' ? { backgroundColor: 'var(--danger-light)', color: 'var(--danger)' }
+  : s === 'in_progress' ? { backgroundColor: 'var(--info-light)', color: 'var(--info)' }
+  : { backgroundColor: 'var(--warning-light)', color: 'var(--warning)' }
+const fechaCorta = (d?: string | null) =>
+  d ? new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+/** Un documento cuenta como listo si está marcado o si tiene fichero subido. */
+const docsListos = (t: TitleTransfer) =>
+  Object.values(t.documents_checklist || {}).filter(
+    (v) => v === true || (typeof v === 'object' && v !== null && 'file_url' in (v as object))
+  ).length
+const docsTotal = (t: TitleTransfer) => Object.keys(t.documents_checklist || {}).length
+
 export default function FinancedHouseDetailPage() {
   const params = useParams()
   const saleId = params.id as string
@@ -90,6 +122,8 @@ export default function FinancedHouseDetailPage() {
 
   const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n || 0)
 
+  const [titles, setTitles] = useState<{ purchase: TitleTransfer | null; sale: TitleTransfer | null } | null>(null)
+
   const loadHouse = useCallback(async () => {
     try {
       const res = await fetch(`/api/capital/financed-houses/${saleId}`)
@@ -103,6 +137,19 @@ export default function FinancedHouseDetailPage() {
   }, [saleId])
 
   useEffect(() => { loadHouse() }, [loadHouse])
+
+  // El título es un dato de Homes. Se pide por property_id, que la ficha ya trae.
+  // Solo lectura: Capital nunca escribe sobre los traspasos de Homes.
+  useEffect(() => {
+    const pid = house?.property?.id
+    if (!pid) return
+    let cancelled = false
+    fetch(`/api/transfers/property/${pid}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setTitles({ purchase: d.purchase ?? null, sale: d.sale ?? null }) })
+      .catch(() => { if (!cancelled) setTitles({ purchase: null, sale: null }) })
+    return () => { cancelled = true }
+  }, [house?.property?.id])
 
   const openModal = async () => {
     setSelInvestor(''); setAmount(''); setRate('12')
@@ -307,6 +354,71 @@ export default function FinancedHouseDetailPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Título de la casa — dato de Homes, aquí SOLO LECTURA.
+          Se muestran los dos traspasos por separado porque significan cosas
+          distintas: 'purchase' es el título a nombre de Maninos (lo que respalda
+          al inversionista) y 'sale' es el que pasa al cliente al terminar el RTO. */}
+      <div className="card-luxury p-5">
+        <h2 className="font-serif text-lg mb-1 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+          <FileSignature className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
+          Título de la casa
+        </h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+          Gestionado desde Homes. Aquí solo se consulta: los cambios se hacen en Traspasos de Título.
+        </p>
+
+        {titles === null ? (
+          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ash)' }}>
+            <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
+          </div>
+        ) : (!titles.purchase && !titles.sale) ? (
+          <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--slate)' }}>
+            <AlertTriangle className="w-4 h-4 flex-none mt-0.5" style={{ color: 'var(--warning)' }} />
+            <span>
+              Esta casa no tiene ningún traspaso de título registrado en Homes.
+              Sin él no hay constancia de que el título esté a nombre de Maninos.
+            </span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([
+              { t: titles.purchase, titulo: 'Compra', sub: 'Título a nombre de Maninos', icon: ShieldCheck },
+              { t: titles.sale, titulo: 'Venta', sub: 'Título al cliente, al terminar el RTO', icon: Home },
+            ] as const).map(({ t, titulo, sub, icon: Icon }) => (
+              <div key={titulo} className="rounded-lg p-4" style={{ border: '1px solid var(--sand)' }}>
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <p className="text-sm font-semibold flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
+                      <Icon className="w-3.5 h-3.5" style={{ color: 'var(--ash)' }} /> {titulo}
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'var(--ash)' }}>{sub}</p>
+                  </div>
+                  {t && <span className="text-[11px] px-2 py-0.5 rounded-full flex-none" style={estadoStyle(t.status)}>{ESTADO_TITULO[t.status]}</span>}
+                </div>
+
+                {!t ? (
+                  <p className="text-sm" style={{ color: 'var(--slate)' }}>Sin registrar</p>
+                ) : (
+                  <div className="space-y-1 text-sm" style={{ color: 'var(--slate)' }}>
+                    <p><span style={{ color: 'var(--ash)' }}>De:</span> {t.from_name} <span style={{ color: 'var(--ash)' }}>→</span> {t.to_name}</p>
+                    {t.tracking_number && <p><span style={{ color: 'var(--ash)' }}>Seguimiento:</span> {t.tracking_number}</p>}
+                    {t.completed_at
+                      ? <p><span style={{ color: 'var(--ash)' }}>Completado:</span> {fechaCorta(t.completed_at)}</p>
+                      : t.expected_completion
+                        ? <p><span style={{ color: 'var(--ash)' }}>Previsto:</span> {fechaCorta(t.expected_completion)}</p>
+                        : null}
+                    <p className="flex items-center gap-1.5 pt-1" style={{ color: 'var(--ash)' }}>
+                      <FileText className="w-3.5 h-3.5" />
+                      {docsListos(t)} de {docsTotal(t)} documentos
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Investors */}
