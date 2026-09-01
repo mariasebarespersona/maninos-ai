@@ -33,7 +33,7 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
       { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
-      { name: 'Pagos del Mes', href: '/capital/pagos-inversionistas', icon: CalendarClock },
+      { name: 'Pagos a inversionistas', href: '/capital/pagos-inversionistas', icon: CalendarClock },
     ],
   },
   {
@@ -52,7 +52,7 @@ const navigationSections: NavSection[] = [
   {
     title: 'Cartera',
     items: [
-      { name: 'Pagos', href: '/capital/payments', icon: CreditCard },
+      { name: 'Pagos de clientes', href: '/capital/payments', icon: CreditCard },
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
       { name: 'Contabilidad', href: '/capital/accounting', icon: BookOpen },
@@ -351,7 +351,8 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     'casas-entregadas': 'Casas Entregadas',
     'lealtad-cliente': 'Lealtad de Cliente',
     encuestas: 'Encuestas',
-    payments: 'Pagos',
+    payments: 'Pagos de clientes',
+    'pagos-inversionistas': 'Pagos a inversionistas',
     investors: 'Seguimiento de inversionistas',
     'promissory-notes': 'Promissory Notes',
     reports: 'Reportes',
