@@ -61,13 +61,22 @@ def es_comparable(sujeto: dict, cand: dict) -> bool:
     if not _sqft_valido(cand.get("sqft")) or not _sqft_valido(sujeto.get("sqft")):
         return False
 
-    zip_s, zip_c = sujeto.get("zip_code"), cand.get("zip_code")
-    ciudad_s = (sujeto.get("city") or "").strip().lower()
-    ciudad_c = (cand.get("city") or "").strip().lower()
-    if zip_s and zip_c:
-        if zip_s != zip_c and ciudad_s != ciudad_c:
+    # Las operaciones del histórico de Maninos no traen ciudad ni código postal,
+    # pero son todas del mismo mercado (Houston/Dallas): se marcan con
+    # `mismo_mercado` y se saltan la comprobación de zona en vez de excluirlas.
+    if not cand.get("mismo_mercado"):
+        zip_s, zip_c = sujeto.get("zip_code"), cand.get("zip_code")
+        ciudad_s = (sujeto.get("city") or "").strip().lower()
+        ciudad_c = (cand.get("city") or "").strip().lower()
+        if zip_s and zip_c:
+            if zip_s != zip_c and ciudad_s != ciudad_c:
+                return False
+        elif ciudad_s != ciudad_c:
             return False
-    elif ciudad_s != ciudad_c:
+
+    # Single y double wide son productos distintos aunque midan lo mismo.
+    t_s, t_c = sujeto.get("tipo"), cand.get("tipo")
+    if t_s and t_c and str(t_s).strip().upper() != str(t_c).strip().upper():
         return False
 
     d_s, d_c = sujeto.get("bedrooms"), cand.get("bedrooms")
@@ -226,4 +235,77 @@ def contraste(valoracion: dict, precio_compra: Optional[float],
         # pagando más de lo que la casa vale hoy: no invalida la operación,
         # pero el inversionista debería verlo.
         out["cubre_venta_rto"] = valor >= float(precio_venta_rto)
+    return out
+
+
+# ── Histórico de operaciones de Maninos ──────────────────────────────────────
+# 93 casas compradas y vendidas en 2025, con precio de venta REAL (cobrado, no
+# pedido). Es la mejor fuente de comparables que existe para este mercado: los
+# anuncios de internet son precios pedidos, estos son precios cerrados.
+#
+# Limitación conocida: el fichero no trae año de fabricación ni ubicación, así
+# que una valoración basada en él NO ajusta por antigüedad. Se refleja en el
+# resultado con `sin_ajuste_antiguedad` para que quien lo lea lo sepa.
+_historico_cache: Optional[list[dict]] = None
+
+
+def cargar_historico() -> list[dict]:
+    """Comparables del histórico, ya en el formato que espera `valorar`."""
+    global _historico_cache
+    if _historico_cache is not None:
+        return _historico_cache
+
+    from pathlib import Path
+    import json
+
+    ruta = Path(__file__).resolve().parents[2] / "data" / "historico_2025.json"
+    try:
+        crudo = json.loads(ruta.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning(f"[valoracion] no se pudo leer el histórico: {exc}")
+        _historico_cache = []
+        return _historico_cache
+
+    filas = crudo if isinstance(crudo, list) else (crudo.get("casas") or crudo.get("data") or [])
+    out: list[dict] = []
+    for c in filas:
+        venta, sqft = c.get("precio_venta"), c.get("sqft")
+        if not venta or not _sqft_valido(sqft):
+            continue
+        out.append({
+            "ref": c.get("id"),
+            "price": float(venta),
+            "sqft": float(sqft),
+            "bedrooms": c.get("cuartos"),
+            "tipo": c.get("tipo"),
+            "year": None,          # el histórico no lo trae
+            "mismo_mercado": True,
+            "precio_compra": c.get("precio_compra"),
+            "remodelacion": c.get("remodelacion"),
+            "margen_pct": c.get("margen_con_remo_pct"),
+        })
+    _historico_cache = out
+    logger.info(f"[valoracion] histórico cargado: {len(out)} operaciones con venta y superficie")
+    return out
+
+
+def contexto_historico(sujeto: dict, precio_compra: Optional[float]) -> dict:
+    """Sitúa la casa dentro del histórico: qué se suele pagar y cobrar por una
+    así, y en qué percentil quedó su compra. Es el dato que revela si se pagó
+    de más, que la valoración sola no cuenta."""
+    comps = [c for c in cargar_historico() if es_comparable(sujeto, c)]
+    if len(comps) < MIN_COMPARABLES:
+        return {}
+    compras = sorted(float(c["precio_compra"]) for c in comps if c.get("precio_compra"))
+    ventas = sorted(c["price"] for c in comps)
+    out: dict = {
+        "n": len(comps),
+        "compra_mediana": round(statistics.median(compras), 2) if compras else None,
+        "venta_mediana": round(statistics.median(ventas), 2),
+        "remodelacion_mediana": round(statistics.median(
+            [float(c["remodelacion"]) for c in comps if c.get("remodelacion")]), 2) or None,
+    }
+    if precio_compra and compras:
+        pc = float(precio_compra)
+        out["percentil_compra"] = round(sum(1 for x in compras if x < pc) / len(compras) * 100)
     return out

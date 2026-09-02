@@ -98,3 +98,49 @@ def test_contraste_dice_si_hay_colchon():
 def test_sin_superficie_no_hay_valoracion():
     r = valorar({"sqft": None, "city": "Houston"}, coste_base=50000)
     assert r["ok"] is False and "superficie" in r["motivo"]
+
+
+# ── El histórico real de 93 casas ──
+from api.services.market_valuation import cargar_historico, contexto_historico
+
+H42_COMPLETA = {**H42, "tipo": "SINGLE"}
+
+
+def test_el_historico_carga_y_filtra_basura():
+    h = cargar_historico()
+    assert 80 <= len(h) <= 93, f"esperaba ~89 operaciones utilizables, hay {len(h)}"
+    assert all(c["price"] > 0 and 400 <= c["sqft"] <= 3000 for c in h)
+    assert all(c["mismo_mercado"] for c in h), "el histórico no trae zona; debe marcarse"
+
+
+def test_el_historico_valora_h42_con_muestra_amplia():
+    """Con 93 operaciones reales sí hay base, al contrario que con las 5 casas
+    activas (donde H42 solo tenía UN comparable)."""
+    r = valorar(H42_COMPLETA, comparables_cartera=cargar_historico())
+    assert r["ok"] is True and r["metodo"] == "cartera"
+    assert r["n_comparables"] >= 20
+    assert r["confianza"] == "media"
+    assert 30000 < r["valor"] < 48000, f"valor fuera de lo razonable: {r['valor']}"
+    assert r["rango_min"] < r["valor"] < r["rango_max"]
+
+
+def test_el_tipo_de_casa_filtra():
+    """Single y double wide no son el mismo producto aunque midan igual."""
+    h = cargar_historico()
+    single = valorar({**H42, "tipo": "SINGLE"}, comparables_cartera=h)["n_comparables"]
+    sin_tipo = valorar(H42, comparables_cartera=h)["n_comparables"]
+    assert single < sin_tipo, "declarar el tipo debe estrechar la muestra"
+
+
+def test_el_contexto_revela_que_h42_se_pago_por_encima():
+    """El dato que la valoración sola no cuenta: dónde queda la compra dentro
+    del histórico. H42 se compró por más que casi todas sus comparables."""
+    ctx = contexto_historico(H42_COMPLETA, precio_compra=44464)
+    assert ctx["n"] >= 20
+    assert ctx["compra_mediana"] < 25000
+    assert ctx["percentil_compra"] >= 90, "H42 está en la cola alta de compras"
+
+
+def test_sin_precio_de_compra_no_hay_percentil():
+    ctx = contexto_historico(H42_COMPLETA, precio_compra=None)
+    assert "percentil_compra" not in ctx
