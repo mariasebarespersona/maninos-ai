@@ -107,31 +107,32 @@ type DocValue = boolean | { checked?: boolean; file_url?: string | null }
  *
  *  NO vale con comprobar `'file_url' in objeto`: la clave existe en cuanto el
  *  documento se guarda en el formato nuevo, aunque valga null y checked sea
- *  false. Con esa comprobación TODOS los documentos contaban como listos y la
- *  ficha decía "7 de 7" siempre. */
-const docsListos = (t: TitleTransfer) =>
-  Object.values((t.documents_checklist || {}) as Record<string, DocValue>).filter((v) => {
-    if (typeof v === 'boolean') return v
-    return v?.checked === true || !!v?.file_url
-  }).length
-const docsTotal = (t: TitleTransfer) => Object.keys(t.documents_checklist || {}).length
-
-/** Mismas etiquetas que Homes, para que un documento se llame igual en los dos portales. */
-const ETIQUETA_DOC: Record<string, string> = {
-  bill_of_sale: 'Bill of Sale (Factura)',
-  titulo: 'Título (TDHCA)',
-  title_application: 'Aplicación Cambio de Título',
-  tax_receipt: 'Recibo de Impuestos',
-  id_copies: 'Copias de ID',
-  lien_release: 'Liberación de Gravamen',
-  notarized_forms: 'Formularios Notarizados',
-}
-const docListo = (v: DocValue) => typeof v === 'boolean' ? v : (v?.checked === true || !!v?.file_url)
+ *  false. Con esa comprobación TODOS contaban como listos. */
+const docListo = (v: DocValue | undefined) =>
+  typeof v === 'boolean' ? v : (v?.checked === true || !!v?.file_url)
 /** La URL viene ya firmada: el middleware de storage reescribe las de buckets privados. */
-const docUrl = (v: DocValue) => typeof v === 'boolean' ? null : (v?.file_url || null)
-const docsDe = (t: TitleTransfer) =>
-  Object.entries((t.documents_checklist || {}) as Record<string, DocValue>)
-    .map(([k, v]) => ({ clave: k, nombre: ETIQUETA_DOC[k] || k, listo: docListo(v), url: docUrl(v) }))
+const docUrl = (v: DocValue | undefined) => (typeof v === 'boolean' || !v) ? null : (v.file_url || null)
+
+/** Los TRES documentos que vienen de Homes y que Capital necesita ver.
+ *  El checklist en base trae más claves (recibo de impuestos, copias de ID,
+ *  liberación de gravamen, formularios notarizados), pero son trámite interno
+ *  de Homes: aquí solo interesa lo que acredita la titularidad.
+ *  Se muestran siempre los tres, en este orden, aunque el traspaso no tenga la
+ *  clave — su ausencia ES la información. */
+const DOCS_CLAVE = [
+  { clave: 'titulo', nombre: 'Título (TDHCA)' },
+  { clave: 'title_application', nombre: 'Aplicación Cambio de Título' },
+  { clave: 'bill_of_sale', nombre: 'Bill of Sale (Factura)' },
+] as const
+
+const docsDe = (t: TitleTransfer) => {
+  const cl = (t.documents_checklist || {}) as Record<string, DocValue>
+  return DOCS_CLAVE.map(({ clave, nombre }) => ({
+    clave, nombre, listo: docListo(cl[clave]), url: docUrl(cl[clave]),
+  }))
+}
+const docsListos = (t: TitleTransfer) => docsDe(t).filter(d => d.listo).length
+const docsTotal = () => DOCS_CLAVE.length
 
 export default function FinancedHouseDetailPage() {
   const params = useParams()
@@ -439,7 +440,7 @@ export default function FinancedHouseDetailPage() {
                     <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--sand)' }}>
                       <p className="flex items-center gap-1.5 mb-1.5" style={{ color: 'var(--ash)' }}>
                         <FileText className="w-3.5 h-3.5" />
-                        {docsListos(t)} de {docsTotal(t)} documentos
+                        {docsListos(t)} de {docsTotal()} documentos
                       </p>
                       <ul className="space-y-1">
                         {docsDe(t).map((d) => (
