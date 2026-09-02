@@ -723,21 +723,41 @@ async def deliver_title(contract_id: str):
 
         # Create title transfer: Maninos Capital → Client
         # (Capital transfers title and documents to client after all RTO payments)
+        # Se busca SOLO por casa y tipo. Antes se exigía además
+        # from_name == "Maninos Homes LLC" exacto, y NINGÚN traspaso se llama
+        # así (todos dicen "Maninos Homes"): la búsqueda no encontraba nunca
+        # nada y cada entrega creaba un traspaso de venta DUPLICADO, dejando el
+        # anterior pendiente para siempre.
         existing = sb.table("title_transfers") \
-            .select("id") \
+            .select("id, sale_id, to_name, created_at") \
             .eq("property_id", c["property_id"]) \
-            .eq("from_name", "Maninos Homes LLC") \
-            .eq("to_name", c["clients"]["name"]) \
             .eq("transfer_type", "sale") \
+            .order("created_at", desc=True) \
             .execute()
 
+        def _norm(x): return " ".join((x or "").split()).lower()
+
+        candidatos = existing.data or []
+        # Preferencia: el de esta misma venta > el del mismo cliente > el más
+        # reciente. El nombre del cliente se compara normalizado porque los
+        # espacios y mayúsculas varían entre registros.
+        elegido = (
+            next((t for t in candidatos if t.get("sale_id") == c["sale_id"]), None)
+            or next((t for t in candidatos if _norm(t.get("to_name")) == _norm(c["clients"]["name"])), None)
+            or (candidatos[0] if candidatos else None)
+        )
+
         transfer_id = None
-        if existing.data:
-            transfer_id = existing.data[0]["id"]
-            # Update existing transfer to completed
+        if elegido:
+            transfer_id = elegido["id"]
+            # Se completa y, de paso, se re-apunta a la venta vigente: un
+            # traspaso puede haber quedado colgando de una venta anterior
+            # cancelada (pasó con H42: venta al contado cancelada y rehecha
+            # como RTO).
             sb.table("title_transfers").update({
                 "status": "completed",
                 "completed_at": datetime.utcnow().isoformat(),
+                "sale_id": c["sale_id"],
             }).eq("id", transfer_id).execute()
         else:
             transfer_result = sb.table("title_transfers").insert({
