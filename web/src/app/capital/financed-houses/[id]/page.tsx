@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import {
   Home, User, MapPin, ArrowLeft, Users, Plus, X, Loader2,
   Building2, TrendingUp, Wallet, AlertTriangle, Check,
-  FileSignature, ShieldCheck, Clock, FileText,
+  FileSignature, ShieldCheck, Clock, FileText, LineChart, Info,
 } from 'lucide-react'
 
 /** Traspaso de título. Vive en Homes (title_transfers); Capital solo lo LEE. */
@@ -21,6 +21,20 @@ interface TitleTransfer {
   completed_at?: string | null
   expected_completion?: string | null
   documents_checklist?: Record<string, unknown> | null
+}
+
+interface Valoracion {
+  ok: boolean
+  casa: { code?: string; sqft?: number; year?: number; bedrooms?: number; tipo?: string | null }
+  costes: { compra?: number | null; renovaciones?: number | null; total?: number | null }
+  venta_rto?: number | null
+  valoracion: {
+    ok: boolean; metodo: string; motivo?: string; aviso?: string
+    valor?: number; rango_min?: number; rango_max?: number | null
+    precio_sqft_mediana?: number; n_comparables?: number; confianza?: string
+  }
+  contraste: { vs_compra?: number; margen_compra_pct?: number; vs_venta_rto?: number; cubre_venta_rto?: boolean }
+  contexto: { n?: number; compra_mediana?: number; venta_mediana?: number; remodelacion_mediana?: number; percentil_compra?: number }
 }
 
 interface InvestorLink {
@@ -161,6 +175,7 @@ export default function FinancedHouseDetailPage() {
   const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n || 0)
 
   const [titles, setTitles] = useState<{ purchase: TitleTransfer | null; sale: TitleTransfer | null } | null>(null)
+  const [val, setVal] = useState<Valoracion | null>(null)
 
   const loadHouse = useCallback(async () => {
     try {
@@ -188,6 +203,18 @@ export default function FinancedHouseDetailPage() {
       .catch(() => { if (!cancelled) setTitles({ purchase: null, sale: null }) })
     return () => { cancelled = true }
   }, [house?.property?.id])
+
+  // Valoración: se calcula al vuelo desde el histórico de operaciones. Solo
+  // lectura, sin efectos sobre la contabilidad.
+  useEffect(() => {
+    if (!saleId) return
+    let cancelled = false
+    fetch(`/api/capital/financed-houses/${saleId}/valuation`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d.ok) setVal(d) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [saleId])
 
   const openModal = async () => {
     setSelInvestor(''); setAmount(''); setRate('12')
@@ -503,6 +530,96 @@ export default function FinancedHouseDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Valor de mercado — estimado del histórico de operaciones de Maninos.
+          Solo lectura: no se guarda ni afecta a la contabilidad. */}
+      {val && (
+        <div className="card-luxury p-5">
+          <h2 className="font-serif text-lg mb-1 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+            <LineChart className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
+            Valor de mercado
+          </h2>
+          <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
+            Estimado con {val.contexto?.n ?? val.valoracion.n_comparables ?? 0} operaciones reales de Maninos
+            de tamaño y tipo parecidos. Precios cobrados, no anuncios.
+          </p>
+
+          {!val.valoracion.ok ? (
+            <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--slate)' }}>
+              <AlertTriangle className="w-4 h-4 flex-none mt-0.5" style={{ color: 'var(--warning)' }} />
+              <span>{val.valoracion.motivo || 'No hay base suficiente para estimar un valor.'}</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Valor estimado</p>
+                  <p className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>{fmt(val.valoracion.valor || 0)}</p>
+                  {val.valoracion.rango_max != null && (
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                      probable {fmt(val.valoracion.rango_min || 0)} – {fmt(val.valoracion.rango_max)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Frente a la compra</p>
+                  <p className="font-semibold" style={{ color: (val.contraste.vs_compra ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {(val.contraste.vs_compra ?? 0) >= 0 ? '+' : ''}{fmt(val.contraste.vs_compra ?? 0)}
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--ash)' }}>pagado {fmt(val.costes.compra || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Frente a la venta RTO</p>
+                  <p className="font-semibold" style={{ color: val.contraste.cubre_venta_rto ? 'var(--success)' : 'var(--danger)' }}>
+                    {(val.contraste.vs_venta_rto ?? 0) >= 0 ? '+' : ''}{fmt(val.contraste.vs_venta_rto ?? 0)}
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                    {val.contraste.cubre_venta_rto ? 'el valor cubre el precio' : 'el valor NO cubre el precio'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Confianza</p>
+                  <p className="font-semibold capitalize" style={{ color: 'var(--ink)' }}>{val.valoracion.confianza}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--ash)' }}>
+                    {val.valoracion.n_comparables} comparables · {fmt(val.valoracion.precio_sqft_mediana || 0)}/sqft
+                  </p>
+                </div>
+              </div>
+
+              {val.contexto?.n ? (
+                <div className="rounded-lg p-4 text-sm" style={{ backgroundColor: 'var(--sand-50, #faf8f4)', border: '1px solid var(--sand)' }}>
+                  <p className="font-medium mb-2" style={{ color: 'var(--ink)' }}>Cómo se sitúa en tu histórico</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ color: 'var(--slate)' }}>
+                    <div><span style={{ color: 'var(--ash)' }}>Compra típica</span><br />{fmt(val.contexto.compra_mediana || 0)}</div>
+                    <div><span style={{ color: 'var(--ash)' }}>Venta típica</span><br />{fmt(val.contexto.venta_mediana || 0)}</div>
+                    <div><span style={{ color: 'var(--ash)' }}>Remodelación típica</span><br />{fmt(val.contexto.remodelacion_mediana || 0)}</div>
+                    {val.contexto.percentil_compra != null && (
+                      <div>
+                        <span style={{ color: 'var(--ash)' }}>Percentil de esta compra</span><br />
+                        <span style={{ color: val.contexto.percentil_compra >= 85 ? 'var(--danger)' : 'var(--ink)' }}>
+                          {val.contexto.percentil_compra}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {val.contexto.percentil_compra != null && val.contexto.percentil_compra >= 85 && (
+                    <p className="text-[12px] mt-3 flex items-start gap-1.5" style={{ color: 'var(--slate)' }}>
+                      <Info className="w-3.5 h-3.5 flex-none mt-0.5" />
+                      Esta casa se compró por encima del {val.contexto.percentil_compra}% de las operaciones
+                      comparables. Puede estar justificado —una casa más nueva o mejor— pero conviene saberlo.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              <p className="text-[11px] mt-3" style={{ color: 'var(--ash)' }}>
+                El histórico no registra el año de fabricación, así que esta estimación no ajusta por antigüedad.
+                {val.casa.year ? ` Esta casa es del ${val.casa.year}.` : ''}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Investors */}
       <div className="card-luxury p-5">

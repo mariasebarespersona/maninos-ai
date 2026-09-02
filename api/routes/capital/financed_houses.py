@@ -539,3 +539,82 @@ async def unassign_investor(sale_id: str, data: UnassignInvestorRequest):
     except Exception as e:
         logger.error(f"Error undoing assignment on {sale_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{sale_id}/valuation")
+async def get_house_valuation(sale_id: str):
+    """Valor de mercado estimado de la casa, con su respaldo.
+
+    Solo LECTURA y sin efectos: se calcula al vuelo desde el histórico de
+    operaciones de Maninos. No escribe nada ni toca la contabilidad.
+    """
+    from api.services.market_valuation import (
+        valorar, contraste, contexto_historico, cargar_historico,
+    )
+
+    res = sb.table("sales").select("id, property_id, sale_price").eq("id", sale_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    sale = res.data[0]
+
+    prop = {}
+    if sale.get("property_id"):
+        pr = sb.table("properties") \
+            .select("id, property_code, city, zip_code, year, bedrooms, bathrooms, "
+                    "square_feet, width_ft, length_ft, purchase_price") \
+            .eq("id", sale["property_id"]).limit(1).execute()
+        prop = pr.data[0] if pr.data else {}
+    if not prop:
+        raise HTTPException(status_code=404, detail="La venta no tiene propiedad asociada")
+
+    # SINGLE / DOUBLE se deduce del ancho: en el histórico los single miden
+    # 14–18 pies y los double 26–32. Entre medias no hay casos, así que 20 es
+    # un corte seguro. Sin ancho registrado no se declara tipo y el filtro
+    # simplemente no se aplica.
+    ancho = prop.get("width_ft")
+    tipo = None
+    if ancho:
+        tipo = "SINGLE" if float(ancho) < 20 else "DOUBLE"
+
+    sujeto = {
+        "sqft": prop.get("square_feet"),
+        "year": prop.get("year"),
+        "bedrooms": prop.get("bedrooms"),
+        "city": prop.get("city"),
+        "zip_code": prop.get("zip_code"),
+        "tipo": tipo,
+    }
+
+    # Suelo de coste: lo que la casa lleva gastado. Solo se usa si no hay
+    # comparables suficientes.
+    compra = float(prop.get("purchase_price") or 0)
+    reno = 0.0
+    try:
+        rr = sb.table("renovations").select("total_cost") \
+            .eq("property_id", prop["id"]).execute().data or []
+        reno = sum(float(r.get("total_cost") or 0) for r in rr)
+    except Exception as e:
+        logger.warning(f"[valuation] no se pudieron leer renovaciones: {e}")
+    coste = (compra + reno) or None
+
+    val = valorar(sujeto, comparables_cartera=cargar_historico(), coste_base=coste)
+    venta_rto = float(sale.get("sale_price") or 0) or None
+
+    return {
+        "ok": True,
+        "casa": {
+            "code": prop.get("property_code"),
+            "sqft": prop.get("square_feet"),
+            "year": prop.get("year"),
+            "bedrooms": prop.get("bedrooms"),
+            "bathrooms": prop.get("bathrooms"),
+            "tipo": tipo,
+            "city": prop.get("city"),
+            "zip_code": prop.get("zip_code"),
+        },
+        "costes": {"compra": compra or None, "renovaciones": reno or None, "total": coste},
+        "venta_rto": venta_rto,
+        "valoracion": val,
+        "contraste": contraste(val, compra or None, venta_rto),
+        "contexto": contexto_historico(sujeto, compra or None),
+    }
