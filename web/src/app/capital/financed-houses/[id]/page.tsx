@@ -116,6 +116,23 @@ const docsListos = (t: TitleTransfer) =>
   }).length
 const docsTotal = (t: TitleTransfer) => Object.keys(t.documents_checklist || {}).length
 
+/** Mismas etiquetas que Homes, para que un documento se llame igual en los dos portales. */
+const ETIQUETA_DOC: Record<string, string> = {
+  bill_of_sale: 'Bill of Sale (Factura)',
+  titulo: 'Título (TDHCA)',
+  title_application: 'Aplicación Cambio de Título',
+  tax_receipt: 'Recibo de Impuestos',
+  id_copies: 'Copias de ID',
+  lien_release: 'Liberación de Gravamen',
+  notarized_forms: 'Formularios Notarizados',
+}
+const docListo = (v: DocValue) => typeof v === 'boolean' ? v : (v?.checked === true || !!v?.file_url)
+/** La URL viene ya firmada: el middleware de storage reescribe las de buckets privados. */
+const docUrl = (v: DocValue) => typeof v === 'boolean' ? null : (v?.file_url || null)
+const docsDe = (t: TitleTransfer) =>
+  Object.entries((t.documents_checklist || {}) as Record<string, DocValue>)
+    .map(([k, v]) => ({ clave: k, nombre: ETIQUETA_DOC[k] || k, listo: docListo(v), url: docUrl(v) }))
+
 export default function FinancedHouseDetailPage() {
   const params = useParams()
   const saleId = params.id as string
@@ -419,10 +436,33 @@ export default function FinancedHouseDetailPage() {
                       : t.expected_completion
                         ? <p><span style={{ color: 'var(--ash)' }}>Previsto:</span> {fechaCorta(t.expected_completion)}</p>
                         : null}
-                    <p className="flex items-center gap-1.5 pt-1" style={{ color: 'var(--ash)' }}>
-                      <FileText className="w-3.5 h-3.5" />
-                      {docsListos(t)} de {docsTotal(t)} documentos
-                    </p>
+                    <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--sand)' }}>
+                      <p className="flex items-center gap-1.5 mb-1.5" style={{ color: 'var(--ash)' }}>
+                        <FileText className="w-3.5 h-3.5" />
+                        {docsListos(t)} de {docsTotal(t)} documentos
+                      </p>
+                      <ul className="space-y-1">
+                        {docsDe(t).map((d) => (
+                          <li key={d.clave} className="flex items-center gap-2 text-[13px]">
+                            {d.listo
+                              ? <Check className="w-3.5 h-3.5 flex-none" style={{ color: 'var(--success)' }} />
+                              : <span className="w-3.5 h-3.5 flex-none rounded-full" style={{ border: '1.5px solid var(--stone)' }} />}
+                            {d.url ? (
+                              <a href={d.url} target="_blank" rel="noopener noreferrer"
+                                 className="underline underline-offset-2 hover:opacity-80"
+                                 style={{ color: 'var(--navy-600, #004274)' }}>
+                                {d.nombre}
+                              </a>
+                            ) : (
+                              <span style={{ color: d.listo ? 'var(--slate)' : 'var(--ash)' }}>{d.nombre}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] mt-2" style={{ color: 'var(--ash)' }}>
+                        Los subrayados abren el documento. Marcado sin enlace = confirmado a mano en Homes, sin fichero adjunto.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
