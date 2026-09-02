@@ -99,11 +99,21 @@ const estadoStyle = (s: string): React.CSSProperties =>
   : { backgroundColor: 'var(--warning-light)', color: 'var(--warning)' }
 const fechaCorta = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-/** Un documento cuenta como listo si está marcado o si tiene fichero subido. */
+/** Valor de un documento del checklist: booleano (formato viejo) u objeto (nuevo). */
+type DocValue = boolean | { checked?: boolean; file_url?: string | null }
+
+/** Listo = marcado a mano o con fichero subido. Misma regla que Homes
+ *  (TitleTransferCard: `value?.checked || !!value?.file_url`).
+ *
+ *  NO vale con comprobar `'file_url' in objeto`: la clave existe en cuanto el
+ *  documento se guarda en el formato nuevo, aunque valga null y checked sea
+ *  false. Con esa comprobación TODOS los documentos contaban como listos y la
+ *  ficha decía "7 de 7" siempre. */
 const docsListos = (t: TitleTransfer) =>
-  Object.values(t.documents_checklist || {}).filter(
-    (v) => v === true || (typeof v === 'object' && v !== null && 'file_url' in (v as object))
-  ).length
+  Object.values((t.documents_checklist || {}) as Record<string, DocValue>).filter((v) => {
+    if (typeof v === 'boolean') return v
+    return v?.checked === true || !!v?.file_url
+  }).length
 const docsTotal = (t: TitleTransfer) => Object.keys(t.documents_checklist || {}).length
 
 export default function FinancedHouseDetailPage() {
