@@ -8,6 +8,7 @@ import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
 import AIChatWidget from '@/components/AIChatWidget'
 import TourProvider from '@/components/tour/TourProvider'
+import { isCapitalAuthorized } from '@/lib/capitalAccess'
 
 interface NavItem {
   name: string
@@ -68,18 +69,6 @@ const navigationSections: NavSection[] = [
   },
 ]
 
-// La comprobación es `email.includes(patrón)`, así que un patrón corto abre la
-// puerta a cualquier email que lo contenga. Para altas nuevas se usa el email
-// COMPLETO: da acceso a esa persona y a nadie más. Los patrones cortos de
-// arriba son los históricos y se dejan como están.
-const CAPITAL_ALLOWED_PATTERNS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz',
-  'jorge@delatoro.com']
-
-function isCapitalAuthorized(email?: string | null): boolean {
-  if (!email) return false
-  const lower = email.toLowerCase()
-  return CAPITAL_ALLOWED_PATTERNS.some(name => lower.includes(name))
-}
 
 export default function CapitalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

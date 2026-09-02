@@ -7,14 +7,8 @@ import { useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
 import { Loader2 } from 'lucide-react'
+import { isCapitalAuthorized } from '@/lib/capitalAccess'
 
-// Debe coincidir con CAPITAL_ALLOWED_PATTERNS en web/src/app/capital/layout.tsx
-const ALLOWED_EMAILS = ['lupita', 'sebastian', 'mariasebares', 'cazabrothers', 'e2e-test', 'sgonzalez', 'xvelasco', 'abigail', 'aruiz']
-
-function isEmailAuthorized(email: string): boolean {
-  const lower = email.toLowerCase()
-  return ALLOWED_EMAILS.some(name => lower.includes(name))
-}
 
 function CapitalLoginForm() {
   const [email, setEmail] = useState('')
@@ -31,7 +25,7 @@ function CapitalLoginForm() {
     setLoading(true)
     setError(null)
 
-    if (!isEmailAuthorized(email)) {
+    if (!isCapitalAuthorized(email)) {
       setError('Acceso restringido')
       setLoading(false)
       return
