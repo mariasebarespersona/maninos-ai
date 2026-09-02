@@ -1895,12 +1895,24 @@ ${price}
                     const formData = new FormData()
                     formData.append('file', file)
                     try {
-                      await fetch(`/api/transfers/${transferId}/documents/bill_of_sale`, {
+                      // Ruta correcta: /document/{clave}/upload — en SINGULAR y con
+                      // sufijo. Antes se llamaba a /documents/{clave}, que no existe
+                      // ni como proxy ni en el backend: daba 404, el catch se lo
+                      // tragaba y el toast decía "guardado" igualmente. Por eso las
+                      // plantillas rellenadas nunca llegaban al checklist.
+                      const up = await fetch(`/api/transfers/${transferId}/document/bill_of_sale/upload`, {
                         method: 'POST',
                         body: formData,
                       })
+                      if (!up.ok) {
+                        toast.error('No se pudo adjuntar el PDF al traspaso de título')
+                        console.error('Upload bill_of_sale:', up.status, await up.text())
+                      }
                       fetchTransfers()
-                    } catch (err) { console.error('Upload error:', err) }
+                    } catch (err) {
+                      toast.error('No se pudo adjuntar el PDF al traspaso de título')
+                      console.error('Upload error:', err)
+                    }
                   }
                   if (saved) {
                     toast.success('✓ Bill of Sale guardado con datos')
@@ -1989,12 +2001,24 @@ ${price}
                     const formData = new FormData()
                     formData.append('file', file)
                     try {
-                      await fetch(`/api/transfers/${transferId}/documents/title_application`, {
+                      // Ruta correcta: /document/{clave}/upload — en SINGULAR y con
+                      // sufijo. Antes se llamaba a /documents/{clave}, que no existe
+                      // ni como proxy ni en el backend: daba 404, el catch se lo
+                      // tragaba y el toast decía "guardado" igualmente. Por eso las
+                      // plantillas rellenadas nunca llegaban al checklist.
+                      const up = await fetch(`/api/transfers/${transferId}/document/title_application/upload`, {
                         method: 'POST',
                         body: formData,
                       })
+                      if (!up.ok) {
+                        toast.error('No se pudo adjuntar el PDF al traspaso de título')
+                        console.error('Upload title_application:', up.status, await up.text())
+                      }
                       fetchTransfers()
-                    } catch (err) { console.error('Upload error:', err) }
+                    } catch (err) {
+                      toast.error('No se pudo adjuntar el PDF al traspaso de título')
+                      console.error('Upload error:', err)
+                    }
                   }
                   if (saved) {
                     toast.success('Aplicacion de Titulo guardada con datos')
