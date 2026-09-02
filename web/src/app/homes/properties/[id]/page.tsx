@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, 
@@ -157,6 +157,21 @@ export default function PropertyDetailPage() {
   const [consignmentSubmitting, setConsignmentSubmitting] = useState(false)
   const [showBosTemplate, setShowBosTemplate] = useState<'purchase' | 'sale' | null>(null)
   const [showTitleAppTemplate, setShowTitleAppTemplate] = useState<'purchase' | 'sale' | null>(null)
+
+  // Permite abrir una plantilla directamente por URL:
+  //   ?doc=bos_purchase | bos_sale | title_app_purchase | title_app_sale
+  // Capital enlaza aquí desde la ficha de casa financiada para enseñar el
+  // FORMATO de Maninos relleno con los datos de la propiedad, en vez del
+  // fichero adjunto (que puede ser un formulario oficial en blanco).
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const doc = searchParams.get('doc')
+    if (!doc) return
+    if (doc === 'bos_purchase') setShowBosTemplate('purchase')
+    else if (doc === 'bos_sale') setShowBosTemplate('sale')
+    else if (doc === 'title_app_purchase') setShowTitleAppTemplate('purchase')
+    else if (doc === 'title_app_sale') setShowTitleAppTemplate('sale')
+  }, [searchParams])
 
   // E-sign state (send documents for signature post-purchase)
   const [esignEmailFor, setEsignEmailFor] = useState<'bos' | 'title_app' | 'bos_sale' | 'title_app_sale' | null>(null)

@@ -131,6 +131,16 @@ const docsDe = (t: TitleTransfer) => {
     clave, nombre, listo: docListo(cl[clave]), url: docUrl(cl[clave]),
   }))
 }
+/** Plantilla de Maninos para este documento, si la hay. El 'titulo' no tiene:
+ *  es el documento oficial del TDHCA, no un formato propio. */
+const PLANTILLA: Record<string, string | null> = {
+  bill_of_sale: 'bos', title_application: 'title_app', titulo: null,
+}
+const urlPlantilla = (propertyId: string, clave: string, tipo: 'purchase' | 'sale') => {
+  const base = PLANTILLA[clave]
+  return base ? `/homes/properties/${propertyId}?doc=${base}_${tipo}` : null
+}
+
 const docsListos = (t: TitleTransfer) => docsDe(t).filter(d => d.listo).length
 const docsTotal = () => DOCS_CLAVE.length
 
@@ -448,20 +458,42 @@ export default function FinancedHouseDetailPage() {
                             {d.listo
                               ? <Check className="w-3.5 h-3.5 flex-none" style={{ color: 'var(--success)' }} />
                               : <span className="w-3.5 h-3.5 flex-none rounded-full" style={{ border: '1.5px solid var(--stone)' }} />}
-                            {d.url ? (
-                              <a href={d.url} target="_blank" rel="noopener noreferrer"
-                                 className="underline underline-offset-2 hover:opacity-80"
-                                 style={{ color: 'var(--navy-600, #004274)' }}>
-                                {d.nombre}
-                              </a>
-                            ) : (
-                              <span style={{ color: d.listo ? 'var(--slate)' : 'var(--ash)' }}>{d.nombre}</span>
-                            )}
+                            {(() => {
+                              const plantilla = house?.property?.id
+                                ? urlPlantilla(house.property.id, d.clave, t.transfer_type)
+                                : null
+                              return (
+                                <span className="flex items-center gap-2 flex-wrap">
+                                  {plantilla ? (
+                                    <a href={plantilla} target="_blank" rel="noopener noreferrer"
+                                       className="underline underline-offset-2 hover:opacity-80"
+                                       style={{ color: 'var(--navy-600, #004274)' }}>
+                                      {d.nombre}
+                                    </a>
+                                  ) : d.url ? (
+                                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                                       className="underline underline-offset-2 hover:opacity-80"
+                                       style={{ color: 'var(--navy-600, #004274)' }}>
+                                      {d.nombre}
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: d.listo ? 'var(--slate)' : 'var(--ash)' }}>{d.nombre}</span>
+                                  )}
+                                  {plantilla && d.url && (
+                                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                                       className="text-[11px] underline underline-offset-2 hover:opacity-80"
+                                       style={{ color: 'var(--ash)' }}>
+                                      adjunto
+                                    </a>
+                                  )}
+                                </span>
+                              )
+                            })()}
                           </li>
                         ))}
                       </ul>
                       <p className="text-[11px] mt-2" style={{ color: 'var(--ash)' }}>
-                        Los subrayados abren el documento. Marcado sin enlace = confirmado a mano en Homes, sin fichero adjunto.
+                        El nombre abre el formato de Maninos relleno con los datos de la casa. «adjunto» abre el fichero guardado, que puede diferir.
                       </p>
                     </div>
                   </div>
