@@ -6163,6 +6163,10 @@ def _parse_csv_movements(file_content: bytes) -> list:
     AMT_H = {"amount", "monto", "importe", "valor", "cantidad"}
     DEBIT_H = {"debit", "debito", "débito", "cargo", "retiro", "withdrawal", "salida"}
     CREDIT_H = {"credit", "credito", "crédito", "abono", "deposito", "depósito", "deposit", "entrada"}
+    # Si el fichero trae el pagador en su propia columna, es la fuente más
+    # fiable y se usa tal cual. Los CSV de banco no suelen traerla, pero los
+    # que genera el equipo sí pueden.
+    PAYEE_H = {"payee", "beneficiario", "pagador", "counterparty", "cliente", "proveedor", "tercero"}
 
     header = rows[0]
     hnorm = [norm(h) for h in header]
@@ -6180,6 +6184,7 @@ def _parse_csv_movements(file_content: bytes) -> list:
         ai = find(AMT_H)
         dbi = find(DEBIT_H)
         cri = find(CREDIT_H)
+        pyi = find(PAYEE_H)
         data_rows = rows[1:]
         ncols = len(header)
         if ai is None and dbi is None and cri is None:
@@ -6187,6 +6192,7 @@ def _parse_csv_movements(file_content: bytes) -> list:
     else:
         # Positional: date, description, amount
         di, ci, ai, dbi, cri = 0, 1, 2, None, None
+        pyi = None   # sin cabecera no se puede saber cuál sería la de payee
         data_rows = rows
         ncols = 3
 
@@ -6217,12 +6223,20 @@ def _parse_csv_movements(file_content: bytes) -> list:
         if not date_v and not desc_v and abs(amount) < 0.005:
             continue
 
-        movements.append({
+        mov = {
             "date": date_v or date.today().isoformat(),
             "description": desc_v,
             "amount": amount,
             "is_credit": amount > 0,
-        })
+        }
+        # El pagador solo si el fichero trae su columna. Si no, se deduce más
+        # tarde desde la descripción (api/services/payee_extractor.py); aquí no
+        # se interpreta nada, que este parser es determinista a propósito.
+        if pyi is not None:
+            payee = cell(pyi)
+            if payee:
+                mov["counterparty"] = payee[:200]
+        movements.append(mov)
     return movements
 
 

@@ -2917,6 +2917,15 @@ async def _parse_capital_statement_background(statement_id: str, file_content: b
             "total_movements": len(movements),
         }).eq("id", statement_id).execute()
 
+        # Catálogo de nombres conocidos para deducir el payee cuando el fichero
+        # no lo trae. Se carga UNA vez, no por movimiento.
+        try:
+            from api.services.payee_extractor import cargar_catalogo, extraer_payee
+            catalogo = cargar_catalogo(sb)
+        except Exception as e:
+            logger.warning(f"[CapitalBankStmt] catálogo de payees no disponible: {e}")
+            catalogo, extraer_payee = [], None
+
         # Insert movements
         for i, mv in enumerate(movements):
             mv_data = {
@@ -2927,7 +2936,13 @@ async def _parse_capital_statement_background(statement_id: str, file_content: b
                 "is_credit": mv.get("is_credit", float(mv.get("amount", 0)) > 0),
                 "reference": mv.get("reference", "")[:200] if mv.get("reference") else None,
                 "payment_method": mv.get("payment_method"),
-                "counterparty": mv.get("counterparty", "")[:200] if mv.get("counterparty") else None,
+                # El payee que venga en el fichero manda. Si no viene, se deduce
+                # de la descripción casando contra nombres conocidos; si no hay
+                # coincidencia se queda vacío, nunca inventado.
+                "counterparty": (
+                    (mv.get("counterparty") or "")[:200] or
+                    ((extraer_payee(mv.get("description", ""), catalogo) or "")[:200] if extraer_payee else "")
+                ) or None,
                 "sort_order": i,
                 "status": "pending",
             }

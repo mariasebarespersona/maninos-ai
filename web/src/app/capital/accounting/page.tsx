@@ -4393,6 +4393,7 @@ function EstadoCuentaCapitalSection({ onRefresh }: { onRefresh: () => void }) {
                   <tr className="border-b text-left" style={{ borderColor: 'var(--sand)', backgroundColor: 'var(--pearl)' }}>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Fecha</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Payee</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
@@ -4432,6 +4433,8 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
   const [accountSearch, setAccountSearch] = useState('')
   const [editingDesc, setEditingDesc] = useState(false)
   const [descDraft, setDescDraft] = useState(mv.description)
+  const [editingPayee, setEditingPayee] = useState(false)
+  const [payeeDraft, setPayeeDraft] = useState(mv.counterparty || '')
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesDraft, setNotesDraft] = useState(mv.final_notes || '')
   const [showSplit, setShowSplit] = useState(false)
@@ -4482,6 +4485,12 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
     setEditingDesc(false)
   }
 
+  const savePayee = () => {
+    const limpio = payeeDraft.trim()
+    if (limpio !== (mv.counterparty || '')) onUpdate(mv.id, { counterparty: limpio || null })
+    setEditingPayee(false)
+  }
+
   const saveNotes = () => {
     onUpdate(mv.id, { final_notes: notesDraft || null })
     setEditingNotes(false)
@@ -4508,6 +4517,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
       <tr className="border-b bg-stone-50/50 opacity-60" style={{ borderColor: '#f0f0f0' }}>
         <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs font-mono" style={{ color: 'var(--ash)' }}>{mv.movement_date}</span></td>
         <td className="px-3 py-2 max-w-md"><p className="text-xs line-through" style={{ color: 'var(--ash)' }}>{mv.description}</p></td>
+        <td className="px-3 py-2"><span className="text-xs" style={{ color: 'var(--ash)' }}>{mv.counterparty || '—'}</span></td>
         <td className="px-3 py-2 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">{fmtFull(mv.amount)}</span></td>
         <td className="px-3 py-2"><span className="text-xs text-stone-400">—</span></td>
         <td className="px-3 py-2 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-200 text-stone-600 font-medium">Dividido</span></td>
@@ -4545,12 +4555,7 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
               {canEdit && <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover/desc:opacity-50" />}
             </p>
           )}
-          {mv.counterparty && (
-            <p className="text-[10px] mt-0.5" style={{ color: 'var(--ash)' }}>
-              {mv.counterparty}
-              {mv.payment_method && <span className="ml-1 px-1 py-0.5 rounded bg-stone-100 text-stone-500">{mv.payment_method}</span>}
-            </p>
-          )}
+          {/* El payee tiene columna propia; aquí ya no se repite. */}
           {mv.ai_reasoning && mv.status === 'suggested' && (
             <p className="text-[10px] mt-1 italic flex items-center gap-1" style={{ color: '#7c3aed' }}>
               <Brain className="w-3 h-3" /> {mv.ai_reasoning}
@@ -4580,6 +4585,26 @@ function CapitalMovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
       </td>
 
       {/* Amount */}
+      <td className="px-3 py-2.5 max-w-[10rem]">
+        {editingPayee ? (
+          <div className="flex items-center gap-1">
+            <input autoFocus value={payeeDraft} onChange={e => setPayeeDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') savePayee(); if (e.key === 'Escape') { setEditingPayee(false); setPayeeDraft(mv.counterparty || '') } }}
+              placeholder="Nombre"
+              className="flex-1 min-w-0 text-xs px-1.5 py-1 rounded border outline-none" style={{ borderColor: 'var(--gold-600)' }} />
+            <button onClick={savePayee} className="text-emerald-600"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => { setEditingPayee(false); setPayeeDraft(mv.counterparty || '') }} className="text-red-400"><X className="w-3.5 h-3.5" /></button>
+          </div>
+        ) : (
+          <p className="text-xs leading-snug group/payee cursor-pointer truncate"
+            style={{ color: mv.counterparty ? 'var(--charcoal)' : 'var(--ash)' }}
+            onClick={() => canEdit && setEditingPayee(true)}
+            title={mv.counterparty || (canEdit ? 'Clic para añadir' : '')}>
+            {mv.counterparty || '—'}
+            {canEdit && <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover/payee:opacity-50" />}
+          </p>
+        )}
+      </td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         <span className={`text-sm font-semibold tabular-nums ${mv.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
           {mv.is_credit ? '+' : ''}{fmtFull(mv.amount)}
