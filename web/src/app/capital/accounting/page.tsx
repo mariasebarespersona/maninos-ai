@@ -2321,7 +2321,7 @@ function StatementsTab() {
         {[
             { key: 'balance', label: 'Balance Sheet' },
             { key: 'pnl', label: 'Profit and Loss' },
-            { key: 'matrix', label: 'Personalizado' },
+            { key: 'matrix', label: 'P&L por Mes' },
             { key: 'cashflow', label: 'Cash Flow' },
             { key: 'customer', label: 'Saldos Clientes' },
             { key: 'vendor', label: 'Saldos Proveedores' },
