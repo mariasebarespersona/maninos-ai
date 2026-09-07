@@ -3738,7 +3738,16 @@ async def post_capital_statement(statement_id: str):
         if ba.data and ba.data[0].get("accounting_account_id"):
             bank_accounting_account_id = ba.data[0]["accounting_account_id"]
     if not bank_accounting_account_id:
-        logger.warning(f"[CapitalBankStmt] No accounting_account_id linked to bank_account — bank-side entries will be skipped")
+        # Antes esto solo avisaba en el log y seguía: publicaba la pata de
+        # resultado SIN su contrapartida bancaria. Cada movimiento así descuadra
+        # el Balance por su importe y no se ve en ninguna pantalla. Mejor no
+        # publicar nada y decir qué falta: enlazar el banco a su cuenta contable.
+        raise HTTPException(
+            status_code=400,
+            detail=("Este banco no tiene cuenta contable enlazada, así que no se puede "
+                    "publicar el extracto sin descuadrar el Balance. Enlaza el banco a su "
+                    "cuenta del plan (Bancos → editar cuenta) y vuelve a publicar."),
+        )
 
     # Mapa cuenta-contable-de-banco → banco. Necesario para los TRASPASOS: ahí la
     # "contrapartida" no es una cuenta de resultado, es la cuenta contable de OTRO
@@ -3766,6 +3775,14 @@ async def post_capital_statement(statement_id: str):
     acct_type_map = {a["id"]: a.get("account_type", "") for a in all_accts}
 
     for mv in movements.data:
+        # Idempotencia: si el movimiento ya tiene asiento, no se vuelve a publicar
+        # aunque alguien lo devuelva a "confirmado". Publicarlo otra vez crea una
+        # pareja nueva y deja la anterior sin puntero desde el movimiento: al
+        # borrar el extracto, esa pareja vieja se queda huérfana en el ledger.
+        if mv.get("transaction_id"):
+            skipped += 1
+            continue
+
         account_id = mv.get("final_account_id") or mv.get("suggested_account_id")
         txn_type = mv.get("final_transaction_type") or mv.get("suggested_transaction_type") or "adjustment"
 
@@ -3843,6 +3860,8 @@ async def post_capital_statement(statement_id: str):
                     continue
 
             # --- Entry 2: Bank/asset side (double-entry) ---
+            # La pareja es atómica: si esta pata no llega a existir hay que
+            # deshacer la de arriba. Media pareja es un descuadre silencioso.
             if bank_accounting_account_id:
                 bank_data = {
                     **common_fields,
@@ -3855,13 +3874,26 @@ async def post_capital_statement(statement_id: str):
                     "notes": f"Contrapartida bancaria: {stmt_label}",
                     "status": "confirmed",
                 }
-                bank_result = sb.table("capital_transactions").insert(bank_data).execute()
-                if bank_result.data:
+                bank_result = None
+                try:
+                    bank_result = sb.table("capital_transactions").insert(bank_data).execute()
+                except Exception as e:
+                    logger.error(f"[CapitalBankStmt] Bank leg failed for movement {mv['id']}: {e}")
+                if bank_result and bank_result.data:
                     bank_txn_id = bank_result.data[0]["id"]
                     # Link the P&L entry back to the bank entry
                     sb.table("capital_transactions").update({
                         "linked_transaction_id": bank_txn_id,
                     }).eq("id", pnl_txn_id).execute()
+                else:
+                    # Sin contrapartida no hay asiento: se retira la pata de
+                    # resultado recién creada (si la creamos nosotros; una
+                    # transacción preexistente conciliada no se borra).
+                    if mv.get("status") != "reconciled" or not mv.get("matched_transaction_id"):
+                        sb.table("capital_transactions").delete().eq("id", pnl_txn_id).execute()
+                    skipped += 1
+                    errors.append(f"'{mv.get('description', '')[:60]}' — no se pudo crear la contrapartida bancaria")
+                    continue
 
             # Mark movement as posted
             sb.table("capital_statement_movements").update({
@@ -3930,6 +3962,26 @@ async def delete_capital_bank_statement(statement_id: str):
                     to_delete.add(l["id"])
                     if l.get("linked_transaction_id"):
                         to_delete.add(l["linked_transaction_id"])
+
+        # Barrido de respaldo: cualquier apunte que lleve la etiqueta de ESTE
+        # extracto en las notas, aunque ningún movimiento lo apunte ya. Es lo que
+        # rescata las parejas viejas de un movimiento republicado y las patas que
+        # perdieron el enlace. Sin esto quedaban huérfanas descuadrando el Balance.
+        try:
+            _s = sb.table("capital_bank_statements").select("account_label, original_filename") \
+                .eq("id", statement_id).execute().data or []
+            if _s:
+                etiqueta = f"{_s[0].get('account_label') or ''} - {_s[0].get('original_filename') or ''}"
+                if etiqueta.strip(" -"):
+                    for row in (sb.table("capital_transactions")
+                                .select("id, linked_transaction_id, source")
+                                .ilike("notes", f"%{etiqueta}%").execute().data or []):
+                        if row.get("source") == "bank_statement":
+                            to_delete.add(row["id"])
+                            if row.get("linked_transaction_id"):
+                                to_delete.add(row["linked_transaction_id"])
+        except Exception as e:
+            logger.warning(f"[CapitalBankStmt] Barrido por etiqueta falló para {statement_id}: {e}")
 
         if to_delete:
             ids = list(to_delete)
