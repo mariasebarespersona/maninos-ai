@@ -186,11 +186,20 @@ def investor_payments_due(as_of=None) -> dict:
         d["total"] += row["payment"]
         d["principal"] += row["principal"]
         d["interest"] += row["interest"]
+        # Saldos alrededor del pago del mes. La pantalla los usa para EXPLICAR de
+        # dónde sale la cifra ("interés = saldo × tasa mensual"): sin el saldo hay
+        # que deducirlo dividiendo el interés por la tasa, y el redondeo a dos
+        # decimales hace que el número deducido no cuadre con el del cuadro.
+        _saldo_despues = round(row.get("balance", loan), 2)
         d["notes"].append({
             "note_id": n.get("id"), "loan_amount": loan, "annual_rate": rate,
             "period": elapsed, "term": len(sch),
             "payment": round(row["payment"], 2), "principal": round(row["principal"], 2),
             "interest": round(row["interest"], 2),
+            "balance_before": round(_saldo_despues + row["principal"], 2),
+            "balance_after": _saldo_despues,
+            "interest_only_months": io_m,
+            "amort_months": amort_m,
         })
 
     investors = []
