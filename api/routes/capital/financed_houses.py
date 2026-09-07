@@ -118,6 +118,93 @@ def _ledger_sums_by_property(property_ids: list) -> dict:
     return out
 
 
+def _reno_costs_by_code(codes: list) -> dict:
+    """{property_code: coste de remodelación} con la MISMA regla que usa Homes.
+
+    Homes decide así (`api/routes/properties.py`, `_calculate_recommended_price`):
+      1. Si `properties.renovation_cost` trae un valor, ese manda — es el número
+         que un empleado escribió a mano en la ficha.
+      2. Si no, se deriva del libro de Homes: el saldo natural de la cuenta
+         "Renovación {código}".
+
+    Aquí se copia esa regla en vez de leer `renovations.total_cost` (que era lo
+    que hacía la valoración) para que Capital enseñe EXACTAMENTE la cifra que se
+    ve en Homes. Devuelve solo los códigos con dato; si no hay ninguna de las dos
+    fuentes, la casa no aparece en el mapa y la pantalla no inventa un cero.
+
+    Es lectura de tablas de Homes: Casas Financiadas es una vista de solo lectura
+    sobre las ventas RTO de Homes, no toca su contabilidad.
+    """
+    codes = [c for c in dict.fromkeys(codes) if c]
+    if not codes:
+        return {}
+
+    out: dict = {}
+
+    # 1 — override manual en la ficha de la propiedad.
+    try:
+        for chunk in _chunks(codes, 100):
+            rows = sb.table("properties").select("property_code, renovation_cost") \
+                .in_("property_code", chunk).execute().data or []
+            for r in rows:
+                if r.get("renovation_cost") is not None:
+                    out[r["property_code"]] = round(float(r["renovation_cost"]), 2)
+    except Exception as e:
+        logger.warning(f"[financed-houses] renovation_cost de properties: {e}")
+
+    # 2 — el resto, del libro de Homes.
+    faltan = [c for c in codes if c not in out]
+    if not faltan:
+        return out
+    try:
+        acct_codes = [f"Renovación {c}" for c in faltan]
+        cuentas: dict = {}
+        for chunk in _chunks(acct_codes, 100):
+            for a in (sb.table("accounting_accounts").select("id, code, account_type")
+                      .in_("code", chunk).execute().data or []):
+                cuentas[a["id"]] = a
+        if not cuentas:
+            return out
+
+        # Se parte de cero para cada cuenta que EXISTE: una cuenta "Renovación
+        # H42" abierta y sin apuntes significa que la casa no lleva gasto de
+        # remodelación registrado, y eso es un $0 legítimo — el mismo que enseña
+        # Homes. Distinto es que ni siquiera exista la cuenta: ahí no hay dato y
+        # la clave se queda fuera del mapa.
+        acumulado: dict = {a["code"]: 0.0 for a in cuentas.values()}
+        for chunk in _chunks(list(cuentas.keys()), 100):
+            page = 0
+            while True:
+                rows = (sb.table("accounting_transactions")
+                        .select("account_id, amount, is_income, status")
+                        .in_("account_id", chunk)
+                        .range(page * 1000, page * 1000 + 999).execute().data or [])
+                for t in rows:
+                    if t.get("status") == "voided":
+                        continue
+                    a = cuentas.get(t.get("account_id"))
+                    if not a:
+                        continue
+                    # Magnitud del coste = saldo natural de la cuenta (positivo
+                    # según crece), igual que en Homes.
+                    es_gasto = a.get("account_type") in ("Expenses", "Other Expense", "Cost of Goods Sold")
+                    amt = float(t.get("amount") or 0)
+                    suma = amt if ((not t.get("is_income")) if es_gasto else t.get("is_income")) else -amt
+                    acumulado[a["code"]] = acumulado.get(a["code"], 0.0) + suma
+                if len(rows) < 1000:
+                    break
+                page += 1
+
+        for c in faltan:
+            v = acumulado.get(f"Renovación {c}")
+            if v is not None:
+                out[c] = round(v, 2)
+    except Exception as e:
+        logger.warning(f"[financed-houses] coste de renovación del libro: {e}")
+
+    return out
+
+
 def _aggregate_payments(payments: list) -> dict:
     """Collapse a contract's rto_payments into headline collection stats."""
     today = date.today().isoformat()
@@ -141,7 +228,7 @@ def _aggregate_payments(payments: list) -> dict:
 
 
 def _house_card(sale: dict, contract: Optional[dict], pay: Optional[dict],
-                invs: list, led: dict) -> dict:
+                invs: list, led: dict, reno_cost: Optional[float] = None) -> dict:
     """Assemble one financed-house card from its already-fetched parts."""
     prop = sale.get("properties") or {}
     client = sale.get("clients") or {}
@@ -171,6 +258,10 @@ def _house_card(sale: dict, contract: Optional[dict], pay: Optional[dict],
             "state": prop.get("state"),
             "yard": _yard_from_code(prop.get("property_code")),
             "photo": photos[0] if photos else None,
+            # Coste de remodelación tal cual lo tiene Homes. None (no 0) cuando
+            # no hay dato, para que la pantalla pueda decir "sin registrar" en
+            # vez de afirmar que la casa no costó nada renovarla.
+            "renovation_cost": reno_cost,
         },
         "client": {
             "id": client.get("id"),
@@ -306,6 +397,9 @@ async def list_financed_houses(status: Optional[str] = None):
         pay_aggs = _fetch_payment_aggs(contract_ids)
         inv_by_prop, inv_by_contract = _fetch_investments(prop_ids, contract_ids)
         ledger = _ledger_sums_by_property(prop_ids)
+        renos = _reno_costs_by_code([
+            ((s.get("properties") or {}).get("property_code")) for s in sales
+        ])
 
         houses = []
         for s in sales:
@@ -322,6 +416,7 @@ async def list_financed_houses(status: Optional[str] = None):
                 pay_aggs.get(cid) if cid else None,
                 list(invs.values()),
                 ledger.get(pid, {}),
+                renos.get((s.get("properties") or {}).get("property_code")),
             ))
 
         buckets: dict = {}
@@ -360,7 +455,9 @@ async def get_financed_house(sale_id: str):
             invs[i["id"]] = i
         led = _ledger_sums_by_property([pid] if pid else {}).get(pid, {})
 
-        card = _house_card(sale, contract, pay, list(invs.values()), led)
+        _code = (sale.get("properties") or {}).get("property_code")
+        card = _house_card(sale, contract, pay, list(invs.values()), led,
+                           _reno_costs_by_code([_code]).get(_code))
 
         # Full payment schedule (detail view only)
         schedule = []
@@ -588,14 +685,11 @@ async def get_house_valuation(sale_id: str):
     # Suelo de coste: lo que la casa lleva gastado. Solo se usa si no hay
     # comparables suficientes.
     compra = float(prop.get("purchase_price") or 0)
-    reno = 0.0
-    try:
-        rr = sb.table("renovations").select("total_cost") \
-            .eq("property_id", prop["id"]).execute().data or []
-        reno = sum(float(r.get("total_cost") or 0) for r in rr)
-    except Exception as e:
-        logger.warning(f"[valuation] no se pudieron leer renovaciones: {e}")
-    coste = (compra + reno) or None
+    # Misma fuente que la ficha de Homes y que la tarjeta de esta casa: si las
+    # dos pantallas enseñan un coste de remodelación distinto para la misma casa,
+    # la que se cree es ninguna.
+    reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
+    coste = (compra + (reno or 0.0)) or None
 
     val = valorar(sujeto, comparables_cartera=cargar_historico(), coste_base=coste)
     venta_rto = float(sale.get("sale_price") or 0) or None
@@ -612,7 +706,9 @@ async def get_house_valuation(sale_id: str):
             "city": prop.get("city"),
             "zip_code": prop.get("zip_code"),
         },
-        "costes": {"compra": compra or None, "renovaciones": reno or None, "total": coste},
+        # `renovaciones` distingue 0.0 (registrado y no se gastó) de None (nadie
+        # lo anotó). Un `or None` los confundiría en el mismo hueco vacío.
+        "costes": {"compra": compra or None, "renovaciones": reno, "total": coste},
         "venta_rto": venta_rto,
         "valoracion": val,
         "contraste": contraste(val, compra or None, venta_rto),

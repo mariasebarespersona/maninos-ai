@@ -164,7 +164,7 @@ function ComoSeCalcula() {
             </div>
             <div>
               <span style={{ color: 'var(--ash)' }}>5 · qué fila toca</span><br />
-              periodo = días 15 transcurridos desde el inicio del pagaré
+              periodo = días de pago (día 1) transcurridos desde el inicio del pagaré
             </div>
           </div>
 
@@ -234,8 +234,9 @@ export default function PagosInversionistasPage() {
       <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: 'var(--info-light)', border: '1px solid var(--info)' }}>
         <Mail className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--info)' }} />
         <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-          Cada <strong>día 12</strong> se envía automáticamente este resumen por correo a tesorería (Abby),
-          para preparar los pagos con antelación al día 15.
+          <strong>5 días antes</strong> de cada día de pago se envía automáticamente este resumen
+          por correo a tesorería (Abby), para preparar las transferencias con antelación.
+          Los pagos a inversionistas caen el <strong>día 1</strong> de cada mes.
         </p>
       </div>
 

@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import {
   Home, User, MapPin, ArrowLeft, Users, Plus, X, Loader2,
   Building2, TrendingUp, Wallet, AlertTriangle, Check,
-  FileSignature, ShieldCheck, Clock, FileText, LineChart, Info,
+  FileSignature, ShieldCheck, Clock, FileText, LineChart, Info, Hammer,
 } from 'lucide-react'
 
 /** Traspaso de título. Vive en Homes (title_transfers); Capital solo lo LEE. */
@@ -68,7 +68,7 @@ interface HouseDetail {
   status: string
   bucket: string
   capital_payment_status: string | null
-  property: { id: string | null; code: string | null; address: string | null; city: string | null; state: string | null; yard: string | null; photo: string | null }
+  property: { id: string | null; code: string | null; address: string | null; city: string | null; state: string | null; yard: string | null; photo: string | null; renovation_cost: number | null }
   client: { id: string | null; name: string | null; email: string | null; phone: string | null }
   terms: { sale_price: number; down_payment: number; financed_remaining: number; monthly_payment: number; term_months: number }
   contract: { id: string; status: string; start_date: string; end_date: string } | null
@@ -333,6 +333,16 @@ export default function FinancedHouseDetailPage() {
               </p>
               <p className="flex items-center gap-1.5 text-sm mt-1" style={{ color: 'var(--charcoal)' }}>
                 <User className="w-4 h-4" style={{ color: 'var(--ash)' }} /> {house.client.name || 'Sin cliente'}
+              </p>
+              {/* Remodelación: el dato es de Homes, aquí solo se muestra. Se
+                  distingue "$0" (no se gastó nada) de "sin registrar" (nadie lo
+                  anotó todavía), porque para el inversionista no es lo mismo. */}
+              <p className="flex items-center gap-1.5 text-sm mt-1" style={{ color: 'var(--charcoal)' }}>
+                <Hammer className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                Remodelación:{' '}
+                {house.property.renovation_cost != null
+                  ? <span className="font-medium" style={{ color: 'var(--ink)' }}>{fmt(house.property.renovation_cost)}</span>
+                  : <span style={{ color: 'var(--ash)' }}>sin registrar en Homes</span>}
               </p>
             </div>
           </div>

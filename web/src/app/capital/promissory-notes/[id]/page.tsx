@@ -548,7 +548,7 @@ export default function PromissoryNoteDetailPage() {
               />
             </div>
             <p className="text-[10px] mt-1" style={{ color: 'var(--ash)' }}>
-              Devengado del cronograma (pagos del día 15, hechos fuera de la app). Los pagos
+              Devengado del cronograma (pagos del día 1, hechos fuera de la app). Los pagos
               registrados dentro de la app aparecen en el historial de abajo{Number(note.paid_amount || 0) > 0 ? '' : ' (hoy: $0)'}.
             </p>
           </div>

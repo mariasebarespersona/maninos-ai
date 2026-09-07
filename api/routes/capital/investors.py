@@ -14,6 +14,23 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/investors", tags=["Capital - Investors"])
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DÍA DE PAGO A INVERSIONISTAS
+#
+# Toda la contabilidad de pagarés se apoya en este número: qué mensualidades se
+# consideran vencidas ("pagado a la fecha"), qué fila del cuadro toca cobrar, y
+# cuándo se avisa a tesorería. Cámbialo AQUÍ y solo aquí — está pensado para ser
+# la única fuente, de modo que las vistas no puedan discrepar entre sí.
+#
+# Cambiado de 15 a 1 el 2026-09-07 a petición de Maria.
+#
+# AVISO_DIAS_ANTES: con cuántos días de antelación se le manda a tesorería
+# (Abby) el resumen de a quién pagar. El job corre a diario y solo envía el día
+# que toca, porque "5 días antes del 1" cae en el 26 o en el 27 según el mes.
+# ─────────────────────────────────────────────────────────────────────────────
+PAY_DAY = 1
+AVISO_DIAS_ANTES = 5
+
 
 # Ledger rows excluded from a settled balance (mirror CAPITAL_CONFIG).
 _UNSETTLED_STATUSES = ("voided", "pending_confirmation", "draft")
@@ -81,19 +98,17 @@ def _note_paid_to_date(note: dict, as_of=None) -> dict:
                 "scheduled_to_date": 0.0, "recorded_paid": round(recorded, 2), "pct_paid": 0.0}
     rows = sch["schedule"]
     total_due = sch["total_due"]
-    # Payments to investors always land on the 15th of each month, so a period
-    # counts as paid once its 15th-of-month payment date has passed. elapsed =
-    # number of 15ths strictly after start_date and on/before `as_of`, capped at
-    # the schedule length. (A month's 15th is "already elapsed" only if that day
-    # has arrived: day >= 15.)
-    _PAY_DAY = 15
+    # Los pagos a inversionistas caen el día PAY_DAY de cada mes, así que un
+    # periodo cuenta como pagado en cuanto ese día ha llegado. `elapsed` = número
+    # de días de pago posteriores al inicio del pagaré y ya vencidos a `as_of`,
+    # topado por la longitud del cuadro.
     start_raw = note.get("start_date") or note.get("created_at")
     elapsed = 0
     if start_raw:
         try:
             start = _date.fromisoformat(str(start_raw)[:10])
-            a = as_of.year * 12 + as_of.month + (0 if as_of.day >= _PAY_DAY else -1)
-            b = start.year * 12 + start.month + (0 if start.day >= _PAY_DAY else -1)
+            a = as_of.year * 12 + as_of.month + (0 if as_of.day >= PAY_DAY else -1)
+            b = start.year * 12 + start.month + (0 if start.day >= PAY_DAY else -1)
             elapsed = max(0, min(a - b, len(rows)))
         except Exception:
             elapsed = 0
@@ -129,24 +144,23 @@ def _note_paid_to_date(note: dict, as_of=None) -> dict:
 
 
 def investor_payments_due(as_of=None) -> dict:
-    """Summary of what each investor must be paid on the NEXT 15th (payment day),
-    grouped by investor. Designed to run on the 12th so treasury (Abby) prepares
-    the payments a few days ahead.
+    """Resumen de lo que hay que pagarle a cada inversionista el próximo día de
+    pago (`PAY_DAY`), agrupado por inversionista, para que tesorería lo prepare.
 
-    For each active note, the payment landing on that 15th is the schedule row for
-    the period whose 15th-of-month date is the target — derived with the same
-    day-15 rule as `_note_paid_to_date`, so it reconciles with every other view.
+    Para cada pagaré activo, el pago que cae ese día es la fila del cuadro cuyo
+    día de pago coincide con la fecha objetivo — derivada con la MISMA regla que
+    `_note_paid_to_date`, para que cuadre con el resto de vistas.
     """
     from datetime import date as _date
     from api.routes.capital.promissory_notes import _note_schedule, _note_tranches
     as_of = as_of or _date.today()
-    # Target payment date = the next 15th on/after `as_of` (on the 12th → this month).
-    if as_of.day <= 15:
-        pay_date = _date(as_of.year, as_of.month, 15)
+    # Fecha objetivo = el próximo día de pago en o después de `as_of`.
+    if as_of.day <= PAY_DAY:
+        pay_date = _date(as_of.year, as_of.month, PAY_DAY)
     else:
         y = as_of.year + (1 if as_of.month == 12 else 0)
         m = 1 if as_of.month == 12 else as_of.month + 1
-        pay_date = _date(y, m, 15)
+        pay_date = _date(y, m, PAY_DAY)
 
     notes = []
     page = 0
@@ -170,8 +184,9 @@ def investor_payments_due(as_of=None) -> dict:
             sch = _note_schedule(loan, rate, io_m, amort_m)["schedule"]
         except Exception:
             continue
-        # Period whose 15th == pay_date (elapsed counts periods with 15th <= pay_date,
-        # so the payment due ON pay_date is the last one counted → index elapsed-1).
+        # Periodo cuyo día de pago == pay_date (elapsed cuenta los periodos ya
+        # vencidos a esa fecha, así que el que se paga ESE día es el último
+        # contado → índice elapsed-1).
         elapsed = _note_paid_to_date(n, pay_date)["elapsed_periods"]
         if elapsed < 1 or elapsed > len(sch):
             continue
@@ -342,17 +357,18 @@ async def list_investors(status: Optional[str] = "active"):
 
 @router.get("/payments-due")
 async def get_payments_due(month: Optional[int] = None, year: Optional[int] = None):
-    """Who to pay on the upcoming 15th and how much (per investor), for treasury.
+    """A quién pagar el próximo día de pago y cuánto, por inversionista.
 
-    Defined BEFORE /{investor_id} so this literal path isn't captured as an id.
-    Defaults to the next 15th relative to today; pass month/year to view a specific
-    month (uses the 12th of that month as reference, mirroring the monthly job).
+    Definido ANTES de /{investor_id} para que esta ruta literal no se capture
+    como un id. Por defecto apunta al próximo día de pago desde hoy; con
+    month/year se consulta un mes concreto (se toma su propio día de pago como
+    referencia, no el de hoy).
     """
     try:
         from datetime import date as _date
         as_of = None
         if month and year:
-            as_of = _date(int(year), int(month), 12)
+            as_of = _date(int(year), int(month), PAY_DAY)
         return {"ok": True, **investor_payments_due(as_of)}
     except Exception as e:
         logger.error(f"Error computing payments due: {e}")

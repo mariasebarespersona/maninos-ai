@@ -346,9 +346,29 @@ def _job_accrue_investor_interest():
 
 
 def _job_investor_payment_reminder():
-    """Job: On the 12th, email treasury (Abby) who to pay on the 15th and how much."""
+    """Job: avisar a tesorería (Abby) a quién pagar el próximo día de pago.
+
+    Corre TODOS los días y solo envía cuando faltan `AVISO_DIAS_ANTES` días para
+    el próximo día de pago. Un cron fijo no serviría: "5 días antes del día 1"
+    cae el 26 o el 27 según los días que tenga el mes (y el 24 en febrero).
+    """
+    from datetime import date, timedelta
+    from api.routes.capital.investors import PAY_DAY, AVISO_DIAS_ANTES
     from api.services.email_service import process_investor_payment_reminder
     try:
+        hoy = date.today()
+        if hoy.day <= PAY_DAY:
+            proximo = date(hoy.year, hoy.month, PAY_DAY)
+        else:
+            y = hoy.year + (1 if hoy.month == 12 else 0)
+            m = 1 if hoy.month == 12 else hoy.month + 1
+            proximo = date(y, m, PAY_DAY)
+        faltan = (proximo - hoy).days
+        if faltan != AVISO_DIAS_ANTES:
+            logger.debug(f"[scheduler] payment reminder: faltan {faltan} días para el {proximo}, no toca avisar")
+            return {"ok": True, "sent": 0, "skipped": True, "days_ahead": faltan,
+                    "next_pay_date": proximo.isoformat()}
+
         result = process_investor_payment_reminder()
         _log_job("investor_payment_reminder", result)
         if result.get("sent"):
@@ -625,14 +645,16 @@ def init_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
-    # Job: Investor payment reminder to treasury (Abby) — 12th of every month at
-    # 8:00 AM CT, a few days ahead of the 15th payment day. Summarizes who to pay
-    # and how much (per investor), derived from each note's schedule.
+    # Job: recordatorio de pagos a inversionistas para tesorería (Abby).
+    # Corre a diario a las 8:00 CT, pero el propio job decide si toca: envía solo
+    # cuando faltan AVISO_DIAS_ANTES días para el día de pago. Se hace así, y no
+    # con un cron de día fijo, porque "5 días antes del día 1" cae en el 26, el
+    # 27 o el 24 según el mes.
     _scheduler.add_job(
         _job_investor_payment_reminder,
-        trigger=CronTrigger(day=12, hour=8, minute=0),
+        trigger=CronTrigger(hour=8, minute=0),
         id="investor_payment_reminder",
-        name="Capital: Recordatorio de pagos a inversionistas (día 12)",
+        name="Capital: Recordatorio de pagos a inversionistas (5 días antes)",
         replace_existing=True,
     )
 

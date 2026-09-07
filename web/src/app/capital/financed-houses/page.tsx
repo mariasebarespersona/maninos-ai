@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Home, User, MapPin, DollarSign, Clock, Filter, Users, AlertTriangle, Trash2 } from 'lucide-react'
+import { Home, User, MapPin, DollarSign, Clock, Filter, Users, AlertTriangle, Trash2, Hammer } from 'lucide-react'
 import DeleteChainModal from '@/components/capital/DeleteChainModal'
 
 interface InvestorLink {
@@ -28,6 +28,7 @@ interface FinancedHouse {
     state: string | null
     yard: string | null
     photo: string | null
+    renovation_cost: number | null
   }
   client: { id: string | null; name: string | null; email: string | null; phone: string | null }
   terms: {
@@ -206,6 +207,16 @@ export default function FinancedHousesPage() {
                     <User className="w-4 h-4" style={{ color: 'var(--ash)' }} />
                     {h.client.name || 'Sin cliente'}
                   </div>
+
+                  {/* Remodelación — dato de Homes, aquí solo se muestra. Se
+                      omite la línea si nadie lo ha registrado, para no llenar
+                      la tarjeta de guiones. */}
+                  {h.property.renovation_cost != null && (
+                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
+                      <Hammer className="w-4 h-4" style={{ color: 'var(--ash)' }} />
+                      Remodelación {fmt(h.property.renovation_cost)}
+                    </div>
+                  )}
 
                   {/* Numbers */}
                   <div className="grid grid-cols-3 gap-3 text-sm">

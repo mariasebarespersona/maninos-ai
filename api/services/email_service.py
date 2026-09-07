@@ -1373,8 +1373,8 @@ def _investor_payment_reminder_html(summary: dict) -> str:
     return f"""
     <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#1a1a2e;">
       <h2 style="color:#1a1a2e;">Pagos a inversionistas — {pay_label}</h2>
-      <p style="color:#444;">Recordatorio automático (día 12) para preparar los pagos que vencen el <strong>15</strong>.
-      Son <strong>{t.get('count', 0)}</strong> inversionistas, total <strong>${t.get('total', 0):,.2f}</strong>.</p>
+      <p style="color:#444;">Recordatorio automático para preparar los pagos que vencen el <strong>{pay_label}</strong>.
+      Son <strong>{t.get('count', 0)}</strong> pagarés, total <strong>${t.get('total', 0):,.2f}</strong>.</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
         <thead>
           <tr style="background:#f5f2e8;">
@@ -1395,17 +1395,18 @@ def _investor_payment_reminder_html(summary: dict) -> str:
         </tfoot>
       </table>
       <p style="color:#888;font-size:12px;margin-top:16px;">
-        Calculado del cronograma de cada pagaré (regla de pago el día 15). Cifras a la fecha; verifica en Capital → Pagos del Mes.
+        Calculado del cronograma de cada pagaré (regla de pago el día 1). Cifras a la fecha; verifica en Capital → Pagos a Inversionistas.
       </p>
     </div>
     """
 
 
 def process_investor_payment_reminder(admin_email: str = "aruiz@maninoscapital.com") -> dict:
-    """Monthly (day-12) reminder to treasury: who to pay on the 15th and how much.
+    """Recordatorio a tesorería: a quién pagar el próximo día de pago y cuánto.
 
-    Computes the per-investor breakdown via the shared `investor_payments_due`
-    (same day-15 schedule as every other view) and emails it to Abby.
+    Lo dispara el scheduler 5 días antes del día de pago. El desglose por
+    inversionista sale del mismo `investor_payments_due` que la pantalla, para
+    que el correo y la app nunca discrepen.
     """
     try:
         from api.routes.capital.investors import investor_payments_due

@@ -11,7 +11,7 @@ export const KPI_EXPLANATIONS: Record<string, string> = {
   'Total Disponible':
     'Capital que el inversionista aportó pero que aún NO está en ningún pagaré ni ticket (aportado − invertido). Si marca $0, todo su dinero está colocado. Si marca algo, hay dinero por desplegar — o un dato por revisar.',
   'Pagado a hoy':
-    'Lo que ya se le ha pagado al inversionista a la fecha, calculado del cronograma de sus pagarés: todas las mensualidades del día 15 que ya vencieron (capital + interés). Los pagos se hacen fuera de la app, por eso se usa el cronograma como fuente.',
+    'Lo que ya se le ha pagado al inversionista a la fecha, calculado del cronograma de sus pagarés: todas las mensualidades del día 1 que ya vencieron (capital + interés). Los pagos se hacen fuera de la app, por eso se usa el cronograma como fuente.',
   'Queda por pagar':
     'Lo que falta por pagarle de aquí al final del plazo: Obligación total − Pagado a hoy.',
   'Capital devuelto (a hoy)':
