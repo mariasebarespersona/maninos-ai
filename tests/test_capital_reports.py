@@ -622,3 +622,56 @@ async def test_el_modo_comparativo_no_suma_total():
     r = await accounting_mod.get_pnl_matrix(start_date="2026-02-01", end_date="2026-02-28",
                                             group_by="compare", compare="prev_period")
     assert not any(c.get("es_total") for c in r["columns"])
+
+
+# ── Test 20: el Balance por meses es una foto, no un flujo ──
+@pytest.mark.asyncio
+async def test_balance_por_meses_es_acumulado_y_sin_total():
+    """Un saldo no se suma entre meses. Si entran $1.000 en enero y nada en
+    febrero, el banco vale $1.000 en AMBAS columnas — no $2.000 al final."""
+    print("TEST 20: el Balance por meses acumula, no suma...")
+
+    accounts = [
+        make_account("bank", "10120", "Banco", "asset"),
+        make_account("eq", "34000", "Apertura", "equity"),
+    ]
+    txns = [
+        make_txn("bank", 1000, True, txn_date="2026-01-10"),
+        make_txn("eq", 1000, True, txn_date="2026-01-10"),
+    ]
+    setup_mock(accounts, txns)
+
+    r = await accounting_mod.get_balance_sheet_matrix(start_date="2026-01-01", end_date="2026-02-28")
+
+    claves = [c["key"] for c in r["columns"]]
+    assert len(claves) == 2, f"esperaba enero y febrero: {claves}"
+    assert not any(c.get("es_total") or c["key"] == "__total__" for c in r["columns"]), \
+        "el Balance NO debe llevar columna de total"
+
+    ene, feb = claves
+    # El activo es el MISMO en los dos meses, no el doble.
+    assert r["totals"]["assets"][ene] == 1000
+    assert r["totals"]["assets"][feb] == 1000
+
+
+@pytest.mark.asyncio
+async def test_balance_por_meses_cuadra_en_cada_columna():
+    """A = P + PN + Resultado debe cumplirse mes a mes, no solo al final."""
+    print("TEST 21: cada columna del Balance cuadra...")
+
+    accounts = [
+        make_account("bank", "10120", "Banco", "asset"),
+        make_account("eq", "34000", "Apertura", "equity"),
+        make_account("inc", "41000", "Ingresos", "income"),
+    ]
+    txns = [
+        make_txn("bank", 5000, True, txn_date="2026-01-05"),
+        make_txn("eq", 5000, True, txn_date="2026-01-05"),
+        make_txn("bank", 700, True, txn_date="2026-02-10"),   # cobro
+        make_txn("inc", 700, True, txn_date="2026-02-10"),    # su ingreso
+    ]
+    setup_mock(accounts, txns)
+
+    r = await accounting_mod.get_balance_sheet_matrix(start_date="2026-01-01", end_date="2026-02-28")
+    for clave, desc in r["cuadre"].items():
+        assert abs(desc) < 0.01, f"la columna {clave} no cuadra por {desc}"

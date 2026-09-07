@@ -4438,3 +4438,140 @@ async def export_capital_balance_sheet_csv():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=balance_general_capital.csv"},
     )
+
+
+@router.get("/reports/balance-sheet-matrix")
+async def get_balance_sheet_matrix(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """Balance por meses: una columna con el saldo AL CIERRE de cada mes.
+
+    Un balance NO es un flujo. En el P&L, enero + febrero son los dos meses
+    juntos y sumar tiene sentido. Aquí no: si hay $22.000 en el banco en enero y
+    siguen ahí en febrero, el "total" no son $44.000 — son $22.000. Por eso cada
+    columna es ACUMULADA desde el origen hasta el cierre de su mes, y por eso
+    NO hay columna de total: la última columna ya es el saldo actual.
+
+    Cada columna incluye el resultado acumulado del periodo dentro del
+    patrimonio, para que la ecuación A = P + PN + Resultado cuadre en todas.
+    """
+    now = date.today()
+    sd = start_date or date(now.year, 1, 1).isoformat()
+    ed = end_date or now.isoformat()
+
+    def cierres_de_mes(a: str, b: str) -> list[str]:
+        ya, ma = int(a[:4]), int(a[5:7])
+        yb, mb = int(b[:4]), int(b[5:7])
+        out = []
+        while (ya, ma) <= (yb, mb):
+            out.append(f"{ya:04d}-{ma:02d}-{monthrange(ya, ma)[1]:02d}")
+            ma += 1
+            if ma > 12:
+                ma, ya = 1, ya + 1
+        return out
+
+    cierres = cierres_de_mes(sd, ed)
+    if not cierres:
+        return {"ok": True, "columns": [], "sections": {}, "totals": {}}
+    # La última columna no puede ir más allá de la fecha pedida.
+    if cierres[-1] > ed:
+        cierres[-1] = ed
+
+    try:
+        cuentas = sb.table("capital_accounts") \
+            .select("id, code, name, account_type, is_header, parent_account_id, current_balance") \
+            .eq("is_active", True).order("code").execute().data or []
+    except Exception as e:
+        logger.error(f"[bs-matrix] no se pudieron leer las cuentas: {e}")
+        return {"ok": False, "error": str(e), "columns": [], "sections": {}, "totals": {}}
+
+    por_id = {c["id"]: c for c in cuentas}
+
+    # Todo el histórico hasta la última columna: un saldo es acumulado.
+    try:
+        txns = sb.table("capital_transactions") \
+            .select("account_id, amount, is_income, transaction_date, status") \
+            .lte("transaction_date", cierres[-1]) \
+            .not_.in_("status", ["voided", "pending_confirmation", "draft"]) \
+            .execute().data or []
+    except Exception as e:
+        logger.warning(f"[bs-matrix] no se pudieron leer transacciones: {e}")
+        txns = []
+
+    MESES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    columnas = [{"key": c, "label": f"{MESES[int(c[5:7])]} {c[:4]}"} for c in cierres]
+
+    BS = ("asset", "liability", "equity")
+    filas: dict[str, dict] = {}
+    totales = {s: {c: 0.0 for c in cierres} for s in ("assets", "liabilities", "equity", "net_income")}
+
+    for cierre in cierres:
+        # Saldo de cada cuenta con todo lo posteado HASTA ese cierre.
+        saldos: dict[str, float] = {}
+        resultado = 0.0
+        for t in txns:
+            if (t.get("transaction_date") or "") > cierre:
+                continue
+            aid = t.get("account_id")
+            cuenta = por_id.get(aid)
+            if not cuenta:
+                continue
+            amt = float(t.get("amount") or 0)
+            tipo = cuenta.get("account_type") or ""
+            if tipo in BS:
+                saldos[aid] = saldos.get(aid, 0.0) + (amt if t.get("is_income") else -amt)
+            else:
+                # income / expense / cogs → resultado acumulado
+                resultado += _capital_signed_balance(amt, tipo, bool(t.get("is_income"))) * (
+                    1 if tipo in CAPITAL_INCOME_TYPES else -1)
+
+        for c in cuentas:
+            if c.get("account_type") not in BS or c.get("is_header"):
+                continue
+            manual = float(c.get("current_balance") or 0)
+            v = round(saldos.get(c["id"], 0.0) + manual, 2)
+            if v == 0 and c["id"] not in filas:
+                continue
+            fila = filas.setdefault(c["id"], {
+                "id": c["id"], "code": c["code"], "name": c["name"],
+                "account_type": c["account_type"], "columns": {},
+            })
+            fila["columns"][cierre] = v
+
+        for c in cuentas:
+            if c.get("is_header") or c.get("account_type") not in BS:
+                continue
+            v = filas.get(c["id"], {}).get("columns", {}).get(cierre, 0.0)
+            seccion = {"asset": "assets", "liability": "liabilities", "equity": "equity"}[c["account_type"]]
+            totales[seccion][cierre] += v
+        totales["net_income"][cierre] = round(resultado, 2)
+
+    for s in totales:
+        totales[s] = {k: round(v, 2) for k, v in totales[s].items()}
+
+    secciones = {"assets": [], "liabilities": [], "equity": []}
+    for f in filas.values():
+        for c in cierres:
+            f["columns"].setdefault(c, 0.0)
+        secciones[{"asset": "assets", "liability": "liabilities", "equity": "equity"}[f["account_type"]]].append(f)
+    for s in secciones:
+        secciones[s].sort(key=lambda x: x["code"])
+
+    # Comprobación de cuadre por columna: A = P + PN + Resultado.
+    cuadre = {
+        c: round(totales["assets"][c]
+                 - (totales["liabilities"][c] + totales["equity"][c] + totales["net_income"][c]), 2)
+        for c in cierres
+    }
+
+    return {
+        "ok": True,
+        "period": {"start": sd, "end": ed},
+        "columns": columnas,
+        "sections": secciones,
+        "totals": totales,
+        "cuadre": cuadre,
+        "nota": ("Cada columna es el saldo al cierre de ese mes, acumulado desde el origen. "
+                 "No hay columna de total: los saldos no se suman entre meses."),
+    }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, Fragment } from 'react'
 import {
   DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   Building2, CreditCard, RefreshCw, Plus, Search, Filter, ChevronDown,
@@ -2058,7 +2058,7 @@ function StatementsTab() {
   const now0 = new Date()
   const [mxFrom, setMxFrom] = useState(`${now0.getFullYear()}-01-01`)
   const [mxTo, setMxTo] = useState(now0.toISOString().slice(0, 10))
-  const [mxMode, setMxMode] = useState<'compare' | 'month' | 'property'>('compare')
+  const [mxMode, setMxMode] = useState<'single' | 'month' | 'property' | 'compare'>('single')
   const [mxCompare, setMxCompare] = useState<'prev_period' | 'prev_year'>('prev_period')
   const [mxData, setMxData] = useState<any | null>(null)
   const [mxLoading, setMxLoading] = useState(false)
@@ -2100,7 +2100,23 @@ function StatementsTab() {
       setMxData(d.ok ? d : null)
     } catch { setMxData(null) } finally { setMxLoading(false) }
   }, [mxFrom, mxTo, mxMode, mxCompare])
-  useEffect(() => { if (activeStatement === 'matrix') loadMatrix() }, [activeStatement, loadMatrix])
+  useEffect(() => { if (activeStatement === 'pnl' && mxMode !== 'single') loadMatrix() }, [activeStatement, mxMode, loadMatrix])
+
+  // Balance por meses. Cada columna es el saldo AL CIERRE de ese mes: un saldo
+  // no se suma entre meses, así que no hay columna de total.
+  const [bsMode, setBsMode] = useState<'single' | 'month'>('single')
+  const [bsMx, setBsMx] = useState<any | null>(null)
+  const [bsMxLoading, setBsMxLoading] = useState(false)
+  const loadBsMatrix = useCallback(async () => {
+    setBsMxLoading(true)
+    try {
+      const qs = new URLSearchParams({ start_date: mxFrom, end_date: mxTo })
+      const res = await fetch(`/api/capital/accounting/reports/balance-sheet-matrix?${qs}`)
+      const d = await res.json()
+      setBsMx(d.ok ? d : null)
+    } catch { setBsMx(null) } finally { setBsMxLoading(false) }
+  }, [mxFrom, mxTo])
+  useEffect(() => { if (activeStatement === 'balance' && bsMode === 'month') loadBsMatrix() }, [activeStatement, bsMode, loadBsMatrix])
 
   // Matrix drill-down: click an account → its transactions in the range
   const [mxDrillTxns, setMxDrillTxns] = useState<any[]>([])
@@ -2321,7 +2337,6 @@ function StatementsTab() {
         {[
             { key: 'balance', label: 'Balance Sheet' },
             { key: 'pnl', label: 'Profit and Loss' },
-            { key: 'matrix', label: 'P&L por Mes' },
             { key: 'cashflow', label: 'Cash Flow' },
             { key: 'customer', label: 'Saldos Clientes' },
             { key: 'vendor', label: 'Saldos Proveedores' },
@@ -2335,7 +2350,33 @@ function StatementsTab() {
         </div>
         {!isViewingSaved && (
           <div className="flex items-center gap-2">
-            {(activeStatement === 'balance' || activeStatement === 'pnl') && (
+            {/* Selector de columnas, dentro de cada estado en vez de en una
+                pestaña aparte: se busca aquí, no en otro sitio. */}
+            {activeStatement === 'pnl' && (
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+                {([['single', 'Total'], ['month', 'Por mes'], ['property', 'Por casa'], ['compare', 'Comparativo']] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setMxMode(k)} className="px-3 py-2 text-sm font-medium"
+                    style={mxMode === k ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>{l}</button>
+                ))}
+              </div>
+            )}
+            {activeStatement === 'balance' && (
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
+                {([['single', 'Actual'], ['month', 'Por mes']] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setBsMode(k)} className="px-3 py-2 text-sm font-medium"
+                    style={bsMode === k ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>{l}</button>
+                ))}
+              </div>
+            )}
+            {((activeStatement === 'pnl' && mxMode !== 'single') || (activeStatement === 'balance' && bsMode === 'month')) && (
+              <>
+                <input type="date" value={mxFrom} onChange={e => setMxFrom(e.target.value)}
+                  className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+                <input type="date" value={mxTo} onChange={e => setMxTo(e.target.value)}
+                  className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)' }} />
+              </>
+            )}
+            {((activeStatement === 'balance' && bsMode === 'single') || (activeStatement === 'pnl' && mxMode === 'single')) && (
               <>
                 <button onClick={() => setCollapsed(c => !c)}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-sand/50"
@@ -2416,7 +2457,7 @@ function StatementsTab() {
       ) : (
         <>
           {/* ── BALANCE SHEET ── */}
-          {((activeStatement === 'balance' && !isViewingSaved) || viewingSaved?.report_type === 'balance_sheet') && renderBsData && (
+          {((activeStatement === 'balance' && bsMode === 'single' && !isViewingSaved) || viewingSaved?.report_type === 'balance_sheet') && renderBsData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
                 <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Balance Sheet</h2>
@@ -2485,7 +2526,7 @@ function StatementsTab() {
           )}
 
           {/* ── PROFIT AND LOSS ── */}
-          {((activeStatement === 'pnl' && !isViewingSaved) || viewingSaved?.report_type === 'profit_loss') && renderPlData && (
+          {((activeStatement === 'pnl' && mxMode === 'single' && !isViewingSaved) || viewingSaved?.report_type === 'profit_loss') && renderPlData && (
             <div className="card-luxury p-6">
               <div className="text-center mb-6">
                 <h2 className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>Profit and Loss</h2>
@@ -2624,7 +2665,79 @@ function StatementsTab() {
       )}
 
       {/* ── P&L PERSONALIZADO (matriz multi-columna) ── */}
-      {activeStatement === 'matrix' && !isViewingSaved && (
+      {/* Balance por meses: cada columna es el saldo AL CIERRE de ese mes.
+          Sin columna de total, porque los saldos no se suman entre meses. */}
+      {activeStatement === 'balance' && bsMode === 'month' && !isViewingSaved && (
+        <div className="card-luxury p-5 overflow-x-auto">
+          {bsMxLoading ? (
+            <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ash)' }}>
+              <Loader2 className="w-4 h-4 animate-spin" /> Calculando…
+            </div>
+          ) : !bsMx || !bsMx.columns?.length ? (
+            <p className="text-sm" style={{ color: 'var(--ash)' }}>Sin datos en ese rango.</p>
+          ) : (
+            <>
+              <p className="text-xs mb-3" style={{ color: 'var(--ash)' }}>{bsMx.nota}</p>
+              <table className="w-full text-sm" style={{ minWidth: '40rem' }}>
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--sand)', color: 'var(--ash)' }}>
+                    <th className="pb-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wider">Cuenta</th>
+                    {bsMx.columns.map((c: any) => (
+                      <th key={c.key} className="pb-2 px-2 text-right text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap">{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(['assets', 'liabilities', 'equity'] as const).map(sec => (
+                    <Fragment key={sec}>
+                      <tr>
+                        <td colSpan={bsMx.columns.length + 1} className="pt-3 pb-1 font-serif text-sm" style={{ color: 'var(--ink)' }}>
+                          {sec === 'assets' ? 'Activos' : sec === 'liabilities' ? 'Pasivos' : 'Patrimonio'}
+                        </td>
+                      </tr>
+                      {bsMx.sections[sec].map((r: any) => (
+                        <tr key={r.id}>
+                          <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{r.code} {r.name}</td>
+                          {bsMx.columns.map((c: any) => (
+                            <td key={c.key} className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>
+                              {r.columns[c.key] ? fmtFull(r.columns[c.key]) : '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="border-t font-semibold" style={{ borderColor: 'var(--sand)' }}>
+                        <td className="py-1.5 pr-3">Total {sec === 'assets' ? 'activos' : sec === 'liabilities' ? 'pasivos' : 'patrimonio'}</td>
+                        {bsMx.columns.map((c: any) => (
+                          <td key={c.key} className="py-1.5 px-2 text-right tabular-nums">{fmtFull(bsMx.totals[sec][c.key] || 0)}</td>
+                        ))}
+                      </tr>
+                    </Fragment>
+                  ))}
+                  <tr className="border-t" style={{ borderColor: 'var(--sand)' }}>
+                    <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>Resultado del período</td>
+                    {bsMx.columns.map((c: any) => (
+                      <td key={c.key} className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>
+                        {fmtFull(bsMx.totals.net_income[c.key] || 0)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-t-2 font-bold" style={{ borderColor: 'var(--gold-600)' }}>
+                    <td className="py-2 pr-3">Descuadre</td>
+                    {bsMx.columns.map((c: any) => (
+                      <td key={c.key} className="py-2 px-2 text-right tabular-nums"
+                        style={{ color: Math.abs(bsMx.cuadre[c.key] || 0) < 0.01 ? 'var(--success)' : 'var(--danger)' }}>
+                        {Math.abs(bsMx.cuadre[c.key] || 0) < 0.01 ? 'cuadra' : fmtFull(bsMx.cuadre[c.key])}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeStatement === 'pnl' && mxMode !== 'single' && !isViewingSaved && (
         <div className="space-y-4">
           {/* Controls */}
           <div className="card-luxury p-4 flex flex-wrap items-end gap-3">
