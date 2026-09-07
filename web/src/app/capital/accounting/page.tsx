@@ -2665,7 +2665,7 @@ function StatementsTab() {
                 <thead>
                   <tr className="text-xs border-b" style={{ color: 'var(--ash)', borderColor: 'var(--stone)' }}>
                     <th className="pb-2 pr-3 text-left">Cuenta</th>
-                    {mxData.columns.map((c: any) => <th key={c.key} className="pb-2 px-2 text-right whitespace-nowrap">{c.label}</th>)}
+                    {mxData.columns.map((c: any) => <th key={c.key} className={`pb-2 px-2 text-right whitespace-nowrap${c.es_total ? ' font-bold' : ''}`} style={c.es_total ? { color: 'var(--ink)', borderLeft: '2px solid var(--sand)' } : undefined}>{c.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -2679,12 +2679,12 @@ function StatementsTab() {
                         {rows.map((r: any) => (
                           <tr key={r.account_id} className="hover:bg-sand/40 cursor-pointer border-b" style={{ borderColor: 'var(--sand)' }} onClick={() => setMxDrill({ id: r.account_id, name: `${r.code} ${r.name}` })}>
                             <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{r.code} — {r.name}</td>
-                            {mxData.columns.map((c: any) => <td key={c.key} className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--slate)' }}>{r.columns[c.key] ? fmtFull(r.columns[c.key]) : '—'}</td>)}
+                            {mxData.columns.map((c: any) => <td key={c.key} className={`py-1.5 px-2 text-right tabular-nums${c.es_total ? ' font-semibold' : ''}`} style={c.es_total ? { color: 'var(--ink)', borderLeft: '2px solid var(--sand)' } : { color: 'var(--slate)' }}>{r.columns[c.key] ? fmtFull(r.columns[c.key]) : '—'}</td>)}
                           </tr>
                         ))}
                         <tr className="font-medium" style={{ color: 'var(--ink)' }}>
                           <td className="py-1.5 pr-3">Total {secLabel}</td>
-                          {mxData.columns.map((c: any) => <td key={c.key} className="py-1.5 px-2 text-right tabular-nums">{fmtFull(mxData.totals[sec][c.key] || 0)}</td>)}
+                          {mxData.columns.map((c: any) => <td key={c.key} className="py-1.5 px-2 text-right tabular-nums font-semibold" style={c.es_total ? { borderLeft: '2px solid var(--sand)' } : undefined}>{fmtFull(mxData.totals[sec][c.key] || 0)}</td>)}
                         </tr>
                       </React.Fragment>
                     )

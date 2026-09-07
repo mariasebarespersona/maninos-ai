@@ -2577,6 +2577,24 @@ async def get_pnl_matrix(
     for s in totals:
         totals[s] = {k: round(v, 2) for k, v in totals[s].items()}
 
+    # Columna de TOTAL: la suma horizontal de todas las columnas. Es lo que en
+    # QuickBooks aparece como "Total" a la derecha de los meses. Se calcula aquí
+    # y no en la pantalla para que el CSV, el PDF y la vista digan lo mismo.
+    #
+    # Solo tiene sentido con columnas de PERIODO (mes) o de reparto (propiedad),
+    # donde sumar es legítimo. En modo comparativo las columnas son el mismo
+    # dinero visto en dos periodos: sumarlas daría un número sin significado.
+    incluir_total = group_by in ("month", "property") and len(columns) > 1
+    if incluir_total:
+        for sec in sections:
+            for fila in sections[sec]:
+                fila["columns"]["__total__"] = round(
+                    sum(float(v or 0) for v in fila["columns"].values()), 2)
+        for sec in totals:
+            totals[sec]["__total__"] = round(sum(float(v or 0) for v in totals[sec].values()), 2)
+        net_income["__total__"] = round(sum(float(v or 0) for v in net_income.values()), 2)
+        columns = columns + [{"key": "__total__", "label": "Total", "es_total": True}]
+
     return {
         "ok": True, "group_by": group_by, "period": {"start": sd, "end": ed},
         "columns": columns, "sections": sections,

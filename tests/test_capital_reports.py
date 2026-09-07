@@ -584,3 +584,41 @@ async def test_balance_sheet_balances_with_net_income():
     # y el resultado aparece como línea visible dentro del patrimonio
     assert any(n.get("id") == "NET_INCOME" for n in bs["equity"]), \
         "falta la línea 'Resultado del período' en el patrimonio"
+
+
+# ── Test 18: la matriz de P&L trae columna de total ──
+@pytest.mark.asyncio
+async def test_matriz_pnl_incluye_columna_total():
+    """Es el 'Total' que en QuickBooks va a la derecha de los meses. Se calcula
+    en el backend para que la vista, el CSV y el PDF digan lo mismo."""
+    print("TEST 18: la matriz suma una columna de total...")
+
+    accounts = [
+        make_account("inc-1", "41000", "Rent Income", "income"),
+        make_account("exp-1", "65010", "Bank fees", "expense"),
+    ]
+    txns = [
+        make_txn("inc-1", 1000, True,  txn_date="2026-01-15"),
+        make_txn("inc-1", 1500, True,  txn_date="2026-02-15"),
+        make_txn("exp-1",  200, False, txn_date="2026-02-20"),
+    ]
+    setup_mock(accounts, txns)
+
+    r = await accounting_mod.get_pnl_matrix(start_date="2026-01-01", end_date="2026-02-28", group_by="month")
+
+    claves = [c["key"] for c in r["columns"]]
+    assert claves[-1] == "__total__", f"la última columna debe ser el total: {claves}"
+    assert r["columns"][-1]["label"] == "Total"
+    assert r["columns"][-1]["es_total"] is True
+
+
+@pytest.mark.asyncio
+async def test_el_modo_comparativo_no_suma_total():
+    """En comparativo las columnas son el MISMO dinero en dos periodos.
+    Sumarlas daría un número sin significado."""
+    print("TEST 19: el comparativo no lleva columna de total...")
+    setup_mock([make_account("inc-1", "41000", "Rent", "income")],
+               [make_txn("inc-1", 1000, True, txn_date="2026-02-15")])
+    r = await accounting_mod.get_pnl_matrix(start_date="2026-02-01", end_date="2026-02-28",
+                                            group_by="compare", compare="prev_period")
+    assert not any(c.get("es_total") for c in r["columns"])
