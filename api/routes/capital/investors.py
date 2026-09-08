@@ -395,27 +395,36 @@ async def export_investors_csv(status: Optional[str] = None):
             "Obligación total", "Tasa fondeo %", "Plazo medio (meses)",
         ])
 
-        # El cliente de Supabase es síncrono, así que en serie esto tarda ~0,5 s por
-        # inversionista: con 30 son 16 s y el proxy de Vercel corta antes. Cada
-        # ficha se calcula en su propio hilo, con un semáforo para no abrir 30
-        # conexiones de golpe contra Supabase.
+        # EN SERIE, a propósito. Hubo una versión que calculaba las fichas en 8
+        # hilos para bajar de ~16 s a ~5 s, y provocaba fallos intermitentes:
+        # el cliente de Supabase es síncrono y NO es seguro compartirlo entre
+        # hilos, así que las conexiones se pisaban y unas cuantas peticiones
+        # morían con "Server disconnected". Cada descarga perdía inversionistas
+        # distintos, al azar. Una exportación de contabilidad que a veces trae
+        # todo y a veces no es peor que una lenta. Si algún día hace falta
+        # acelerarla, hay que dar a cada hilo SU PROPIO cliente, no repartir este.
         import asyncio
-        limite = asyncio.Semaphore(8)
 
-        async def _ficha(iid: str):
-            async with limite:
-                return await asyncio.to_thread(lambda: asyncio.run(get_investor(iid)))
+        async def _ficha_con_reintento(iid: str, intentos: int = 3):
+            """Un corte de red puntual no debe dejar a un inversionista fuera."""
+            ultimo = None
+            for n in range(intentos):
+                try:
+                    return await get_investor(iid)
+                except Exception as e:
+                    ultimo = e
+                    if n < intentos - 1:
+                        await asyncio.sleep(0.4 * (n + 1))
+            raise ultimo
 
-        fichas = await asyncio.gather(
-            *[_ficha(f["id"]) for f in investors], return_exceptions=True
-        )
-
-        for fila, d in zip(investors, fichas):
-            if isinstance(d, Exception):
-                # Un inversionista con datos corruptos no puede tumbar la
-                # exportación entera: se emite su fila marcada y se sigue. Un CSV
-                # al que le falte una fila en silencio sería peor.
-                logger.warning(f"[export] inversionista {fila['id']} omitido: {d}")
+        for fila in investors:
+            try:
+                d = await _ficha_con_reintento(fila["id"])
+            except Exception as e:
+                # Tras los reintentos, la fila sale MARCADA en vez de
+                # desaparecer: un CSV al que le falta gente en silencio se da por
+                # bueno y se toman decisiones sobre él.
+                logger.error(f"[export] inversionista {fila['id']} sin datos: {e}")
                 w.writerow([fila.get("name", ""), "", "", "", "ERROR AL CALCULAR",
                             "", "", "", "", "", "", "", "", "", "", "", ""])
                 continue
