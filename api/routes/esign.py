@@ -175,8 +175,15 @@ async def submit_signature(token: str, sig: SignatureSubmission, request: Reques
 
     from api.services.esign_service import apply_signature
 
-    ip = request.client.host if request.client else ""
-    ua = request.headers.get("user-agent", "")
+    # La petición llega por el proxy de Next, así que request.client es el
+    # servidor de la app, no quien firma. La huella real viaja en cabeceras que
+    # el proxy reenvía a propósito; de x-forwarded-for se toma la PRIMERA
+    # dirección, que es la del cliente (las siguientes son los intermediarios).
+    _reenviada = request.headers.get("x-forwarded-for", "")
+    ip = (_reenviada.split(",")[0].strip()
+          or (request.client.host if request.client else ""))
+    ua = (request.headers.get("x-signer-user-agent")
+          or request.headers.get("user-agent", ""))
 
     result = apply_signature(
         token=token,

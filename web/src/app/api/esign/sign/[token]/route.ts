@@ -24,9 +24,22 @@ export async function POST(
   const { token } = await context.params;
   try {
     const body = await request.json();
+    // La IP y el navegador de QUIEN FIRMA hay que reenviarlos a mano. Sin esto
+    // el backend ve la petición del propio servidor de Next y anota su IP
+    // (100.64.0.16) y "node" como navegador — la misma huella para todo el
+    // mundo, que es tanto como no tener ninguna. Y esa huella es media razón de
+    // ser de una firma electrónica.
+    const ipCliente =
+      request.headers.get('x-forwarded-for') ||
+      request.headers.get('x-real-ip') ||
+      '';
     const res = await fetch(`${API_URL}/api/esign/sign/${token}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ipCliente ? { 'x-forwarded-for': ipCliente } : {}),
+        'x-signer-user-agent': request.headers.get('user-agent') || '',
+      },
       body: JSON.stringify(body),
     });
     const data = await res.json();
