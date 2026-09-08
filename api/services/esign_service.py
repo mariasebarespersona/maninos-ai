@@ -64,27 +64,41 @@ def create_envelope(
     }
     sb.table("signature_envelopes").insert(envelope_data).execute()
 
-    # Create signature requests for each signer
+    # Create signature requests for each signer.
+    # ATÓMICO: si falla alguna, se retira el sobre. Un sobre sin firmantes no
+    # sirve para nada y encima estorba —queda listado como pendiente y, en el
+    # caso de los pagarés, el reenvío intenta anularlo—. Pasó de verdad: el
+    # CHECK de document_type rechazó "promissory_note" después de que el sobre
+    # ya estuviera insertado.
     signatures = []
-    for signer in (signers or []):
-        token = str(uuid.uuid4())
-        sig_data = {
-            "envelope_id": envelope_id,
-            "document_type": document_type,
-            "transaction_type": transaction_type,
-            "related_property_id": property_id,
-            "related_sale_id": sale_id,
-            "signer_role": signer["role"],
-            "signer_name": signer["name"],
-            "signer_email": signer["email"],
-            "token": token,
-            "token_expires_at": (datetime.utcnow() + timedelta(days=7)).isoformat(),
-            "status": "pending",
-            "unsigned_pdf_url": unsigned_pdf_url,
-            "audit_log": [{"event": "created", "timestamp": datetime.utcnow().isoformat()}],
-        }
-        result = sb.table("document_signatures").insert(sig_data).execute()
-        signatures.append({**sig_data, "id": result.data[0]["id"] if result.data else None})
+    try:
+        for signer in (signers or []):
+            token = str(uuid.uuid4())
+            sig_data = {
+                "envelope_id": envelope_id,
+                "document_type": document_type,
+                "transaction_type": transaction_type,
+                "related_property_id": property_id,
+                "related_sale_id": sale_id,
+                "signer_role": signer["role"],
+                "signer_name": signer["name"],
+                "signer_email": signer["email"],
+                "token": token,
+                "token_expires_at": (datetime.utcnow() + timedelta(days=7)).isoformat(),
+                "status": "pending",
+                "unsigned_pdf_url": unsigned_pdf_url,
+                "audit_log": [{"event": "created", "timestamp": datetime.utcnow().isoformat()}],
+            }
+            result = sb.table("document_signatures").insert(sig_data).execute()
+            signatures.append({**sig_data, "id": result.data[0]["id"] if result.data else None})
+    except Exception:
+        logger.error(f"[ESign] Falló crear los firmantes de {envelope_id}; se retira el sobre")
+        try:
+            sb.table("document_signatures").delete().eq("envelope_id", envelope_id).execute()
+            sb.table("signature_envelopes").delete().eq("id", envelope_id).execute()
+        except Exception as limpieza:
+            logger.error(f"[ESign] Y tampoco se pudo limpiar el sobre {envelope_id}: {limpieza}")
+        raise
 
     logger.info(f"[ESign] Created envelope {envelope_id} with {len(signatures)} signers")
     return {

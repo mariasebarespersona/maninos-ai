@@ -902,8 +902,12 @@ async def send_note_for_signature(note_id: str):
                        .neq("status", "voided").execute().data or [])
             for p_ in previos:
                 sb.table("signature_envelopes").update({"status": "voided"}).eq("id", p_["id"]).execute()
-                sb.table("document_signatures").update({"status": "voided"}) \
-                    .eq("envelope_id", p_["id"]).eq("status", "pending").execute()
+                # OJO: el sobre se anula con "voided" pero la fila de firma NO
+                # admite ese valor —su CHECK usa "revoked"—. Ponerle "voided"
+                # reventaba el reenvío entero.
+                for _est in ("pending", "viewed"):
+                    sb.table("document_signatures").update({"status": "revoked"}) \
+                        .eq("envelope_id", p_["id"]).eq("status", _est).execute()
             if previos:
                 logger.info(f"[pagaré] anulados {len(previos)} sobres previos de {note_id}")
         except Exception as e:
