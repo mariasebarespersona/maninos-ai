@@ -1401,7 +1401,37 @@ def _investor_payment_reminder_html(summary: dict) -> str:
     """
 
 
-def process_investor_payment_reminder(admin_email: str = "aruiz@maninoscapital.com") -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# DESTINATARIOS DEL RECORDATORIO DE PAGOS A INVERSIONISTAS
+#
+# Va A tesorería (quien prepara las transferencias) y EN COPIA a dirección.
+# Ambas listas se pueden sobreescribir por variable de entorno en Railway
+# —PAGOS_INVERSIONISTAS_TO / PAGOS_INVERSIONISTAS_CC, separadas por comas— para
+# poder añadir o quitar a alguien sin desplegar.
+#
+# OJO con el dominio: `maninoscapital.com` NO tiene registros MX, así que nada
+# enviado ahí se entrega. El destinatario estaba puesto como
+# aruiz@maninoscapital.com y rebotaba siempre. La cuenta real de esta persona en
+# la app es aruiz@maninoshomes.com. Quedan más direcciones @maninoscapital.com
+# en este fichero (info@…), igual de inservibles, pendientes de revisar.
+# ─────────────────────────────────────────────────────────────────────────────
+_PAGOS_TO_DEFECTO = ["aruiz@maninoshomes.com"]
+_PAGOS_CC_DEFECTO = [
+    "jorge@delatoro.com",            # Jorge de la Torre — DELATORO LLC
+    "sgonzalez@maninoshomes.com",    # Sebastian Gonzalez
+    "xvelasco@redaecapital.com",     # Xalli Velasco
+]
+
+
+def _lista_env(nombre: str, por_defecto: list) -> list:
+    """Lista de correos desde una env var separada por comas, o el valor fijo."""
+    crudo = os.environ.get(nombre, "")
+    direcciones = [d.strip() for d in crudo.split(",") if d.strip()]
+    return direcciones or list(por_defecto)
+
+
+def process_investor_payment_reminder(admin_email: Optional[str] = None,
+                                      cc: Optional[list] = None) -> dict:
     """Recordatorio a tesorería: a quién pagar el próximo día de pago y cuánto.
 
     Lo dispara el scheduler 5 días antes del día de pago. El desglose por
@@ -1422,10 +1452,13 @@ def process_investor_payment_reminder(admin_email: str = "aruiz@maninoscapital.c
             pay_label = _date.fromisoformat(summary["pay_date"]).strftime("%d/%m/%Y")
         except Exception:
             pay_label = summary.get("pay_date", "")
-        subject = f"Pagos a inversionistas del {pay_label} — {len(investors)} inversionistas, ${total:,.0f}"
+        destinatarios = [admin_email] if admin_email else _lista_env("PAGOS_INVERSIONISTAS_TO", _PAGOS_TO_DEFECTO)
+        copia = cc if cc is not None else _lista_env("PAGOS_INVERSIONISTAS_CC", _PAGOS_CC_DEFECTO)
+
+        subject = f"Pagos a inversionistas del {pay_label} — {len(investors)} pagarés, ${total:,.0f}"
         html = _investor_payment_reminder_html(summary)
-        email_result = send_email(to=[admin_email], subject=subject, html=html)
-        logger.info(f"[email_service] investor payment reminder sent to {admin_email}: "
+        email_result = send_email(to=destinatarios, subject=subject, html=html, cc=copia)
+        logger.info(f"[email_service] investor payment reminder to={destinatarios} cc={copia}: "
                     f"{len(investors)} investors, ${total:,.2f}, ok={email_result.get('ok', False)}")
         return {
             "ok": True,
@@ -1434,6 +1467,8 @@ def process_investor_payment_reminder(admin_email: str = "aruiz@maninoscapital.c
             "total": total,
             "pay_date": summary.get("pay_date"),
             "email_sent": email_result.get("ok", False),
+            "to": destinatarios,
+            "cc": copia,
         }
     except Exception as e:
         logger.error(f"[email_service] Error processing investor payment reminder: {e}")

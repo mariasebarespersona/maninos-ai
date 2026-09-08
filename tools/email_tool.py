@@ -9,7 +9,8 @@ import logfire  # Logfire for event tracking
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 EMAIL_FROM = os.getenv("RESEND_EMAIL_FROM")
 
-def send_email(to: List[str], subject: str, html: str, attachments: List[tuple[str, bytes]] = None):
+def send_email(to: List[str], subject: str, html: str, attachments: List[tuple[str, bytes]] = None,
+               cc: List[str] = None):
     import logging
     logger = logging.getLogger(__name__)
     
@@ -40,6 +41,12 @@ def send_email(to: List[str], subject: str, html: str, attachments: List[tuple[s
             "subject": subject,
             "html": html,
         }
+
+        # La copia va como CC de verdad, no metiendo a todos en "to": así queda
+        # claro para quién es la tarea y quién solo está informado.
+        if cc:
+            email_data["cc"] = cc
+            logger.info(f"[send_email] cc={cc}")
         
         # Add attachments if provided
         if attachments:
