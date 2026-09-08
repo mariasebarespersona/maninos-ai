@@ -789,6 +789,45 @@ def _term_phrase(term_months: int) -> str:
     return f"{term_months} ({_int_to_words(term_months)}) months"
 
 
+@router.get("/{note_id}/document")
+async def get_promissory_note_document(note_id: str):
+    """El pagaré redactado, como estructura, para pintarlo en pantalla.
+
+    Devuelve EXACTAMENTE el mismo contenido que el PDF: los dos llaman a
+    `build_document`. Existe para que la vista previa de la app no vuelva a tener
+    su propia copia del texto legal — que es como acabó enseñando, durante meses,
+    el borrador anterior a la revisión del abogado.
+    """
+    try:
+        from api.routes.capital._promissory_document import build_document
+
+        result = sb.table("promissory_notes") \
+            .select("*, investors(id, name, email, phone, company)") \
+            .eq("id", note_id).single().execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Nota promisoria no encontrada")
+
+        note = result.data
+        investor = note.get("investors") or {}
+        loan = float(note["loan_amount"])
+        rate = float(note.get("annual_rate", 12) or 12)
+        io_m, amort_m = _note_tranches(note)
+        sched = _note_schedule(loan, rate, io_m, amort_m)
+
+        fmt = lambda n: f"${n:,.2f}" if n else "$0.00"
+        docu = build_document(
+            note, investor, sched,
+            fmt=fmt, amount_words=_amount_words, int_to_words=_int_to_words,
+            term_phrase=_term_phrase, date_spelled=_date_spelled,
+        )
+        return {"ok": True, "document": docu}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error building promissory note document {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{note_id}/pdf")
 async def download_promissory_note_pdf(note_id: str):
     """Generate and download a PDF of the promissory note document."""
@@ -885,55 +924,35 @@ async def download_promissory_note_pdf(note_id: str):
         )))
         elements.append(Paragraph("PROMISSORY NOTE", styles['DocTitle']))
 
-        # ── Dynamic fields ──
-        lender = note.get("lender_name") or investor.get("name", "") or "_______________"
-        maker_rep = note.get("subscriber_representative") or MAKER_REP_DEFAULT
-        city = note.get("signed_city", "Conroe")
-        state = note.get("signed_state", "Texas")
+        # ── Contenido del documento ──
+        # Todo el texto sale de _promissory_document.build_document, que es la
+        # ÚNICA fuente: la pantalla lee exactamente lo mismo por /document. Aquí
+        # solo se maqueta. Si hay que cambiar una cláusula, se cambia allí.
+        from api.routes.capital._promissory_document import build_document
         annual_rate = float(note.get("annual_rate", 12) or 12)
-
-        signed_raw = note.get("signed_at") or note.get("start_date") or ""
-        try:
-            sd = datetime.fromisoformat(str(signed_raw).replace("Z", "+00:00"))
-        except Exception:
-            sd = datetime.now()
-        date_full = _date_spelled(sd)
-
         sched = _note_schedule(loan_amount, annual_rate, io_months, amort_months)
-        total_interest = sched["total_interest"]
-        total_repayment = loan_amount + total_interest
-        rate_words = f" ({_int_to_words(int(annual_rate))})" if float(annual_rate).is_integer() else ""
+        docu = build_document(
+            note, investor, sched,
+            fmt=fmt, amount_words=_amount_words, int_to_words=_int_to_words,
+            term_phrase=_term_phrase, date_spelled=_date_spelled,
+        )
 
         # ── Principal amount headline ──
         elements.append(Paragraph(
-            f"<b>Principal Amount:</b> {fmt(loan_amount)} USD "
-            f"(Total Repayment with Interest: {fmt(total_repayment)} USD)",
+            f"<b>{docu['principal_line']['label']}</b> {docu['principal_line']['principal']} USD "
+            f"(Total Repayment with Interest: {docu['principal_line']['total_repayment']} USD)",
             ParagraphStyle(name='PNPrincipal', parent=styles['Normal'], fontSize=11,
                            alignment=TA_CENTER, spaceAfter=10, textColor=colors.HexColor("#283242"),
                            fontName='Helvetica-Bold')))
-        elements.append(Paragraph(f"In {city}, {state} on {date_full}.", styles['Body']))
+        elements.append(Paragraph(docu["place_date"], styles['Body']))
         elements.append(Spacer(1, 10))
 
         # ── Binding paragraph (Maker + Co-Obligor) ──
-        binding = f"""{maker_entity}, a Texas limited liability company (the "Maker"), acting by and through its
-        authorized representative, <b>{maker_rep}</b>, owes and by means of this Promissory Note unconditionally
-        binds itself to pay <b>{lender}</b> (the "Lender"), the amount of <b>{fmt(loan_amount)}</b> U.S.D.
-        ({_amount_words(loan_amount)} UNITED STATES DOLLARS), as a renewal and replacement of the Lender's existing
-        loan for a new term of {_term_phrase(term_months)} (this Promissory Note supersedes and replaces in its
-        entirety any prior promissory note or loan agreement between the Maker and the Lender with respect to such
-        loan), which will be paid as follows: {CO_OBLIGOR_NAME}, a Texas limited liability company (the "Co-Obligor"),
-        joins this Promissory Note as a joint obligor, provided that the Co-Obligor's liability hereunder shall be
-        secondary to the Subscriber's and the Co-Obligor shall retain all rights of contribution and subrogation
-        against the Subscriber. Amounts will be paid as follows:"""
-        elements.append(Paragraph(binding, styles['Body']))
+        elements.append(Paragraph(docu["binding"], styles['Body']))
         elements.append(Spacer(1, 12))
 
         # ── Loan summary table ──
-        summary_rows = [
-            [lender, "", ""],
-            ["Loan", fmt(loan_amount), ""],
-            ["Total Interest", fmt(total_interest), f"{annual_rate:g}%"],
-        ]
+        summary_rows = [[docu["summary"]["lender"], "", ""]] + docu["summary"]["rows"]
         t = Table(summary_rows, colWidths=[180, 180, 180])
         t.setStyle(TableStyle([
             ('SPAN', (0, 0), (2, 0)),
@@ -951,15 +970,7 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(Spacer(1, 12))
 
         # ── Amortization schedule (interest-only, then amortizing) ──
-        sched_rows = [["Period", "Principal", "Interest", "Payment", "Balance"]]
-        for row in sched["schedule"]:
-            sched_rows.append([
-                str(row["period"]),
-                fmt(row["principal"]),
-                fmt(row["interest"]),
-                fmt(row["payment"]),
-                fmt(row["balance"]),
-            ])
+        sched_rows = [docu["schedule_header"]] + docu["schedule_rows"]
         t = Table(sched_rows, colWidths=[55, 120, 110, 120, 120], repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#283242")),
@@ -976,72 +987,27 @@ async def download_promissory_note_pdf(note_id: str):
         elements.append(t)
         elements.append(Spacer(1, 18))
 
-        # ── Default-interest clauses ──
-        elements.append(Paragraph(
-            "The Maker agrees to pay, if applicable, default interest, in accordance with the following:",
-            styles['Body']))
-        elements.append(Spacer(1, 6))
-        elements.append(Paragraph(
-            f"""<b>1. Default interest.</b> The Maker expressly acknowledges and agrees that in the event of default
-            in the timely and total payment of the amounts established in this Promissory Note, which default remains
-            uncured for ten (10) business days after written notice thereof is delivered to the Maker and all joint
-            obligors, the unpaid amount will accrue interest at the annual rate of {annual_rate:g}%{rate_words} percent
-            (in lieu of, and not in addition to, the regular interest rate) from the expiration of such cure period and
-            until the day it is fully paid, payable on demand. No late fees, penalties, or other charges beyond the
-            interest specified herein shall be assessed against the Co-Obligor. Notwithstanding anything herein to the
-            contrary, in no event shall interest contracted for, charged, or received hereunder exceed the maximum rate
-            permitted by applicable law.""",
-            styles['Body']))
+        # ── Cláusulas ──
+        for cl in docu["clauses"]:
+            texto = f"<b>{cl['title']}</b> {cl['text']}" if cl.get("title") else cl["text"]
+            elements.append(Paragraph(texto, styles['Body']))
+            elements.append(Spacer(1, 8))
+
+        elements.append(Paragraph(docu["address_block"], styles['Body']))
         elements.append(Spacer(1, 8))
-        elements.append(Paragraph(
-            """Default interest will be calculated on unpaid balances and based on a year of three hundred and
-            sixty-five (365) days and days elapsed. If the payment date corresponds to a day that is not a business day,
-            the Maker may make payment free of charge on the immediately following business day. This promissory note
-            shall be construed in accordance with the laws of the State of Texas, without regard to its conflict of laws
-            principles. The Maker and the Co-Obligor irrevocably submit to the exclusive jurisdiction of the state and
-            federal courts located in Montgomery County, Texas for any action arising under or related to this Promissory
-            Note brought by the Lender, and waive any objection to venue or jurisdiction in such courts; provided,
-            however, that the Co-Obligor may bring any contribution or subrogation action against the Maker in any court
-            of competent jurisdiction. The Maker designates the following as its address to be required for payment:""",
-            styles['Body']))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph(
-            """<b>Currency.</b> All amounts referenced in this Promissory Note, including the principal, interest,
-            default interest, and every payment reflected in the amortization schedule above, are denominated in, and
-            shall be paid exclusively in, lawful currency of the United States of America (U.S. Dollars, "USD"). Any
-            reference to "$" herein means U.S. Dollars.""",
-            styles['Body']))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph(
-            f"""{NOTE_ADDRESS}. Payments may be made by wire transfer, ACH, certified check, or such other method as the
-            parties may agree in writing. All notices to {CO_OBLIGOR_NAME} shall be sent to: [INSERT DELATORO LLC
-            ADDRESS]. The Maker or the Co-Obligor may prepay this Promissory Note in whole or in part at any time without
-            premium or penalty; any such prepayment by the Co-Obligor shall not waive or diminish its rights of
-            contribution and subrogation against the Maker.""",
-            styles['Body']))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph(
-            f"""This promissory note is signed and delivered in the city of {city}, {state} on {date_full}. The Lender
-            may not assign or transfer this Promissory Note without the prior written consent of the Subscriber and
-            {CO_OBLIGOR_NAME}.""",
-            styles['Body']))
+        elements.append(Paragraph(docu["closing"], styles['Body']))
         elements.append(Spacer(1, 24))
 
-        # ── Signatures (Maker + Co-Obligor) ──
-        sig_left = Paragraph(
-            f"<b>Signature</b><br/>_______________________________<br/><b>{maker_rep}</b><br/>"
-            f"{maker_entity}, Authorized Representative<br/>"
-            f"<font size='8' color='#666666'>(representing and warranting that the undersigned has full authority to "
-            f"execute this Promissory Note on behalf of the Maker)</font>",
-            ParagraphStyle(name='SigL', parent=styles['Normal'], fontSize=9, leading=13))
-        sig_right = Paragraph(
-            f"<b>Signature</b><br/>_______________________________<br/><b>{CO_OBLIGOR_REP}</b><br/>"
-            f"{CO_OBLIGOR_NAME} Authorized Representative<br/>"
-            f"<font size='8' color='#666666'>Co-Obligor with Secondary Liability (limited to obligations expressly set "
-            f"forth in this Promissory Note, with full rights of contribution and subrogation against the Maker; the "
-            f"Lender shall first exhaust all remedies against the Maker before seeking payment from the Co-Obligor)</font>",
-            ParagraphStyle(name='SigR', parent=styles['Normal'], fontSize=9, leading=13))
-        t = Table([[sig_left, sig_right]], colWidths=[265, 265])
+        # ── Firmas ──
+        sig_cells = [
+            Paragraph(
+                f"<b>Signature</b><br/>_______________________________<br/><b>{sig['name']}</b><br/>"
+                f"{sig['entity_line']}<br/>"
+                f"<font size='8' color='#666666'>{sig['note']}</font>",
+                ParagraphStyle(name=f"Sig{i}", parent=styles['Normal'], fontSize=9, leading=13))
+            for i, sig in enumerate(docu["signatures"])
+        ]
+        t = Table([sig_cells], colWidths=[265] * len(sig_cells))
         t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
@@ -1060,7 +1026,7 @@ async def download_promissory_note_pdf(note_id: str):
         doc.build(elements)
         pdf_bytes = buffer.getvalue()
         
-        lender_safe = (lender or "note").replace(" ", "_")
+        lender_safe = (docu["summary"]["lender"] or "note").replace(" ", "_")
         filename = f"Promissory_Note_{lender_safe}_{note_id[:8]}.pdf"
         
         return Response(

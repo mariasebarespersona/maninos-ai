@@ -195,6 +195,31 @@ function PayoffCalculator({ loanAmount, totalInterest, totalDue, paidAmount }: {
   )
 }
 
+/**
+ * El pagaré ya redactado, tal como lo sirve GET /promissory-notes/{id}/document.
+ *
+ * Esta pantalla NO redacta nada: pinta lo que le llega. El texto legal vivía
+ * antes duplicado aquí en JSX, y cuando en julio se metió la versión revisada
+ * por el abogado solo en el PDF, la pantalla se quedó meses enseñando el
+ * borrador anterior — sin el párrafo del co-obligado, sin el periodo de cura de
+ * 10 días, y con la firma etiquetada "Joint and Several Obligor", que el
+ * abogado había tachado. De ahí que ahora haya una sola fuente.
+ */
+interface NoteDocument {
+  brand_title: string
+  doc_title: string
+  principal_line: { label: string; principal: string; total_repayment: string; text: string }
+  place_date: string
+  binding: string
+  summary: { lender: string; rows: string[][] }
+  schedule_header: string[]
+  schedule_rows: string[][]
+  clauses: { title: string | null; text: string }[]
+  address_block: string
+  closing: string
+  signatures: { name: string; entity_line: string; note: string }[]
+}
+
 export default function PromissoryNoteDetailPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -202,6 +227,9 @@ export default function PromissoryNoteDetailPage() {
   const printRef = useRef<HTMLDivElement>(null)
 
   const [note, setNote] = useState<PromissoryNote | null>(null)
+  // El documento redactado viene del backend, NO se escribe aquí. Ver
+  // api/routes/capital/_promissory_document.py: es la misma fuente que el PDF.
+  const [docu, setDocu] = useState<NoteDocument | null>(null)
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
   const [paidToDate, setPaidToDate] = useState<{ capital_to_date: number; interest_to_date: number; paid_to_date: number; remaining: number; elapsed_periods: number; term: number } | null>(null)
   const [payments, setPayments] = useState<PaymentRecord[]>([])
@@ -229,6 +257,15 @@ export default function PromissoryNoteDetailPage() {
   })
 
   useEffect(() => { loadNote() }, [id])
+
+  useEffect(() => {
+    let cancelado = false
+    fetch(`/api/capital/promissory-notes/${id}/document`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (!cancelado && d.ok) setDocu(d.document) })
+      .catch(() => { /* la pestaña muestra su propio aviso si no llega */ })
+    return () => { cancelado = true }
+  }, [id])
 
   const loadNote = async () => {
     try {
@@ -405,12 +442,6 @@ export default function PromissoryNoteDetailPage() {
       month: full ? 'long' : 'short',
       year: 'numeric',
     })
-
-  const numberToWords = (n: number): string => {
-    const intPart = Math.floor(n)
-    return new Intl.NumberFormat('en-US', { style: 'decimal', maximumFractionDigits: 0 }).format(intPart)
-      .replace(/,/g, ',') + ' 00/100 UNITED STATES DOLLARS'
-  }
 
   if (loading) {
     return (
@@ -645,155 +676,117 @@ export default function PromissoryNoteDetailPage() {
       {/* TAB: Document View */}
       {activeTab === 'document' && (
         <div ref={printRef} className="card-luxury p-8 print:shadow-none print:border-none" style={{ maxWidth: 800, margin: '0 auto' }}>
-          {/* Header — Maninos logo (matches the downloadable PDF) */}
-          <div className="text-center mb-6">
-            <div className="flex items-center justify-center mb-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/maninos-logo.jpg" alt="Maninos" style={{ height: 44, width: 'auto' }} />
+          {!docu ? (
+            <div className="text-center py-16 text-sm" style={{ color: 'var(--slate)' }}>
+              Cargando el documento…
             </div>
-            <h2 className="font-serif text-xl font-bold tracking-wide" style={{ color: 'var(--ink)' }}>
-              PROMISSORY NOTE
-            </h2>
-          </div>
-
-          {/* Value */}
-          <div className="text-right mb-4">
-            <span className="text-sm" style={{ color: 'var(--slate)' }}>Value: </span>
-            <span className="font-serif text-xl font-bold" style={{ color: 'var(--ink)' }}>{fmt(note.loan_amount)} USD</span>
-          </div>
-
-          {/* Preamble */}
-          <div className="text-sm leading-relaxed mb-6" style={{ color: 'var(--charcoal)' }}>
-            <p>
-              In {note.signed_city || 'Conroe'}, {note.signed_state || 'Texas'} on{' '}
-              <strong>{note.signed_at ? fmtDate(note.signed_at, true) : fmtDate(note.start_date, true)}</strong>.
-            </p>
-            <p className="mt-2">
-              As {note.subscriber_name} representative,{' '}
-              <strong>{note.subscriber_representative || 'BENJAMIN SEBASTIAN GONZALEZ ZAMBRANO'}</strong>{' '}
-              (the Subscriber) I unconditionally bind myself to pay{' '}
-              <strong>{note.lender_name}</strong>, the amount of {fmt(note.loan_amount)} (
-              {numberToWords(note.loan_amount)}), plus simple (non-accumulative) interest, which will be paid as follows:
-            </p>
-          </div>
-
-          {/* Terms Box */}
-          <div className="mb-6 inline-block">
-            <table className="text-sm" style={{ borderCollapse: 'collapse' }}>
-              <tbody>
-                {[
-                  ['Loan', fmt(note.loan_amount)],
-                  ['Annual rate', `${note.annual_rate}%`],
-                  ['Monthly rate', `${(note.monthly_rate * 100).toFixed(2)}%`],
-                  ['Interest-only months', String(note.interest_only_months ?? 0)],
-                  ['Amortization months', String(note.amortization_months ?? note.term_months)],
-                  ['Total months', String(note.term_months)],
-                  ['Total interest', fmt(note.total_interest)],
-                  ['Total due', fmt(note.total_due)],
-                ].map(([label, value]) => (
-                  <tr key={label}>
-                    <td className="py-1 pr-6 font-medium" style={{ color: 'var(--charcoal)', borderBottom: '1px solid var(--sand)' }}>{label}</td>
-                    <td className="py-1 pl-4 text-right font-semibold" style={{ color: 'var(--ink)', borderBottom: '1px solid var(--sand)' }}>{value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Schedule Table — two-tranche */}
-          <div className="mb-6 overflow-x-auto">
-            <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--cream)' }}>
-                  {['Period', 'Principal', 'Interest', 'Payment', 'Balance'].map(h => (
-                    <th key={h} className="py-2 px-3 text-center font-semibold text-xs" style={{ color: 'var(--charcoal)', borderBottom: '2px solid var(--sand)' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {schedule.map(row => (
-                  <tr key={row.period} style={{ borderBottom: '1px solid var(--sand)' }}>
-                    <td className="py-1.5 px-3 text-center font-medium" style={{ color: 'var(--charcoal)' }}>{row.period}</td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: row.principal > 0 ? 'var(--navy-800)' : 'var(--ash)' }}>
-                      $ {row.principal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--gold-700)' }}>
-                      $ {row.interest.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-1.5 px-3 text-right" style={{ color: 'var(--charcoal)' }}>
-                      $ {row.payment.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-1.5 px-3 text-right font-medium" style={{ color: 'var(--navy-800)' }}>
-                      $ {row.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Two-tranche note */}
-          <div className="text-xs mb-6 px-2" style={{ color: 'var(--ash)' }}>
-            <p><em>
-              Tramo 1 (interest-only): pago = {fmt(note.loan_amount * note.monthly_rate)}/mes (solo interés), el capital no baja.
-              Tramo 2 (amortización): pago fijo capital + interés; el interés se recalcula sobre el saldo restante y el capital baja cada mes.
-            </em></p>
-          </div>
-
-          {/* Legal Text */}
-          <div className="text-xs leading-relaxed space-y-3 mb-8" style={{ color: 'var(--charcoal)' }}>
-            <p>
-              The Subscriber unconditionally agrees to pay, if applicable, default interest in accordance with the following:
-            </p>
-            <p>
-              <strong>1. Default interest.</strong> The Subscriber expressly and irrevocably acknowledges that in the event of default
-              in the timely and total payment of the amounts established in this Promissory Note, the unpaid amount will cause
-              default interest from the due date and until the day it is fully paid, payable to sight, at the annual rate of{' '}
-              <strong>{note.annual_rate}%</strong> (the same rate as this Promissory Note).
-            </p>
-            <p>
-              Default interest will be calculated on unpaid balances and based on a year of three hundred and sixty five days
-              and days elapsed. If the payment date corresponds to a day that is not a business day, the Subscriber may make
-              payment free of charge immediately following business day. This promissory note shall be construed in accordance
-              with the laws of the State of Texas. The Subscriber submits to the exclusive jurisdiction of the state and
-              federal courts located in Montgomery County, Texas, expressly waiving any other jurisdiction to which he is
-              entitled or may have it in the future, by virtue of his domicile or for any other reason. The Subscriber
-              designates the following as his address to be required for payment:
-            </p>
-            <p className="font-bold">{note.subscriber_address || '15891 Old Houston Rd, Conroe, Tx. Zip Code 77302'}</p>
-            <p>
-              This promissory note is signed and delivered in the city of {note.signed_city || 'Conroe'},{' '}
-              {note.signed_state || 'Texas'} on{' '}
-              <strong>{note.signed_at ? fmtDate(note.signed_at, true) : fmtDate(note.start_date, true)}</strong>.
-            </p>
-          </div>
-
-          {/* Signatures */}
-          <div className="grid grid-cols-2 gap-8 mt-12 pt-8" style={{ borderTop: '1px solid var(--sand)' }}>
-            <div className="text-center">
-              <div className="border-b pb-2 mb-2" style={{ borderColor: 'var(--charcoal)' }}>
-                <span className="text-sm" style={{ color: 'var(--slate)' }}>Signature</span>
+          ) : (
+            <>
+              {/* Cabecera */}
+              <div className="text-center mb-4">
+                <div className="flex items-center justify-center mb-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/maninos-logo.jpg" alt="Maninos" style={{ height: 44, width: 'auto' }} />
+                </div>
+                <p className="text-xs font-bold tracking-wide mb-1" style={{ color: 'var(--navy-800)' }}>
+                  {docu.brand_title}
+                </p>
+                <h2 className="font-serif text-xl font-bold tracking-wide" style={{ color: 'var(--ink)' }}>
+                  {docu.doc_title}
+                </h2>
               </div>
-              <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>
-                {note.subscriber_representative || 'BENJAMIN SEBASTIAN GONZALEZ ZAMBRANO'}
+
+              {/* Principal + total a devolver */}
+              <p className="text-center text-sm font-bold mb-3" style={{ color: 'var(--navy-800)' }}>
+                {docu.principal_line.text}
               </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>{note.subscriber_name} Representative</p>
-            </div>
-            <div className="text-center">
-              <div className="border-b pb-2 mb-2" style={{ borderColor: 'var(--charcoal)' }}>
-                <span className="text-sm" style={{ color: 'var(--slate)' }}>Signature</span>
+
+              <p className="text-sm mb-4" style={{ color: 'var(--charcoal)' }}>{docu.place_date}</p>
+
+              {/* Párrafo vinculante (Maker + Co-Obligado) */}
+              <p className="text-sm leading-relaxed mb-6 text-justify" style={{ color: 'var(--charcoal)' }}>
+                {docu.binding}
+              </p>
+
+              {/* Resumen del préstamo */}
+              <div className="mb-6">
+                <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr style={{ backgroundColor: 'var(--navy-800)' }}>
+                      <td colSpan={3} className="py-2 px-3 text-center font-bold" style={{ color: 'white' }}>
+                        {docu.summary.lender}
+                      </td>
+                    </tr>
+                    {docu.summary.rows.map((r, i) => (
+                      <tr key={i}>
+                        {r.map((celda, j) => (
+                          <td key={j} className="py-1.5 px-3"
+                              style={{ border: '1px solid var(--sand)', color: 'var(--ink)',
+                                       fontWeight: j === 0 ? 500 : 600, width: '33.33%' }}>
+                            {celda}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>
-                {note.lender_representative || note.lender_name}
-              </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>
-                {note.lender_company || ''} {note.lender_company ? 'Representative' : ''}
-              </p>
-              <p className="text-xs font-semibold mt-1" style={{ color: 'var(--ink)' }}>Joint and Several Obligor</p>
-            </div>
-          </div>
+
+              {/* Cuadro de amortización */}
+              <div className="mb-6 overflow-x-auto">
+                <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--navy-800)' }}>
+                      {docu.schedule_header.map((h, i) => (
+                        <th key={h} className="py-2 px-3 font-semibold text-xs"
+                            style={{ color: 'white', textAlign: i === 0 ? 'center' : 'right' }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docu.schedule_rows.map((fila, i) => (
+                      <tr key={i} style={{ backgroundColor: i % 2 ? 'var(--cream)' : 'transparent' }}>
+                        {fila.map((celda, j) => (
+                          <td key={j} className="py-1.5 px-3 tabular-nums"
+                              style={{ border: '1px solid var(--sand)', textAlign: j === 0 ? 'center' : 'right',
+                                       color: j === 0 ? 'var(--charcoal)' : 'var(--ink)' }}>
+                            {celda}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Cláusulas */}
+              <div className="text-xs leading-relaxed space-y-3 mb-4" style={{ color: 'var(--charcoal)' }}>
+                {docu.clauses.map((c, i) => (
+                  <p key={i} className="text-justify">
+                    {c.title && <strong>{c.title} </strong>}
+                    {c.text}
+                  </p>
+                ))}
+                <p className="text-justify font-medium" style={{ color: 'var(--ink)' }}>{docu.address_block}</p>
+                <p className="text-justify">{docu.closing}</p>
+              </div>
+
+              {/* Firmas */}
+              <div className="grid grid-cols-2 gap-8 mt-12 pt-8" style={{ borderTop: '1px solid var(--sand)' }}>
+                {docu.signatures.map((sig, i) => (
+                  <div key={i}>
+                    <p className="text-sm font-semibold mb-6" style={{ color: 'var(--ink)' }}>Signature</p>
+                    <div className="border-b mb-2" style={{ borderColor: 'var(--charcoal)' }} />
+                    <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>{sig.name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--charcoal)' }}>{sig.entity_line}</p>
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--ash)' }}>{sig.note}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
