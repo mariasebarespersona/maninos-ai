@@ -638,6 +638,118 @@ async def unassign_investor(sale_id: str, data: UnassignInvestorRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TÍTULO DE LA CASA — el tramo que le importa a Capital
+#
+# Una casa financiada recorre TRES traspasos de título:
+#
+#   1. Vendedor        → Maninos Homes      'purchase'
+#   2. Maninos Homes   → Maninos Capital    'homes_to_capital'
+#   3. Maninos Capital → Cliente            'sale'
+#
+# El que respalda al inversionista es el 2: es el papel que acredita que la casa
+# que garantiza su dinero es de Capital y no de Homes. El 1 se conserva solo
+# como constancia del origen. Antes esta sección enseñaba el 1 como si fuera lo
+# relevante para Capital, y el 2 ni siquiera existía en los datos (migración 109).
+# ─────────────────────────────────────────────────────────────────────────────
+_TIPO_A_CAPITAL = "homes_to_capital"
+
+# Los tres papeles que Homes le entrega a Capital al venderle la casa.
+_DOCS_A_CAPITAL = ("titulo", "title_application", "bill_of_sale")
+
+
+def _checklist_vacio() -> dict:
+    return {k: {"checked": False, "file_url": None, "uploaded_at": None}
+            for k in _DOCS_A_CAPITAL}
+
+
+@router.get("/{sale_id}/titles")
+async def get_house_titles(sale_id: str):
+    """Los tres tramos de la cadena de títulos de una casa financiada."""
+    try:
+        venta = sb.table("sales").select("id, property_id, sale_type") \
+            .eq("id", sale_id).limit(1).execute().data
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        pid = venta[0].get("property_id")
+        if not pid:
+            return {"ok": True, "origen": None, "a_capital": None, "a_cliente": None}
+
+        filas = sb.table("title_transfers").select("*").eq("property_id", pid).execute().data or []
+
+        def _ultimo(tipo):
+            de_ese_tipo = [f for f in filas if f.get("transfer_type") == tipo]
+            if not de_ese_tipo:
+                return None
+            # El más reciente: si se rehízo un traspaso, manda el nuevo.
+            return sorted(de_ese_tipo, key=lambda f: str(f.get("created_at") or ""))[-1]
+
+        return {
+            "ok": True,
+            "origen": _ultimo("purchase"),
+            "a_capital": _ultimo(_TIPO_A_CAPITAL),
+            "a_cliente": _ultimo("sale"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error leyendo títulos de {sale_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{sale_id}/title-to-capital")
+async def create_title_to_capital(sale_id: str):
+    """Registra el traspaso de título de Homes a Capital, si aún no existe.
+
+    Es idempotente: si ya está, se devuelve el existente en vez de crear un
+    duplicado. Duplicar un traspaso de titularidad dejaría dos cadenas de
+    documentos para la misma casa y ninguna sería de fiar.
+    """
+    try:
+        venta = sb.table("sales").select("id, property_id, sale_type, properties(property_code)") \
+            .eq("id", sale_id).limit(1).execute().data
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        v = venta[0]
+        if v.get("sale_type") != "rto":
+            raise HTTPException(status_code=400, detail="Solo las ventas financiadas (RTO) pasan por Capital")
+        pid = v.get("property_id")
+        if not pid:
+            raise HTTPException(status_code=400, detail="La venta no tiene propiedad asociada")
+
+        ya = (sb.table("title_transfers").select("*")
+              .eq("property_id", pid).eq("transfer_type", _TIPO_A_CAPITAL)
+              .limit(1).execute().data or [])
+        if ya:
+            return {"ok": True, "created": False, "transfer": ya[0]}
+
+        fila = sb.table("title_transfers").insert({
+            "property_id": pid,
+            "sale_id": sale_id,
+            "transfer_type": _TIPO_A_CAPITAL,
+            "from_name": "Maninos Homes LLC",
+            "to_name": "Maninos Capital LLC",
+            "status": "pending",
+            "documents_checklist": _checklist_vacio(),
+            "notes": "Entrega de título de Homes a Capital al financiar la casa.",
+        }).execute()
+        return {"ok": True, "created": True, "transfer": (fila.data or [None])[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        # El enum de transfer_type necesita la migración 109. Sin ella el insert
+        # falla y conviene decir por qué, en vez de un 500 mudo.
+        if "enum transfer_type" in str(e):
+            raise HTTPException(
+                status_code=400,
+                detail=("Falta ejecutar migrations/109_title_transfer_homes_to_capital.sql "
+                        "en el SQL Editor de Supabase: el tipo 'homes_to_capital' todavía "
+                        "no existe en la base de datos."),
+            )
+        logger.error(f"Error creando el traspaso a Capital de {sale_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{sale_id}/valuation")
 async def get_house_valuation(sale_id: str):
     """Valor de mercado estimado de la casa, con su respaldo.

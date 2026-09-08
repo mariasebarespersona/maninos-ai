@@ -150,9 +150,14 @@ const docsDe = (t: TitleTransfer) => {
 const PLANTILLA: Record<string, string | null> = {
   bill_of_sale: 'bos', title_application: 'title_app', titulo: null,
 }
-const urlPlantilla = (propertyId: string, clave: string, tipo: 'purchase' | 'sale') => {
+const urlPlantilla = (propertyId: string, clave: string, tipo: string) => {
   const base = PLANTILLA[clave]
-  return base ? `/homes/properties/${propertyId}?doc=${base}_${tipo}` : null
+  // Las plantillas de Homes están indexadas por 'purchase' y 'sale'. El tramo
+  // Homes → Capital no es ninguno de los dos: si se le colara 'sale' abriría el
+  // bill of sale del CLIENTE, que es otro documento. Antes que enseñar el
+  // formato equivocado, no se enseña ninguno y solo se muestra lo adjunto.
+  if (!base || (tipo !== 'purchase' && tipo !== 'sale')) return null
+  return `/homes/properties/${propertyId}?doc=${base}_${tipo}`
 }
 
 const docsListos = (t: TitleTransfer) => docsDe(t).filter(d => d.listo).length
@@ -174,7 +179,13 @@ export default function FinancedHouseDetailPage() {
 
   const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(n || 0)
 
-  const [titles, setTitles] = useState<{ purchase: TitleTransfer | null; sale: TitleTransfer | null } | null>(null)
+  // Los TRES tramos de la cadena. El que le importa a Capital es `a_capital`:
+  // es el papel que acredita que la casa que respalda al inversionista es de
+  // Capital y no de Homes. `origen` se conserva solo como constancia.
+  const [titles, setTitles] = useState<{
+    origen: TitleTransfer | null; a_capital: TitleTransfer | null; a_cliente: TitleTransfer | null
+  } | null>(null)
+  const [creandoTraspaso, setCreandoTraspaso] = useState(false)
   const [val, setVal] = useState<Valoracion | null>(null)
 
   const loadHouse = useCallback(async () => {
@@ -192,17 +203,32 @@ export default function FinancedHouseDetailPage() {
   useEffect(() => { loadHouse() }, [loadHouse])
 
   // El título es un dato de Homes. Se pide por property_id, que la ficha ya trae.
-  // Solo lectura: Capital nunca escribe sobre los traspasos de Homes.
-  useEffect(() => {
-    const pid = house?.property?.id
-    if (!pid) return
-    let cancelled = false
-    fetch(`/api/transfers/property/${pid}`)
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setTitles({ purchase: d.purchase ?? null, sale: d.sale ?? null }) })
-      .catch(() => { if (!cancelled) setTitles({ purchase: null, sale: null }) })
-    return () => { cancelled = true }
-  }, [house?.property?.id])
+  const cargarTitulos = useCallback(async () => {
+    if (!saleId) return
+    try {
+      const d = await (await fetch(`/api/capital/financed-houses/${saleId}/titles`, { cache: 'no-store' })).json()
+      setTitles({ origen: d.origen ?? null, a_capital: d.a_capital ?? null, a_cliente: d.a_cliente ?? null })
+    } catch {
+      setTitles({ origen: null, a_capital: null, a_cliente: null })
+    }
+  }, [saleId])
+
+  useEffect(() => { cargarTitulos() }, [cargarTitulos])
+
+  /** Registra la entrega de título de Homes a Capital. Idempotente en el backend. */
+  const registrarTraspasoACapital = async () => {
+    setCreandoTraspaso(true)
+    try {
+      const res = await fetch(`/api/capital/financed-houses/${saleId}/title-to-capital`, { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok || d.ok === false) { alert(d.detail || 'No se pudo registrar el traspaso'); return }
+      await cargarTitulos()
+    } catch {
+      alert('No se pudo registrar el traspaso')
+    } finally {
+      setCreandoTraspaso(false)
+    }
+  }
 
   // Valoración: se calcula al vuelo desde el histórico de operaciones. Solo
   // lectura, sin efectos sobre la contabilidad.
@@ -441,26 +467,44 @@ export default function FinancedHouseDetailPage() {
           Título de la casa
         </h2>
         <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
-          Gestionado desde Homes. Aquí solo se consulta: los cambios se hacen en Traspasos de Título.
+          Capital le compra la casa a Homes, así que Homes le entrega el título. Ese es el papel que
+          respalda al inversionista. Los documentos se suben desde Homes, en Traspasos de Título.
         </p>
 
         {titles === null ? (
           <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ash)' }}>
             <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
           </div>
-        ) : (!titles.purchase && !titles.sale) ? (
-          <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--slate)' }}>
-            <AlertTriangle className="w-4 h-4 flex-none mt-0.5" style={{ color: 'var(--warning)' }} />
-            <span>
-              Esta casa no tiene ningún traspaso de título registrado en Homes.
-              Sin él no hay constancia de que el título esté a nombre de Maninos.
-            </span>
-          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            {/* Sin el tramo Homes → Capital no hay constancia de que la casa sea
+                de Capital, así que se avisa y se ofrece registrarlo. */}
+            {!titles.a_capital && (
+              <div className="rounded-lg p-4 flex items-start gap-3"
+                   style={{ backgroundColor: 'var(--warning-light)', border: '1px solid var(--warning)' }}>
+                <AlertTriangle className="w-5 h-5 flex-none mt-0.5" style={{ color: 'var(--warning)' }} />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+                    Homes todavía no le ha entregado el título a Capital
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--charcoal)' }}>
+                    Mientras falte, la casa que respalda al inversionista sigue figurando a nombre de
+                    Maninos Homes. Al registrarlo se crea el traspaso con sus tres documentos, que
+                    después se suben desde Homes.
+                  </p>
+                  <button onClick={registrarTraspasoACapital} disabled={creandoTraspaso}
+                          className="btn-primary btn-sm mt-3">
+                    {creandoTraspaso ? 'Registrando…' : 'Registrar entrega de título a Capital'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {([
-              { t: titles.purchase, titulo: 'Compra', sub: 'Título a nombre de Maninos', icon: ShieldCheck },
-              { t: titles.sale, titulo: 'Venta', sub: 'Título al cliente, al terminar el RTO', icon: Home },
+              { t: titles.a_capital, titulo: 'Homes → Capital', sub: 'El título que respalda al inversionista', icon: ShieldCheck },
+              { t: titles.a_cliente, titulo: 'Capital → Cliente', sub: 'Al terminar de pagar el RTO', icon: Home },
+              { t: titles.origen, titulo: 'Origen', sub: 'Vendedor → Homes, constancia de procedencia', icon: FileSignature },
             ] as const).map(({ t, titulo, sub, icon: Icon }) => (
               <div key={titulo} className="rounded-lg p-4" style={{ border: '1px solid var(--sand)' }}>
                 <div className="flex items-start justify-between gap-3 mb-2">
@@ -537,6 +581,7 @@ export default function FinancedHouseDetailPage() {
                 )}
               </div>
             ))}
+          </div>
           </div>
         )}
       </div>
