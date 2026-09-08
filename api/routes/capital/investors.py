@@ -3,7 +3,7 @@ Capital Investors - Investor management (Fondear)
 Phase 6
 """
 
-from datetime import datetime
+from datetime import datetime, date as _dt_date
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -352,6 +352,109 @@ async def list_investors(status: Optional[str] = "active"):
         return {"ok": True, "investors": investors}
     except Exception as e:
         logger.error(f"Error listing investors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export-csv")
+async def export_investors_csv(status: Optional[str] = None):
+    """Seguimiento de inversionistas en CSV, una fila por inversionista.
+
+    Las cifras se sacan llamando a `get_investor` para cada uno — el MISMO
+    cálculo que pinta la ficha en pantalla— en vez de recalcularlas aquí. Es más
+    lento (unas cuantas consultas por inversionista) pero es una descarga
+    manual, no una ruta caliente, y a cambio el Excel no puede discrepar de la
+    app: si mañana cambia la definición de "pagado a hoy", cambia en los dos
+    sitios a la vez. Duplicar la fórmula es justo lo que hizo que el pagaré en
+    pantalla y en PDF acabaran diciendo cosas distintas.
+
+    Definido ANTES de /{investor_id} para que la ruta literal no se capture como
+    un id.
+
+    Los importes van como número plano (sin separador de miles, punto decimal)
+    para que Excel los lea como números y no como texto. El formato bonito lo
+    pone Excel; un "1.234,56" en el CSV llega como cadena y no se puede sumar.
+    """
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    try:
+        query = sb.table("investors").select("id, name")
+        if status:
+            query = query.eq("status", status)
+        investors = query.order("name").execute().data or []
+
+        salida = io.StringIO()
+        w = csv.writer(salida)
+        w.writerow([
+            "Inversionista", "Email", "Teléfono", "Empresa", "Estado", "Alta",
+            "Pagarés activos", "Pagarés totales",
+            "Total invertido", "Total disponible",
+            "Pagado a hoy", "Queda por pagar",
+            "Capital devuelto a hoy", "Interés pagado a hoy",
+            "Obligación total", "Tasa fondeo %", "Plazo medio (meses)",
+        ])
+
+        # El cliente de Supabase es síncrono, así que en serie esto tarda ~0,5 s por
+        # inversionista: con 30 son 16 s y el proxy de Vercel corta antes. Cada
+        # ficha se calcula en su propio hilo, con un semáforo para no abrir 30
+        # conexiones de golpe contra Supabase.
+        import asyncio
+        limite = asyncio.Semaphore(8)
+
+        async def _ficha(iid: str):
+            async with limite:
+                return await asyncio.to_thread(lambda: asyncio.run(get_investor(iid)))
+
+        fichas = await asyncio.gather(
+            *[_ficha(f["id"]) for f in investors], return_exceptions=True
+        )
+
+        for fila, d in zip(investors, fichas):
+            if isinstance(d, Exception):
+                # Un inversionista con datos corruptos no puede tumbar la
+                # exportación entera: se emite su fila marcada y se sigue. Un CSV
+                # al que le falte una fila en silencio sería peor.
+                logger.warning(f"[export] inversionista {fila['id']} omitido: {d}")
+                w.writerow([fila.get("name", ""), "", "", "", "ERROR AL CALCULAR",
+                            "", "", "", "", "", "", "", "", "", "", "", ""])
+                continue
+
+            inv = d.get("investor") or {}
+            m = d.get("metrics") or {}
+            notas = d.get("promissory_notes") or []
+            w.writerow([
+                inv.get("name", ""),
+                inv.get("email") or "",
+                inv.get("phone") or "",
+                inv.get("company") or "",
+                inv.get("status") or "",
+                str(inv.get("created_at") or "")[:10],
+                m.get("active_notes", 0),
+                len(notas),
+                m.get("total_invertido", 0),
+                m.get("total_disponible", 0),
+                m.get("total_pagado_a_hoy", 0),
+                m.get("total_restante_por_pagar", 0),
+                m.get("total_retornado_capital", 0),
+                m.get("total_retornado_interes", 0),
+                m.get("total_obligacion", 0),
+                m.get("tasa_fondeo", 0),
+                m.get("avg_term_months", 0),
+            ])
+
+        # BOM para que Excel en Windows abra los acentos bien; sin él, "Teléfono"
+        # sale como "TelÃ©fono".
+        contenido = "\ufeff" + salida.getvalue()
+        hoy = _dt_date.today().isoformat()
+        return StreamingResponse(
+            iter([contenido]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="seguimiento_inversionistas_{hoy}.csv"'},
+        )
+    except Exception as e:
+        logger.error(f"Error exporting investors CSV: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

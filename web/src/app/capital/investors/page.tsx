@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Landmark, Plus, User, DollarSign, Briefcase, Phone, Mail,
   TrendingUp, ArrowRight, FileText, Search, AlertTriangle,
-  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle, Trash2, HelpCircle
+  Clock, Bell, ChevronDown, ChevronUp, Pause, XCircle, Trash2, HelpCircle, Download, Loader2
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { KPI_EXPLANATIONS } from '@/components/capital/kpiExplanations'
@@ -111,6 +111,7 @@ export default function InvestorsPage() {
   const [company, setCompany] = useState('')
   const [capital, setCapital] = useState('')
   const [creating, setCreating] = useState(false)
+  const [exportando, setExportando] = useState(false)
 
   // House allocations (assign capital to specific houses on creation)
   const [properties, setProperties] = useState<PropertyLite[]>([])
@@ -255,6 +256,37 @@ export default function InvestorsPage() {
     )
   }
 
+  /**
+   * Descarga el seguimiento completo en CSV.
+   *
+   * Se baja como blob en vez de apuntar el navegador al endpoint porque la
+   * petición va por el proxy de Next (que inyecta la clave del API): un enlace
+   * directo al backend daría 401. Y tarda unos segundos, porque el servidor
+   * recalcula la ficha de cada inversionista para que el Excel diga exactamente
+   * lo mismo que la app.
+   */
+  const exportarCSV = async () => {
+    setExportando(true)
+    try {
+      const res = await fetch('/api/capital/investors/export-csv', { cache: 'no-store' })
+      if (!res.ok) throw new Error('export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `seguimiento_inversionistas_${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('CSV descargado')
+    } catch {
+      toast.error('No se pudo generar el CSV')
+    } finally {
+      setExportando(false)
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -263,10 +295,17 @@ export default function InvestorsPage() {
           <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Seguimiento de Inversionistas</h1>
           <p style={{ color: 'var(--slate)' }}>Perfiles, inversiones y notas promisorias</p>
         </div>
-        <button onClick={openCreate} className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" />
-          Nuevo Inversionista
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportarCSV} disabled={exportando} className="btn-ghost btn-sm">
+            {exportando
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</>
+              : <><Download className="w-4 h-4" /> Exportar CSV</>}
+          </button>
+          <button onClick={openCreate} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" />
+            Nuevo Inversionista
+          </button>
+        </div>
       </div>
 
       {/* Maturity Alerts */}
