@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, FileText, DollarSign, Calendar, Clock, User, Landmark,
   CheckCircle2, AlertTriangle, Edit2, Save, X, Download, Printer,
-  TrendingUp, CreditCard, Hash, Banknote, Receipt
+  TrendingUp, CreditCard, Hash, Banknote, Receipt, PenLine, Loader2
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
@@ -217,7 +217,7 @@ interface NoteDocument {
   clauses: { title: string | null; text: string }[]
   address_block: string
   closing: string
-  signatures: { name: string; entity_line: string; note: string }[]
+  signatures: { name: string; entity_line: string; note: string; signed?: boolean; signed_at?: string | null; signature_type?: string | null; signature_value?: string | null }[]
 }
 
 export default function PromissoryNoteDetailPage() {
@@ -230,6 +230,7 @@ export default function PromissoryNoteDetailPage() {
   // El documento redactado viene del backend, NO se escribe aquí. Ver
   // api/routes/capital/_promissory_document.py: es la misma fuente que el PDF.
   const [docu, setDocu] = useState<NoteDocument | null>(null)
+  const [enviandoFirma, setEnviandoFirma] = useState(false)
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
   const [paidToDate, setPaidToDate] = useState<{ capital_to_date: number; interest_to_date: number; paid_to_date: number; remaining: number; elapsed_periods: number; term: number } | null>(null)
   const [payments, setPayments] = useState<PaymentRecord[]>([])
@@ -255,6 +256,36 @@ export default function PromissoryNoteDetailPage() {
     subscriber_representative: '',
     lender_representative: '',
   })
+
+  /**
+   * Manda el pagaré a firmar a quien figure en cada bloque de firma.
+   *
+   * Los destinatarios los decide el backend leyendo el documento, no esta
+   * pantalla: así el enlace le llega siempre a la persona cuyo nombre está en
+   * ese hueco, que es lo que da validez a la firma.
+   */
+  const enviarAFirmar = async () => {
+    if (!confirm('Se enviará el pagaré por correo a los dos firmantes para que lo firmen. ¿Continuar?')) return
+    setEnviandoFirma(true)
+    try {
+      const res = await fetch(`/api/capital/promissory-notes/${id}/send-for-signature`, { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok || d.ok === false) {
+        toast.error(d.detail || d.error || 'No se pudo enviar a firmar')
+        return
+      }
+      const quienes = (d.signers || []).map((s: any) => s.name).join(' y ')
+      toast.success(`Enviado a ${quienes || 'los firmantes'}`)
+      // Recargar el documento para que se vea el estado "pendiente de firma".
+      const r2 = await fetch(`/api/capital/promissory-notes/${id}/document`, { cache: 'no-store' })
+      const d2 = await r2.json()
+      if (d2.ok) setDocu(d2.document)
+    } catch {
+      toast.error('No se pudo enviar a firmar')
+    } finally {
+      setEnviandoFirma(false)
+    }
+  }
 
   useEffect(() => { loadNote() }, [id])
 
@@ -600,6 +631,11 @@ export default function PromissoryNoteDetailPage() {
           <button onClick={handleDownloadPDF} className="btn-ghost btn-sm">
             <Download className="w-4 h-4" /> Descargar PDF
           </button>
+          <button onClick={enviarAFirmar} disabled={enviandoFirma} className="btn-ghost btn-sm">
+            {enviandoFirma
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</>
+              : <><PenLine className="w-4 h-4" /> Enviar a firmar</>}
+          </button>
           <button onClick={handleExportCSV} className="btn-ghost btn-sm">
             <Download className="w-4 h-4" /> Exportar CSV
           </button>
@@ -777,9 +813,25 @@ export default function PromissoryNoteDetailPage() {
               <div className="grid grid-cols-2 gap-8 mt-12 pt-8" style={{ borderTop: '1px solid var(--sand)' }}>
                 {docu.signatures.map((sig, i) => (
                   <div key={i}>
-                    <p className="text-sm font-semibold mb-6" style={{ color: 'var(--ink)' }}>Signature</p>
+                    <p className="text-sm font-semibold mb-2" style={{ color: 'var(--ink)' }}>Signature</p>
+                    {/* Si está firmado, en la línea va lo que la persona escribió
+                        o dibujó de verdad — no el nombre preimpreso, que no
+                        prueba nada. */}
+                    <div className="h-10 flex items-end pb-1">
+                      {sig.signed && sig.signature_value && (
+                        sig.signature_type === 'drawn'
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img src={sig.signature_value} alt="firma" style={{ maxHeight: 38 }} />
+                          : <span style={{ fontFamily: 'cursive', fontSize: 22, color: 'var(--ink)' }}>{sig.signature_value}</span>
+                      )}
+                    </div>
                     <div className="border-b mb-2" style={{ borderColor: 'var(--charcoal)' }} />
                     <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>{sig.name}</p>
+                    {sig.signed && (
+                      <p className="text-[11px] mt-0.5 font-medium" style={{ color: 'var(--success)' }}>
+                        Firmado {sig.signed_at ? new Date(sig.signed_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                      </p>
+                    )}
                     <p className="text-xs mt-0.5" style={{ color: 'var(--charcoal)' }}>{sig.entity_line}</p>
                     <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--ash)' }}>{sig.note}</p>
                   </div>

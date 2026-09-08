@@ -181,11 +181,17 @@ export default function SigningPage() {
             </div>
           </div>
 
-          {/* PDF viewer placeholder */}
-          {sigData?.unsigned_pdf_url && (
+          {/* El documento que se está firmando.
+              Los pagarés se sirven por el propio token (el PDF se genera al
+              vuelo y no existe como fichero); el resto de documentos traen su
+              URL en el sobre. Nadie debería firmar sin poder leer antes lo que
+              firma, así que si hay alguna de las dos, se enseña. */}
+          {(sigData?.document_type === 'promissory_note' || sigData?.unsigned_pdf_url) && (
             <div className="border border-gray-200 rounded-lg p-4 mb-6 bg-gray-50">
               <a
-                href={sigData.unsigned_pdf_url}
+                href={sigData?.document_type === 'promissory_note'
+                  ? `/api/esign/sign/${token}/document`
+                  : sigData!.unsigned_pdf_url!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-2"

@@ -53,6 +53,7 @@ def build_document(
     investor: dict,
     schedule: dict,
     *,
+    firmas: Optional[dict] = None,
     fmt,
     amount_words,
     int_to_words,
@@ -187,6 +188,18 @@ def build_document(
                      "Co-Obligor)"),
         },
     ]
+
+    # Firma electrónica, si la hay. Se estampa POR HUECO (note_signer_1 es el
+    # bloque de la izquierda), no por persona: si algún día el Maker y el
+    # Co-Obligado se intercambian, cada firma sigue cayendo donde firmó su dueño.
+    for i, bloque in enumerate(signatures):
+        f = (firmas or {}).get(f"note_signer_{i + 1}")
+        bloque["signed"] = bool(f and f.get("signed_at"))
+        bloque["signed_at"] = (f or {}).get("signed_at")
+        bloque["signature_type"] = (f or {}).get("type")
+        # Lo que la persona escribió o dibujó de verdad, no el nombre preimpreso:
+        # es lo que da valor probatorio a la firma.
+        bloque["signature_value"] = (f or {}).get("value")
 
     return {
         "brand_title": maker_entity,

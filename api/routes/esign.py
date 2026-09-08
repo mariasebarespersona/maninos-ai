@@ -136,6 +136,37 @@ async def get_signing_page(token: str):
     }
 
 
+@router.get("/sign/{token}/document")
+async def get_signing_document(token: str):
+    """El PDF que se está firmando, protegido por el propio token de firma.
+
+    Sin esto el firmante ve el nombre del documento pero no su contenido, y
+    nadie debería firmar un pagaré sin poder leerlo. Se sirve por el token y no
+    por la URL normal del PDF para que el documento no quede accesible a quien
+    acierte el id de la nota: quien tiene el enlace de firma es quien tiene que
+    firmarlo, y nadie más.
+
+    De momento solo pagarés; otros tipos de documento no tienen generador propio
+    y se responde 404 en vez de algo equivocado.
+    """
+    from api.services.esign_service import get_signing_data
+
+    datos = get_signing_data(token)
+    if not datos:
+        raise HTTPException(status_code=404, detail="Enlace inválido o expirado")
+
+    if datos.get("document_type") != "promissory_note":
+        raise HTTPException(status_code=404, detail="Este documento no tiene PDF disponible")
+
+    sobre = datos.get("signature_envelopes") or {}
+    note_id = ((sobre.get("data") or {}).get("note_id")) if isinstance(sobre, dict) else None
+    if not note_id:
+        raise HTTPException(status_code=404, detail="El documento no está enlazado a un pagaré")
+
+    from api.routes.capital.promissory_notes import download_promissory_note_pdf
+    return await download_promissory_note_pdf(note_id)
+
+
 @router.post("/sign/{token}")
 async def submit_signature(token: str, sig: SignatureSubmission, request: Request):
     """Submit a signature (public endpoint)."""

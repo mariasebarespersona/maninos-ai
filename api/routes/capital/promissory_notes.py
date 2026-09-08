@@ -789,6 +789,41 @@ def _term_phrase(term_months: int) -> str:
     return f"{term_months} ({_int_to_words(term_months)}) months"
 
 
+def _firmas_de_nota(note_id: str) -> dict:
+    """Firmas electrónicas de un pagaré, indexadas por hueco del documento.
+
+    El sobre de firma guarda el pagaré en `data.note_id` (no hay columna propia
+    para notas en signature_envelopes; sí las hay para propiedad y venta).
+    Devuelve {} ante cualquier problema: que no se puedan leer las firmas no
+    debe impedir ver el pagaré.
+    """
+    try:
+        sobres = (sb.table("signature_envelopes").select("id")
+                  .eq("data->>note_id", note_id)
+                  .neq("status", "voided").execute().data or [])
+        if not sobres:
+            return {}
+        ids = [s["id"] for s in sobres]
+        filas = (sb.table("document_signatures")
+                 .select("signer_role, signer_name, signer_email, status, signed_at, signature_data, token")
+                 .in_("envelope_id", ids).execute().data or [])
+        out: dict = {}
+        for f in filas:
+            datos = f.get("signature_data") or {}
+            out[f.get("signer_role")] = {
+                "name": f.get("signer_name"),
+                "email": f.get("signer_email"),
+                "status": f.get("status"),
+                "signed_at": f.get("signed_at"),
+                "type": datos.get("type"),
+                "value": datos.get("value"),
+            }
+        return out
+    except Exception as e:
+        logger.warning(f"[pagaré] no se pudieron leer las firmas de {note_id}: {e}")
+        return {}
+
+
 @router.get("/{note_id}/document")
 async def get_promissory_note_document(note_id: str):
     """El pagaré redactado, como estructura, para pintarlo en pantalla.
@@ -816,7 +851,7 @@ async def get_promissory_note_document(note_id: str):
 
         fmt = lambda n: f"${n:,.2f}" if n else "$0.00"
         docu = build_document(
-            note, investor, sched,
+            note, investor, sched, firmas=_firmas_de_nota(note_id),
             fmt=fmt, amount_words=_amount_words, int_to_words=_int_to_words,
             term_phrase=_term_phrase, date_spelled=_date_spelled,
         )
@@ -825,6 +860,77 @@ async def get_promissory_note_document(note_id: str):
         raise
     except Exception as e:
         logger.error(f"Error building promissory note document {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{note_id}/send-for-signature")
+async def send_note_for_signature(note_id: str):
+    """Manda el pagaré a firmar a quien figure en cada bloque de firma.
+
+    Los destinatarios NO están fijados: se leen del propio documento. El bloque
+    de la izquierda es el Maker (quien debe) y el de la derecha el Co-Obligado
+    (quien responde en segundo lugar), y a cada uno le llega su enlace según el
+    nombre que tenga escrito. Si algún día esos nombres se intercambian, los
+    correos se intercambian con ellos y nadie firma en el hueco de otro — que en
+    este documento significaría asumir una obligación distinta.
+
+    Si algún nombre no está en el registro de firmantes, NO se manda nada y se
+    dice qué falta. Un pagaré firmado a medias es peor que uno sin firmar.
+    """
+    import os as _os
+    from api.routes.capital._promissory_signers import resolver_firmantes
+    from api.services.esign_service import create_envelope, send_signing_emails
+
+    try:
+        doc = (await get_promissory_note_document(note_id))["document"]
+
+        firmantes, sin_correo = resolver_firmantes(doc["signatures"])
+        if sin_correo:
+            raise HTTPException(
+                status_code=400,
+                detail=("No se puede enviar: no hay correo registrado para "
+                        + ", ".join(sin_correo) +
+                        ". Añádelo en api/routes/capital/_promissory_signers.py "
+                        "antes de volver a intentarlo."),
+            )
+
+        # Un pagaré ya enviado no se reenvía a ciegas: se anula el sobre anterior
+        # primero, para que no queden dos enlaces vivos del mismo documento.
+        try:
+            previos = (sb.table("signature_envelopes").select("id, status")
+                       .eq("data->>note_id", note_id)
+                       .neq("status", "voided").execute().data or [])
+            for p_ in previos:
+                sb.table("signature_envelopes").update({"status": "voided"}).eq("id", p_["id"]).execute()
+                sb.table("document_signatures").update({"status": "voided"}) \
+                    .eq("envelope_id", p_["id"]).eq("status", "pending").execute()
+            if previos:
+                logger.info(f"[pagaré] anulados {len(previos)} sobres previos de {note_id}")
+        except Exception as e:
+            logger.warning(f"[pagaré] no se pudieron anular sobres previos de {note_id}: {e}")
+
+        lender = doc["summary"]["lender"]
+        sobre = create_envelope(
+            name=f"Promissory Note — {lender}",
+            document_type="promissory_note",
+            transaction_type="investment",
+            signers=[{"role": f["role"], "name": f["name"], "email": f["email"]} for f in firmantes],
+            data={"note_id": note_id, "lender": lender},
+        )
+
+        base = _os.environ.get("APP_URL", "https://maninos-ai.vercel.app")
+        envio = send_signing_emails(sobre["envelope_id"], base_url=base)
+
+        return {
+            "ok": True,
+            "envelope_id": sobre["envelope_id"],
+            "sent": envio.get("sent", 0),
+            "signers": [{"name": f["name"], "email": f["email"], "role": f["role"]} for f in firmantes],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enviando a firmar el pagaré {note_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -932,7 +1038,7 @@ async def download_promissory_note_pdf(note_id: str):
         annual_rate = float(note.get("annual_rate", 12) or 12)
         sched = _note_schedule(loan_amount, annual_rate, io_months, amort_months)
         docu = build_document(
-            note, investor, sched,
+            note, investor, sched, firmas=_firmas_de_nota(note_id),
             fmt=fmt, amount_words=_amount_words, int_to_words=_int_to_words,
             term_phrase=_term_phrase, date_spelled=_date_spelled,
         )
