@@ -119,10 +119,18 @@ def send_signing_emails(envelope_id: str, base_url: str = "") -> Dict[str, Any]:
 
     signatures = sb.table("document_signatures").select("*").eq("envelope_id", envelope_id).eq("status", "pending").execute()
 
+    # Etiquetas legibles y marca del emisor, si quien creó el sobre las puso en
+    # `data`. Sin esto el correo dice cosas como "Rol: Note Signer 2", que es un
+    # nombre interno y no le dice nada a quien tiene que firmar.
+    _datos = envelope.data.get("data") or {}
+    _etiquetas = _datos.get("role_labels") or {}
+    _marca = _datos.get("brand") or "Maninos Homes"
+
     sent = 0
     for sig in (signatures.data or []):
         try:
             signing_url = f"{base_url}/firmar/{sig['token']}"
+            rol_legible = _etiquetas.get(sig["signer_role"]) or sig["signer_role"].replace("_", " ").title()
 
             # Send email via Resend
             from tools.email_tool import send_email as _send_email
@@ -132,7 +140,7 @@ def send_signing_emails(envelope_id: str, base_url: str = "") -> Dict[str, Any]:
                 html=f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <div style="background: linear-gradient(135deg, #1a2744 0%, #2d3a5c 100%); padding: 30px; text-align: center; border-radius: 12px 12px 0 0;">
-                        <h1 style="color: white; margin: 0; font-size: 24px;">Maninos Homes</h1>
+                        <h1 style="color: white; margin: 0; font-size: 24px;">{_marca}</h1>
                         <p style="color: #c9a96e; margin: 8px 0 0 0; font-size: 14px;">Firma Electrónica</p>
                     </div>
                     <div style="padding: 30px; background: #f9fafb; border-radius: 0 0 12px 12px;">
@@ -140,7 +148,7 @@ def send_signing_emails(envelope_id: str, base_url: str = "") -> Dict[str, Any]:
                         <p style="color: #555;">Se requiere tu firma en el siguiente documento:</p>
                         <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
                             <p style="font-weight: bold; color: #1a2744; margin: 0 0 8px 0;">{envelope.data['name']}</p>
-                            <p style="color: #666; margin: 0; font-size: 14px;">Rol: {sig['signer_role'].replace('_', ' ').title()}</p>
+                            <p style="color: #666; margin: 0; font-size: 14px;">Firmas como: {rol_legible}</p>
                         </div>
                         <div style="text-align: center; margin: 25px 0;">
                             <a href="{signing_url}" style="display: inline-block; background: #c9a96e; color: white; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: bold; font-size: 16px;">

@@ -914,12 +914,28 @@ async def send_note_for_signature(note_id: str):
             logger.warning(f"[pagaré] no se pudieron anular sobres previos de {note_id}: {e}")
 
         lender = doc["summary"]["lender"]
+
+        # Etiqueta legible de cada hueco, sacada del propio documento: quien
+        # recibe el correo lee "Firmas como: Co-Obligado — DELATORO LLC" en vez
+        # de "note_signer_2". Y la cabecera lleva la entidad que emite ESTE
+        # pagaré, no un "Maninos Homes" fijo que contradiría al documento.
+        etiquetas = {}
+        for f in firmantes:
+            bloque = doc["signatures"][int(f["role"].rsplit("_", 1)[1]) - 1]
+            papel = "Deudor" if f["role"].endswith("_1") else "Co-Obligado"
+            etiquetas[f["role"]] = f"{papel} — {bloque.get('entity_line') or ''}".strip(" —")
+
         sobre = create_envelope(
             name=f"Promissory Note — {lender}",
             document_type="promissory_note",
             transaction_type="investment",
             signers=[{"role": f["role"], "name": f["name"], "email": f["email"]} for f in firmantes],
-            data={"note_id": note_id, "lender": lender},
+            data={
+                "note_id": note_id,
+                "lender": lender,
+                "role_labels": etiquetas,
+                "brand": doc["brand_title"],
+            },
         )
 
         base = _os.environ.get("APP_URL", "https://maninos-ai.vercel.app")
