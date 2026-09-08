@@ -278,7 +278,9 @@ export default function InvestorsPage() {
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      // El revoke va diferido: revocar la URL en el mismo tick en que se hace
+      // clic aborta la descarga en Chromium antes de que llegue a empezar.
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
       toast.success('CSV descargado')
     } catch {
       toast.error('No se pudo generar el CSV')

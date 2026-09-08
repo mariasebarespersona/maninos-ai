@@ -20,9 +20,12 @@ export async function GET(request: NextRequest) {
         { status: res.status }
       )
     }
-    // Se reenvía el CSV tal cual, con su cabecera de descarga, para que el
-    // navegador lo baje como fichero en vez de mostrarlo.
-    return new NextResponse(await res.text(), {
+    // Se reenvían los BYTES, no el texto: `res.text()` decodifica UTF-8 y, por
+    // especificación, SE COME EL BOM inicial. Sin BOM, Excel en Windows abre el
+    // fichero en su página de códigos y "Teléfono" sale como "TelÃ©fono".
+    // Verificado: por text() los primeros bytes eran los de "Invers…"; por
+    // arrayBuffer() llegan los 239,187,191 del BOM.
+    return new NextResponse(await res.arrayBuffer(), {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
