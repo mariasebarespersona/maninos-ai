@@ -8,6 +8,7 @@ import {
   AlertTriangle, Filter, Trash2,
 } from 'lucide-react'
 import DeleteChainModal from '@/components/capital/DeleteChainModal'
+import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
 
 interface Application {
   id: string
@@ -219,7 +220,7 @@ export default function ApplicationsPage() {
                   </p>
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1.5 text-xs" style={{ color: 'var(--ash)' }}>
                     <span className="font-medium" style={{ color: 'var(--gold-700)' }}>
-                      {fmt(app.properties?.sale_price || 0)}
+                      Precio de compra: {fmt(app.properties?.sale_price || 0)}
                     </span>
                     {app.desired_down_payment != null && (
                       <span>Enganche: {fmt(app.desired_down_payment)}</span>
@@ -227,6 +228,26 @@ export default function ApplicationsPage() {
                     {app.desired_term_months != null && (
                       <span>{app.desired_term_months} meses</span>
                     )}
+                    {/* Lo que el cliente acaba pagando: enganche + todas las
+                        mensualidades. En el listado solo se puede estimar, porque
+                        la mensualidad pactada vive en la venta y aquí no se
+                        carga; por eso se marca como estimado. */}
+                    {app.desired_down_payment != null && app.desired_term_months != null && (() => {
+                      const precio = app.properties?.sale_price || 0
+                      const enganche = app.desired_down_payment || 0
+                      const plazo = app.desired_term_months || 0
+                      if (!precio || !plazo) return null
+                      const m = calculateRTOMonthly({
+                        salePrice: precio, downPayment: enganche,
+                        termMonths: plazo, annualRate: DEFAULT_ANNUAL_RATE,
+                      }).monthlyPayment
+                      return (
+                        <span style={{ color: 'var(--charcoal)' }}>
+                          Precio final venta: <strong>{fmt(enganche + m * plazo)}</strong>{' '}
+                          <span style={{ color: 'var(--ash)' }}>(estimado)</span>
+                        </span>
+                      )
+                    })()}
                   </div>
                 </div>
 

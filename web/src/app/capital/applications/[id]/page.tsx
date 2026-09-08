@@ -868,6 +868,19 @@ export default function ApplicationDetailPage() {
   })
   const estimatedMonthly = headerRTO.monthlyPayment
 
+  // Cifras de cabecera. Si la venta ya está pactada mandan SUS números, no los
+  // estimados de la solicitud: enseñar aquí una estimación y más abajo lo
+  // pactado deja dos cifras distintas para lo mismo y ninguna se cree.
+  const vPrecioCompra = parseFloat(app?.sales?.sale_price || 0) || salePrice
+  const vEnganche = parseFloat(app?.sales?.rto_down_payment || 0) || desiredDP
+  const vMensual = parseFloat(app?.sales?.rto_monthly_payment || 0) || estimatedMonthly
+  const vPlazo = parseInt(app?.sales?.rto_term_months || 0) || desiredTM
+  const esPactado = !!parseFloat(app?.sales?.rto_monthly_payment || 0)
+  // Lo que el cliente acaba pagando por la casa: el enganche más todas las
+  // mensualidades. Siempre es mayor que el precio de compra — la diferencia es
+  // el interés del financiamiento.
+  const vPrecioFinalVenta = vEnganche + vMensual * vPlazo
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Back button */}
@@ -913,9 +926,19 @@ export default function ApplicationDetailPage() {
                   <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{prop.address}{prop.city ? `, ${prop.city}` : ''}</span>
           </div>
                 <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
-                  <span style={{ color: 'var(--ash)' }}>Precio:</span>{' '}
-                  <span className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(salePrice)}</span>
+                  <span style={{ color: 'var(--ash)' }}>Precio de compra:</span>{' '}
+                  <span className="font-semibold" style={{ color: 'var(--gold-700)' }}>{fmt(vPrecioCompra)}</span>
         </div>
+                {vPrecioFinalVenta > 0 && (
+                  <div className="bg-gray-50 rounded-lg px-3 py-1.5 text-sm"
+                       title={`Enganche ${fmt(vEnganche)} + ${vPlazo} mensualidades de ${fmt(vMensual)}`}>
+                    <span style={{ color: 'var(--ash)' }}>Precio final venta:</span>{' '}
+                    <span className="font-semibold" style={{ color: 'var(--ink)' }}>{fmt(vPrecioFinalVenta)}</span>
+                    {!esPactado && (
+                      <span className="ml-1 text-xs" style={{ color: 'var(--ash)' }}>(estimado)</span>
+                    )}
+                  </div>
+                )}
                 {desiredDP > 0 && (
                   <div className="bg-green-50 rounded-lg px-3 py-1.5 text-sm">
                     <span className="text-green-700">Enganche: {fmt(desiredDP)}</span>
