@@ -12,6 +12,7 @@ export const CAPITAL_ALLOWED_PATTERNS = [
   'sgonzalez', 'xvelasco', 'abigail', 'aruiz',
   'jorge@delatoro.com',
   'marcossebares1@gmail.com',
+  'ju99fr@gmail.com',
 ]
 
 export function isCapitalAuthorized(email?: string | null): boolean {
