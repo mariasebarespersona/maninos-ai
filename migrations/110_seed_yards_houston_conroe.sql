@@ -19,4 +19,12 @@ INSERT INTO yards (name, city, state)
 SELECT 'Conroe', 'Conroe', 'TX'
 WHERE NOT EXISTS (SELECT 1 FROM yards WHERE name = 'Conroe');
 
+-- Dallas aparece en los estados financieros como "DFW", que es como se llamaba
+-- ya esa columna. La correspondencia Dallas → DFW está en
+-- api/routes/accounting.py (_CLASE_A_COLUMNA): sin ella, una factura de Dallas
+-- no encontraría columna y caería en "Sin especificar".
+INSERT INTO yards (name, city, state)
+SELECT 'Dallas', 'Dallas', 'TX'
+WHERE NOT EXISTS (SELECT 1 FROM yards WHERE name = 'Dallas');
+
 -- Comprobación:  SELECT id, name, city FROM yards ORDER BY name;

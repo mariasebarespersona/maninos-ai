@@ -2917,6 +2917,18 @@ def _yard_name_map() -> dict:
         return {}
 
 
+# La clase se llama como la llama la gente; la columna del informe se llama como
+# se llamaba ya. "Dallas" y "DFW" son el mismo sitio: sin esta correspondencia,
+# una factura clasificada como Dallas no encontraría columna y caería en "Not
+# specified" — el fallo silencioso más fácil de cometer aquí.
+_CLASE_A_COLUMNA = {
+    "DALLAS": "DFW",
+    "DFW": "DFW",
+    "HOUSTON": "Houston",
+    "CONROE": "Conroe",
+}
+
+
 def _location_de_asiento(t: dict, loc_by_prop: dict, yard_names: dict) -> str:
     """Ubicación de un asiento para las columnas del P&L.
 
@@ -2927,8 +2939,10 @@ def _location_de_asiento(t: dict, loc_by_prop: dict, yard_names: dict) -> str:
     alguien se molesta en clasificar una factura, esa decisión debe ganar.
     """
     nombre = yard_names.get(t.get("yard_id"))
-    if nombre in PL_LOCATIONS:
-        return nombre
+    if nombre:
+        columna = _CLASE_A_COLUMNA.get(nombre.strip().upper())
+        if columna in PL_LOCATIONS:
+            return columna
     return loc_by_prop.get(t.get("property_id")) or "Not specified"
 
 

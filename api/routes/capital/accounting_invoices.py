@@ -85,6 +85,9 @@ class CapitalInvoiceCreate(BaseModel):
     client_id: Optional[str] = None
     investor_id: Optional[str] = None
     property_id: Optional[str] = None
+    # Clase contable (patio): Houston, Conroe. Comparte las filas de `yards`
+    # con Homes — son los mismos patios físicos.
+    yard_id: Optional[str] = None
     rto_contract_id: Optional[str] = None
     rto_payment_id: Optional[str] = None
     issue_date: Optional[str] = None
@@ -159,6 +162,7 @@ async def create_capital_invoice(data: CapitalInvoiceCreate):
         "client_id": data.client_id,
         "investor_id": data.investor_id,
         "property_id": data.property_id,
+        "yard_id": data.yard_id,
         "rto_contract_id": data.rto_contract_id,
         "rto_payment_id": data.rto_payment_id,
         "issue_date": data.issue_date or date.today().isoformat(),
@@ -194,6 +198,9 @@ async def create_capital_invoice(data: CapitalInvoiceCreate):
                 "client_id": data.client_id,
                 "investor_id": data.investor_id,
                 "rto_contract_id": data.rto_contract_id,
+                # La clase viaja al asiento desde la emisión: si solo se
+                # guardara en la factura, el P&L por patio no la vería.
+                "yard_id": data.yard_id,
             }.items() if v}
             if data.direction == "receivable":
                 post_to_capital_ledger(
@@ -236,7 +243,11 @@ async def create_capital_invoice(data: CapitalInvoiceCreate):
 @router.patch("/invoices/{invoice_id}")
 async def update_capital_invoice(invoice_id: str, data: dict):
     allowed = {"status", "due_date", "notes", "description", "payment_terms",
-               "counterparty_name", "subtotal", "tax_amount", "total_amount", "line_items"}
+               "counterparty_name", "subtotal", "tax_amount", "total_amount", "line_items",
+               # La CLASE se puede cambiar después de emitida: las facturas
+               # anteriores a que existieran las clases hay que poder
+               # etiquetarlas sin rehacerlas.
+               "yard_id"}
     update = {k: v for k, v in data.items() if k in allowed}
     if "line_items" in update and isinstance(update["line_items"], list):
         update["line_items"] = json.dumps(update["line_items"])
@@ -245,6 +256,22 @@ async def update_capital_invoice(invoice_id: str, data: dict):
     result = sb.table("capital_invoices").update(update).eq("id", invoice_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # La clase tiene que bajar AL LEDGER: los estados financieros se calculan de
+    # capital_transactions, así que una factura etiquetada cuyos asientos no lo
+    # están seguiría sin aparecer en su patio.
+    if "yard_id" in update:
+        try:
+            legs = (sb.table("capital_transactions").select("id")
+                    .eq("entity_type", "invoice").eq("entity_id", invoice_id)
+                    .execute().data or [])
+            if legs:
+                sb.table("capital_transactions").update({"yard_id": update["yard_id"]}) \
+                    .in_("id", [l["id"] for l in legs]).execute()
+                logger.info(f"[capital-invoices] clase propagada a {len(legs)} asientos de {invoice_id}")
+        except Exception as e:
+            logger.error(f"[capital-invoices] NO se pudo propagar la clase de {invoice_id}: {e}")
+
     _log_capital_audit("capital_invoices", invoice_id, "update", changes=update)
     return result.data[0]
 

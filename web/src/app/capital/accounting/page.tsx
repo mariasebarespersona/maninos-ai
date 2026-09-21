@@ -78,6 +78,8 @@ interface Invoice {
   subtotal?: number; tax_amount?: number; total_amount: number
   amount_paid: number; balance_due: number
   description?: string; notes?: string; payment_terms?: string
+  /** Clase contable (patio): Houston, Conroe o Dallas. Null si no se asignó. */
+  yard_id?: string | null
 }
 
 interface InvoicePayment {
@@ -1247,6 +1249,35 @@ function InvoicesTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
   const dirLabel: Record<string, string> = { receivable: 'Por Cobrar', payable: 'Por Pagar' }
   const filteredInvoices = statusFilter ? invoices.filter(i => i.status === statusFilter) : invoices
 
+  // Clases (patios) — compartidas con Homes.
+  const [yards, setYards] = useState<{ id: string; name: string }[]>([])
+  const [savingYard, setSavingYard] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/team/yards').then(r => r.ok ? r.json() : { yards: [] })
+      .then(d => setYards(d.yards || [])).catch(() => {})
+  }, [])
+
+  /** Asigna la clase. El backend la propaga a los asientos de la factura. */
+  const handleYardChange = async (invoiceId: string, yardId: string) => {
+    setSavingYard(invoiceId)
+    const previo = invoices
+    setInvoices(inv => inv.map(i => i.id === invoiceId ? { ...i, yard_id: yardId || null } : i))
+    try {
+      const res = await fetch(`/api/capital/accounting/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yard_id: yardId || null }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success(yardId ? 'Clase asignada' : 'Clase quitada')
+    } catch {
+      setInvoices(previo)
+      toast.error('No se pudo cambiar la clase')
+    } finally {
+      setSavingYard(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Actions */}
@@ -1341,6 +1372,7 @@ function InvoicesTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--ash)' }}>Total</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--ash)' }}>Pagado</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--ash)' }}>Pendiente</th>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--ash)' }}>Clase</th>
                 <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--ash)' }}>Estado</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--ash)' }}>Acciones</th>
               </tr></thead>
@@ -1356,6 +1388,21 @@ function InvoicesTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
                     <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{fmtFull(inv.total_amount)}</td>
                     <td className="px-4 py-3 text-right text-emerald-600 font-medium">{fmtFull(inv.amount_paid)}</td>
                     <td className="px-4 py-3 text-right font-bold" style={{ color: inv.balance_due > 0 ? '#dc2626' : 'var(--charcoal)' }}>{fmtFull(inv.balance_due)}</td>
+                    {/* Clase editable en la propia fila: la clase se puede
+                        asignar después de emitida, y al guardarla baja también
+                        a los asientos, que es lo que leen los informes. */}
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <select
+                        value={inv.yard_id || ''}
+                        disabled={savingYard === inv.id}
+                        onChange={e => handleYardChange(inv.id, e.target.value)}
+                        className="px-2 py-1 rounded border text-xs bg-white"
+                        style={{ borderColor: 'var(--stone)', color: inv.yard_id ? 'var(--charcoal)' : 'var(--ash)' }}
+                      >
+                        <option value="">Sin clase</option>
+                        {yards.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}
+                      </select>
+                    </td>
                     <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${INVOICE_STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>{INVOICE_STATUS_LABELS[inv.status] || inv.status}</span></td>
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
@@ -1396,8 +1443,15 @@ function NewCapitalInvoiceModal({ onClose, onCreated }: { onClose: () => void; o
     counterparty_name: '', total_amount: '',
     issue_date: new Date().toISOString().split('T')[0],
     due_date: '', description: '', notes: '', payment_terms: 'Due on receipt',
+    yard_id: '',
   })
   const [saving, setSaving] = useState(false)
+  // Clases (patios). Son las mismas de Homes: los mismos patios físicos.
+  const [yards, setYards] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    fetch('/api/team/yards').then(r => r.ok ? r.json() : { yards: [] })
+      .then(d => setYards(d.yards || [])).catch(() => {})
+  }, [])
 
   const handleSubmit = async () => {
     if (!form.counterparty_name || !form.total_amount) { toast.warning('Nombre y monto son requeridos'); return }
@@ -1481,6 +1535,16 @@ function NewCapitalInvoiceModal({ onClose, onCreated }: { onClose: () => void; o
           </div>
 
           <div>
+            <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Clase</label>
+            <select value={form.yard_id} onChange={e => setForm(f => ({ ...f, yard_id: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm bg-white mt-1"
+                    style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Sin clase</option>
+              {yards.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}
+            </select>
+            <p className="text-xs mt-1 mb-3" style={{ color: 'var(--ash)' }}>
+              Determina en qué patio aparece en los estados financieros.
+            </p>
             <label className="text-xs font-medium" style={{ color: 'var(--ash)' }}>Descripción</label>
             <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full px-3 py-2 text-sm rounded-lg border mt-1" style={{ borderColor: 'var(--stone)' }} placeholder="Concepto de la factura" />
@@ -2058,7 +2122,7 @@ function StatementsTab() {
   const now0 = new Date()
   const [mxFrom, setMxFrom] = useState(`${now0.getFullYear()}-01-01`)
   const [mxTo, setMxTo] = useState(now0.toISOString().slice(0, 10))
-  const [mxMode, setMxMode] = useState<'single' | 'month' | 'property' | 'compare'>('single')
+  const [mxMode, setMxMode] = useState<'single' | 'month' | 'property' | 'class' | 'compare'>('single')
   const [mxCompare, setMxCompare] = useState<'prev_period' | 'prev_year'>('prev_period')
   const [mxData, setMxData] = useState<any | null>(null)
   const [mxLoading, setMxLoading] = useState(false)
@@ -2354,7 +2418,7 @@ function StatementsTab() {
                 pestaña aparte: se busca aquí, no en otro sitio. */}
             {activeStatement === 'pnl' && (
               <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
-                {([['single', 'Total'], ['month', 'Por mes'], ['property', 'Por casa'], ['compare', 'Comparativo']] as const).map(([k, l]) => (
+                {([['single', 'Total'], ['month', 'Por mes'], ['property', 'Por casa'], ['class', 'Por clase'], ['compare', 'Comparativo']] as const).map(([k, l]) => (
                   <button key={k} onClick={() => setMxMode(k)} className="px-3 py-2 text-sm font-medium"
                     style={mxMode === k ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>{l}</button>
                 ))}
@@ -2752,7 +2816,7 @@ function StatementsTab() {
             <div>
               <label className="text-xs font-medium block mb-1" style={{ color: 'var(--ash)' }}>Columnas</label>
               <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--stone)' }}>
-                {([['compare', 'Comparativo'], ['month', 'Por Mes'], ['property', 'Por Casa']] as const).map(([k, l]) => (
+                {([['compare', 'Comparativo'], ['month', 'Por Mes'], ['property', 'Por Casa'], ['class', 'Por Clase']] as const).map(([k, l]) => (
                   <button key={k} onClick={() => setMxMode(k)} className="px-3 py-2 text-sm font-medium" style={mxMode === k ? { backgroundColor: 'var(--gold-600)', color: 'white' } : { color: 'var(--charcoal)' }}>{l}</button>
                 ))}
               </div>

@@ -2453,7 +2453,7 @@ async def get_profit_loss_tree(
 async def get_pnl_matrix(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    group_by: str = "month",     # month | property | compare
+    group_by: str = "month",     # month | property | class | compare
     compare: str = "prev_period",  # prev_period | prev_year (only when group_by=compare)
 ):
     """Customizable P&L: same accounts as the P&L tree, but each account's amount
@@ -2496,6 +2496,12 @@ async def get_pnl_matrix(
         # columns filled after we see which properties appear
         def col_of(t):
             return t.get("property_id") or "__general__"
+    elif group_by == "class":
+        # Por CLASE (patio): Houston, Conroe… Las columnas se resuelven después,
+        # igual que en el modo por casa. Lo que no lleva clase va a su propia
+        # columna en vez de repartirse: así se ve cuánto queda por clasificar.
+        def col_of(t):
+            return t.get("yard_id") or "__sin_clase__"
     else:  # compare
         d0 = date.fromisoformat(sd); d1 = date.fromisoformat(ed)
         if compare == "prev_year":
@@ -2520,9 +2526,28 @@ async def get_pnl_matrix(
     rows = []
     startpage = 0
     while True:
-        page = sb.table("capital_transactions").select("account_id,amount,is_income,transaction_date,property_id") \
-            .gte("transaction_date", query_start).lte("transaction_date", ed) \
-            .not_.in_("status", ["voided", "pending_confirmation", "draft"]).range(startpage, startpage + 999).execute().data or []
+        # `yard_id` es de la migración 111. Las migraciones se ejecutan a mano,
+        # así que hasta que esté aplicada la columna no existe: se pide con
+        # respaldo sin ella para que las vistas de siempre —por mes, por casa,
+        # comparativo— sigan funcionando. Solo "por clase" necesita la columna.
+        def _traer(campos: str):
+            return sb.table("capital_transactions").select(campos) \
+                .gte("transaction_date", query_start).lte("transaction_date", ed) \
+                .not_.in_("status", ["voided", "pending_confirmation", "draft"]) \
+                .range(startpage, startpage + 999).execute().data or []
+        try:
+            page = _traer("account_id,amount,is_income,transaction_date,property_id,yard_id")
+        except Exception as e:
+            if "yard_id" not in str(e):
+                raise
+            if group_by == "class":
+                raise HTTPException(
+                    status_code=400,
+                    detail=("Falta ejecutar migrations/111_capital_yard_class.sql en el "
+                            "SQL Editor de Supabase: Capital todavía no tiene el campo de "
+                            "clase en sus asientos."),
+                )
+            page = _traer("account_id,amount,is_income,transaction_date,property_id")
         rows += page
         if len(page) < 1000:
             break
@@ -2538,7 +2563,7 @@ async def get_pnl_matrix(
         ck = col_of(t)
         if not ck:
             continue
-        if group_by == "property":
+        if group_by in ("property", "class"):
             prop_ids.add(ck)
         cell.setdefault(aid, {}).setdefault(ck, 0.0)
         cell[aid][ck] += float(t.get("amount") or 0)
@@ -2552,6 +2577,22 @@ async def get_pnl_matrix(
                 labels[p["id"]] = (f"{p.get('property_code')} — " if p.get("property_code") else "") + (p.get("address") or p["id"][:8])
         ordered = ([pid for pid in real_ids] + (["__general__"] if "__general__" in prop_ids else []))
         columns = [{"key": pid, "label": labels.get(pid, pid[:8])} for pid in ordered]
+
+    if group_by == "class":
+        # Las clases son las mismas filas de `yards` que usa Homes: son los
+        # mismos patios físicos, no una lista paralela.
+        etiquetas = {"__sin_clase__": "Sin clase"}
+        reales = [y for y in prop_ids if y != "__sin_clase__"]
+        if reales:
+            try:
+                for y in (sb.table("yards").select("id,name").in_("id", reales).execute().data or []):
+                    etiquetas[y["id"]] = y["name"]
+            except Exception as e:
+                logger.warning(f"[pnl-matrix] no se pudieron leer las clases: {e}")
+        # "Sin clase" va al final: es el cajón de lo pendiente, no una clase más.
+        ordenadas = sorted(reales, key=lambda y: etiquetas.get(y, "")) + \
+                    (["__sin_clase__"] if "__sin_clase__" in prop_ids else [])
+        columns = [{"key": y, "label": etiquetas.get(y, y[:8])} for y in ordenadas]
 
     col_keys = [c["key"] for c in columns]
 
@@ -2581,10 +2622,11 @@ async def get_pnl_matrix(
     # QuickBooks aparece como "Total" a la derecha de los meses. Se calcula aquí
     # y no en la pantalla para que el CSV, el PDF y la vista digan lo mismo.
     #
-    # Solo tiene sentido con columnas de PERIODO (mes) o de reparto (propiedad),
-    # donde sumar es legítimo. En modo comparativo las columnas son el mismo
-    # dinero visto en dos periodos: sumarlas daría un número sin significado.
-    incluir_total = group_by in ("month", "property") and len(columns) > 1
+    # Solo tiene sentido con columnas de PERIODO (mes) o de reparto (propiedad,
+    # clase), donde cada columna es dinero distinto y sumar es legítimo. En modo
+    # comparativo las columnas son el mismo dinero visto en dos periodos:
+    # sumarlas daría un número sin significado.
+    incluir_total = group_by in ("month", "property", "class") and len(columns) > 1
     if incluir_total:
         for sec in sections:
             for fila in sections[sec]:
