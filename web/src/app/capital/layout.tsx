@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, FileCheck, FileSignature, CreditCard, Landmark, Menu, X, ChevronRight, LogOut, Loader2, AlertTriangle, BarChart3, ArrowRightLeft, FileText, Users, BookOpen, Bell, Target, Home, CalendarClock, Heart, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, FileCheck, FileSignature, CreditCard, Landmark, Menu, X, ChevronRight, LogOut, Loader2, AlertTriangle, BarChart3, ArrowRightLeft, FileText, Users, BookOpen, Bell, Target, Home, CalendarClock, Heart, ClipboardList, Table2 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
 import AIChatWidget from '@/components/AIChatWidget'
@@ -35,6 +35,7 @@ const navigationSections: NavSection[] = [
       { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
       { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
       { name: 'Pagos a inversionistas', href: '/capital/pagos-inversionistas', icon: CalendarClock },
+      { name: 'Registro de inversionistas', href: '/capital/registro-inversionistas', icon: Table2 },
     ],
   },
   {
@@ -342,6 +343,7 @@ function CapitalBreadcrumb({ pathname }: { pathname: string }) {
     encuestas: 'Encuestas',
     payments: 'Pagos de clientes',
     'pagos-inversionistas': 'Pagos a inversionistas',
+    'registro-inversionistas': 'Registro de inversionistas',
     investors: 'Seguimiento de inversionistas',
     'promissory-notes': 'Promissory Notes',
     reports: 'Reportes',

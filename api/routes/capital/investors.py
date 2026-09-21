@@ -355,6 +355,117 @@ async def list_investors(status: Optional[str] = "active"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/registro")
+async def get_registro_inversionistas():
+    """Registro de Inversionistas — la tabla del Excel «CAPITAL GENERAL», viva.
+
+    Una fila por PAGARÉ, que es como está montada la hoja original: "VALTO 2",
+    "VALTO 3", "Marcelo 11"… son pagarés, no personas distintas.
+
+    Se rellena de lo que ya sabe la app (seguimiento de inversionistas y sus
+    pagarés) y se calcula al vuelo: no es una copia guardada que haya que
+    refrescar a mano, que es justo lo que pasaba con el Excel.
+
+    REGLA: una celda que no se pueda deducir con certeza se deja VACÍA (None).
+    Rellenarla con una suposición es peor que dejarla en blanco, porque nadie
+    sabría después cuáles eran de fiar. Hoy van vacías a propósito:
+
+      · Numero de Inversionista — la app no numera a los inversionistas.
+      · Numero de Cuenta        — no se guarda la cuenta bancaria del inversor.
+      · Interes Anual Total     — el nombre admite dos lecturas (el interés de
+                                  UN año, o el total de todo el plazo) y el
+                                  Excel no permite distinguirlas. Pendiente de
+                                  que Maria lo confirme.
+    """
+    from datetime import date as _date
+    from api.routes.capital.promissory_notes import _note_schedule, _note_tranches
+
+    try:
+        notas = []
+        page = 0
+        while True:
+            filas = (sb.table("promissory_notes").select("*, investors(name, email)")
+                     .range(page * 1000, page * 1000 + 999).execute().data or [])
+            notas.extend(filas)
+            if len(filas) < 1000:
+                break
+            page += 1
+
+        ACTIVOS = ("active", "overdue", "partial", "partial_return")
+        ESTATUS = {
+            "active": "Activo", "overdue": "Vencido", "partial": "Activo",
+            "partial_return": "Activo", "paid": "Liquidado",
+            "cancelled": "Cancelado", "draft": "Borrador",
+        }
+
+        registro = []
+        for n in notas:
+            inv = n.get("investors") or {}
+            loan = float(n.get("loan_amount") or 0)
+            tasa = float(n.get("annual_rate") or 0)
+            io_m, amort_m = _note_tranches(n)
+            estado = n.get("status") or ""
+
+            # Cuota de referencia: la del cuadro de amortización. Si el cuadro
+            # no se puede construir, se deja vacía en vez de inventar una.
+            cuota = None
+            try:
+                sch = _note_schedule(loan, tasa, io_m, amort_m)["schedule"]
+                if sch:
+                    cuota = round(sch[0]["payment"], 2)
+            except Exception:
+                cuota = None
+
+            ptd = _note_paid_to_date(n)
+
+            registro.append({
+                "inversionista": inv.get("name") or n.get("lender_name") or None,
+                "numero_inversionista": None,      # la app no los numera
+                "correo": inv.get("email") or None,
+                "numero_cuenta": None,             # no se guarda
+                "monto_original": round(loan, 2) if loan else None,
+                "deuda_actual": ptd.get("principal_remaining"),
+                "tasa_anual": tasa or None,
+                "interes_mensual": round(loan * tasa / 100 / 12, 2) if loan and tasa else None,
+                "pago_fijo_mensual": cuota,
+                "interes_anual_total": None,       # nombre ambiguo, ver docstring
+                "plazo_meses": n.get("term_months") or None,
+                "fecha_inicio": (str(n.get("start_date"))[:10] if n.get("start_date") else None),
+                "fecha_termino": (str(n.get("maturity_date"))[:10] if n.get("maturity_date") else None),
+                "estatus": ESTATUS.get(estado, estado or None),
+                "notas": n.get("notes") or None,
+                "_activo": estado in ACTIVOS,
+                "note_id": n.get("id"),
+                "investor_id": n.get("investor_id"),
+            })
+
+        registro.sort(key=lambda r: (not r["_activo"], (r["inversionista"] or "").upper()))
+        activos = [r for r in registro if r["_activo"]]
+        liquidados = [r for r in registro if not r["_activo"]]
+
+        def _suma(filas, campo):
+            vals = [r[campo] for r in filas if r.get(campo) is not None]
+            return round(sum(vals), 2) if vals else None
+
+        return {
+            "ok": True,
+            "fecha": _date.today().isoformat(),
+            "activos": activos,
+            "liquidados": liquidados,
+            "totales": {
+                "activos": len(activos),
+                "liquidados": len(liquidados),
+                "monto_original": _suma(activos, "monto_original"),
+                "deuda_actual": _suma(activos, "deuda_actual"),
+                "interes_mensual": _suma(activos, "interes_mensual"),
+                "pago_fijo_mensual": _suma(activos, "pago_fijo_mensual"),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error armando el registro de inversionistas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/export-csv")
 async def export_investors_csv(status: Optional[str] = None):
     """Seguimiento de inversionistas en CSV, una fila por inversionista.
