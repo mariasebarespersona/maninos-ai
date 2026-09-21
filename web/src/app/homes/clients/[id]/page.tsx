@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import {
   ArrowLeft,
+  Pencil,
   Users,
   Phone,
   Mail,
@@ -186,6 +187,12 @@ export default function ClientDetailPage() {
   const [newNoteContent, setNewNoteContent] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const [assigningEmployee, setAssigningEmployee] = useState(false)
+  // Edición de los datos del cliente. Existía ya en Capital (Clientes RTO) pero
+  // no aquí, así que desde Homes no había forma de corregir un nombre: el
+  // backend siempre lo permitió, solo faltaba dónde pulsar.
+  const [editandoCliente, setEditandoCliente] = useState(false)
+  const [guardandoCliente, setGuardandoCliente] = useState(false)
+  const [formCliente, setFormCliente] = useState({ name: '', email: '', phone: '' })
 
   const clientId = params.id as string
 
@@ -230,6 +237,51 @@ export default function ClientDetailPage() {
 
     loadData()
   }, [clientId])
+
+  const abrirEdicionCliente = () => {
+    const c = data?.client
+    setFormCliente({ name: c?.name || '', email: c?.email || '', phone: c?.phone || '' })
+    setEditandoCliente(true)
+  }
+
+  /**
+   * Guarda los datos del cliente.
+   *
+   * OJO: el nombre está copiado como texto en otros sitios —el destinatario de
+   * los traspasos de título, la contraparte de facturas y asientos— y esos NO se
+   * actualizan solos. Al renombrar a alguien con documentos ya emitidos, hay que
+   * revisar esas copias. Por eso el formulario avisa.
+   */
+  const guardarCliente = async () => {
+    const nombre = formCliente.name.trim()
+    if (!nombre) { toast.warning('El nombre es obligatorio'); return }
+    const email = formCliente.email.trim()
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast.warning(`El email "${email}" no es válido (ej. cliente@gmail.com)`); return
+    }
+    setGuardandoCliente(true)
+    try {
+      const res = await fetch(`/api/clients/${clientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: nombre,
+          email: email || null,
+          phone: formCliente.phone.trim() || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok || d.ok === false) throw new Error(d.detail || d.error || 'Error guardando')
+      // Refresco local: evita recargar la ficha entera solo por tres campos.
+      setData(prev => prev ? { ...prev, client: { ...prev.client, name: nombre, email: email || undefined, phone: formCliente.phone.trim() || undefined } } : prev)
+      setEditandoCliente(false)
+      toast.success('Datos del cliente actualizados')
+    } catch (err: any) {
+      toast.error(err.message || 'Error guardando los datos')
+    } finally {
+      setGuardandoCliente(false)
+    }
+  }
 
   const handleAssignEmployee = async (employeeId: string) => {
     setAssigningEmployee(true)
@@ -343,6 +395,11 @@ export default function ClientDetailPage() {
                   <StatusIcon className="w-4 h-4" />
                   {status.label}
                 </div>
+                <button onClick={abrirEdicionCliente}
+                        className="btn-ghost btn-sm"
+                        title="Editar nombre, teléfono y correo">
+                  <Pencil className="w-4 h-4" /> Editar
+                </button>
               </div>
               <div className="flex items-center gap-4 mt-2 text-sm text-navy-500 flex-wrap">
                 {client.phone && (
@@ -368,6 +425,60 @@ export default function ClientDetailPage() {
           </div>
         </div>
       </div>
+
+      {editandoCliente && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+             onClick={() => setEditandoCliente(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="font-serif text-lg mb-4 text-navy-900">Editar cliente</h2>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-navy-500">
+                  Nombre <span className="text-red-500">*</span>
+                </label>
+                <input type="text" value={formCliente.name}
+                       onChange={e => setFormCliente(f => ({ ...f, name: e.target.value }))}
+                       className="w-full px-3 py-2 rounded-lg border text-sm border-stone-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-navy-500">Teléfono</label>
+                <input type="tel" value={formCliente.phone}
+                       onChange={e => setFormCliente(f => ({ ...f, phone: e.target.value }))}
+                       className="w-full px-3 py-2 rounded-lg border text-sm border-stone-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-navy-500">Correo</label>
+                <input type="email" value={formCliente.email}
+                       onChange={e => setFormCliente(f => ({ ...f, email: e.target.value }))}
+                       className="w-full px-3 py-2 rounded-lg border text-sm border-stone-300" />
+              </div>
+            </div>
+
+            {/* El nombre está copiado en documentos ya emitidos y esas copias no
+                se actualizan solas. Avisar aquí es más útil que descubrirlo
+                cuando el título salga a nombre de quien no es. */}
+            {formCliente.name.trim() !== (client.name || '') && (
+              <div className="mt-4 rounded-lg p-3 text-xs bg-amber-50 border border-amber-200 text-amber-900">
+                <strong>Estás cambiando el nombre.</strong> Los documentos ya emitidos —traspasos de
+                título, facturas y asientos contables— guardan una copia del nombre anterior y no se
+                actualizan solos. Revísalos si esta persona ya tiene documentos.
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={() => setEditandoCliente(false)}
+                      className="px-4 py-2 text-sm font-medium rounded-lg border border-stone-300 text-navy-700">
+                Cancelar
+              </button>
+              <button onClick={guardarCliente} disabled={guardandoCliente}
+                      className="btn-primary btn-sm">
+                {guardandoCliente ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</> : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
