@@ -97,6 +97,8 @@ interface Invoice {
   due_date?: string; counterparty_name: string; total_amount: number
   amount_paid: number; balance_due: number; status: string; description?: string
   notes?: string
+  /** Clase contable (patio): Houston o Conroe. Null si no se ha asignado. */
+  yard_id?: string | null
 }
 
 interface InvoicePayment {
@@ -389,7 +391,7 @@ export default function AccountingPage() {
       {showMovementModal && <RegisterMovementModal allAccounts={allAccounts} onClose={() => setShowMovementModal(false)} onCreated={() => { setShowMovementModal(false); fetchDashboard(); if (activeTab === 'transactions') fetchTransactions() }} />}
       {showNewBankModal && <NewBankAccountModal onClose={() => setShowNewBankModal(false)} onCreated={() => { setShowNewBankModal(false); fetchDashboard() }} />}
       {showNewRecurringModal && <NewRecurringExpenseModal accounts={accounts} onClose={() => setShowNewRecurringModal(false)} onCreated={() => setShowNewRecurringModal(false)} />}
-      {showNewInvoiceModal && <NewInvoiceModal onClose={() => setShowNewInvoiceModal(false)} onCreated={() => { setShowNewInvoiceModal(false); fetchDashboard() }} />}
+      {showNewInvoiceModal && <NewInvoiceModal yards={dashboard?.yard_breakdown || []} onClose={() => setShowNewInvoiceModal(false)} onCreated={() => { setShowNewInvoiceModal(false); fetchDashboard() }} />}
     </div>
   )
 }
@@ -1254,6 +1256,42 @@ function InvoicesTab() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
   const [reclassInvoice, setReclassInvoice] = useState<Invoice | null>(null)
+  // Clases (patios) para poder etiquetar cada factura.
+  const [yards, setYards] = useState<{ id: string; name: string }[]>([])
+  const [savingYard, setSavingYard] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/team/yards')
+      .then(r => r.ok ? r.json() : { yards: [] })
+      .then(d => setYards(d.yards || []))
+      .catch(() => {})
+  }, [])
+
+  /**
+   * Asigna la clase a una factura. El backend la propaga a sus asientos, que es
+   * lo que hace que la factura aparezca en el patio correcto en los estados
+   * financieros; etiquetar solo la factura no cambiaría el P&L.
+   */
+  const handleYardChange = async (invoiceId: string, yardId: string) => {
+    setSavingYard(invoiceId)
+    const previo = invoices
+    // Optimista: el desplegable responde al momento y se revierte si falla.
+    setInvoices(inv => inv.map(i => i.id === invoiceId ? { ...i, yard_id: yardId || null } : i))
+    try {
+      const res = await fetch(`/api/accounting/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yard_id: yardId || null }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success(yardId ? 'Clase asignada' : 'Clase quitada')
+    } catch {
+      setInvoices(previo)
+      toast.error('No se pudo cambiar la clase')
+    } finally {
+      setSavingYard(null)
+    }
+  }
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true)
@@ -1361,6 +1399,7 @@ function InvoicesTab() {
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Total</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Pagado</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Pendiente</th>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--slate)' }}>Clase</th>
                 <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--slate)' }}>Estado</th>
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--slate)' }}>Acciones</th>
               </tr></thead>
@@ -1375,6 +1414,25 @@ function InvoicesTab() {
                     <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{fmtFull(inv.total_amount)}</td>
                     <td className="px-4 py-3 text-right text-emerald-600 font-medium">{fmtFull(inv.amount_paid)}</td>
                     <td className="px-4 py-3 text-right font-bold" style={{ color: inv.balance_due > 0 ? '#dc2626' : 'var(--charcoal)' }}>{fmtFull(inv.balance_due)}</td>
+                    {/* Clase, editable en la propia fila: la mayoría de las
+                        facturas se crearon antes de que existieran las clases y
+                        había que poder etiquetarlas sin rehacerlas. Al guardar,
+                        la clase baja también a sus asientos, que es lo que leen
+                        los estados financieros. */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={inv.yard_id || ''}
+                        disabled={savingYard === inv.id}
+                        onChange={e => handleYardChange(inv.id, e.target.value)}
+                        className="px-2 py-1 rounded border text-xs bg-white"
+                        style={{ borderColor: 'var(--stone)', color: inv.yard_id ? 'var(--charcoal)' : 'var(--ash)' }}
+                      >
+                        <option value="">Sin clase</option>
+                        {yards.map(y => (
+                          <option key={y.id} value={y.id}>{y.name}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-4 py-3 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>{statusLabel[inv.status] || inv.status}</span></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -4339,8 +4397,8 @@ function ReclassifyAccountModal({ title, subtitle, currentLabel, direction, onCl
   )
 }
 
-function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ direction: 'receivable', counterparty_name: '', total_amount: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', description: '', payment_terms: 'Due on receipt', account_code: '' })
+function NewInvoiceModal({ yards, onClose, onCreated }: { yards: YardBreakdown[]; onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ direction: 'receivable', counterparty_name: '', total_amount: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', description: '', payment_terms: 'Due on receipt', account_code: '', yard_id: '' })
   const [accounts, setAccounts] = useState<AccountInfo[]>([])
   const [accountSearch, setAccountSearch] = useState('')
   const [saving, setSaving] = useState(false)
@@ -4437,6 +4495,14 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
               )}
               </div>
           </div>
+          {/* Clase (patio). Baja hasta los asientos, así que es lo que permite
+              separar Houston de Conroe en los estados financieros. */}
+          <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Clase</label>
+            <select value={form.yard_id} onChange={e => setForm(f => ({ ...f, yard_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm bg-white" style={{ borderColor: 'var(--stone)' }}>
+              <option value="">Sin clase</option>
+              {yards.map(y => <option key={y.yard_id} value={y.yard_id}>{y.name}</option>)}
+            </select>
+            <p className="text-xs mt-1" style={{ color: 'var(--ash)' }}>Determina en qué patio aparece en los estados financieros.</p></div>
           <div><label className="block text-xs font-medium mb-1" style={{ color: 'var(--slate)' }}>Descripción</label>
             <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--stone)' }} placeholder="Concepto de la factura" /></div>
         </div>

@@ -96,7 +96,12 @@ def _fetch_all_transactions(extra_filters: dict = None) -> list:
     offset = 0
     page_size = 1000
     while True:
-        q = sb.table("accounting_transactions").select("account_id, amount, is_income, property_id").neq("status", "voided")
+        # yard_id va en el SELECT porque los informes lo usan para la columna de
+        # ubicación. Se podía FILTRAR por él sin traerlo, así que el filtro
+        # funcionaba y la columna salía siempre vacía: todo caía en "Not specified".
+        q = sb.table("accounting_transactions").select(
+            "account_id, amount, is_income, property_id, yard_id"
+        ).neq("status", "voided")
         if extra_filters:
             for k, v in extra_filters.items():
                 if k == "gte_date":
@@ -2359,7 +2364,11 @@ async def reclassify_transaction(transaction_id: str, data: dict):
 @router.patch("/invoices/{invoice_id}")
 async def update_invoice(invoice_id: str, data: dict):
     allowed = {"status", "due_date", "notes", "description", "payment_terms",
-               "counterparty_name", "subtotal", "tax_amount", "total_amount", "line_items"}
+               "counterparty_name", "subtotal", "tax_amount", "total_amount", "line_items",
+               # La CLASE (yard): Houston o Conroe. Se puede cambiar después de
+               # emitida porque muchas facturas se crearon antes de que existieran
+               # las clases y hay que poder clasificarlas a posteriori.
+               "yard_id"}
     update = {k: v for k, v in data.items() if k in allowed}
     if "line_items" in update and isinstance(update["line_items"], list):
         update["line_items"] = json.dumps(update["line_items"])
@@ -2368,6 +2377,27 @@ async def update_invoice(invoice_id: str, data: dict):
     result = sb.table("accounting_invoices").update(update).eq("id", invoice_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # La clase tiene que bajar AL LEDGER, no quedarse en la factura: los estados
+    # financieros se calculan de `accounting_transactions`, así que una factura
+    # etiquetada cuyos asientos no lo están seguiría sin aparecer en Houston o
+    # Conroe. Se marcan todas sus patas —devengo y cobros/pagos—, que es lo que
+    # hace que el P&L filtrado cuadre con la factura.
+    if "yard_id" in update:
+        try:
+            legs = (sb.table("accounting_transactions").select("id")
+                    .eq("entity_type", "invoice").eq("entity_id", invoice_id)
+                    .execute().data or [])
+            if legs:
+                sb.table("accounting_transactions").update({"yard_id": update["yard_id"]}) \
+                    .in_("id", [l["id"] for l in legs]).execute()
+                logger.info(f"[invoices] clase propagada a {len(legs)} asientos de {invoice_id}")
+        except Exception as e:
+            # Que falle la propagación no debe deshacer el cambio en la factura,
+            # pero sí tiene que verse: si no, el P&L por clase saldría corto sin
+            # que nadie sepa por qué.
+            logger.error(f"[invoices] NO se pudo propagar la clase al ledger de {invoice_id}: {e}")
+
     _log_audit("accounting_invoices", invoice_id, "update", changes=update)
     return result.data[0]
 
@@ -2876,6 +2906,32 @@ def _location_for_code(code: str) -> str:
     return "Not specified"
 
 
+def _yard_name_map() -> dict:
+    """{yard_id: nombre} de las clases activas. Vacío si algo falla: sin clases
+    el informe se comporta como antes, deduciendo del código de la casa."""
+    try:
+        filas = sb.table("yards").select("id, name").execute().data or []
+        return {y["id"]: y["name"] for y in filas if y.get("id") and y.get("name")}
+    except Exception as e:
+        logger.warning(f"[reports] no se pudieron leer las clases: {e}")
+        return {}
+
+
+def _location_de_asiento(t: dict, loc_by_prop: dict, yard_names: dict) -> str:
+    """Ubicación de un asiento para las columnas del P&L.
+
+    Manda la CLASE asignada a mano (yard_id) sobre la deducida del código de la
+    casa. El prefijo (H=Houston, B=Conroe, DFW=Dallas) solo funciona si el
+    asiento está ligado a una propiedad, y la mayoría de las facturas de gasto
+    no lo están: caían todas en "Not specified" sin forma de corregirlo. Cuando
+    alguien se molesta en clasificar una factura, esa decisión debe ganar.
+    """
+    nombre = yard_names.get(t.get("yard_id"))
+    if nombre in PL_LOCATIONS:
+        return nombre
+    return loc_by_prop.get(t.get("property_id")) or "Not specified"
+
+
 def _tree_totals(accounts, balances, root_codes):
     """Return {account_id: rolled-up total} for one balances dict (pure
     transaction balances, no current_balance), summing children into parents
@@ -3017,6 +3073,7 @@ async def get_income_statement(
 
     balances = {}
     bal_by_loc = {loc: {} for loc in PL_LOCATIONS}
+    yard_names = _yard_name_map()
     try:
         filters = {"gte_date": sd, "lte_date": ed}
         if yard_id:
@@ -3028,7 +3085,7 @@ async def get_income_statement(
                 atype = acct_type_by_id.get(aid, "")
                 amt = _signed_balance(float(t["amount"]), atype, t.get("is_income", False))
                 balances[aid] = balances.get(aid, 0) + amt
-                loc = loc_by_prop.get(t.get("property_id")) or "Not specified"
+                loc = _location_de_asiento(t, loc_by_prop, yard_names)
                 bal_by_loc[loc][aid] = bal_by_loc[loc].get(aid, 0) + amt
     except Exception as e:
         logger.warning(f"[income-statement] Error fetching transactions: {e}")
@@ -3126,6 +3183,7 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
 
     balances = {}
     bal_by_loc = {loc: {} for loc in PL_LOCATIONS}
+    yard_names = _yard_name_map()
     net_income = 0
     try:
         filters = {"lte_date": as_of}
@@ -3142,7 +3200,7 @@ async def get_balance_sheet(as_of_date: Optional[str] = None, yard_id: Optional[
             if aid in bs_account_ids:
                 sval = _signed_balance(amt, atype, is_inc)
                 balances[aid] = balances.get(aid, 0) + sval
-                loc = loc_by_prop.get(t.get("property_id")) or "Not specified"
+                loc = _location_de_asiento(t, loc_by_prop, yard_names)
                 bal_by_loc[loc][aid] = bal_by_loc[loc].get(aid, 0) + sval
             net_income += _net_income_sign(amt, atype, is_inc)
     except Exception as e:
