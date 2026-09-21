@@ -80,16 +80,35 @@ PHOTO_EVALUABLE_IDS = {
 
 
 def _generate_report_number() -> str:
-    """Generate a human-readable report number: EVL-YYMMDD-XXX"""
-    now = datetime.now()
-    date_part = now.strftime("%y%m%d")
-    # Get today's count
-    today_start = now.strftime("%Y-%m-%d 00:00:00")
-    existing = sb.table("evaluation_reports").select("id").gte(
-        "created_at", today_start
-    ).execute()
-    seq = len(existing.data) + 1 if existing.data else 1
-    return f"EVL-{date_part}-{seq:03d}"
+    """Siguiente número de reporte del día: EVL-YYMMDD-XXX.
+
+    Se parte del número MÁS ALTO que ya exista ese día, no de cuántos hay.
+    Contar parecía equivalente y no lo es: en cuanto se borra un reporte queda
+    un hueco, la cuenta baja y el siguiente número propuesto vuelve a ser uno ya
+    usado. Entonces el alta falla con violación de clave única y —esto es lo
+    grave— **sigue fallando el resto del día**, porque la cuenta no vuelve a
+    subir. Pasó el 2026-09-21: quedaba solo EVL-260921-002, la cuenta daba 1 y
+    proponía el 002 una y otra vez.
+
+    Los números se buscan por PREFIJO y no por `created_at`: la fecha va dentro
+    del propio número, así que es la única fuente coherente. Filtrar por fecha de
+    creación podía dar un conjunto distinto del que representa el prefijo.
+    """
+    date_part = datetime.now().strftime("%y%m%d")
+    prefijo = f"EVL-{date_part}-"
+    mayor = 0
+    try:
+        filas = sb.table("evaluation_reports").select("report_number") \
+            .like("report_number", f"{prefijo}%").execute().data or []
+        for f in filas:
+            sufijo = (f.get("report_number") or "")[len(prefijo):]
+            if sufijo.isdigit():
+                mayor = max(mayor, int(sufijo))
+    except Exception as e:
+        # Sin poder leer, se empieza por 1 y que decida el reintento del alta:
+        # mejor un choque que resolver que bloquear la creación del reporte.
+        logger.warning(f"[evaluation] no se pudo leer la numeración del día: {e}")
+    return f"{prefijo}{mayor + 1:03d}"
 
 
 def _blank_checklist() -> list[dict]:
@@ -114,23 +133,49 @@ def _blank_checklist() -> list[dict]:
 
 @router.post("")
 async def create_evaluation():
-    """Create a new draft evaluation with blank checklist."""
-    report_number = _generate_report_number()
+    """Crea una evaluación en borrador con el checklist en blanco.
+
+    El número se reintenta ante un choque: entre calcularlo y guardarlo puede
+    colarse otra persona creando la suya, y las dos obtendrían el mismo. Sin
+    reintento, una de las dos se come un 500 sin motivo aparente — y con varias
+    personas evaluando a la vez deja de ser un caso raro.
+    """
     checklist = _blank_checklist()
+    ultimo_error = None
 
-    result = sb.table("evaluation_reports").insert({
-        "report_number": report_number,
-        "checklist": checklist,
-        "extra_notes": [],
-        "status": "draft",
-    }).execute()
+    # 10 intentos y no 5: con 6 altas a la vez uno de los hilos ya gastó 4, así
+    # que 5 dejaba muy poco margen. Cada reintento es una consulta corta, así que
+    # el margen sale casi gratis.
+    for intento in range(10):
+        report_number = _generate_report_number()
+        try:
+            result = sb.table("evaluation_reports").insert({
+                "report_number": report_number,
+                "checklist": checklist,
+                "extra_notes": [],
+                "status": "draft",
+            }).execute()
+        except Exception as e:
+            ultimo_error = e
+            # 23505 = clave duplicada. Solo eso se reintenta: cualquier otro
+            # fallo se propaga tal cual en vez de disfrazarse de reintento.
+            if "23505" in str(e) or "duplicate key" in str(e).lower():
+                logger.warning(f"[evaluation] {report_number} ya existía, reintento {intento + 1}")
+                continue
+            logger.error(f"[evaluation] error creando el borrador: {e}")
+            raise HTTPException(status_code=500, detail="No se pudo crear la evaluación")
 
-    if not result.data:
-        raise HTTPException(status_code=500, detail="Failed to create evaluation")
+        if result.data:
+            report = result.data[0]
+            logger.info(f"[evaluation] Created draft: {report_number}")
+            return report
+        ultimo_error = "insert sin datos"
 
-    report = result.data[0]
-    logger.info(f"[evaluation] Created draft: {report_number}")
-    return report
+    logger.error(f"[evaluation] sin número libre tras 10 intentos: {ultimo_error}")
+    raise HTTPException(
+        status_code=500,
+        detail="No se pudo asignar un número de reporte libre. Inténtalo de nuevo.",
+    )
 
 
 @router.get("")
