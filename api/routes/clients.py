@@ -16,9 +16,13 @@ from api.models.schemas import (
     ClientWithSale,
     SaleStatus,
 )
+import logging
+
 from tools.supabase_client import sb
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -327,7 +331,46 @@ async def update_client(client_id: str, data: ClientUpdate):
     if not update_data:
         return {"ok": True, "client": _format_client_full(current.data)}
     
+    nombre_viejo = (current.data.get("name") or "").strip()
+    nombre_nuevo = (update_data.get("name") or "").strip()
+
     result = sb.table("clients").update(update_data).eq("id", client_id).execute()
+
+    # Al RENOMBRAR, arrastrar el nombre a los documentos donde quedó copiado
+    # como texto. No se leen por referencia: sin esto el título de una casa
+    # seguiría entregándose a nombre de quien ya no figura como comprador.
+    # Pasó con la H42 el 2026-09-21.
+    #
+    # Solo se tocan los traspasos NO COMPLETADOS. Uno completado documenta una
+    # entrega que YA ocurrió, a la persona que constaba entonces: cambiarle el
+    # nombre después sería reescribir un hecho, no corregir un dato pendiente.
+    # Si queda alguno así, se avisa en el log en vez de tocarlo en silencio.
+    if nombre_nuevo and nombre_viejo and nombre_nuevo != nombre_viejo:
+        try:
+            ventas = sb.table("sales").select("id").eq("client_id", client_id).execute().data or []
+            venta_ids = [v["id"] for v in ventas]
+            if venta_ids:
+                pendientes = (sb.table("title_transfers")
+                              .select("id, to_name, status")
+                              .in_("sale_id", venta_ids)
+                              .neq("status", "completed").execute().data or [])
+                for t in pendientes:
+                    # Solo si guardaba el nombre viejo: si alguien lo escribió
+                    # distinto a mano, esa decisión se respeta.
+                    if (t.get("to_name") or "").strip() == nombre_viejo:
+                        sb.table("title_transfers").update({"to_name": nombre_nuevo}) \
+                            .eq("id", t["id"]).execute()
+                        logger.info(f"[clients] título {t['id']}: '{nombre_viejo}' → '{nombre_nuevo}'")
+                cerrados = (sb.table("title_transfers").select("id")
+                            .in_("sale_id", venta_ids).eq("status", "completed")
+                            .ilike("to_name", nombre_viejo).execute().data or [])
+                if cerrados:
+                    logger.warning(
+                        f"[clients] {len(cerrados)} traspaso(s) YA COMPLETADO(s) conservan "
+                        f"'{nombre_viejo}': no se tocan por ser documentos cerrados"
+                    )
+        except Exception as e:
+            logger.error(f"[clients] no se pudo arrastrar el nombre a los títulos: {e}")
     
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to update client")

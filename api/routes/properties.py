@@ -881,6 +881,42 @@ async def update_property(property_id: str, data: PropertyUpdate):
         except Exception as e:
             logger.warning(f"[properties] Could not rename per-house accounts for {property_id}: {e}")
 
+    # Si cambia la DIRECCIÓN, arrastrarla a las descripciones donde quedó
+    # copiada como texto: "Compra propiedad: 1829 Gault rd — Pago a …". No se
+    # leen por referencia, así que sin esto la contabilidad seguiría nombrando
+    # una dirección que ya no existe.
+    #
+    # Solo se tocan las filas de ESTA propiedad (por property_id / la factura de
+    # esta casa), nunca por búsqueda de texto global: dos casas pueden compartir
+    # calle y un reemplazo a ciegas reescribiría documentos ajenos.
+    #
+    # Matiz contable, dicho aquí para que conste: estas descripciones pertenecen
+    # a documentos ya emitidos y narran lo que se hizo en su momento. Reescribir
+    # la dirección los mantiene localizables, pero es una edición sobre un
+    # documento cerrado. Maria lo pidió a sabiendas el 2026-09-21. Los importes,
+    # cuentas y fechas no se tocan: solo el texto de la dirección.
+    old_addr = (current.data.get("address") or "").strip()
+    new_addr = (update_data.get("address") or "").strip()
+    if new_addr and old_addr and new_addr.lower() != old_addr.lower():
+        for tabla in ("accounting_transactions", "accounting_invoices"):
+            try:
+                filas = sb.table(tabla).select("id, description") \
+                    .eq("property_id", property_id).execute().data or []
+                tocadas = 0
+                for f in filas:
+                    desc = f.get("description") or ""
+                    # Insensible a mayúsculas: en los datos conviven
+                    # "1829 gault rd" y "1829 Gault Rd".
+                    import re as _re
+                    nueva = _re.sub(_re.escape(old_addr), new_addr, desc, flags=_re.IGNORECASE)
+                    if nueva != desc:
+                        sb.table(tabla).update({"description": nueva}).eq("id", f["id"]).execute()
+                        tocadas += 1
+                if tocadas:
+                    logger.info(f"[properties] dirección actualizada en {tocadas} filas de {tabla}")
+            except Exception as e:
+                logger.warning(f"[properties] no se pudo actualizar la dirección en {tabla}: {e}")
+
     try:
         result = sb.table("properties").update(update_data).eq("id", property_id).execute()
     except Exception as e:
