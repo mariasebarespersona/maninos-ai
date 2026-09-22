@@ -938,10 +938,21 @@ async def create_sale(data: SaleCreate):
     # sold directly from 'purchased'/'renovating'/'pending_payment'), never
     # touching an already reserved/sold house.
     if prop["status"] not in (PropertyStatus.RESERVED.value, PropertyStatus.SOLD.value):
+        # Se anota de dónde venía ANTES de tocarla. Sin esto, cancelar la venta
+        # no podía devolverla a su sitio: solo sabía poner 'published', y una
+        # casa que estaba en obra o recién comprada volvía al catálogo como si
+        # estuviera lista. Guardarlo aquí es la única oportunidad de saberlo.
+        try:
+            sb.table("sales").update({"property_status_before": prop["status"]}) \
+                .eq("id", sale_record["id"]).execute()
+        except Exception as e:
+            # La columna es de la migración 112. Si aún no está, la venta sigue
+            # adelante: se pierde el estado previo, no la venta.
+            logger.warning(f"[sales] no se pudo guardar el estado previo de la casa: {e}")
         sb.table("properties").update({
             "status": PropertyStatus.RESERVED.value,
         }).eq("id", data.property_id).execute()
-        logger.info(f"[sales] Property {data.property_id} reserved (sale {sale_record['id']})")
+        logger.info(f"[sales] Property {data.property_id} reserved desde '{prop['status']}' (sale {sale_record['id']})")
     
     # Update client status
     new_client_status = ClientStatus.ACTIVE.value
@@ -1517,21 +1528,39 @@ async def cancel_sale(sale_id: str):
         "status": SaleStatus.CANCELLED.value,
     }).eq("id", sale_id).execute()
     
-    # Revert property to published (if it was reserved for this sale)
+    # ── Devolver la casa a su estado anterior ──────────────────────────
+    # Antes solo se revertía si la casa seguía en 'reserved'. En cuanto la venta
+    # se cobraba o se aprobaba, la casa pasaba a 'sold' y entonces cancelar YA NO
+    # la tocaba: se quedaba marcada como vendida para siempre. Es lo que le pasó
+    # a Abby con la H42.
+    #
+    # Ahora se revierte desde 'reserved' Y desde 'sold', y se devuelve al estado
+    # que se anotó al reservarla (una casa en obra vuelve a 'renovating', una
+    # consignación a 'purchased'). Si no hay estado anotado —ventas anteriores a
+    # la migración 112— se usa 'published', que es lo que se hacía antes.
     prop_check = sb.table("properties").select("status").eq("id", sale.data["property_id"]).single().execute()
-    if prop_check.data and prop_check.data["status"] == PropertyStatus.RESERVED.value:
-        # Only un-reserve if there are no OTHER active sales on this property
-        other_sales = sb.table("sales").select("id") \
+    estado_actual = (prop_check.data or {}).get("status")
+    if estado_actual in (PropertyStatus.RESERVED.value, PropertyStatus.SOLD.value):
+        # La casa solo se libera si no queda NINGUNA otra venta viva sobre ella:
+        # con dos ventas abiertas, cancelar una no puede desreservarla.
+        other_sales = sb.table("sales").select("id, status") \
             .eq("property_id", sale.data["property_id"]) \
             .neq("id", sale_id) \
             .in_("status", ["pending", "paid", "rto_pending", "rto_approved"]) \
             .execute()
-        
+
         if not other_sales.data:
-            sb.table("properties").update({
-                "status": PropertyStatus.PUBLISHED.value,
-            }).eq("id", sale.data["property_id"]).execute()
-            logger.info(f"[sales] Property {sale.data['property_id']} reverted to PUBLISHED (sale {sale_id} cancelled)")
+            previo = sale.data.get("property_status_before") or PropertyStatus.PUBLISHED.value
+            # Nunca devolver a un estado de venta: sería dejarla igual de mal.
+            if previo in (PropertyStatus.RESERVED.value, PropertyStatus.SOLD.value):
+                previo = PropertyStatus.PUBLISHED.value
+            sb.table("properties").update({"status": previo}) \
+                .eq("id", sale.data["property_id"]).execute()
+            logger.info(f"[sales] Casa {sale.data['property_id']}: '{estado_actual}' → '{previo}' "
+                        f"al cancelar la venta {sale_id}")
+        else:
+            logger.info(f"[sales] Casa {sale.data['property_id']} NO se libera: quedan "
+                        f"{len(other_sales.data)} venta(s) activa(s)")
     
     # Revert client status
     sb.table("clients").update({
