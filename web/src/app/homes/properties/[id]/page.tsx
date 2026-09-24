@@ -256,6 +256,78 @@ export default function PropertyDetailPage() {
 
   // Helper: save document data to property's document_data JSONB
   // Returns true if save succeeded, false otherwise
+  /**
+   * Importa el bill of sale REAL (un PDF escaneado) en lugar de rellenar la
+   * plantilla. Antes esto solo se podía al dar de alta la casa; si el documento
+   * llegaba después no había dónde meterlo.
+   *
+   * El fichero va a DOS sitios a propósito:
+   *   1. document_data de la propiedad → es lo que abre la ficha de la casa.
+   *   2. el checklist del traspaso de título → es lo que leen Traspasos de
+   *      Título y Casas Financiadas de Capital.
+   * Antes solo se guardaba en (1), así que un bill of sale importado seguía
+   * contando como "falta" en el traspaso y Capital no lo veía nunca.
+   *
+   * Los campos que hubiera rellenados a mano NO se pierden: se guardan bajo
+   * `_campos_previos` por si hay que volver atrás. Manda el PDF, que es el
+   * documento de verdad.
+   */
+  const [importandoBos, setImportandoBos] = useState<'purchase' | 'sale' | null>(null)
+
+  const importarBillOfSale = async (tipo: 'purchase' | 'sale', file: File) => {
+    if (!property) return
+    setImportandoBos(tipo)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('property_id', property.id)
+      fd.append('doc_type', `bill_of_sale_${tipo}`)
+      const up = await fetch('/api/documents/upload', { method: 'POST', body: fd })
+      if (!up.ok) { toast.error('No se pudo subir el archivo'); return }
+      const { url } = await up.json()
+      if (!url) { toast.error('La subida no devolvió una URL'); return }
+
+      const clave = `bos_${tipo}`
+      const previos = property.document_data?.[clave] || {}
+      // Si ya era un importado, no se anida: se conserva el original.
+      const camposPrevios = previos._uploaded_file ? previos._campos_previos : previos
+      const nuevo: any = {
+        _uploaded_file: true,
+        file_url: url,
+        file_name: file.name,
+        _importado_el: new Date().toISOString(),
+      }
+      if (camposPrevios && Object.keys(camposPrevios).length > 0) {
+        nuevo._campos_previos = camposPrevios
+      }
+      const okGuardado = await saveDocumentData(clave, nuevo)
+      if (!okGuardado) { toast.error('No se pudo guardar en la propiedad'); return }
+
+      // Y al traspaso de título, que es de donde lo leen Traspasos y Capital.
+      const transferId = tipo === 'purchase' ? transfers.purchase?.id : transfers.sale?.id
+      if (transferId) {
+        const fd2 = new FormData()
+        fd2.append('file', file)
+        const r2 = await fetch(`/api/transfers/${transferId}/document/bill_of_sale/upload`, {
+          method: 'POST', body: fd2,
+        })
+        if (!r2.ok) {
+          toast.warning('Guardado en la casa, pero no se pudo adjuntar al traspaso de título')
+        } else {
+          fetchTransfers()
+        }
+      } else {
+        toast.warning('Guardado en la casa. Esta casa no tiene traspaso de título, así que no aparecerá en Traspasos ni en Capital.')
+      }
+      toast.success('Bill of Sale importado')
+    } catch (e) {
+      console.error('[importarBillOfSale]', e)
+      toast.error('No se pudo importar el Bill of Sale')
+    } finally {
+      setImportandoBos(null)
+    }
+  }
+
   const saveDocumentData = async (key: string, docFormData: BillOfSaleData | TitleApplicationData): Promise<boolean> => {
     if (!property) return false
     try {
@@ -2112,6 +2184,21 @@ ${price}
                     <><FileText className="w-3.5 h-3.5" /> Bill of Sale (Compra)</>
                   )}
                 </button>
+                <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-blue-300 hover:text-blue-700"
+                       title="Subir el PDF real en vez de rellenar la plantilla">
+                  {importandoBos === 'purchase' ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
+                  ) : (
+                    <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
+                  )}
+                  <input type="file" accept="application/pdf,image/*" className="hidden"
+                         disabled={importandoBos !== null}
+                         onChange={e => {
+                           const f = e.target.files?.[0]
+                           if (f) importarBillOfSale('purchase', f)
+                           e.target.value = ''
+                         }} />
+                </label>
               </div>
               {/* Aplicación Título (Compra) */}
               <button
@@ -2156,6 +2243,21 @@ ${price}
                     <><FileText className="w-3.5 h-3.5" /> Bill of Sale (Venta)</>
                   )}
                 </button>
+                <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-purple-300 hover:text-purple-700"
+                       title="Subir el PDF real en vez de rellenar la plantilla">
+                  {importandoBos === 'sale' ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
+                  ) : (
+                    <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
+                  )}
+                  <input type="file" accept="application/pdf,image/*" className="hidden"
+                         disabled={importandoBos !== null}
+                         onChange={e => {
+                           const f = e.target.files?.[0]
+                           if (f) importarBillOfSale('sale', f)
+                           e.target.value = ''
+                         }} />
+                </label>
               </div>
               {/* Aplicación Título (Venta) */}
               <button
