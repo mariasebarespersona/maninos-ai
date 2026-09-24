@@ -408,16 +408,13 @@ async def create_mover_provider(data: MoverCreate):
     }
     creado = sb.table("movers").insert(fila).execute().data[0]
 
-    # También se registra como beneficiario de pago: así, cuando su nombre
-    # aparezca en un extracto bancario, la columna Payee lo reconoce en vez de
-    # quedarse vacía. Es best-effort — que falle no impide crear el transportista.
-    try:
-        etiqueta = fila["company"] or fila["name"]
-        ya = sb.table("payees").select("id").ilike("name", etiqueta).execute().data or []
-        if not ya:
-            sb.table("payees").insert({"name": etiqueta}).execute()
-    except Exception as e:
-        logger.warning(f"[moves] no se pudo registrar '{nombre}' como beneficiario: {e}")
+    # NO se crea una fila en `payees`. Esa tabla guarda los DATOS BANCARIOS para
+    # poder pagar (banco, routing y cuenta son obligatorios), así que dar de alta
+    # ahí a un transportista sin esos datos ni es posible ni tendría sentido.
+    # Para que su nombre se reconozca en los extractos basta con estar en
+    # `movers`: el extractor de payees ya lee esta tabla, por nombre y por
+    # compañía. Cuando haya que pagarle por transferencia, se le dará de alta
+    # como beneficiario con sus datos reales, que es otra cosa.
 
     logger.info(f"[moves] transportista dado de alta: {nombre} ({nuevo_id})")
     return {"ok": True, "provider": creado}
