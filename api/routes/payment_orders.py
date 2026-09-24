@@ -327,10 +327,21 @@ async def approve_payment_order(
     order_id: str,
     approved_by: Optional[str] = Query(None),
     bank_account_id: Optional[str] = Query(None),
+    splits: Optional[str] = Query(
+        None,
+        description='Reparto del cobro entre varias cuentas, como JSON: '
+                    '[{"bank_account_id": "...", "amount": 4000}, ...]. '
+                    'La suma debe ser exactamente el importe de la orden.',
+    ),
 ):
     """
     Approve a pending payment order (Sebastian/admin).
     Moves status from pending → approved so Treasury can execute it.
+
+    Un cobro puede entrar PARTIDO —p. ej. $4.000 al banco y el resto en
+    efectivo—. En ese caso se manda `splits` y se postea un asiento por destino,
+    cada uno con su importe. Sin `splits` el flujo es exactamente el de siempre:
+    un solo destino por el importe completo.
     """
     order_res = sb.table("payment_orders").select("*").eq("id", order_id).execute()
     if not order_res.data:
@@ -362,6 +373,44 @@ async def approve_payment_order(
     # received" → write a ledger pair RIGHT NOW into the bank that received it.
     # Outbound orders (comisiones, compras): approve only changes status; the
     # ledger pair is written later by /complete.
+    # ── Reparto del cobro entre varias cuentas ────────────────────────────
+    # Se valida ANTES de tocar nada: un reparto que no sume el total dejaría el
+    # ingreso mal registrado, y eso no se ve hasta que alguien cuadra el banco.
+    destinos: list = []
+    # isinstance: el parámetro solo se procesa si de verdad llegó una cadena.
+    # Así el endpoint también es seguro si se llama desde código (donde el valor
+    # por defecto de Query no es None) o si llega algo con otra forma.
+    if isinstance(splits, str) and splits.strip():
+        import json as _json
+        try:
+            crudo = _json.loads(splits)
+        except Exception:
+            raise HTTPException(status_code=400, detail="El reparto no es un JSON válido")
+        if not isinstance(crudo, list) or not crudo:
+            raise HTTPException(status_code=400, detail="El reparto debe ser una lista con al menos un destino")
+        total_orden = round(float(order["amount"]), 2)
+        suma = 0.0
+        for parte in crudo:
+            cuenta = (parte or {}).get("bank_account_id")
+            try:
+                importe = round(float((parte or {}).get("amount")), 2)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Cada parte del reparto necesita un importe numérico")
+            if not cuenta:
+                raise HTTPException(status_code=400, detail="Cada parte del reparto necesita una cuenta")
+            if importe <= 0:
+                raise HTTPException(status_code=400, detail="Cada parte del reparto debe ser mayor que $0")
+            suma += importe
+            destinos.append({"bank_account_id": cuenta, "amount": importe})
+        if abs(round(suma, 2) - total_orden) > 0.005:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El reparto suma ${suma:,.2f} y la orden es de ${total_orden:,.2f}. "
+                       f"Deben coincidir exactamente.",
+            )
+    elif isinstance(bank_account_id, str) and bank_account_id.strip():
+        destinos = [{"bank_account_id": bank_account_id, "amount": round(float(order["amount"]), 2)}]
+
     if order.get("direction") == "inbound":
         property_id = order.get("property_id")
         if property_id and order.get("concept") in ("enganche", "pago_capital"):
@@ -373,9 +422,17 @@ async def approve_payment_order(
 
         # Write the inbound ledger pair if a bank was named on approval. If
         # not, log loud — this is the gap that today leaves saldos stale.
-        if bank_account_id:
+        if destinos:
             try:
                 concept = (order.get("concept") or "").lower()
+                # Se postea un asiento POR DESTINO, cada uno con su importe. Con
+                # un único destino es idéntico a lo de siempre: misma llamada,
+                # mismo importe, mismo resultado.
+                primer_txn_id = None
+                # La columna bank_account_id de la orden solo admite una cuenta:
+                # se guarda la del importe MAYOR, que es la representativa, y el
+                # desglose completo queda en las notas para no perderlo.
+                destino_principal = max(destinos, key=lambda d: d["amount"])["bank_account_id"]
 
                 # pago_capital SETTLES the Capital accounts-receivable invoice
                 # (bank ← A/R) — the sale income was already recognized ONCE when
@@ -390,19 +447,21 @@ async def approve_payment_order(
                              .limit(1).execute())
                     if inv_q.data:
                         from api.routes.accounting import record_invoice_payment
-                        res = record_invoice_payment(
-                            inv_q.data[0]["id"], float(order["amount"]),
-                            bank_account_id=bank_account_id,
-                            payment_method=order.get("method"),
-                            notes=f"Pago de Maninos Capital — orden #{order_id[:8]}",
-                            cap_to_balance=True,
-                        )
-                        pay = res.get("payment") or {}
+                        for d in destinos:
+                            res = record_invoice_payment(
+                                inv_q.data[0]["id"], d["amount"],
+                                bank_account_id=d["bank_account_id"],
+                                payment_method=order.get("method"),
+                                notes=f"Pago de Maninos Capital — orden #{order_id[:8]}",
+                                cap_to_balance=True,
+                            )
+                            pay = res.get("payment") or {}
+                            primer_txn_id = primer_txn_id or pay.get("transaction_id")
                         sb.table("payment_orders").update({
-                            "accounting_transaction_id": pay.get("transaction_id"),
-                            "bank_account_id": bank_account_id,
+                            "accounting_transaction_id": primer_txn_id,
+                            "bank_account_id": destino_principal,
                         }).eq("id", order_id).execute()
-                        logger.info(f"[payment_orders] pago_capital settled AR invoice {inv_q.data[0].get('invoice_number')} for order {order_id}")
+                        logger.info(f"[payment_orders] pago_capital settled AR invoice {inv_q.data[0].get('invoice_number')} for order {order_id} en {len(destinos)} destino(s)")
                         settled_invoice = True
 
                 # enganche / pago_venta (and pago_capital with no AR invoice —
@@ -415,33 +474,39 @@ async def approve_payment_order(
                         "pago_capital": "sale_contado_received",
                     }
                     event_type = event_map.get(concept, "sale_contado_received")
-                    debit_id, credit_id = post_to_ledger(
-                        event_type=event_type,
-                        amount=float(order["amount"]),
-                        bank_account_id=bank_account_id,
-                        date=date.today().isoformat(),
-                        counterparty_name=order.get("payee_name") or "Cliente",
-                        counterparty_type="client",
-                        entity_type="payment_order",
-                        entity_id=order_id,
-                        property_id=property_id,
-                        description_data={"address": order.get("property_address") or "—"},
-                        payment_method=order.get("method"),
-                        notes=f"Orden de pago #{order_id[:8]} (aprobada/recibida)",
-                        status="confirmed",
-                        created_by=approved_by,
-                    )
+                    for d in destinos:
+                        debit_id, credit_id = post_to_ledger(
+                            event_type=event_type,
+                            amount=d["amount"],
+                            bank_account_id=d["bank_account_id"],
+                            date=date.today().isoformat(),
+                            counterparty_name=order.get("payee_name") or "Cliente",
+                            counterparty_type="client",
+                            entity_type="payment_order",
+                            entity_id=order_id,
+                            property_id=property_id,
+                            description_data={"address": order.get("property_address") or "—"},
+                            payment_method=order.get("method"),
+                            notes=f"Orden de pago #{order_id[:8]} (aprobada/recibida)",
+                            status="confirmed",
+                            created_by=approved_by,
+                        )
+                        primer_txn_id = primer_txn_id or debit_id
+                        logger.info(f"[payment_orders] asiento=({debit_id},{credit_id}) "
+                                    f"${d['amount']:,.2f} → cuenta {d['bank_account_id'][:8]} "
+                                    f"(orden {order_id})")
                     sb.table("payment_orders").update({
-                        "accounting_transaction_id": debit_id,
-                        "bank_account_id": bank_account_id,
+                        "accounting_transaction_id": primer_txn_id,
+                        "bank_account_id": destino_principal,
                     }).eq("id", order_id).execute()
-                    logger.info(f"[payment_orders] inbound ledger pair=({debit_id},{credit_id}) for order {order_id}")
 
                 # If this inbound payment closes out a contado sale, recognize
                 # COGS now. We can't wait for /confirm-transfer because that
                 # endpoint isn't used by the Notificaciones approval flow.
                 try:
-                    _maybe_recognize_cogs_for_sale(property_id, bank_account_id, approved_by)
+                    # Con reparto, bank_account_id puede venir vacío: se pasa el
+                    # destino principal para que el asiento de COGS tenga banco.
+                    _maybe_recognize_cogs_for_sale(property_id, bank_account_id or destino_principal, approved_by)
                 except Exception as cogs_err:
                     logger.warning(f"[payment_orders] COGS check failed: {cogs_err}")
             except ValueError as e:
@@ -452,8 +517,8 @@ async def approve_payment_order(
                 raise HTTPException(status_code=500, detail=f"Ledger post failed: {type(e).__name__}: {e}")
         else:
             logger.warning(
-                f"[payment_orders] Inbound order {order_id} approved WITHOUT bank_account_id — "
-                f"no ledger pair written. Update the UI to pass bank_account_id on approve."
+                f"[payment_orders] Inbound order {order_id} aprobada SIN destino (ni banco ni "
+                f"reparto) — no se escribió ningún asiento."
             )
 
         return {"ok": True, "data": result.data[0], "message": "Pago recibido aprobado."}

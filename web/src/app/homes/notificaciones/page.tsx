@@ -323,14 +323,35 @@ export default function NotificacionesPage() {
     }
   }
 
+  // Reparto del cobro entre varias cuentas: p. ej. $4.000 al banco y el resto
+  // en efectivo. Si no se reparte, se manda una sola cuenta como siempre.
+  const [repartir, setRepartir] = useState(false)
+  const [partes, setPartes] = useState<{ bank_account_id: string; amount: string }[]>([
+    { bank_account_id: '', amount: '' },
+    { bank_account_id: '', amount: '' },
+  ])
+
+  const totalOrden = Number(inboundApproveTarget?.amount || 0)
+  const sumaPartes = partes.reduce((a, p) => a + (parseFloat(p.amount) || 0), 0)
+  const restante = Math.round((totalOrden - sumaPartes) * 100) / 100
+  const repartoValido = repartir
+    && partes.every(p => p.bank_account_id && (parseFloat(p.amount) || 0) > 0)
+    && Math.abs(restante) < 0.005
+
   const submitInboundApprove = async () => {
-    if (!inboundApproveTarget || !inboundApproveBankId) return
+    if (!inboundApproveTarget) return
+    if (!repartir && !inboundApproveBankId) return
+    if (repartir && !repartoValido) return
     setApprovingId(inboundApproveTarget.id)
     try {
-      const qs = new URLSearchParams({
-        approved_by: teamUser?.id || '',
-        bank_account_id: inboundApproveBankId,
-      })
+      const qs = new URLSearchParams({ approved_by: teamUser?.id || '' })
+      if (repartir) {
+        qs.set('splits', JSON.stringify(
+          partes.map(p => ({ bank_account_id: p.bank_account_id, amount: parseFloat(p.amount) }))
+        ))
+      } else {
+        qs.set('bank_account_id', inboundApproveBankId)
+      }
       const res = await fetch(`/api/payment-orders/${inboundApproveTarget.id}/approve?${qs.toString()}`, {
         method: 'PATCH',
       })
@@ -339,6 +360,8 @@ export default function NotificacionesPage() {
         toast.success('Pago recibido aprobado y registrado en contabilidad')
         setInboundApproveTarget(null)
         setInboundApproveBankId('')
+        setRepartir(false)
+        setPartes([{ bank_account_id: '', amount: '' }, { bank_account_id: '', amount: '' }])
         fetchOrders()
         fetchInboundReceived()
       } else {
@@ -1317,27 +1340,92 @@ export default function NotificacionesPage() {
                 <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(inboundApproveTarget.amount)}</span>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                ¿En qué cuenta bancaria entró el dinero? *
-              </label>
-              <select
-                value={inboundApproveBankId}
-                onChange={e => setInboundApproveBankId(e.target.value)}
-                className="w-full p-3 border rounded-lg text-sm bg-white"
-                style={{ borderColor: 'var(--stone)' }}
-              >
-                <option value="">Seleccionar cuenta...</option>
-                {bankAccounts.map(ba => (
-                  <option key={ba.id} value={ba.id}>
-                    {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs mt-1.5" style={{ color: 'var(--slate)' }}>
-                Esto registra automáticamente el ingreso en contabilidad y deja la transacción lista para conciliar.
-              </p>
-            </div>
+            {!repartir ? (
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  ¿En qué cuenta bancaria entró el dinero? *
+                </label>
+                <select
+                  value={inboundApproveBankId}
+                  onChange={e => setInboundApproveBankId(e.target.value)}
+                  className="w-full p-3 border rounded-lg text-sm bg-white"
+                  style={{ borderColor: 'var(--stone)' }}
+                >
+                  <option value="">Seleccionar cuenta...</option>
+                  {bankAccounts.map(ba => (
+                    <option key={ba.id} value={ba.id}>
+                      {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--slate)' }}>
+                  Esto registra automáticamente el ingreso en contabilidad y deja la transacción lista para conciliar.
+                </p>
+                <button type="button" onClick={() => setRepartir(true)}
+                        className="mt-2 text-xs underline underline-offset-2" style={{ color: 'var(--navy-800)' }}>
+                  El dinero entró en varias cuentas
+                </button>
+              </div>
+            ) : (
+              /* Reparto: un cobro puede entrar partido (parte al banco, parte en
+                 efectivo). Se postea un asiento por destino, así que la suma
+                 tiene que ser exacta o el ingreso quedaría mal registrado. */
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  ¿Cómo se repartió el dinero? *
+                </label>
+                <div className="space-y-2">
+                  {partes.map((parte, i) => (
+                    <div key={i} className="flex gap-2">
+                      <select
+                        value={parte.bank_account_id}
+                        onChange={e => setPartes(ps => ps.map((p, j) => j === i ? { ...p, bank_account_id: e.target.value } : p))}
+                        className="flex-1 p-2.5 border rounded-lg text-sm bg-white"
+                        style={{ borderColor: 'var(--stone)' }}
+                      >
+                        <option value="">Cuenta…</option>
+                        {bankAccounts.map(ba => (
+                          <option key={ba.id} value={ba.id}>{ba.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number" step="0.01" min="0" placeholder="Monto"
+                        value={parte.amount}
+                        onChange={e => setPartes(ps => ps.map((p, j) => j === i ? { ...p, amount: e.target.value } : p))}
+                        className="w-32 p-2.5 border rounded-lg text-sm"
+                        style={{ borderColor: 'var(--stone)' }}
+                      />
+                      {partes.length > 2 && (
+                        <button type="button" onClick={() => setPartes(ps => ps.filter((_, j) => j !== i))}
+                                className="px-2 text-sm" style={{ color: 'var(--slate)' }}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between mt-2">
+                  <button type="button" onClick={() => setPartes(ps => [...ps, { bank_account_id: '', amount: '' }])}
+                          className="text-xs underline underline-offset-2" style={{ color: 'var(--navy-800)' }}>
+                    + Añadir otra cuenta
+                  </button>
+                  {/* El restante se muestra siempre: es la única forma de saber
+                      de un vistazo si falta o sobra dinero por repartir. */}
+                  <span className="text-xs font-medium"
+                        style={{ color: Math.abs(restante) < 0.005 ? 'var(--success)' : 'var(--danger)' }}>
+                    {Math.abs(restante) < 0.005
+                      ? 'Cuadra con el monto de la orden'
+                      : restante > 0
+                        ? `Falta por repartir ${formatCurrency(restante)}`
+                        : `Te pasas por ${formatCurrency(Math.abs(restante))}`}
+                  </span>
+                </div>
+
+                <button type="button" onClick={() => setRepartir(false)}
+                        className="mt-2 text-xs underline underline-offset-2" style={{ color: 'var(--slate)' }}>
+                  Entró todo en una sola cuenta
+                </button>
+              </div>
+            )}
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => { setInboundApproveTarget(null); setInboundApproveBankId('') }}
@@ -1348,7 +1436,7 @@ export default function NotificacionesPage() {
               </button>
               <button
                 onClick={submitInboundApprove}
-                disabled={!inboundApproveBankId || approvingId === inboundApproveTarget.id}
+                disabled={(repartir ? !repartoValido : !inboundApproveBankId) || approvingId === inboundApproveTarget.id}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--navy-800)' }}
               >
