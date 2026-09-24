@@ -464,6 +464,35 @@ export default function PropertyDetailPage() {
     } catch (err) { /* silent */ }
   }
 
+  /** Alta de un transportista nuevo, para los que no son ni Koko ni Trujillo. */
+  const [showNuevoMover, setShowNuevoMover] = useState(false)
+  const [nuevoMover, setNuevoMover] = useState({ name: '', company: '', phone: '' })
+  const [guardandoMover, setGuardandoMover] = useState(false)
+
+  const guardarMover = async () => {
+    if (!nuevoMover.name.trim()) { toast.error('El nombre es obligatorio'); return }
+    setGuardandoMover(true)
+    try {
+      const res = await fetch('/api/moves/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoMover),
+      })
+      const d = await res.json()
+      if (!res.ok || d.ok === false) { toast.error(d.detail || 'No se pudo guardar'); return }
+      await fetchMoverProviders()
+      // Se deja seleccionado: quien lo acaba de dar de alta es porque va a usarlo.
+      handleSelectProvider(d.provider)
+      setNuevoMover({ name: '', company: '', phone: '' })
+      setShowNuevoMover(false)
+      toast.success('Transportista guardado')
+    } catch {
+      toast.error('No se pudo guardar el transportista')
+    } finally {
+      setGuardandoMover(false)
+    }
+  }
+
   const handleSelectProvider = (provider: any) => {
     setNewMove(prev => ({
       ...prev,
@@ -2995,6 +3024,45 @@ ${price}
                       </div>
                     ))}
                   </div>
+
+                  {/* Alta de un transportista nuevo. La lista estaba fijada en
+                      el código, así que contratar a otro obligaba a reescribir
+                      sus datos en cada movida. */}
+                  {!showNuevoMover ? (
+                    <button type="button" onClick={() => setShowNuevoMover(true)}
+                            className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:border-orange-300 hover:text-orange-700">
+                      + Agregar transportista
+                    </button>
+                  ) : (
+                    <div className="mt-2 p-3 rounded-lg border border-orange-200 bg-orange-50/40 space-y-2">
+                      <p className="text-xs font-semibold text-navy-900">Nuevo transportista</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input type="text" value={nuevoMover.name} placeholder="Nombre del conductor *"
+                               onChange={e => setNuevoMover({ ...nuevoMover, name: e.target.value })}
+                               className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                        <input type="text" value={nuevoMover.company} placeholder="Compañía (opcional)"
+                               onChange={e => setNuevoMover({ ...nuevoMover, company: e.target.value })}
+                               className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                        <input type="tel" value={nuevoMover.phone} placeholder="Teléfono"
+                               onChange={e => setNuevoMover({ ...nuevoMover, phone: e.target.value })}
+                               className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Queda guardado para las próximas movidas y se le podrá mandar el mensaje de
+                        presupuesto. El gasto de la movida sigue yendo a la cuenta de la casa, como siempre.
+                      </p>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={guardarMover} disabled={guardandoMover}
+                                className="text-xs px-3 py-1.5 rounded-lg bg-orange-500 text-white font-medium disabled:opacity-60">
+                          {guardandoMover ? 'Guardando…' : 'Guardar'}
+                        </button>
+                        <button type="button" onClick={() => setShowNuevoMover(false)}
+                                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600">
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

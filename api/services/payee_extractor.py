@@ -72,7 +72,12 @@ def cargar_catalogo(sb) -> list[str]:
     comportamiento seguro.
     """
     nombres: list[str] = []
-    for tabla, campo in (("investors", "name"), ("clients", "name"), ("payees", "name")):
+    # `movers` se incluye porque un transportista cobra por transferencia y su
+    # nombre aparece en el extracto; sin él, esas líneas se quedaban sin payee.
+    # También se leen `company` de los transportistas: en el banco suelen figurar
+    # con el nombre de la empresa, no con el del conductor.
+    for tabla, campo in (("investors", "name"), ("clients", "name"), ("payees", "name"),
+                         ("movers", "name"), ("movers", "company")):
         try:
             filas = sb.table(tabla).select(campo).execute().data or []
             nombres += [f.get(campo) for f in filas if f.get(campo)]

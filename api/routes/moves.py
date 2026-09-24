@@ -316,7 +316,10 @@ async def delete_move(move_id: str):
 # MOVERS / PROVIDERS
 # ============================================================================
 
-MOVERS = [
+# Transportistas de siempre. Siguen aquí como RESPALDO: si la tabla `movers`
+# todavía no existe (migración 114), la lista sigue funcionando con estos dos en
+# vez de dejar la pantalla sin proveedores.
+MOVERS_POR_DEFECTO = [
     {
         "id": "trujillo",
         "name": "Angel Trujillo",
@@ -334,10 +337,93 @@ MOVERS = [
 ]
 
 
+def _solo_digitos(telefono: str) -> str:
+    """Teléfono en crudo para el enlace de SMS. Un número de 10 dígitos se
+    asume de EE. UU. y se le antepone el 1, como los dos que ya había."""
+    d = "".join(c for c in (telefono or "") if c.isdigit())
+    return f"1{d}" if len(d) == 10 else d
+
+
+def _movers() -> list:
+    """Transportistas activos. De la tabla si existe; si no, los de siempre."""
+    try:
+        filas = sb.table("movers").select("*").eq("is_active", True).order("name").execute().data or []
+        if filas:
+            return filas
+    except Exception as e:
+        logger.warning(f"[moves] tabla movers no disponible, se usan los fijos: {e}")
+    return MOVERS_POR_DEFECTO
+
+
+class MoverCreate(BaseModel):
+    name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.post("/providers")
+async def create_mover_provider(data: MoverCreate):
+    """Da de alta un transportista nuevo para que quede guardado.
+
+    El nombre del transportista se guarda como TEXTO en la movida, en la orden
+    de pago y en el asiento contable, así que dar uno de alta no crea ninguna
+    cuenta ni cambia el plan contable: el gasto de una movida va siempre a
+    "Movida <código de la casa>", que depende de la CASA y no de quién la mueve.
+
+    Lo único que cambia es que aparece en la lista para seleccionarlo, se le
+    puede mandar el SMS de presupuesto, y su nombre se reconoce al clasificar
+    movimientos de los extractos bancarios.
+    """
+    nombre = (data.name or "").strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+
+    # Identificador legible a partir del nombre, para no depender de un UUID en
+    # los enlaces de SMS. Si choca con otro, se numera.
+    base = "".join(c if c.isalnum() else "-" for c in nombre.lower()).strip("-")[:24] or "mover"
+    nuevo_id, n = base, 1
+    try:
+        existentes = {m["id"] for m in (sb.table("movers").select("id").execute().data or [])}
+        while nuevo_id in existentes:
+            n += 1
+            nuevo_id = f"{base}-{n}"
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Falta ejecutar migrations/114_movers.sql en Supabase para poder "
+                   "guardar transportistas nuevos.",
+        )
+
+    fila = {
+        "id": nuevo_id,
+        "name": nombre,
+        "company": (data.company or "").strip() or None,
+        "phone": (data.phone or "").strip() or None,
+        "phone_raw": _solo_digitos(data.phone or "") or None,
+        "notes": (data.notes or "").strip() or None,
+    }
+    creado = sb.table("movers").insert(fila).execute().data[0]
+
+    # También se registra como beneficiario de pago: así, cuando su nombre
+    # aparezca en un extracto bancario, la columna Payee lo reconoce en vez de
+    # quedarse vacía. Es best-effort — que falle no impide crear el transportista.
+    try:
+        etiqueta = fila["company"] or fila["name"]
+        ya = sb.table("payees").select("id").ilike("name", etiqueta).execute().data or []
+        if not ya:
+            sb.table("payees").insert({"name": etiqueta}).execute()
+    except Exception as e:
+        logger.warning(f"[moves] no se pudo registrar '{nombre}' como beneficiario: {e}")
+
+    logger.info(f"[moves] transportista dado de alta: {nombre} ({nuevo_id})")
+    return {"ok": True, "provider": creado}
+
+
 @router.get("/providers/list")
 async def list_mover_providers():
     """List all available mover providers."""
-    return {"ok": True, "providers": MOVERS}
+    return {"ok": True, "providers": _movers()}
 
 
 @router.get("/providers/sms-url")
@@ -349,7 +435,7 @@ async def get_sms_url(
     message: Optional[str] = None,
 ):
     """Generate an SMS URL to contact a mover provider."""
-    provider = next((p for p in MOVERS if p["id"] == provider_id), None)
+    provider = next((p for p in _movers() if p["id"] == provider_id), None)
     if not provider:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
