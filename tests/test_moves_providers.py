@@ -29,7 +29,11 @@ sys.modules["tools.supabase_client"] = type(sys)("tools.supabase_client")
 sys.modules["tools.supabase_client"].sb = _mock_sb
 
 import api.routes.moves as moves_mod
-from api.routes.moves import MOVERS
+# Los transportistas se leen ahora de la tabla `movers` (migración 114) con los
+# dos de siempre como respaldo. El mock de Supabase devuelve vacío, así que estas
+# pruebas ejercitan precisamente ese respaldo: la lista no puede quedarse en
+# blanco porque la tabla falte o esté vacía.
+from api.routes.moves import MOVERS_POR_DEFECTO as MOVERS
 
 
 def make_chainable(data):

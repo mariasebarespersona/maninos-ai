@@ -347,8 +347,11 @@ def _solo_digitos(telefono: str) -> str:
 def _movers() -> list:
     """Transportistas activos. De la tabla si existe; si no, los de siempre."""
     try:
-        filas = sb.table("movers").select("*").eq("is_active", True).order("name").execute().data or []
-        if filas:
+        filas = sb.table("movers").select("*").eq("is_active", True).order("name").execute().data
+        # Se exige que sea una LISTA con contenido: si la tabla no existe, viene
+        # vacía o la respuesta no tiene la forma esperada, se vuelve a los dos de
+        # siempre en vez de devolver algo que no son proveedores.
+        if isinstance(filas, list) and filas:
             return filas
     except Exception as e:
         logger.warning(f"[moves] tabla movers no disponible, se usan los fijos: {e}")
