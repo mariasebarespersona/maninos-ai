@@ -33,6 +33,8 @@ interface Fila {
   estatus: string | null
   notas: string | null
   note_id?: string
+  /** Viene del Excel, no de los pagarés de la app: solo consulta. */
+  _historico?: boolean
 }
 
 interface Registro {
@@ -41,7 +43,7 @@ interface Registro {
   activos: Fila[]
   liquidados: Fila[]
   totales: {
-    activos: number; liquidados: number
+    activos: number; liquidados: number; historicos_importados?: number
     monto_original: number | null; deuda_actual: number | null
     interes_mensual: number | null; pago_fijo_mensual: number | null
   }
@@ -131,8 +133,8 @@ export default function RegistroInversionistasPage() {
 
   const bloques = data
     ? ([
-        { titulo: 'Inversionistas activos', filas: data.activos },
-        { titulo: 'Liquidados (saldo en $0)', filas: data.liquidados },
+        { titulo: 'Inversionistas activos', filas: data.activos, historico: false },
+        { titulo: 'Liquidados (saldo en $0)', filas: data.liquidados, historico: true },
       ] as const)
     : []
 
@@ -201,6 +203,16 @@ export default function RegistroInversionistasPage() {
                   {b.titulo} <span style={{ color: 'var(--ash)' }}>({b.filas.length})</span>
                 </h2>
               </div>
+              {/* El histórico viene del Excel y no se recalcula. Se avisa aquí
+                  para que nadie sume los dos bloques creyendo que es lo mismo:
+                  arriba hay deuda viva, aquí dinero ya devuelto. */}
+              {b.historico && b.filas.length > 0 && (
+                <p className="px-4 py-2.5 text-xs" style={{ color: 'var(--slate)', backgroundColor: 'var(--cream)', borderBottom: '1px solid var(--sand)' }}>
+                  Histórico importado del Excel · solo consulta: no entra en contabilidad ni en los
+                  totales de arriba. Del origen solo eran fiables el nombre, el número, el monto y el
+                  saldo; el resto de columnas quedan vacías.
+                </p>
+              )}
               {b.filas.length === 0 ? (
                 <p className="px-4 py-6 text-sm" style={{ color: 'var(--slate)' }}>Ninguno.</p>
               ) : (

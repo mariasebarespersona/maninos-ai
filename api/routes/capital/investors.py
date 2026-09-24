@@ -443,6 +443,35 @@ async def get_registro_inversionistas():
         activos = [r for r in registro if r["_activo"]]
         liquidados = [r for r in registro if not r["_activo"]]
 
+        # Histórico importado del Excel: pagarés ya cerrados, SOLO para consulta.
+        # Viven en su propia tabla y no se recalculan — del Excel solo eran
+        # fiables el nombre, el número, el monto y el saldo, así que el resto de
+        # columnas van vacías. No entran en los totales de abajo ni en ninguna
+        # métrica de contabilidad: son un dato de archivo, no una obligación viva.
+        historicos = []
+        try:
+            for h in (sb.table("investor_historical_notes").select("*")
+                      .order("investor_number").execute().data or []):
+                historicos.append({
+                    "inversionista": h.get("investor_name"),
+                    "numero_inversionista": h.get("investor_number"),
+                    "correo": None, "numero_cuenta": None,
+                    "monto_original": float(h["original_amount"]) if h.get("original_amount") is not None else None,
+                    "deuda_actual": float(h["balance"]) if h.get("balance") is not None else None,
+                    "tasa_anual": None, "interes_mensual": None,
+                    "pago_fijo_mensual": None, "interes_anual_total": None,
+                    "plazo_meses": None, "fecha_inicio": None, "fecha_termino": None,
+                    "estatus": "Liquidado", "notas": h.get("notes"),
+                    "_activo": False, "_historico": True,
+                    "note_id": h.get("id"), "investor_id": None,
+                })
+        except Exception as e:
+            # La tabla es de la migración 113. Sin ella, el bloque sale vacío
+            # como hasta ahora: no se cae la pantalla por un histórico.
+            logger.warning(f"[registro] no se pudo leer el histórico: {e}")
+
+        liquidados = liquidados + historicos
+
         def _suma(filas, campo):
             vals = [r[campo] for r in filas if r.get(campo) is not None]
             return round(sum(vals), 2) if vals else None
@@ -455,6 +484,7 @@ async def get_registro_inversionistas():
             "totales": {
                 "activos": len(activos),
                 "liquidados": len(liquidados),
+                "historicos_importados": len(historicos),
                 "monto_original": _suma(activos, "monto_original"),
                 "deuda_actual": _suma(activos, "deuda_actual"),
                 "interes_mensual": _suma(activos, "interes_mensual"),
