@@ -69,6 +69,8 @@ interface HouseDetail {
   bucket: string
   capital_payment_status: string | null
   property: { id: string | null; code: string | null; address: string | null; city: string | null; state: string | null; yard: string | null; photo: string | null; renovation_cost: number | null }
+  /** Motivo por el que este contrato necesita revisión (carga histórica). */
+  revisar?: string | null
   client: { id: string | null; name: string | null; email: string | null; phone: string | null }
   terms: { sale_price: number; down_payment: number; financed_remaining: number; monthly_payment: number; term_months: number }
   contract: { id: string; status: string; start_date: string; end_date: string } | null
@@ -456,6 +458,25 @@ export default function FinancedHouseDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Revisión pendiente de una carga histórica. Se pone arriba del todo:
+          quien abre la ficha tiene que verlo antes de fiarse de las cifras. */}
+      {house.revisar && (
+        <div className="rounded-lg p-4 flex items-start gap-3"
+             style={{ backgroundColor: 'var(--error-light)', border: '1px solid var(--danger)' }}>
+          <AlertTriangle className="w-5 h-5 flex-none mt-0.5" style={{ color: 'var(--danger)' }} />
+          <div>
+            <p className="font-semibold text-sm" style={{ color: 'var(--danger)' }}>
+              Este contrato necesita revisión
+            </p>
+            <p className="text-sm mt-1" style={{ color: 'var(--charcoal)' }}>{house.revisar}</p>
+            <p className="text-xs mt-2" style={{ color: 'var(--slate)' }}>
+              Viene de la carga del Excel. Corrígelo en <strong>Contratos → Editar Términos
+              Pactados</strong>: el cambio se arrastra a la venta, al cronograma y al PDF.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Título de la casa — dato de Homes, aquí SOLO LECTURA.
           Se muestran los dos traspasos por separado porque significan cosas

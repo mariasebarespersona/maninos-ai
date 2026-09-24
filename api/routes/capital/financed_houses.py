@@ -263,6 +263,12 @@ def _house_card(sale: dict, contract: Optional[dict], pay: Optional[dict],
             # vez de afirmar que la casa no costó nada renovarla.
             "renovation_cost": reno_cost,
         },
+        # Motivo de revisión de una carga histórica, si lo hay. Va en las notas
+        # de la venta detrás de [REVISAR] para no necesitar columna nueva.
+        "revisar": (
+            (sale.get("rto_notes") or "").split("[REVISAR]", 1)[1].strip()
+            if "[REVISAR]" in (sale.get("rto_notes") or "") else None
+        ),
         "client": {
             "id": client.get("id"),
             "name": client.get("name"),
@@ -315,7 +321,7 @@ def _house_card(sale: dict, contract: Optional[dict], pay: Optional[dict],
 
 _SALE_SELECT = (
     "id, status, sale_type, sale_price, rto_down_payment, rto_monthly_payment, "
-    "rto_term_months, financed_remaining, financed_down_payment, capital_payment_status, "
+    "rto_term_months, financed_remaining, financed_down_payment, capital_payment_status, rto_notes, "
     "rto_contract_id, created_at, property_id, client_id, "
     "properties(id, property_code, address, city, state, photos), "
     "clients(id, name, email, phone)"

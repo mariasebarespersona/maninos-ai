@@ -30,6 +30,8 @@ interface FinancedHouse {
     photo: string | null
     renovation_cost: number | null
   }
+  /** Motivo por el que este contrato necesita revisión (carga histórica). */
+  revisar?: string | null
   client: { id: string | null; name: string | null; email: string | null; phone: string | null }
   terms: {
     sale_price: number
@@ -207,6 +209,19 @@ export default function FinancedHousesPage() {
                     <User className="w-4 h-4" style={{ color: 'var(--ash)' }} />
                     {h.client.name || 'Sin cliente'}
                   </div>
+
+                  {/* Revisión pendiente: la carga histórica trajo datos que la
+                      app no puede validar sola. En rojo y con el motivo, para
+                      que se vea desde el listado sin tener que entrar. */}
+                  {h.revisar && (
+                    <div className="flex items-start gap-2 text-xs rounded-lg p-2"
+                         style={{ backgroundColor: 'var(--error-light)', border: '1px solid var(--danger)' }}>
+                      <AlertTriangle className="w-4 h-4 flex-none mt-0.5" style={{ color: 'var(--danger)' }} />
+                      <span style={{ color: 'var(--danger)' }}>
+                        <strong>Revisar:</strong> {h.revisar}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Remodelación — dato de Homes, aquí solo se muestra. Se
                       omite la línea si nadie lo ha registrado, para no llenar
