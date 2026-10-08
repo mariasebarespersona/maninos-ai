@@ -184,7 +184,14 @@ def auto_generate_sale_documents(
             existing_docs = transfer_result.data[0].get("documents_checklist") or {}
             
             # Update documents_checklist with new file URLs
-            if results["bill_of_sale"]:
+            # No pisar un Bill of Sale real que alguien ya subió: solo se
+            # reemplaza si no hay fichero o si el que hay también era automático.
+            prev_bos = existing_docs.get("bill_of_sale")
+            bos_subido = (
+                isinstance(prev_bos, dict) and prev_bos.get("file_url")
+                and not prev_bos.get("auto_generated")
+            )
+            if results["bill_of_sale"] and not bos_subido:
                 existing_docs["bill_of_sale"] = {
                     "checked": True,
                     "file_url": results["bill_of_sale"],

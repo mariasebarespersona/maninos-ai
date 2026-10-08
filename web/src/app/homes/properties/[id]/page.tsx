@@ -1980,7 +1980,10 @@ ${price}
                   // Filter out _uploaded_file metadata if BOS was uploaded as a file
                   ...(() => {
                     const saved = property.document_data?.[`bos_${showBosTemplate}`] || {}
-                    const { _uploaded_file, file_url, file_name, ...templateData } = saved
+                    // Tras "Importar PDF" los campos a mano viven en _campos_previos;
+                    // sin desenvolverlos la plantilla abría con los nombres en blanco.
+                    const fuente = saved._uploaded_file ? (saved._campos_previos || {}) : saved
+                    const { _uploaded_file, file_url, file_name, _importado_el, _campos_previos, ...templateData } = fuente
                     return templateData
                   })(),
                   // Merge envelope signature (image/type only — don't override saved names)

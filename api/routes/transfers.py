@@ -648,18 +648,22 @@ async def upload_document(
         checklist[doc_key] = {
             "checked": checklist[doc_key],
             "file_url": file_url,
+            "file_name": file.filename,
             "uploaded_at": datetime.now().isoformat()
         }
     elif isinstance(checklist.get(doc_key), dict):
         # New format - update
         checklist[doc_key]["file_url"] = file_url
+        checklist[doc_key]["file_name"] = file.filename
         checklist[doc_key]["uploaded_at"] = datetime.now().isoformat()
+        checklist[doc_key].pop("auto_generated", None)
         checklist[doc_key]["checked"] = True  # Auto-check when file uploaded
     else:
         # Key doesn't exist - create new
         checklist[doc_key] = {
             "checked": True,
             "file_url": file_url,
+            "file_name": file.filename,
             "uploaded_at": datetime.now().isoformat()
         }
     

@@ -144,10 +144,22 @@ export default function BillOfSaleTemplate({
   const [saving, setSaving] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
-  // Update data when initialData changes
+  // Update data when initialData changes — but only the fields whose value
+  // actually changed. Callers build initialData as an inline object, so it is
+  // a NEW object on every parent render (the property page re-renders every
+  // 15s polling signatures). Re-merging all of it wiped whatever the user had
+  // typed: in a purchase, seller_name defaults to '' and the name vanished.
+  const prevInitialData = useRef(initialData)
   useEffect(() => {
-    if (initialData) {
-      setData(prev => ({ ...prev, ...initialData }))
+    const prev = (prevInitialData.current || {}) as Record<string, unknown>
+    prevInitialData.current = initialData
+    if (!initialData) return
+    const changed: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(initialData)) {
+      if (prev[k] !== v) changed[k] = v
+    }
+    if (Object.keys(changed).length > 0) {
+      setData(d => ({ ...d, ...changed }))
     }
   }, [initialData])
 
@@ -354,10 +366,15 @@ export default function BillOfSaleTemplate({
         {/* Seller / Buyer Info */}
         <div className="bos-section">
           <div className="bos-row">
-            <span className="bos-label">SELLER: SELLER 2: ADDRESS:</span>
+            <span className="bos-label">SELLER:</span>
             {renderField("seller_name", "bos-flex-1", "Nombre vendedor")}
           </div>
           <div className="bos-row">
+            <span className="bos-label">SELLER 2:</span>
+            {renderField("seller2_name", "bos-flex-1 bos-underline")}
+          </div>
+          <div className="bos-row">
+            <span className="bos-label">ADDRESS:</span>
             {renderField("seller_address", "bos-flex-1 bos-underline", "Dirección vendedor")}
           </div>
           <div className="bos-row bos-row-split">
@@ -1025,7 +1042,10 @@ export async function generateSignedBillOfSalePDF(
   pdf.setFontSize(10); pdf.setFont('helvetica', 'bold')
   line('SELLER:', M, y); pdf.setFont('helvetica', 'normal')
   line(data.seller_name || '________________________________', M + 22, y); y += 6
-  if ((data as any).seller_name_2) { pdf.setFont('helvetica', 'bold'); line('SELLER 2:', M, y); pdf.setFont('helvetica', 'normal'); line((data as any).seller_name_2, M + 25, y); y += 6 }
+  // The form field is seller2_name; seller_name_2 was never written by anyone,
+  // so the second seller never reached the PDF. Keep the old key as fallback.
+  const seller2 = data.seller2_name || (data as any).seller_name_2
+  if (seller2) { pdf.setFont('helvetica', 'bold'); line('SELLER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(seller2, M + 25, y); y += 6 }
   pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
   line(data.seller_address || '________________________________', M + 25, y); y += 6
   pdf.setFont('helvetica', 'bold'); line('PHONE:', M, y); pdf.setFont('helvetica', 'normal')
@@ -1036,7 +1056,8 @@ export async function generateSignedBillOfSalePDF(
 
   pdf.setFont('helvetica', 'bold'); line('BUYER:', M, y); pdf.setFont('helvetica', 'normal')
   line(data.buyer_name || 'MANINOS HOMES', M + 20, y); y += 6
-  if ((data as any).buyer_name_2) { pdf.setFont('helvetica', 'bold'); line('BUYER 2:', M, y); pdf.setFont('helvetica', 'normal'); line((data as any).buyer_name_2, M + 23, y); y += 6 }
+  const buyer2 = data.buyer2_name || (data as any).buyer_name_2
+  if (buyer2) { pdf.setFont('helvetica', 'bold'); line('BUYER 2:', M, y); pdf.setFont('helvetica', 'normal'); line(buyer2, M + 23, y); y += 6 }
   pdf.setFont('helvetica', 'bold'); line('ADDRESS:', M, y); pdf.setFont('helvetica', 'normal')
   line(data.buyer_address || '________________________________', M + 25, y); y += 6
   pdf.setFont('helvetica', 'bold'); line('DATE:', M, y); pdf.setFont('helvetica', 'normal')
