@@ -5,6 +5,7 @@ Generates Bill of Sale, Deposit Agreement, and other documents
 
 from io import BytesIO
 from datetime import datetime
+from pathlib import Path
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -18,6 +19,11 @@ COMPANY_NAME = "Maninos Homes LLC"
 COMPANY_ADDRESS = "Houston, Texas"
 COMPANY_PHONE = "832-745-9600"
 COMPANY_EMAIL = "info@maninoscapital.com"
+
+# Official logo printed on every Bill of Sale. Byte-identical copy of
+# web/public/images/bill-of-sale-logo.png (the backend image doesn't ship web/).
+BILL_OF_SALE_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "bill_of_sale_logo.png"
+BILL_OF_SALE_LOGO_RATIO = 439 / 926  # height / width
 
 
 def _get_styles():
@@ -393,7 +399,9 @@ def generate_bill_of_sale(
     sale_date = sale_date or datetime.now()
     
     # Header
-    story.append(Paragraph(COMPANY_NAME, styles['DocTitle']))
+    logo_w = 2.2 * inch
+    story.append(Image(str(BILL_OF_SALE_LOGO_PATH), width=logo_w, height=logo_w * BILL_OF_SALE_LOGO_RATIO))
+    story.append(Spacer(1, 10))
     story.append(Paragraph("BILL OF SALE", styles['DocTitle']))
     story.append(Paragraph("Mobile Home / Manufactured Housing", styles['DocSubtitle']))
     story.append(Spacer(1, 20))

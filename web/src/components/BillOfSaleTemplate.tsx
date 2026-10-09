@@ -188,6 +188,7 @@ export default function BillOfSaleTemplate({
       <html>
       <head>
         <title>Bill of Sale - Maninos Homes</title>
+        <base href="${window.location.origin}/">
         <style>
           @page { size: letter; margin: 0.5in; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -202,9 +203,10 @@ export default function BillOfSaleTemplate({
       </html>
     `)
     printWindow.document.close()
-    setTimeout(() => {
-      printWindow.print()
-    }, 500)
+    // Don't print before the logo has loaded, or it comes out blank.
+    const imgs = Array.from(printWindow.document.images)
+    Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = img.onerror = r })))
+      .then(() => printWindow.print())
   }
 
   const handleSave = async () => {
@@ -348,11 +350,8 @@ export default function BillOfSaleTemplate({
         <div className="bos-header">
           <div className="bos-logo-area">
             <div className="bos-logo-icon">
-              <svg viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-16 h-10">
-                <path d="M30 2 L5 30 L20 30 L30 15 L40 30 L55 30 Z" fill="#1a1a2e" stroke="#1a1a2e" strokeWidth="2"/>
-                <path d="M30 8 L15 28 L25 28 L30 18 L35 28 L45 28 Z" fill="#c9a84c" stroke="#c9a84c" strokeWidth="1"/>
-              </svg>
-              <span className="bos-logo-text">maninos homes</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={BILL_OF_SALE_LOGO_SRC} alt="Maninos Homes" className="bos-logo-img" />
             </div>
             <div className="bos-title-block">
               <h1 className="bos-company-name">MANINOS<br/>HOMES</h1>
@@ -670,11 +669,10 @@ export default function BillOfSaleTemplate({
           flex-direction: column;
           align-items: center;
         }
-        .bos-logo-text {
-          font-size: 10px;
-          color: #1a1a2e;
-          letter-spacing: 1px;
-          margin-top: 2px;
+        .bos-logo-img {
+          width: 150px;
+          height: auto;
+          display: block;
         }
         .bos-title-block {
           text-align: center;
@@ -962,7 +960,7 @@ function getPrintStyles(): string {
     .bos-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
     .bos-logo-area { display: flex; align-items: center; gap: 16px; }
     .bos-logo-icon { display: flex; flex-direction: column; align-items: center; }
-    .bos-logo-text { font-size: 10px; color: #1a1a2e; letter-spacing: 1px; margin-top: 2px; }
+    .bos-logo-img { width: 150px; height: auto; display: block; }
     .bos-title-block { text-align: center; }
     .bos-company-name { font-size: 26px; font-weight: 900; line-height: 1.1; letter-spacing: 2px; }
     .bos-doc-mark { font-size: 32px; font-weight: 900; border: 2px solid #000; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
@@ -1014,6 +1012,26 @@ function getPrintStyles(): string {
 }
 
 /**
+ * The official Maninos Homes logo, used on EVERY Bill of Sale (screen, print,
+ * jsPDF). The backend PDF (api/services/pdf_service.py) uses a byte-identical
+ * copy at api/assets/bill_of_sale_logo.png — a test checks they match.
+ */
+export const BILL_OF_SALE_LOGO_SRC = '/images/bill-of-sale-logo.png'
+const BILL_OF_SALE_LOGO_RATIO = 439 / 926 // height / width of the PNG
+
+async function loadLogoDataUrl(): Promise<string> {
+  const res = await fetch(BILL_OF_SALE_LOGO_SRC)
+  if (!res.ok) throw new Error(`No se pudo cargar el logo del Bill of Sale (${res.status})`)
+  const blob = await res.blob()
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('No se pudo leer el logo del Bill of Sale'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
  * Standalone function to generate a Bill of Sale PDF.
  * Used by the template component and confirmPurchase for uploading signed PDFs.
  */
@@ -1022,6 +1040,7 @@ export async function generateSignedBillOfSalePDF(
   transactionType: 'purchase' | 'sale' = 'purchase',
 ): Promise<File> {
   const { jsPDF } = await import('jspdf')
+  const logo = await loadLogoDataUrl()
   const data = { ...EMPTY_DATA, ...inputData }
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const W = pdf.internal.pageSize.getWidth()
@@ -1032,9 +1051,11 @@ export async function generateSignedBillOfSalePDF(
   const hline = (yPos: number) => { pdf.setDrawColor(0); pdf.setLineWidth(0.3); pdf.line(M, yPos, W - M, yPos) }
 
   // Header
-  pdf.setFontSize(18); pdf.setFont('helvetica', 'bold')
-  line('MANINOS HOMES', W / 2, y, { align: 'center' }); y += 8
-  pdf.setFontSize(14)
+  const logoW = 50
+  const logoH = logoW * BILL_OF_SALE_LOGO_RATIO
+  pdf.addImage(logo, 'PNG', (W - logoW) / 2, y - 5, logoW, logoH)
+  y += logoH + 3
+  pdf.setFontSize(14); pdf.setFont('helvetica', 'bold')
   line('BILL OF SALE', W / 2, y, { align: 'center' }); y += 4
   hline(y); y += 8
 
