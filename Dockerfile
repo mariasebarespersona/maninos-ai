@@ -1,5 +1,7 @@
 # Maninos AI — Backend (FastAPI)
-FROM python:3.12-slim
+# Misma imagen oficial de Docker Hub, servida desde el espejo público de AWS:
+# Docker Hub limita las descargas anónimas (429) y tumbaba los builds de Railway.
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
