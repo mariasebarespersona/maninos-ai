@@ -2049,8 +2049,8 @@ export default function MarketDashboard() {
                   <QualificationBadge listing={listing} />
                 </div>
                 
-                {/* Address */}
-                <p className="text-sm text-gray-700 font-medium mb-1">
+                {/* Address — en Facebook es el título del anuncio, texto de terceros */}
+                <p className="text-sm text-gray-700 font-medium mb-1" data-external-text>
                   {listing.address}
                 </p>
                 <p className="text-xs text-gray-500 mb-3">
@@ -2452,7 +2452,7 @@ export default function MarketDashboard() {
             {/* Breakdown: De cada $1 de venta */}
             {historicalStats.all && (
               <div className="bg-white/10 rounded-xl p-4">
-                <p className="text-gold-300 font-semibold text-sm mb-3">💰 De cada $1 que vendemos</p>
+                <p className="text-gold-300 font-semibold text-sm mb-3" data-external-text>💰 De cada $1 que vendemos</p>
                 {/* Visual bar */}
                 <div className="flex rounded-lg overflow-hidden h-8 mb-3">
                   <div 
