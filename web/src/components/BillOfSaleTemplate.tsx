@@ -1053,7 +1053,8 @@ export async function generateSignedBillOfSalePDF(
   // Header
   const logoW = 50
   const logoH = logoW * BILL_OF_SALE_LOGO_RATIO
-  pdf.addImage(logo, 'PNG', (W - logoW) / 2, y - 5, logoW, logoH)
+  // 'FAST' = deflate; without it jsPDF stores the PNG raw (~1.2 MB per PDF).
+  pdf.addImage(logo, 'PNG', (W - logoW) / 2, y - 5, logoW, logoH, undefined, 'FAST')
   y += logoH + 3
   pdf.setFontSize(14); pdf.setFont('helvetica', 'bold')
   line('BILL OF SALE', W / 2, y, { align: 'center' }); y += 4

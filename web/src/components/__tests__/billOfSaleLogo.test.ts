@@ -30,6 +30,8 @@ describe('Bill of Sale logo', () => {
     const file = await generateSignedBillOfSalePDF({ seller_name: 'Juan Perez', buyer_name: 'Maninos Homes LLC' })
     const text = await pdfText(file)
     expect(text).toMatch(/\/Subtype \/Image/)
+    // Compressed: storing the PNG raw made every Bill of Sale ~1.2 MB.
+    expect(file.size).toBeLessThan(400_000)
     if (process.env.BOS_PDF_OUT) fs.writeFileSync(process.env.BOS_PDF_OUT, Buffer.from(text, 'latin1'))
   })
 
