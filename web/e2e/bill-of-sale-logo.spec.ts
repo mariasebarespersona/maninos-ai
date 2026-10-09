@@ -50,6 +50,7 @@ async function loginAsStaff(page: Page) {
   await page.addInitScript(() => {
     try {
       localStorage.setItem('maninos_tour_completed_homes', 'true')
+      localStorage.setItem('maninos_tour_page_homes__homes_properties', 'true')
     } catch (e) { /* ignore */ }
     // Imprimir abre una ventana y llama a print(): lo registramos en vez de abrir el diálogo.
     const open = window.open.bind(window)
