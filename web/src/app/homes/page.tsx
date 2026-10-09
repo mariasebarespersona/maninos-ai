@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import SalesChart from '@/components/charts/SalesChart'
 import TexasMap from '@/components/charts/TexasMap'
+import { formatMoney } from '@/lib/money'
 
 interface Property {
   id: string
@@ -304,11 +305,11 @@ export default function HomesDashboard() {
         />
         <StatCard
           label="Inversión Total"
-          value={`$${((stats?.financials.totalPurchaseCost ?? 0) / 1000).toFixed(0)}k`}
+          value={formatMoney(stats?.financials.totalPurchaseCost ?? 0)}
           icon={DollarSign}
           color="#d4a853"
           bgColor="#fefce8"
-          subtitle={`Ø $${((stats?.financials.avgPurchasePrice ?? 0) / 1000).toFixed(1)}k por casa`}
+          subtitle={`Ø ${formatMoney(stats?.financials.avgPurchasePrice ?? 0)} por casa`}
           highlight
         />
       </div>
@@ -554,7 +555,7 @@ export default function HomesDashboard() {
             </p>
             <p className="text-xs" style={{ color: '#94a3b8' }}>
               {moveStats.upcoming > 0 ? `${moveStats.upcoming} próxima${moveStats.upcoming !== 1 ? 's' : ''} · ` : ''}
-              {moveStats.total_moves} total · ${moveStats.pending_cost.toLocaleString()} costo pendiente
+              {moveStats.total_moves} total · {formatMoney(moveStats.pending_cost)} costo pendiente
             </p>
           </div>
           <Link
@@ -745,7 +746,7 @@ function FinancialRow({
         className={`text-sm ${bold ? 'font-bold' : 'font-medium'}`}
         style={{ color: bold ? color : '#1e293b' }}
       >
-        ${value.toLocaleString()}
+        {formatMoney(value)}
       </span>
     </div>
   )

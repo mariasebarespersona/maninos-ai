@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { formatMoney } from '@/lib/money';
 import { 
   Search, 
   RefreshCw, 
@@ -815,7 +816,7 @@ export default function MarketDashboard() {
       home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
       seller_name: buyer,
       buyer_name: 'MANINOS HOMES LLC',
-      sale_price: selectedListing.listing_price ? `$${selectedListing.listing_price.toLocaleString()}` : '',
+      sale_price: selectedListing.listing_price ? formatMoney(selectedListing.listing_price) : '',
       sale_date: today,
       sale_transfer_date: today,
       page2_hud_label: label,
@@ -1283,7 +1284,7 @@ export default function MarketDashboard() {
         `Fuente: ${sourceLabels[selectedListing.source] || selectedListing.source}`,
         `URL: ${selectedListing.source_url}`,
         `Pago: Transferencia Bancaria${payment.payee_name ? ` a ${payment.payee_name}` : ''}`,
-        selectedListing.estimated_arv ? `Valor mercado estimado: $${selectedListing.estimated_arv.toLocaleString()}` : '',
+        selectedListing.estimated_arv ? `Valor mercado estimado: ${formatMoney(selectedListing.estimated_arv)}` : '',
         selectedListing.qualification_score ? `Score calificación: ${selectedListing.qualification_score}/100` : '',
         tdhcaResult?.certificate_number ? `TDHCA Cert#: ${tdhcaResult.certificate_number}` : '',
         tdhcaResult?.manufacturer ? `Fabricante: ${tdhcaResult.manufacturer} ${tdhcaResult.model || ''}` : '',
@@ -1612,13 +1613,13 @@ export default function MarketDashboard() {
             <div className="space-y-1">
               <p className="text-navy-300 text-xs sm:text-sm">Valor Mercado (Media)</p>
               <p className="text-xl sm:text-3xl font-bold text-white">
-                ${stats.market_analysis.market_value_avg.toLocaleString()}
+                {formatMoney(stats.market_analysis.market_value_avg)}
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-navy-300 text-xs sm:text-sm">Máx. Oferta (60%)</p>
               <p className="text-xl sm:text-3xl font-bold text-gold-400">
-                ${(stats.market_analysis.max_offer_60_percent || stats.market_analysis.max_offer_70_percent || 0).toLocaleString()}
+                {formatMoney(stats.market_analysis.max_offer_60_percent || stats.market_analysis.max_offer_70_percent || 0)}
               </p>
             </div>
             <div className="space-y-1">
@@ -1759,7 +1760,7 @@ export default function MarketDashboard() {
                 type="number"
                 value={minPriceFilter}
                 onChange={(e) => setMinPriceFilter(e.target.value)}
-                placeholder="$5,000"
+                placeholder="$5,000.00"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
                 data-testid="filter-price-min"
               />
@@ -1770,7 +1771,7 @@ export default function MarketDashboard() {
                 type="number"
                 value={maxPriceFilterNew}
                 onChange={(e) => setMaxPriceFilterNew(e.target.value)}
-                placeholder="$80,000"
+                placeholder="$80,000.00"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
                 data-testid="filter-price-max"
               />
@@ -2017,7 +2018,7 @@ export default function MarketDashboard() {
                       <>
                         <div className="flex items-center gap-1.5">
                           <p className="text-xl font-bold text-amber-700" data-testid="listing-price">
-                            ${listing.listing_price.toLocaleString()}
+                            {formatMoney(listing.listing_price)}
                           </p>
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wide">
                             Enganche
@@ -2025,7 +2026,7 @@ export default function MarketDashboard() {
                         </div>
                         {listing.estimated_full_price ? (
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Precio estimado: <span className="font-semibold text-navy-700">${listing.estimated_full_price.toLocaleString()}</span>
+                            Precio estimado: <span className="font-semibold text-navy-700">{formatMoney(listing.estimated_full_price)}</span>
                           </p>
                         ) : (
                           <p className="text-xs text-amber-600 mt-0.5">
@@ -2035,7 +2036,7 @@ export default function MarketDashboard() {
                       </>
                     ) : (
                       <p className="text-xl font-bold text-navy-900" data-testid="listing-price">
-                        ${listing.listing_price.toLocaleString()}
+                        {formatMoney(listing.listing_price)}
                       </p>
                     )}
                     {listing.estimated_roi && (
@@ -2105,7 +2106,7 @@ export default function MarketDashboard() {
                 {/* Max offer */}
                 {listing.max_offer_70_rule && (
                   <p className="text-xs text-gray-500 mb-1">
-                    Oferta máx (60%): ${listing.max_offer_70_rule.toLocaleString()}
+                    Oferta máx (60%): {formatMoney(listing.max_offer_70_rule)}
                   </p>
                 )}
                 
@@ -2153,7 +2154,7 @@ export default function MarketDashboard() {
                         <div className="flex items-baseline gap-2 mb-1">
                           <span className="text-[11px] text-gray-500">Comprar por:</span>
                           <span className="text-lg font-bold text-navy-900">
-                            ${pred.recommended_buy_price?.toLocaleString()}
+                            {formatMoney(pred.recommended_buy_price)}
                           </span>
                         </div>
                         
@@ -2166,16 +2167,16 @@ export default function MarketDashboard() {
                         <div className="grid grid-cols-3 gap-1 text-[10px]">
                           <div>
                             <span className="text-gray-400 block">Venta esp.</span>
-                            <span className="font-semibold text-green-700">${pred.expected_sale_price?.toLocaleString()}</span>
+                            <span className="font-semibold text-green-700">{formatMoney(pred.expected_sale_price)}</span>
                           </div>
                           <div>
                             <span className="text-gray-400 block">Remodel.</span>
-                            <span className="font-semibold text-gray-700">${pred.expected_remodelacion?.toLocaleString()}</span>
+                            <span className="font-semibold text-gray-700">{formatMoney(pred.expected_remodelacion)}</span>
                           </div>
                           <div>
                             <span className="text-gray-400 block">Ganancia</span>
                             <span className={`font-semibold ${pred.expected_ganancia_at_listing >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                              ${pred.expected_ganancia_at_listing?.toLocaleString()}
+                              {formatMoney(pred.expected_ganancia_at_listing)}
                             </span>
                           </div>
                         </div>
@@ -2256,7 +2257,7 @@ export default function MarketDashboard() {
                           <div className="bg-white border border-gray-200 rounded-lg p-2.5">
                             <p className="font-semibold text-navy-900 mb-1.5">🤝 Rango de negociación</p>
                             <div className="flex items-center gap-2">
-                              <span className="text-green-700 font-bold text-[11px]">${pred.negotiation_range?.min?.toLocaleString()}</span>
+                              <span className="text-green-700 font-bold text-[11px]">{formatMoney(pred.negotiation_range?.min)}</span>
                               <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden relative">
                                 {(() => {
                                   const rangeMin = pred.negotiation_range?.min || 0;
@@ -2267,19 +2268,19 @@ export default function MarketDashboard() {
                                   return (
                                     <>
                                       <div className="absolute inset-y-0 left-0 bg-green-300 rounded-full" style={{ width: `${Math.min(pctBuy, 100)}%` }} />
-                                      <div className="absolute top-[-1px] w-2 h-4 bg-green-700 rounded-sm" style={{ left: `${Math.min(pctBuy, 98)}%` }} title={`Recomendado: $${pred.recommended_buy_price?.toLocaleString()}`} />
-                                      <div className="absolute top-[-1px] w-2 h-4 bg-red-500 rounded-sm" style={{ left: `${Math.min(pctListing, 98)}%` }} title={`Lista: $${listing.listing_price?.toLocaleString()}`} />
+                                      <div className="absolute top-[-1px] w-2 h-4 bg-green-700 rounded-sm" style={{ left: `${Math.min(pctBuy, 98)}%` }} title={`Recomendado: ${formatMoney(pred.recommended_buy_price)}`} />
+                                      <div className="absolute top-[-1px] w-2 h-4 bg-red-500 rounded-sm" style={{ left: `${Math.min(pctListing, 98)}%` }} title={`Lista: ${formatMoney(listing.listing_price)}`} />
                                     </>
                                   );
                                 })()}
                               </div>
-                              <span className="text-gray-500 font-bold text-[11px]">${pred.negotiation_range?.max?.toLocaleString()}</span>
+                              <span className="text-gray-500 font-bold text-[11px]">{formatMoney(pred.negotiation_range?.max)}</span>
                             </div>
                             <div className="flex justify-between text-[10px] text-gray-400 mt-1">
                               <span>Ideal</span>
                               <span className="flex items-center gap-3">
-                                <span><span className="inline-block w-2 h-2 bg-green-700 rounded mr-0.5" /> Comprar ${pred.recommended_buy_price?.toLocaleString()}</span>
-                                <span><span className="inline-block w-2 h-2 bg-red-500 rounded mr-0.5" /> Lista ${listing.listing_price?.toLocaleString()}</span>
+                                <span><span className="inline-block w-2 h-2 bg-green-700 rounded mr-0.5" /> Comprar {formatMoney(pred.recommended_buy_price)}</span>
+                                <span><span className="inline-block w-2 h-2 bg-red-500 rounded mr-0.5" /> Lista {formatMoney(listing.listing_price)}</span>
                               </span>
                             </div>
                           </div>
@@ -2305,10 +2306,10 @@ export default function MarketDashboard() {
                                     {pred.similar_houses.map((h: any, i: number) => (
                                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                         <td className="py-1 px-1.5 font-medium">{h.id}</td>
-                                        <td className="py-1 px-1.5 text-right">${h.precio_compra?.toLocaleString()}</td>
-                                        <td className="py-1 px-1.5 text-right">${h.remodelacion?.toLocaleString()}</td>
-                                        <td className="py-1 px-1.5 text-right text-green-700">${h.precio_venta?.toLocaleString()}</td>
-                                        <td className="py-1 px-1.5 text-right">${h.ganancia?.toLocaleString()}</td>
+                                        <td className="py-1 px-1.5 text-right">{formatMoney(h.precio_compra)}</td>
+                                        <td className="py-1 px-1.5 text-right">{formatMoney(h.remodelacion)}</td>
+                                        <td className="py-1 px-1.5 text-right text-green-700">{formatMoney(h.precio_venta)}</td>
+                                        <td className="py-1 px-1.5 text-right">{formatMoney(h.ganancia)}</td>
                                         <td className="py-1 px-1.5 text-right">{h.margen_pct?.toFixed(0)}%</td>
                                         <td className="py-1 px-1.5 text-right text-gray-400">{h.similitud}%</td>
                                       </tr>
@@ -2407,15 +2408,15 @@ export default function MarketDashboard() {
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-navy-200">Compra:</span>
-                    <span className="font-medium">${historicalStats.single_wide.compra_min.toLocaleString()} – ${historicalStats.single_wide.compra_max.toLocaleString()}</span>
+                    <span className="font-medium">{formatMoney(historicalStats.single_wide.compra_min)} – {formatMoney(historicalStats.single_wide.compra_max)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Venta:</span>
-                    <span className="font-medium text-green-400">${historicalStats.single_wide.venta_min.toLocaleString()} – ${historicalStats.single_wide.venta_max.toLocaleString()}</span>
+                    <span className="font-medium text-green-400">{formatMoney(historicalStats.single_wide.venta_min)} – {formatMoney(historicalStats.single_wide.venta_max)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Remodelación media:</span>
-                    <span className="font-medium">${Math.round(historicalStats.single_wide.remodelacion_avg).toLocaleString()}</span>
+                    <span className="font-medium">{formatMoney(Math.round(historicalStats.single_wide.remodelacion_avg))}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Margen medio:</span>
@@ -2431,15 +2432,15 @@ export default function MarketDashboard() {
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-navy-200">Compra:</span>
-                    <span className="font-medium">${historicalStats.double_wide.compra_min.toLocaleString()} – ${historicalStats.double_wide.compra_max.toLocaleString()}</span>
+                    <span className="font-medium">{formatMoney(historicalStats.double_wide.compra_min)} – {formatMoney(historicalStats.double_wide.compra_max)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Venta:</span>
-                    <span className="font-medium text-green-400">${historicalStats.double_wide.venta_min.toLocaleString()} – ${historicalStats.double_wide.venta_max.toLocaleString()}</span>
+                    <span className="font-medium text-green-400">{formatMoney(historicalStats.double_wide.venta_min)} – {formatMoney(historicalStats.double_wide.venta_max)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Remodelación media:</span>
-                    <span className="font-medium">${Math.round(historicalStats.double_wide.remodelacion_avg).toLocaleString()}</span>
+                    <span className="font-medium">{formatMoney(Math.round(historicalStats.double_wide.remodelacion_avg))}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">Margen medio:</span>
@@ -2476,15 +2477,15 @@ export default function MarketDashboard() {
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-navy-200">🔵 Compra de la casa:</span>
-                    <span className="font-medium">{historicalStats.all.compra_pct_venta}% → ${Math.round(historicalStats.all.compra_avg).toLocaleString()} promedio</span>
+                    <span className="font-medium">{historicalStats.all.compra_pct_venta}% → {formatMoney(Math.round(historicalStats.all.compra_avg))} promedio</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">🟡 Remodelación:</span>
-                    <span className="font-medium">{historicalStats.all.remodelacion_pct_venta}% → ${Math.round(historicalStats.all.remodelacion_avg).toLocaleString()} promedio</span>
+                    <span className="font-medium">{historicalStats.all.remodelacion_pct_venta}% → {formatMoney(Math.round(historicalStats.all.remodelacion_avg))} promedio</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-navy-200">🟢 Ganancia (sin movida/comisión):</span>
-                    <span className="font-medium text-green-400">{historicalStats.all.ganancia_pct_venta}% → ${Math.round(historicalStats.all.ganancia_avg).toLocaleString()} promedio</span>
+                    <span className="font-medium text-green-400">{historicalStats.all.ganancia_pct_venta}% → {formatMoney(Math.round(historicalStats.all.ganancia_avg))} promedio</span>
                   </div>
                 </div>
                 <p className="text-navy-300 text-[10px] mt-2 pt-2 border-t border-white/10">
@@ -2503,11 +2504,11 @@ export default function MarketDashboard() {
           <div>
             <strong>Regla del 60%:</strong>
             <p className="text-blue-600">Precio ≤ Valor Mercado × 60%</p>
-            <p className="text-blue-500 text-xs">Renovación NO incluida ($5K-$15K aparte)</p>
+            <p className="text-blue-500 text-xs">Renovación NO incluida ($5,000.00-$15,000.00 aparte)</p>
           </div>
           <div>
             <strong>Rango de Precio:</strong>
-            <p className="text-blue-600">$5,000 — $80,000</p>
+            <p className="text-blue-600">$5,000.00 — $80,000.00</p>
             <p className="text-blue-500 text-xs">Casa de una sección + Casa doble</p>
           </div>
           <div>
@@ -2558,7 +2559,7 @@ export default function MarketDashboard() {
               <div className="mt-4 bg-white/10 rounded-lg p-3">
                 <p className="font-medium break-words">{selectedListing.address}</p>
                 <div className="flex items-center gap-3 sm:gap-4 mt-2 text-sm flex-wrap">
-                  <span className="text-2xl font-bold">${selectedListing.listing_price.toLocaleString()}</span>
+                  <span className="text-2xl font-bold">{formatMoney(selectedListing.listing_price)}</span>
                   {selectedListing.price_type === 'down_payment' && (
                     <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase">
                       Enganche
@@ -2573,7 +2574,7 @@ export default function MarketDashboard() {
                 </div>
                 {selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price && (
                   <p className="text-sm text-amber-200 mt-1">
-                    Precio total estimado: <span className="font-bold">${selectedListing.estimated_full_price.toLocaleString()}</span>
+                    Precio total estimado: <span className="font-bold">{formatMoney(selectedListing.estimated_full_price)}</span>
                   </p>
                 )}
                 {/* Prediction summary in modal header */}
@@ -2593,25 +2594,25 @@ export default function MarketDashboard() {
                         <div className="bg-white/10 rounded-lg p-2">
                           <p className="text-[10px] text-navy-300 uppercase">Comprar por</p>
                           <p className="text-lg font-bold text-gold-300">
-                            ${modalPred.recommended_buy_price?.toLocaleString()}
+                            {formatMoney(modalPred.recommended_buy_price)}
                           </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-navy-300 uppercase">Máximo</p>
                           <p className="text-lg font-bold text-white">
-                            ${modalPred.recommended_max_price?.toLocaleString()}
+                            {formatMoney(modalPred.recommended_max_price)}
                           </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-navy-300 uppercase">Venta Esperada</p>
                           <p className="text-lg font-bold text-green-400">
-                            ${modalPred.expected_sale_price?.toLocaleString()}
+                            {formatMoney(modalPred.expected_sale_price)}
                           </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-navy-300 uppercase">Remodelación</p>
                           <p className="text-lg font-bold text-yellow-300">
-                            ${modalPred.expected_remodelacion?.toLocaleString()}
+                            {formatMoney(modalPred.expected_remodelacion)}
                           </p>
                         </div>
                         <div>
@@ -2619,7 +2620,7 @@ export default function MarketDashboard() {
                           <p className={`text-lg font-bold ${
                             (modalPred.expected_ganancia_at_listing || 0) > 0 ? 'text-green-400' : 'text-red-400'
                           }`}>
-                            ${modalPred.expected_ganancia_at_listing?.toLocaleString()}
+                            {formatMoney(modalPred.expected_ganancia_at_listing)}
                           </p>
                         </div>
                       </div>
@@ -2686,7 +2687,7 @@ export default function MarketDashboard() {
                             serial_number: tdhcaResult?.serial_number || '',
                             hud_label_number: tdhcaResult?.label_seal || '',
                             location_of_home: `${selectedListing.address || ''}, ${selectedListing.city || ''}, ${selectedListing.state || 'TX'}`,
-                            total_payment: `$${selectedListing.listing_price?.toLocaleString() || ''}`,
+                            total_payment: selectedListing.listing_price ? formatMoney(selectedListing.listing_price) : '',
                             is_new: false,
                             is_used: true,
                           } : undefined}
@@ -3135,7 +3136,7 @@ export default function MarketDashboard() {
                             // Block 4B — buyer is always Maninos
                             buyer_name: 'MANINOS HOMES LLC',
                             // Block 4C/D
-                            sale_price: `$${selectedListing.listing_price?.toLocaleString() || ''}`,
+                            sale_price: selectedListing.listing_price ? formatMoney(selectedListing.listing_price) : '',
                             sale_date: new Date().toISOString().split('T')[0],
                             sale_transfer_date: new Date().toISOString().split('T')[0],
                             // Page 2 — auto-sync from Block 2A
@@ -3360,14 +3361,14 @@ export default function MarketDashboard() {
                       <span className="text-green-700 flex-shrink-0">Precio de Compra</span>
                       <div className="text-right">
                         <span className="font-bold text-green-900 text-xl">
-                          ${(selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
+                          {formatMoney(selectedListing.price_type === 'down_payment' && selectedListing.estimated_full_price
                             ? selectedListing.estimated_full_price
                             : selectedListing.listing_price
-                          ).toLocaleString()}
+                          )}
                         </span>
                         {selectedListing.price_type === 'down_payment' && (
                           <p className="text-xs text-amber-600">
-                            Anuncio mostraba enganche: ${selectedListing.listing_price.toLocaleString()}
+                            Anuncio mostraba enganche: {formatMoney(selectedListing.listing_price)}
                           </p>
                         )}
                       </div>
@@ -3496,25 +3497,25 @@ export default function MarketDashboard() {
                       <div className="bg-gold-50 border border-gold-200 rounded-lg p-3 text-center shadow-sm">
                         <p className="text-[10px] text-gold-700 uppercase font-medium">Comprar por</p>
                         <p className="text-xl font-bold text-gold-800">
-                          ${confirmPred.recommended_buy_price?.toLocaleString()}
+                          {formatMoney(confirmPred.recommended_buy_price)}
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center shadow-sm">
                         <p className="text-[10px] text-gray-500 uppercase font-medium">Máximo</p>
                         <p className="text-xl font-bold text-navy-900">
-                          ${confirmPred.recommended_max_price?.toLocaleString()}
+                          {formatMoney(confirmPred.recommended_max_price)}
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center shadow-sm">
                         <p className="text-[10px] text-gray-500 uppercase font-medium">Venta Esperada</p>
                         <p className="text-xl font-bold text-green-700">
-                          ${confirmPred.expected_sale_price?.toLocaleString()}
+                          {formatMoney(confirmPred.expected_sale_price)}
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center shadow-sm">
                         <p className="text-[10px] text-gray-500 uppercase font-medium">Remodelación</p>
                         <p className="text-xl font-bold text-yellow-600">
-                          ${confirmPred.expected_remodelacion?.toLocaleString()}
+                          {formatMoney(confirmPred.expected_remodelacion)}
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center shadow-sm">
@@ -3522,7 +3523,7 @@ export default function MarketDashboard() {
                         <p className={`text-xl font-bold ${
                           (confirmPred.expected_ganancia_at_listing || 0) > 0 ? 'text-green-700' : 'text-red-600'
                         }`}>
-                          ${confirmPred.expected_ganancia_at_listing?.toLocaleString()}
+                          {formatMoney(confirmPred.expected_ganancia_at_listing)}
                         </p>
                       </div>
                     </div>
@@ -3567,9 +3568,9 @@ export default function MarketDashboard() {
                                     {h.tipo === 'SINGLE' ? 'Single' : 'Double'}
                                     {h.cuartos && h.banos ? ` ${h.cuartos}/${h.banos}` : ''}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right text-gray-800">${h.precio_compra?.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right text-gray-600">${h.remodelacion?.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right text-green-700 font-medium">${h.precio_venta?.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right text-gray-800">{formatMoney(h.precio_compra)}</td>
+                                  <td className="px-2 py-1.5 text-right text-gray-600">{formatMoney(h.remodelacion)}</td>
+                                  <td className="px-2 py-1.5 text-right text-green-700 font-medium">{formatMoney(h.precio_venta)}</td>
                                   <td className={`px-2 py-1.5 text-right font-medium ${
                                     (h.margen_pct || 0) >= 20 ? 'text-green-700' : 'text-yellow-600'
                                   }`}>{h.margen_pct}%</td>

@@ -7,6 +7,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
+import { formatMoney } from '@/lib/money'
 
 // ─── Shared Types ───────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ export function BankTransferStep({
       {/* Payment Amount */}
       <div className="bg-gradient-to-r from-navy-900 to-navy-800 rounded-xl p-5 text-white">
         <p className="text-sm text-navy-200 mb-1">Monto a pagar al vendedor</p>
-        <div className="text-3xl font-bold">${payment.amount.toLocaleString()}</div>
+        <div className="text-3xl font-bold">{formatMoney(payment.amount)}</div>
         <p className="text-xs text-navy-300 mt-1">Transferencia bancaria &middot; Coordinado por Abigail (Tesorería)</p>
       </div>
 

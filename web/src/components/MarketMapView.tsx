@@ -8,6 +8,7 @@ import {
   CheckCircle,
   ChevronRight,
 } from 'lucide-react';
+import { formatMoney } from '@/lib/money';
 
 // ============================================
 // TYPES
@@ -363,10 +364,10 @@ export default function MarketMapView({ listings, onReviewClick, sourceColors, s
         const popupHtml = `
           <div style="min-width: 220px; font-family: system-ui, sans-serif;">
             <div style="font-weight: 700; font-size: 16px; color: ${isDP ? '#92400e' : '#1a2744'}; margin-bottom: 4px;">
-              $${listing.listing_price.toLocaleString()}
+              ${formatMoney(listing.listing_price)}
               ${isDP ? '<span style="font-size:10px;padding:2px 6px;margin-left:6px;background:#fef3c7;color:#92400e;border-radius:4px;font-weight:700;text-transform:uppercase;">Enganche</span>' : ''}
             </div>
-            ${isDP && listing.estimated_full_price ? `<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Precio estimado: <b>$${listing.estimated_full_price.toLocaleString()}</b></div>` : ''}
+            ${isDP && listing.estimated_full_price ? `<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Precio estimado: <b>${formatMoney(listing.estimated_full_price)}</b></div>` : ''}
             <div style="font-size: 12px; color: #4b5563; margin-bottom: 6px;">
               ${listing.address}
             </div>
@@ -545,7 +546,7 @@ export default function MarketMapView({ listings, onReviewClick, sourceColors, s
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex items-center gap-1.5 truncate">
                       <p className={`text-base font-bold truncate ${listing.price_type === 'down_payment' ? 'text-amber-700' : 'text-navy-900'}`}>
-                        ${listing.listing_price.toLocaleString()}
+                        {formatMoney(listing.listing_price)}
                       </p>
                       {listing.price_type === 'down_payment' && (
                         <span className="flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 uppercase">

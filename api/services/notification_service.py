@@ -95,8 +95,8 @@ def notify_property_purchased(property_id: str, address: str, purchase_price: fl
     code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="purchase",
-        title=f"Casa comprada: {address[:40]}{code_str} — ${purchase_price:,.0f}",
-        message=f"Se ha comprado '{address}' por ${purchase_price:,.0f}. Vendedor: {seller or 'N/A'}. Orden de pago creada para Abigail.",
+        title=f"Casa comprada: {address[:40]}{code_str} — ${purchase_price:,.2f}",
+        message=f"Se ha comprado '{address}' por ${purchase_price:,.2f}. Vendedor: {seller or 'N/A'}. Orden de pago creada para Abigail.",
         property_id=property_id,
         amount=purchase_price,
         priority="high",
@@ -113,8 +113,8 @@ def notify_new_sale(sale_id: str, property_id: str, sale_type: str, sale_price: 
     next_step = "Pendiente transferencia bancaria." if sale_type == "contado" else "Pendiente aprobación de contrato RTO en Capital."
     return create_notification(
         type="sale",
-        title=f"Venta {tipo}: ${sale_price:,.0f} — {prop['address'][:35]}{code_str}",
-        message=f"Venta {tipo} de '{prop['address']}' por ${sale_price:,.0f} a {client_name or 'cliente'}. {next_step}",
+        title=f"Venta {tipo}: ${sale_price:,.2f} — {prop['address'][:35]}{code_str}",
+        message=f"Venta {tipo} de '{prop['address']}' por ${sale_price:,.2f} a {client_name or 'cliente'}. {next_step}",
         category="both",
         property_id=property_id,
         related_entity_type="sale",
@@ -133,8 +133,8 @@ def notify_commission(sale_id: str, property_id: str, employee_name: str, amount
     role_label = {"found_by": "encontró al cliente", "sold_by": "cerró la venta"}.get(role, role)
     return create_notification(
         type="commission",
-        title=f"Comisión: ${amount:,.0f} — {employee_name} — {prop['address'][:30]}{code_str}",
-        message=f"Comisión de ${amount:,.0f} para {employee_name} ({role_label}). Propiedad: {prop['address']}. Pendiente de pago.",
+        title=f"Comisión: ${amount:,.2f} — {employee_name} — {prop['address'][:30]}{code_str}",
+        message=f"Comisión de ${amount:,.2f} para {employee_name} ({role_label}). Propiedad: {prop['address']}. Pendiente de pago.",
         property_id=property_id,
         related_entity_type="sale",
         related_entity_id=sale_id,
@@ -153,8 +153,8 @@ def notify_payment_order_created(order_id: str, property_id: str, amount: float,
     concept_str = f" — {concept}" if concept else ""
     return create_notification(
         type="payment_order",
-        title=f"Orden de pago: ${amount:,.0f} — {addr[:40]}{code_str}",
-        message=f"${amount:,.0f} a {payee_name or 'vendedor'}{concept_str}. Propiedad: {addr}{code_str}. Pendiente aprobación de administrador.",
+        title=f"Orden de pago: ${amount:,.2f} — {addr[:40]}{code_str}",
+        message=f"${amount:,.2f} a {payee_name or 'vendedor'}{concept_str}. Propiedad: {addr}{code_str}. Pendiente aprobación de administrador.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -171,8 +171,8 @@ def notify_payment_order_approved(order_id: str, property_id: str, amount: float
     code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="payment_order",
-        title=f"Pago aprobado: ${amount:,.0f} — {prop['address'][:40]}{code_str}",
-        message=f"Orden de pago por ${amount:,.0f} aprobada por {approved_by or 'admin'}. Propiedad: {prop['address']}. Abigail puede procesar.",
+        title=f"Pago aprobado: ${amount:,.2f} — {prop['address'][:40]}{code_str}",
+        message=f"Orden de pago por ${amount:,.2f} aprobada por {approved_by or 'admin'}. Propiedad: {prop['address']}. Abigail puede procesar.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -190,8 +190,8 @@ def notify_payment_completed(order_id: str, property_id: str, amount: float, met
     concept_str = f" [{concept}]" if concept else ""
     return create_notification(
         type="payment_order",
-        title=f"Pago completado: ${amount:,.0f} — {prop['address'][:35]}{code_str}",
-        message=f"Pago de ${amount:,.0f} a {payee_name or 'vendedor'} via {method or 'transferencia'}{concept_str}. Propiedad: {prop['address']}. Registrado en contabilidad.",
+        title=f"Pago completado: ${amount:,.2f} — {prop['address'][:35]}{code_str}",
+        message=f"Pago de ${amount:,.2f} a {payee_name or 'vendedor'} via {method or 'transferencia'}{concept_str}. Propiedad: {prop['address']}. Registrado en contabilidad.",
         property_id=property_id,
         related_entity_type="payment_order",
         related_entity_id=order_id,
@@ -207,8 +207,8 @@ def notify_renovation_submitted(property_id: str, total_cost: float, responsable
     items_str = f" — {items_summary}" if items_summary else ""
     return create_notification(
         type="renovation",
-        title=f"Renovación {prop['address'][:35]}{code_str}: ${total_cost:,.0f}",
-        message=f"Cotización de renovación por ${total_cost:,.0f} para {prop['address']}{items_str}. Responsable: {responsable or 'N/A'}. Pendiente aprobación.",
+        title=f"Renovación {prop['address'][:35]}{code_str}: ${total_cost:,.2f}",
+        message=f"Cotización de renovación por ${total_cost:,.2f} para {prop['address']}{items_str}. Responsable: {responsable or 'N/A'}. Pendiente aprobación.",
         property_id=property_id,
         related_entity_type="renovation",
         amount=total_cost,
@@ -224,8 +224,8 @@ def notify_renovation_approved(property_id: str, total_cost: float, approved_by:
     code_str = f" ({prop['code']})" if prop.get("code") else ""
     return create_notification(
         type="renovation",
-        title=f"Renovación aprobada: ${total_cost:,.0f} — {prop['address'][:35]}{code_str}",
-        message=f"Cotización de ${total_cost:,.0f} para {prop['address']} aprobada por {approved_by or 'admin'}. Solicitar pago a Abigail.",
+        title=f"Renovación aprobada: ${total_cost:,.2f} — {prop['address'][:35]}{code_str}",
+        message=f"Cotización de ${total_cost:,.2f} para {prop['address']} aprobada por {approved_by or 'admin'}. Solicitar pago a Abigail.",
         property_id=property_id,
         related_entity_type="renovation",
         amount=total_cost,
@@ -243,8 +243,8 @@ def notify_move_created(property_id: str, move_cost: float, origin: str = "", de
     driver_str = f" Conductor: {driver}." if driver else ""
     return create_notification(
         type="move",
-        title=f"Movida contratada: ${move_cost:,.0f} — {prop['address'][:30]}{code_str}",
-        message=f"Movida de '{origin}' a '{destination}' por ${move_cost:,.0f}. Propiedad: {prop['address']}.{company_str}{driver_str}",
+        title=f"Movida contratada: ${move_cost:,.2f} — {prop['address'][:30]}{code_str}",
+        message=f"Movida de '{origin}' a '{destination}' por ${move_cost:,.2f}. Propiedad: {prop['address']}.{company_str}{driver_str}",
         property_id=property_id,
         related_entity_type="move",
         amount=move_cost,
@@ -256,8 +256,8 @@ def notify_capital_payment_received(payment_id: str, property_id: str, amount: f
     """Capital received a payment from a client (RTO or down payment)."""
     return create_notification(
         type="capital_payment",
-        title=f"Pago {payment_type} recibido: ${amount:,.0f}",
-        message=f"Pago de ${amount:,.0f} recibido de {client_name or 'cliente'} ({payment_type}). Pendiente confirmación de tesorería.",
+        title=f"Pago {payment_type} recibido: ${amount:,.2f}",
+        message=f"Pago de ${amount:,.2f} recibido de {client_name or 'cliente'} ({payment_type}). Pendiente confirmación de tesorería.",
         category="both",
         property_id=property_id,
         related_entity_type="payment",
@@ -273,8 +273,8 @@ def notify_cash_payment(property_id: str, amount: float, from_name: str = "", de
     """Cash payment received."""
     return create_notification(
         type="cash_payment",
-        title=f"Pago en efectivo: ${amount:,.0f}",
-        message=f"Pago en efectivo de ${amount:,.0f} de {from_name or 'cliente'}. {description}. Registrar en contabilidad.",
+        title=f"Pago en efectivo: ${amount:,.2f}",
+        message=f"Pago en efectivo de ${amount:,.2f} de {from_name or 'cliente'}. {description}. Registrar en contabilidad.",
         property_id=property_id,
         amount=amount,
         priority="high",
@@ -300,12 +300,12 @@ def notify_sale_payment(sale_id: str, property_id: str, amount: float, payment_t
     # Payment progress
     total_paid = amount_paid_so_far + amount
     pending = max(0, sale_price - total_paid) if sale_price > 0 else 0
-    progress = f" Pagado: ${total_paid:,.0f} de ${sale_price:,.0f}, falta ${pending:,.0f}." if sale_price > 0 else ""
+    progress = f" Pagado: ${total_paid:,.2f} de ${sale_price:,.2f}, falta ${pending:,.2f}." if sale_price > 0 else ""
 
     return create_notification(
         type="sale_payment",
-        title=f"Pago recibido: ${amount:,.0f} ({label}) — {prop['address'][:35]}{code_str}",
-        message=f"{label} de ${amount:,.0f} de {client_name or 'cliente'} (registrado por {source}). Propiedad: {prop['address']}.{progress} Pendiente confirmación.",
+        title=f"Pago recibido: ${amount:,.2f} ({label}) — {prop['address'][:35]}{code_str}",
+        message=f"{label} de ${amount:,.2f} de {client_name or 'cliente'} (registrado por {source}). Propiedad: {prop['address']}.{progress} Pendiente confirmación.",
         category="homes",
         property_id=property_id,
         related_entity_type="sale",
@@ -321,8 +321,8 @@ def notify_sale_payment_edited(sale_id: str, property_id: str, old_amount: float
     """Sale payment was edited (amount changed)."""
     return create_notification(
         type="sale_payment",
-        title=f"Pago editado: ${old_amount:,.0f} → ${new_amount:,.0f}",
-        message=f"Pago de venta modificado de ${old_amount:,.0f} a ${new_amount:,.0f}. Cliente: {client_name or 'N/A'}. Verificar en contabilidad.",
+        title=f"Pago editado: ${old_amount:,.2f} → ${new_amount:,.2f}",
+        message=f"Pago de venta modificado de ${old_amount:,.2f} a ${new_amount:,.2f}. Cliente: {client_name or 'N/A'}. Verificar en contabilidad.",
         category="homes",
         property_id=property_id,
         related_entity_type="sale",

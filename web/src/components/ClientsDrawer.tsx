@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { formatMoney } from '@/lib/money'
 
 interface Client {
   id: string
@@ -212,7 +213,7 @@ export default function ClientsDrawer({ isOpen, onClose, onSelectClient }: Clien
                     <div>
                       <div className="text-[10px] font-bold text-navy-400 uppercase tracking-wider mb-1">Ingreso Mensual</div>
                       <div className="text-navy-900 font-medium font-mono">
-                        ${(client.monthly_income || 0).toLocaleString()}
+                        {formatMoney(client.monthly_income || 0)}
                       </div>
                     </div>
                     <div>

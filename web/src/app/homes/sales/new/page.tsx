@@ -26,6 +26,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useFormValidation, commonSchemas } from '@/hooks/useFormValidation'
 import FormInput from '@/components/ui/FormInput'
 import { useAuth } from '@/components/Auth/AuthProvider'
+import { formatMoney } from '@/lib/money'
 
 /**
  * New Sale Wizard - Cierre de Venta
@@ -532,7 +533,7 @@ function NewSaleContent() {
                         {property.address}
                       </span>
                       <span className="text-gold-600 font-semibold">
-                        ${property.sale_price?.toLocaleString()}
+                        {formatMoney(property.sale_price)}
                       </span>
                     </div>
                   </button>
@@ -822,7 +823,7 @@ function NewSaleContent() {
                     Comisión Total ({paymentType === 'rto' ? 'RTO' : 'Cash'})
                   </span>
                   <span className="text-lg font-bold text-navy-900">
-                    ${effectiveTotalCommission.toLocaleString()}
+                    {formatMoney(effectiveTotalCommission)}
                   </span>
                 </div>
 
@@ -834,7 +835,7 @@ function NewSaleContent() {
                           🔍 {foundDisplayName || 'Comisionista'} <span className="text-navy-400">(encontró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
-                          ${effectiveFoundByCommission.toLocaleString()}
+                          {formatMoney(effectiveFoundByCommission)}
                         </span>
                       </div>
                     )}
@@ -844,12 +845,12 @@ function NewSaleContent() {
                           🤝 {soldDisplayName || 'Comisionista'} <span className="text-navy-400">(cerró)</span>
                         </span>
                         <span className="font-semibold text-navy-900">
-                          ${effectiveSoldByCommission.toLocaleString()}
+                          {formatMoney(effectiveSoldByCommission)}
                         </span>
                       </div>
                     )}
                     <div className="text-xs text-navy-500 pt-1 border-t border-navy-100">
-                      Sugerido por regla: ${commissionPreview.total.toLocaleString()} · {commissionPreview.note}. Puedes editar los montos.
+                      Sugerido por regla: {formatMoney(commissionPreview.total)} · {commissionPreview.note}. Puedes editar los montos.
                     </div>
                   </div>
                 ) : (
@@ -983,15 +984,15 @@ function NewSaleContent() {
                     <div className="text-xs text-purple-700 bg-purple-100 rounded-lg p-3 space-y-1">
                       <div className="flex justify-between">
                         <span>Enganche (Homes recibe)</span>
-                        <span className="font-bold">${(parseFloat(rtoDownPayment) || 0).toLocaleString()}</span>
+                        <span className="font-bold">{formatMoney(parseFloat(rtoDownPayment) || 0)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Restante (Capital paga a Homes)</span>
-                        <span className="font-bold">${(propPrice - (parseFloat(rtoDownPayment) || 0)).toLocaleString()}</span>
+                        <span className="font-bold">{formatMoney(propPrice - (parseFloat(rtoDownPayment) || 0))}</span>
                       </div>
                       <div className="flex justify-between border-t border-purple-300 pt-1 mt-1">
                         <span>Total que recibe Homes</span>
-                        <span className="font-bold">${propPrice.toLocaleString()}</span>
+                        <span className="font-bold">{formatMoney(propPrice)}</span>
                       </div>
                     </div>
                   )}
@@ -1004,7 +1005,7 @@ function NewSaleContent() {
                 <div className="p-4 bg-gold-50 rounded-lg border border-gold-200">
                   <p className="text-sm text-gold-600">Precio de Venta</p>
                   <p className="text-2xl font-bold text-gold-700">
-                    ${Number(selectedProperty?.sale_price || 0).toLocaleString()}
+                    {formatMoney(selectedProperty?.sale_price || 0)}
                   </p>
                 </div>
               ) : (
@@ -1040,7 +1041,7 @@ function NewSaleContent() {
                     <span className="font-medium text-navy-900">
                       {foundDisplayName || '— Sin asignar —'}
                       {foundByAssigned && (
-                        <span className="text-emerald-600 ml-2">${effectiveFoundByCommission.toLocaleString()}</span>
+                        <span className="text-emerald-600 ml-2">{formatMoney(effectiveFoundByCommission)}</span>
                       )}
                     </span>
                   </div>
@@ -1051,13 +1052,13 @@ function NewSaleContent() {
                     <span className="font-medium text-navy-900">
                       {soldDisplayName || '— Sin asignar —'}
                       {soldByAssigned && !samePerson && (
-                        <span className="text-emerald-600 ml-2">${effectiveSoldByCommission.toLocaleString()}</span>
+                        <span className="text-emerald-600 ml-2">{formatMoney(effectiveSoldByCommission)}</span>
                       )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-blue-200">
                     <span className="text-sm font-semibold text-navy-800">Comisión Total</span>
-                    <span className="font-bold text-navy-900">${effectiveTotalCommission.toLocaleString()}</span>
+                    <span className="font-bold text-navy-900">{formatMoney(effectiveTotalCommission)}</span>
                   </div>
                   <p className="text-xs text-blue-600">{commissionPreview.note}</p>
                 </div>

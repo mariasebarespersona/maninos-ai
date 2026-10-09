@@ -437,37 +437,37 @@ def predict_price(
         # POR QUÉ ESTE PRECIO DE COMPRA
         "por_que_compra": {
             "titulo": "¿Por qué comprar por este precio?",
-            "valor": f"${recommended_buy:,.0f}",
+            "valor": f"${recommended_buy:,.2f}",
             "explicacion": (
-                f"Casas similares se compraron entre ${min(compras_similares):,.0f} y ${max(compras_similares):,.0f} "
-                f"(promedio ${avg_historical_purchase:,.0f}). "
+                f"Casas similares se compraron entre ${min(compras_similares):,.2f} y ${max(compras_similares):,.2f} "
+                f"(promedio ${avg_historical_purchase:,.2f}). "
                 f"Para conseguir el mismo margen que Maninos logró históricamente ({avg_historical_margin:.0f}%), "
-                f"el precio ideal de compra es ${recommended_buy:,.0f}."
+                f"el precio ideal de compra es ${recommended_buy:,.2f}."
             ),
             "calculo": (
-                f"Venta esperada (${expected_sale_price:,.0f}) "
-                f"- Remodelación (${expected_remodelacion:,.0f}) "
-                f"- Margen {avg_historical_margin:.0f}% (${expected_sale_price * target_margin_decimal:,.0f}) "
-                f"= ${recommended_buy:,.0f}"
+                f"Venta esperada (${expected_sale_price:,.2f}) "
+                f"- Remodelación (${expected_remodelacion:,.2f}) "
+                f"- Margen {avg_historical_margin:.0f}% (${expected_sale_price * target_margin_decimal:,.2f}) "
+                f"= ${recommended_buy:,.2f}"
             ),
             "vs_lista": (
-                f"El precio de lista es ${listing_price:,.0f}. "
+                f"El precio de lista es ${listing_price:,.2f}. "
                 + (f"Está POR DEBAJO del recomendado — buen precio." if listing_price <= recommended_buy
-                   else f"Está ${listing_price - recommended_buy:,.0f} POR ENCIMA. Hay que negociar.")
+                   else f"Está ${listing_price - recommended_buy:,.2f} POR ENCIMA. Hay que negociar.")
             ),
         },
         
         # POR QUÉ ESTA VENTA ESPERADA
         "por_que_venta": {
             "titulo": "¿Por qué se vendería por este precio?",
-            "valor": f"${expected_sale_price:,.0f}",
+            "valor": f"${expected_sale_price:,.2f}",
             "explicacion": (
-                f"Casas similares se vendieron entre ${min(ventas_similares):,.0f} y ${max(ventas_similares):,.0f}. "
-                f"El promedio ponderado por similitud es ${expected_sale_price:,.0f}. "
+                f"Casas similares se vendieron entre ${min(ventas_similares):,.2f} y ${max(ventas_similares):,.2f}. "
+                f"El promedio ponderado por similitud es ${expected_sale_price:,.2f}. "
                 f"Las casas más parecidas tienen más peso en este cálculo."
             ),
             "detalle_casas": [
-                f"Casa {h['id']}: se vendió por ${h['precio_venta']:,.0f} (similitud {round(sim*100)}%)"
+                f"Casa {h['id']}: se vendió por ${h['precio_venta']:,.2f} (similitud {round(sim*100)}%)"
                 for sim, h in relevant[:5]
             ],
         },
@@ -475,14 +475,14 @@ def predict_price(
         # POR QUÉ ESTA REMODELACIÓN
         "por_que_remodelacion": {
             "titulo": "¿Por qué costaría esto remodelar?",
-            "valor": f"${expected_remodelacion:,.0f}",
+            "valor": f"${expected_remodelacion:,.2f}",
             "explicacion": (
-                f"Casas similares costaron entre ${min(remos_similares):,.0f} y ${max(remos_similares):,.0f} "
-                f"de remodelación (promedio ${sum(remos_similares)/len(remos_similares):,.0f}). "
+                f"Casas similares costaron entre ${min(remos_similares):,.2f} y ${max(remos_similares):,.2f} "
+                f"de remodelación (promedio ${sum(remos_similares)/len(remos_similares):,.2f}). "
                 f"Este número es SOLO remodelación — NO incluye movida ni comisión."
             ),
             "detalle_casas": [
-                f"Casa {h['id']}: remodelación ${h['remodelacion']:,.0f}"
+                f"Casa {h['id']}: remodelación ${h['remodelacion']:,.2f}"
                 for sim, h in relevant[:5]
             ],
         },
@@ -490,18 +490,18 @@ def predict_price(
         # POR QUÉ ESTA GANANCIA
         "por_que_ganancia": {
             "titulo": "¿Cómo se calcula la ganancia?",
-            "valor_al_lista": f"${ganancia_at_listing:,.0f}",
-            "valor_al_recomendado": f"${ganancia_at_recommended:,.0f}",
+            "valor_al_lista": f"${ganancia_at_listing:,.2f}",
+            "valor_al_recomendado": f"${ganancia_at_recommended:,.2f}",
             "explicacion": (
                 f"Ganancia = Venta - Compra - Remodelación. "
-                f"Si compras al precio de lista (${listing_price:,.0f}): ganarías ${ganancia_at_listing:,.0f} ({margin_at_listing_pct:.0f}% margen). "
-                f"Si compras al precio recomendado (${recommended_buy:,.0f}): ganarías ${ganancia_at_recommended:,.0f} ({margin_at_recommended_pct:.0f}% margen)."
+                f"Si compras al precio de lista (${listing_price:,.2f}): ganarías ${ganancia_at_listing:,.2f} ({margin_at_listing_pct:.0f}% margen). "
+                f"Si compras al precio recomendado (${recommended_buy:,.2f}): ganarías ${ganancia_at_recommended:,.2f} ({margin_at_recommended_pct:.0f}% margen)."
             ),
-            "calculo_lista": f"${expected_sale_price:,.0f} - ${listing_price:,.0f} - ${expected_remodelacion:,.0f} = ${ganancia_at_listing:,.0f}",
-            "calculo_recomendado": f"${expected_sale_price:,.0f} - ${recommended_buy:,.0f} - ${expected_remodelacion:,.0f} = ${ganancia_at_recommended:,.0f}",
+            "calculo_lista": f"${expected_sale_price:,.2f} - ${listing_price:,.2f} - ${expected_remodelacion:,.2f} = ${ganancia_at_listing:,.2f}",
+            "calculo_recomendado": f"${expected_sale_price:,.2f} - ${recommended_buy:,.2f} - ${expected_remodelacion:,.2f} = ${ganancia_at_recommended:,.2f}",
             "casas_similares_ganancia": (
-                f"Casas similares ganaron entre ${min(ganancias_similares):,.0f} y ${max(ganancias_similares):,.0f} "
-                f"(promedio ${sum(ganancias_similares)/len(ganancias_similares):,.0f})."
+                f"Casas similares ganaron entre ${min(ganancias_similares):,.2f} y ${max(ganancias_similares):,.2f} "
+                f"(promedio ${sum(ganancias_similares)/len(ganancias_similares):,.2f})."
             ),
         },
         

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Printer, Save, X, Download, Edit3, Eye, Loader2 } from 'lucide-react'
+import { formatMoney, formatMoneyFields } from '@/lib/money'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,15 @@ const EMPTY_DATA: BillOfSaleData = {
   cost_of_moving: '',
 }
 
+// Campos de monto (texto editable): se muestran e imprimen como $20,000.00,
+// también en documentos guardados antes con "$20,000".
+const MONEY_FIELDS = [
+  'deposit', 'subtotal', 'state_tax', 'city_tax', 'county_tax', 'mhi_tax',
+  'mobil_owners_insurance', 'credit_life_insurance', 'home_buyers_protection',
+  'filing_fee', 'sol_transfer_form_t', 'delivery', 'ac_hook_up', 'trimout',
+  'skirting', 'total', 'total_payment', 'cost_of_moving',
+] as const
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function BillOfSaleTemplate({
@@ -138,7 +148,7 @@ export default function BillOfSaleTemplate({
       base.seller_name = ''
       base.buyer_name = 'MANINOS HOMES'
     }
-    return { ...base, ...initialData }
+    return formatMoneyFields({ ...base, ...initialData }, MONEY_FIELDS)
   })
   const [editing, setEditing] = useState(!readOnly)
   const [saving, setSaving] = useState(false)
@@ -159,7 +169,7 @@ export default function BillOfSaleTemplate({
       if (prev[k] !== v) changed[k] = v
     }
     if (Object.keys(changed).length > 0) {
-      setData(d => ({ ...d, ...changed }))
+      setData(d => formatMoneyFields({ ...d, ...changed }, MONEY_FIELDS))
     }
   }, [initialData])
 
@@ -214,7 +224,10 @@ export default function BillOfSaleTemplate({
     setSaving(true)
     try {
       const file = await generatePDF()
-      await onSave(file, data)
+      // Se guarda ya con el formato $20,000.00, igual que sale en el PDF.
+      const clean = formatMoneyFields(data, MONEY_FIELDS)
+      setData(clean)
+      await onSave(file, clean)
     } catch (err) {
       console.error('Error generating/saving PDF:', err)
     } finally {
@@ -504,7 +517,7 @@ export default function BillOfSaleTemplate({
           <div className="bos-right-col">
             <div className="bos-deposit-row">
               <span className="bos-label-sm bos-bold">DEPOSIT:</span>
-              {renderField("deposit", "", "$0")}
+              {renderField("deposit", "", formatMoney(0))}
             </div>
             <table className="bos-fee-table">
               <tbody>
@@ -525,7 +538,7 @@ export default function BillOfSaleTemplate({
                 <tr>
                   <td className="bos-fee-total-label">1. TOTAL:</td>
                   <td className="bos-fee-total-value">
-                    {renderField("total", "", "$0")}
+                    {renderField("total", "", formatMoney(0))}
                   </td>
                 </tr>
               </tbody>
@@ -1041,7 +1054,7 @@ export async function generateSignedBillOfSalePDF(
 ): Promise<File> {
   const { jsPDF } = await import('jspdf')
   const logo = await loadLogoDataUrl()
-  const data = { ...EMPTY_DATA, ...inputData }
+  const data = formatMoneyFields({ ...EMPTY_DATA, ...inputData }, MONEY_FIELDS)
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const W = pdf.internal.pageSize.getWidth()
   const M = 15
@@ -1110,7 +1123,7 @@ export async function generateSignedBillOfSalePDF(
 
   // Payment
   pdf.setFont('helvetica', 'bold'); line('TOTAL PAYMENT:', M, y)
-  pdf.setFont('helvetica', 'normal'); line(data.total_payment || '$0', M + 42, y); y += 5
+  pdf.setFont('helvetica', 'normal'); line(data.total_payment || formatMoney(0), M + 42, y); y += 5
   const condition = data.is_new ? 'NEW' : data.is_used ? 'USED' : '—'
   pdf.setFont('helvetica', 'bold'); line('CONDITION:', M, y); pdf.setFont('helvetica', 'normal'); line(condition, M + 30, y); y += 8
   hline(y); y += 8

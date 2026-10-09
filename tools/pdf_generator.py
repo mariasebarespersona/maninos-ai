@@ -356,8 +356,8 @@ def _get_contract_clauses(
             "title": "RENT",
             "content": f"Tenant agrees to pay monthly rent of <b>${monthly_rent:,.2f}</b> due on the <b>{payment_day}th day</b> "
                       f"of each month. Payment shall be made via Zelle to <b>832-745-9600</b>. "
-                      f"A late fee of <b>${late_fee}/day</b> will be charged after the 5th day of the month. "
-                      f"Returned check fee: <b>${nsf_fee}</b>. Down payment received: <b>${down_payment:,.2f}</b>."
+                      f"A late fee of <b>${float(late_fee):,.2f}/day</b> will be charged after the 5th day of the month. "
+                      f"Returned check fee: <b>${float(nsf_fee):,.2f}</b>. Down payment received: <b>${down_payment:,.2f}</b>."
         },
         {
             "title": "CONDITION OF PREMISES",

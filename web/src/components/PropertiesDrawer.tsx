@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { formatMoney } from '@/lib/money'
 
 interface Property {
   id: string
@@ -205,7 +206,7 @@ export default function PropertiesDrawer({ isOpen, onClose, onSelectProperty }: 
                     <div>
                       <div className="text-[10px] font-bold text-navy-400 uppercase tracking-wider mb-1">Precio</div>
                       <div className="text-navy-900 font-medium font-mono">
-                        ${(property.market_value || property.purchase_price || 0).toLocaleString()}
+                        {formatMoney(property.market_value || property.purchase_price || 0)}
                       </div>
                     </div>
                     <div>

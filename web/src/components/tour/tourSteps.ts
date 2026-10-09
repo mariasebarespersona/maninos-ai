@@ -44,7 +44,7 @@ export const HOMES_MAIN_TOUR: Step[] = [
   },
   {
     target: 'a[href="/homes/commissions"]',
-    content: 'Comisiones automáticas: $1,500 por venta al contado, $1,000 por RTO. Split 50/50 entre quien encuentra y quien cierra. Ranking de empleados por mes. Gestión de equipo y roles.',
+    content: 'Comisiones automáticas: $1,500.00 por venta al contado, $1,000.00 por RTO. Split 50/50 entre quien encuentra y quien cierra. Ranking de empleados por mes. Gestión de equipo y roles.',
     title: 'Comisiones',
     placement: 'right',
   },
@@ -124,7 +124,7 @@ export const HOMES_PAGE_TOURS: Record<string, Step[]> = {
   '/homes/commissions': [
     {
       target: 'body',
-      content: 'Comisiones del equipo por mes. Reglas: $1,500 por venta al contado, $1,000 por RTO. Si la misma persona encuentra y cierra, se lleva 100%. Si son dos, 50/50. Usa los filtros de mes para ver períodos anteriores.',
+      content: 'Comisiones del equipo por mes. Reglas: $1,500.00 por venta al contado, $1,000.00 por RTO. Si la misma persona encuentra y cierra, se lleva 100%. Si son dos, 50/50. Usa los filtros de mes para ver períodos anteriores.',
       title: 'Comisiones',
       disableBeacon: true,
       placement: 'center',

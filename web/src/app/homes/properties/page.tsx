@@ -10,10 +10,10 @@ import {
   Search, 
   Building2,
   MapPin,
-  DollarSign,
   ArrowRight,
   Loader2
 } from 'lucide-react'
+import { formatMoney } from '@/lib/money'
 
 interface Property {
   id: string
@@ -219,12 +219,11 @@ function PropertyCard({ property }: { property: Property }) {
              style={{ borderColor: 'var(--sand)' }}>
           {property.sale_price ? (
             <div className="flex items-center gap-1 font-semibold" style={{ color: 'var(--navy-700)' }}>
-              <DollarSign className="w-4 h-4" />
-              {property.sale_price.toLocaleString()}
+              {formatMoney(property.sale_price)}
             </div>
           ) : property.purchase_price ? (
             <div className="text-sm" style={{ color: 'var(--slate)' }}>
-              Compra: ${property.purchase_price.toLocaleString()}
+              Compra: {formatMoney(property.purchase_price)}
             </div>
           ) : (
             <span className="text-sm" style={{ color: 'var(--ash)' }}>Sin precio</span>

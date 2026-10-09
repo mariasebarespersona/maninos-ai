@@ -370,7 +370,7 @@ def send_rto_application_email(
         <div class="highlight">
             <p style="margin: 0; font-weight: bold; color: #1e3a5f;">{property_address}</p>
             <p style="margin: 5px 0 0; color: #666;">{property_city}</p>
-            <p style="margin: 5px 0 0; font-size: 20px; color: #c9a227; font-weight: bold;">${sale_price:,.0f}</p>
+            <p style="margin: 5px 0 0; font-size: 20px; color: #c9a227; font-weight: bold;">${sale_price:,.2f}</p>
         </div>
 
         <h3 style="color: #1e3a5f;">¿Qué sigue?</h3>
@@ -1244,7 +1244,7 @@ def send_promissory_maturity_alert(
         else:
             urgency = "NOTICE"
 
-        subject = f"[{urgency}] Promissory note maturing — {investor_name} (${note_amount:,.0f})"
+        subject = f"[{urgency}] Promissory note maturing — {investor_name} (${note_amount:,.2f})"
 
         result = send_email(to=[admin_email], subject=subject, html=html)
         logger.info(f"[email_service] Maturity alert sent for {investor_name} ({days_remaining}d remaining)")
@@ -1322,7 +1322,7 @@ def process_promissory_maturity_alerts(admin_email: str = "info@maninoscapital.c
         else:
             urgency = "NOTICE"
 
-        subject = f"[{urgency}] {count} promissory note{'s' if count != 1 else ''} maturing soon — ${total_amount:,.0f} total"
+        subject = f"[{urgency}] {count} promissory note{'s' if count != 1 else ''} maturing soon — ${total_amount:,.2f} total"
         email_result = send_email(to=[admin_email], subject=subject, html=html)
 
         # Update last_maturity_alert_at on each note
@@ -1455,7 +1455,7 @@ def process_investor_payment_reminder(admin_email: Optional[str] = None,
         destinatarios = [admin_email] if admin_email else _lista_env("PAGOS_INVERSIONISTAS_TO", _PAGOS_TO_DEFECTO)
         copia = cc if cc is not None else _lista_env("PAGOS_INVERSIONISTAS_CC", _PAGOS_CC_DEFECTO)
 
-        subject = f"Pagos a inversionistas del {pay_label} — {len(investors)} pagarés, ${total:,.0f}"
+        subject = f"Pagos a inversionistas del {pay_label} — {len(investors)} pagarés, ${total:,.2f}"
         html = _investor_payment_reminder_html(summary)
         email_result = send_email(to=destinatarios, subject=subject, html=html, cc=copia)
         logger.info(f"[email_service] investor payment reminder to={destinatarios} cc={copia}: "
@@ -1611,7 +1611,7 @@ def send_investor_welcome_email(
 
         html = _investor_welcome_html(investor_name, note_data)
         loan_amount = float(note_data.get("loan_amount", 0))
-        subject = f"Bienvenido a Maninos Capital — Nota Promisoria ${loan_amount:,.0f}"
+        subject = f"Bienvenido a Maninos Capital — Nota Promisoria ${loan_amount:,.2f}"
 
         result = send_email(to=[investor_email], subject=subject, html=html)
         logger.info(f"[email_service] Investor welcome email sent to {investor_email}")
@@ -1810,7 +1810,7 @@ def send_investor_completion_email(
 
         html = _investor_completion_html(investor_name, note_data)
         loan_amount = float(note_data.get("loan_amount", 0))
-        subject = f"Nota Promisoria Completada — ${loan_amount:,.0f} pagada en su totalidad"
+        subject = f"Nota Promisoria Completada — ${loan_amount:,.2f} pagada en su totalidad"
 
         result = send_email(to=[investor_email], subject=subject, html=html)
         logger.info(f"[email_service] Investor completion email sent to {investor_email}")
@@ -1935,7 +1935,7 @@ def _client_post_purchase_html(
     for prog in loyalty.get("programs", []):
         bonus_text = ""
         if prog.get("min_bonus"):
-            bonus_text = f' <strong style="color: #c9a227;">(${prog["min_bonus"]:,} - ${prog["max_bonus"]:,})</strong>'
+            bonus_text = f' <strong style="color: #c9a227;">(${prog["min_bonus"]:,.2f} - ${prog["max_bonus"]:,.2f})</strong>'
         loyalty_html += f"""
         <li style="margin: 8px 0; color: #4a5568;">
             <strong>{prog['title']}</strong>: {prog['description']}{bonus_text}

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { formatMoney } from '@/lib/money'
 
 // Maninos bank info for client payments
 const MANINOS_BANK_INFO = {
@@ -165,7 +166,7 @@ function SalesPage() {
             <TrendingUp className="w-6 h-6 text-gold-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-navy-900">
-            ${stats.total_revenue.toLocaleString()}
+            {formatMoney(stats.total_revenue)}
           </p>
           <p className="text-sm text-navy-500 mt-1">Ingresos Totales</p>
         </div>
@@ -411,7 +412,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-medium text-navy-900">
-                ${sale.sale_price.toLocaleString()}
+                {formatMoney(sale.sale_price)}
               </h3>
               <div className={`badge ${status.color}`}>
                 <StatusIcon className="w-3 h-3" />
@@ -428,7 +429,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 <span className={`text-xs font-medium ${
                   Number(sale.amount_paid) >= sale.sale_price ? 'text-emerald-600' : 'text-amber-600'
                 }`}>
-                  {Number(sale.amount_paid) >= sale.sale_price ? '✓ Pago completo' : `Recibido: $${Number(sale.amount_paid).toLocaleString()}`}
+                  {Number(sale.amount_paid) >= sale.sale_price ? '✓ Pago completo' : `Recibido: ${formatMoney(sale.amount_paid)}`}
                 </span>
               )}
             </div>
@@ -437,16 +438,16 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               <div className="flex items-center gap-3 mt-1 text-[11px] text-purple-600">
                 {(sale.rto_down_payment || sale.financed_down_payment) ? (
                   <>
-                    <span>Enganche: ${Number(sale.rto_down_payment || sale.financed_down_payment).toLocaleString()}</span>
+                    <span>Enganche: {formatMoney(sale.rto_down_payment || sale.financed_down_payment)}</span>
                     <span>·</span>
-                    <span>Capital: ${Number(sale.financed_remaining || (sale.sale_price - Number(sale.rto_down_payment || sale.financed_down_payment || 0))).toLocaleString()}</span>
+                    <span>Capital: {formatMoney(sale.financed_remaining || (sale.sale_price - Number(sale.rto_down_payment || sale.financed_down_payment || 0)))}</span>
                     <span>·</span>
                     <span className={sale.capital_payment_status === 'paid' ? 'text-emerald-600 font-medium' : 'text-amber-600'}>
                       {sale.capital_payment_status === 'paid' ? '✓ Capital pagó' : '⏳ Capital pendiente'}
                     </span>
                   </>
                 ) : (
-                  <span>${Number(sale.rto_monthly_payment || 0).toLocaleString()}/mes × {sale.rto_term_months || '—'} meses</span>
+                  <span>{formatMoney(sale.rto_monthly_payment || 0)}/mes × {sale.rto_term_months || '—'} meses</span>
                 )}
               </div>
             )}
@@ -474,7 +475,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                   className="flex items-center gap-1 text-xs text-gold-700 bg-gold-50 px-2 py-1 rounded-full hover:bg-gold-100 transition-colors"
                 >
                   <Award className="w-3 h-3" />
-                  ${sale.commission_amount.toLocaleString()}
+                  {formatMoney(sale.commission_amount)}
                   {showCommission ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
               )}
@@ -513,7 +514,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 <CreditCard className="w-3 h-3" />
                 {sale.sale_type === 'rto' ? 'Enganche' : 'Pagos'}
                 {sale.amount_paid != null && sale.amount_paid > 0 && (
-                  <span className="font-semibold">${Number(sale.amount_paid).toLocaleString()}</span>
+                  <span className="font-semibold">{formatMoney(sale.amount_paid)}</span>
                 )}
                 {showPayments ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
@@ -583,7 +584,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 <BankField label="Routing #" value={MANINOS_BANK_INFO.routing_number} onCopy={copyToClipboard} />
               </div>
               <div className="mt-3 p-2 bg-blue-100 rounded-lg text-xs text-blue-700">
-                <strong>Referencia:</strong> Venta #{sale.id.slice(0, 8)} — ${sale.sale_price.toLocaleString()}
+                <strong>Referencia:</strong> Venta #{sale.id.slice(0, 8)} — {formatMoney(sale.sale_price)}
               </div>
             </div>
           </div>
@@ -597,7 +598,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               <div className="flex items-center justify-between mb-3">
                 <h4 className={`font-semibold flex items-center gap-2 ${sale.sale_type === 'rto' ? 'text-purple-800' : 'text-emerald-800'}`}>
                   <CreditCard className="w-4 h-4" />
-                  {sale.sale_type === 'rto' ? 'Enganche' : 'Pagos'} — ${Number(sale.amount_paid || 0).toLocaleString()} de ${sale.sale_type === 'rto' ? Number(sale.rto_down_payment || sale.financed_down_payment || 0).toLocaleString() : sale.sale_price.toLocaleString()}
+                  {sale.sale_type === 'rto' ? 'Enganche' : 'Pagos'} — {formatMoney(sale.amount_paid || 0)} de {formatMoney(sale.sale_type === 'rto' ? Number(sale.rto_down_payment || sale.financed_down_payment || 0) : sale.sale_price)}
                 </h4>
                 <span className={`text-xs font-bold ${sale.sale_type === 'rto' ? 'text-purple-700' : 'text-emerald-700'}`}>
                   {(() => {
@@ -621,7 +622,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               {/* Pending amount */}
               {Number(sale.amount_pending || 0) > 0 && (
                 <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                  Pendiente: <strong>${Number(sale.amount_pending).toLocaleString()}</strong>
+                  Pendiente: <strong>{formatMoney(sale.amount_pending)}</strong>
                 </div>
               )}
 
@@ -666,7 +667,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                             onClick={() => { setEditingPaymentId(p.id); setEditAmount(String(p.amount)) }}
                             title="Click para editar"
                           >
-                            ${Number(p.amount).toLocaleString()}
+                            {formatMoney(p.amount)}
                           </span>
                         )}
                         <span className="text-xs text-navy-400 truncate">{p.payment_method || '—'}</span>
@@ -769,19 +770,19 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                 <p className="text-xs text-blue-600 mb-0.5">Encontro al cliente</p>
                 <p className="font-medium text-navy-900">{sale.found_by_name || '—'}</p>
                 {sale.commission_found_by != null && sale.commission_found_by > 0 && (
-                  <p className="text-emerald-600 font-semibold">${sale.commission_found_by.toLocaleString()}</p>
+                  <p className="text-emerald-600 font-semibold">{formatMoney(sale.commission_found_by)}</p>
                 )}
               </div>
               <div className="p-2.5 bg-emerald-50 rounded-lg">
                 <p className="text-xs text-emerald-600 mb-0.5">Cerro la venta</p>
                 <p className="font-medium text-navy-900">{sale.sold_by_name || '—'}</p>
                 {sale.commission_sold_by != null && sale.commission_sold_by > 0 && (
-                  <p className="text-emerald-600 font-semibold">${sale.commission_sold_by.toLocaleString()}</p>
+                  <p className="text-emerald-600 font-semibold">{formatMoney(sale.commission_sold_by)}</p>
                 )}
               </div>
               <div className="p-2.5 bg-gold-50 rounded-lg">
                 <p className="text-xs text-gold-600 mb-0.5">Total Comision</p>
-                <p className="font-bold text-navy-900">${sale.commission_amount.toLocaleString()}</p>
+                <p className="font-bold text-navy-900">{formatMoney(sale.commission_amount)}</p>
                 <p className="text-xs text-navy-500">
                   {sale.sale_type === 'rto' ? 'RTO' : 'Cash'}
                   {sale.found_by_employee_id && sale.sold_by_employee_id && sale.found_by_employee_id === sale.sold_by_employee_id
@@ -869,7 +870,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
           <div>
             <p>Estas seguro de cancelar esta venta?</p>
             <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-              <p className="font-medium text-navy-900">${sale.sale_price.toLocaleString()}</p>
+              <p className="font-medium text-navy-900">{formatMoney(sale.sale_price)}</p>
               <p className="text-sm text-navy-500 mt-1">{sale.property_address}</p>
             </div>
             <p className="mt-3 text-sm text-red-600">

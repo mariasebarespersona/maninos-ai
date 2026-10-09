@@ -1253,14 +1253,14 @@ async def publish_property(
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Precio de venta ${sale_price:,.0f} excede el máximo permitido "
-                        f"(80% del valor de mercado ${market_value:,.0f} = ${max_sell:,.0f}). "
+                        f"Precio de venta ${sale_price:,.2f} excede el máximo permitido "
+                        f"(80% del valor de mercado ${market_value:,.2f} = ${max_sell:,.2f}). "
                         f"Puedes forzar la publicación con force=true."
                     ),
                 )
             logger.info(
-                f"[Publish] 80% rule OK: ${sale_price:,.0f} ≤ ${max_sell:,.0f} "
-                f"(market ${market_value:,.0f})"
+                f"[Publish] 80% rule OK: ${sale_price:,.2f} ≤ ${max_sell:,.2f} "
+                f"(market ${market_value:,.2f})"
             )
     
     update_data = {
@@ -1473,8 +1473,8 @@ async def complete_renovation(
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Nuevo precio ${new_sale_price:,.0f} excede el máximo (80% de "
-                        f"${market_value:,.0f} = ${max_sell:,.0f}). Usa force=true para forzar."
+                        f"Nuevo precio ${new_sale_price:,.2f} excede el máximo (80% de "
+                        f"${market_value:,.2f} = ${max_sell:,.2f}). Usa force=true para forzar."
                     ),
                 )
 

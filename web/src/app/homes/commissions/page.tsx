@@ -18,6 +18,7 @@ import {
   ToggleRight,
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
+import { formatMoney } from '@/lib/money'
 
 // ============================================================================
 // TYPES
@@ -270,19 +271,19 @@ function ComisionesTab({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <SummaryCard
               label="Total Comisiones"
-              value={`$${totalCommission.toLocaleString()}`}
+              value={formatMoney(totalCommission)}
               icon={DollarSign}
               color="emerald"
             />
             <SummaryCard
               label="Pendiente"
-              value={`$${totalPending.toLocaleString()}`}
+              value={formatMoney(totalPending)}
               icon={Clock}
               color="amber"
             />
             <SummaryCard
               label="Pagada"
-              value={`$${totalPaid.toLocaleString()}`}
+              value={formatMoney(totalPaid)}
               icon={CheckCircle2}
               color="blue"
             />
@@ -342,7 +343,7 @@ function ComisionesTab({
                         )}
                         {emp.total_pending > 0 && (
                           <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                            ${emp.total_pending.toLocaleString()} pendiente
+                            {formatMoney(emp.total_pending)} pendiente
                           </span>
                         )}
                       </div>
@@ -351,7 +352,7 @@ function ComisionesTab({
                     {/* Total */}
                     <div className="text-right shrink-0">
                       <p className="text-lg font-bold text-emerald-600">
-                        ${emp.total_earned.toLocaleString()}
+                        {formatMoney(emp.total_earned)}
                       </p>
                       <p className="text-xs text-navy-400">
                         {emp.payments.length} comisi{emp.payments.length !== 1 ? 'ones' : 'ón'}
@@ -402,7 +403,7 @@ function ComisionesTab({
                             </div>
                             <div className="flex items-center gap-3 shrink-0 ml-auto">
                               <span className="font-semibold text-navy-900">
-                                ${p.amount.toLocaleString()}
+                                {formatMoney(p.amount)}
                               </span>
                               {p.status === 'paid' ? (
                                 <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium flex items-center gap-1">
@@ -435,11 +436,11 @@ function ComisionesTab({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="p-3 bg-white rounded-lg border border-navy-100">
                 <span className="font-medium text-emerald-700">Venta Cash</span>
-                <p className="text-navy-600 mt-1">$1,500 total</p>
+                <p className="text-navy-600 mt-1">{formatMoney(1500)} total</p>
               </div>
               <div className="p-3 bg-white rounded-lg border border-navy-100">
                 <span className="font-medium text-purple-700">Venta RTO</span>
-                <p className="text-navy-600 mt-1">$1,000 total</p>
+                <p className="text-navy-600 mt-1">{formatMoney(1000)} total</p>
               </div>
               <div className="p-3 bg-white rounded-lg border border-navy-100">
                 <span className="font-medium text-blue-700">Misma persona</span>

@@ -840,9 +840,9 @@ def generate_rto_contract(
         f'Tenant agrees to pay Landlord as rent for the premises the sum of '
         f'<b>${monthly_rent:,.2f}</b> per month, due and payable on the '
         f'<b>{payment_due_day}th day</b> of each month during the term of this Lease. '
-        f'A late fee of <b>${late_fee_per_day:.2f} per day</b> shall be assessed for any '
+        f'A late fee of <b>${late_fee_per_day:,.2f} per day</b> shall be assessed for any '
         f'payment received after the <b>{grace_day}th day</b> of the month '
-        f'({grace_period_days}-day grace period). A fee of <b>${nsf_fee:.2f}</b> shall be '
+        f'({grace_period_days}-day grace period). A fee of <b>${nsf_fee:,.2f}</b> shall be '
         f'charged for any returned check or insufficient funds (NSF). '
         f'Payments shall be made via Zelle to <b>{zelle_phone}</b> or other method approved by Landlord.',
         styles['ClauseBody']
@@ -981,7 +981,7 @@ def generate_rto_contract(
     story.append(Paragraph(
         f'If Tenant remains in possession of the premises after the expiration of the term without '
         f'executing a new lease or exercising the Purchase Option, such holdover shall be on a '
-        f'month-to-month basis at a rate of <b>${holdover_monthly:.2f} per month</b>, subject '
+        f'month-to-month basis at a rate of <b>${holdover_monthly:,.2f} per month</b>, subject '
         f'to all other terms of this Agreement. Landlord may terminate such month-to-month tenancy '
         f'upon thirty (30) days written notice.',
         styles['ClauseBody']

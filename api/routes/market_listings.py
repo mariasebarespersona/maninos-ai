@@ -719,7 +719,7 @@ async def create_listing(listing: MarketListingCreate):
         price_type = data.get("price_type", "full")
         if price_type == "down_payment" and data.get("estimated_full_price"):
             qualification_price = data["estimated_full_price"]
-            logger.info(f"[Create] Down payment listing: using estimated_full_price ${qualification_price:,.0f} for qualification (listed: ${price:,.0f})")
+            logger.info(f"[Create] Down payment listing: using estimated_full_price ${qualification_price:,.2f} for qualification (listed: ${price:,.2f})")
         elif price_type == "down_payment":
             logger.warning(f"[Create] Down payment listing without estimated_full_price — qualification may be inaccurate")
         
@@ -1054,7 +1054,7 @@ async def scrape_facebook_only(
         if not apify_token:
             return {"success": False, "facebook": 0, "message": "APIFY_API_TOKEN not set"}
 
-        logger.info(f"[FB Scrape] Starting Apify Facebook scrape: ${min_price:,.0f}-${max_price:,.0f}")
+        logger.info(f"[FB Scrape] Starting Apify Facebook scrape: ${min_price:,.2f}-${max_price:,.2f}")
 
         # Build search URLs — multiple keywords × multiple cities for broader coverage
         keywords = [
@@ -1236,7 +1236,7 @@ async def scrape_mhvillage(
     import requests as req
     import re as re_mod
 
-    logger.info(f"[MHBay] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
+    logger.info(f"[MHBay] Starting scrape: ${min_price:,.2f}-${max_price:,.2f}")
     saved = 0
 
     try:
@@ -1355,7 +1355,7 @@ async def scrape_mobilehome_net(
     import requests as req
     import re as re_mod
 
-    logger.info(f"[MobileHome.net] Starting scrape: ${min_price:,.0f}-${max_price:,.0f}")
+    logger.info(f"[MobileHome.net] Starting scrape: ${min_price:,.2f}-${max_price:,.2f}")
     saved = 0
 
     try:
@@ -1537,8 +1537,8 @@ async def scrape_and_save(
         price_min = min(all_prices)
         price_max = max(all_prices)
         
-        logger.info(f"[Scrape] ✓ Market Value (media de {len(all_prices)} casas): ${market_value:,.0f}")
-        logger.info(f"[Scrape] ✓ Max offer (60%): ${max_offer_60:,.0f}")
+        logger.info(f"[Scrape] ✓ Market Value (media de {len(all_prices)} casas): ${market_value:,.2f}")
+        logger.info(f"[Scrape] ✓ Max offer (60%): ${max_offer_60:,.2f}")
         
         # ============================================
         # PASO 3: GUARDAR el análisis de mercado en la DB
@@ -1696,7 +1696,7 @@ async def scrape_and_save(
                 if response.data:
                     saved_count += 1
                     saved_listing_id = response.data[0].get("id")
-                    logger.info(f"[Scrape] ✓ Saved: {listing.address} (${listing.listing_price:,.0f})")
+                    logger.info(f"[Scrape] ✓ Saved: {listing.address} (${listing.listing_price:,.2f})")
                     
                     # Persist images to Supabase Storage (replaces expiring CDN URLs)
                     if saved_listing_id and (listing.thumbnail_url or listing.photos):
@@ -1754,7 +1754,7 @@ async def scrape_and_save(
         return {
             "success": True,
             "city": city,
-            "price_range": f"${min_price:,.0f} - ${max_price:,.0f}",
+            "price_range": f"${min_price:,.2f} - ${max_price:,.2f}",
             "market_analysis": {
                 "id": market_analysis_id,
                 "total_scraped": len(all_listings),

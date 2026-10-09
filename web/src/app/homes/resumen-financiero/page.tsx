@@ -10,6 +10,7 @@ import {
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
+import { formatMoney } from '@/lib/money'
 
 interface PropertyFinancial {
   id: string; address: string; property_code: string; city: string; status: string
@@ -29,7 +30,7 @@ const statusLabels: Record<string, { label: string; cls: string }> = {
   sold: { label: 'Vendida', cls: 'bg-navy-100 text-navy-700' },
 }
 
-const fmt = (n: number) => n > 0 ? `$${n.toLocaleString('en-US')}` : '—'
+const fmt = (n: number) => n > 0 ? formatMoney(n) : '—'
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' }) : ''
 
 export default function ResumenFinancieroPage() {

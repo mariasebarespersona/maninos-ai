@@ -1031,8 +1031,8 @@ def _maybe_recognize_cogs_for_sale(
             total_posted += bal
         logger.info(
             f"[payment_orders] COGS recognized for sale {sale['id']} via per-property sub-accounts: "
-            f"{[(l, b) for (_, l, b) in sub_balances]} total=${total_posted:.2f} "
-            f"(estimate was ${inventory_cost:.2f})"
+            f"{[(l, b) for (_, l, b) in sub_balances]} total=${total_posted:,.2f} "
+            f"(estimate was ${inventory_cost:,.2f})"
         )
     elif not has_prior_cogs and inventory_cost > 0:
         # Legacy fallback path — single COGS pair against parent Inventory.

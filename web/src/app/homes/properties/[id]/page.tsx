@@ -48,6 +48,7 @@ import TitleTransferCard from '@/components/TitleTransferCard'
 import BillOfSaleTemplate, { type BillOfSaleData } from '@/components/BillOfSaleTemplate'
 import TitleApplicationTemplate, { type TitleApplicationData } from '@/components/TitleApplicationTemplate'
 import DesktopEvaluatorPanel from '@/components/DesktopEvaluatorPanel'
+import { formatMoney } from '@/lib/money'
 
 interface Property {
   id: string
@@ -632,7 +633,7 @@ export default function PropertyDetailPage() {
       `TIRES & AXLES: ${m.tires_axles ? 'YES' : 'NO'}`,
       ``,
       `SPECIAL: ${m.special_instructions || m.notes || '—'}`,
-      `PRICE: $${m.quoted_cost || 'TBD'}`,
+      `PRICE: ${m.quoted_cost ? formatMoney(m.quoted_cost) : 'TBD'}`,
     ]
     const message = lines.join('\n')
 
@@ -928,7 +929,7 @@ export default function PropertyDetailPage() {
 
   const [sharingSending, setSharingSending] = useState(false)
 
-  const fmtPrice = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+  const fmtPrice = (n: number) => formatMoney(n)
   const fmtNum = (n: number) => Number.isInteger(n) ? String(n) : String(Math.round(n))
 
   const openWhatsAppModal = () => {
@@ -1782,7 +1783,7 @@ ${price}
                   // Con centavos: los costos reales del ledger traen decimales y
                   // redondearlos descuadraba la ficha contra la contabilidad.
                   const r2 = (n: number) => Math.round(n * 100) / 100;
-                  const fmtC = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const fmtC = (n: number) => formatMoney(n);
                   const purchase = r2(Number(property.purchase_price || 0));
                   const reno = r2(Number(costBreakdown?.renovation_cost || 0));
                   const move = r2(Number(costBreakdown?.move_cost || 0));
@@ -1834,7 +1835,7 @@ ${price}
                             onClick={() => { setVal(String(value)); setEditing(true); }}
                             title="Click para editar"
                           >
-                            ${fmtC(value)}
+                            {fmtC(value)}
                             <Pencil className="w-2.5 h-2.5 inline ml-1 opacity-0 group-hover:opacity-50" />
                           </span>
                         )}
@@ -1852,13 +1853,13 @@ ${price}
                       <div className="pt-2 border-t border-navy-100">
                         <div className="flex justify-between items-center text-xs text-navy-400">
                           <span>Total inversión</span>
-                          <span>${fmtC(totalInversion)}</span>
+                          <span>{fmtC(totalInversion)}</span>
                         </div>
                       </div>
                       <div className="pt-1">
                         <div className="flex justify-between items-center">
                           <span className="text-navy-500 font-medium">Precio mínimo venta</span>
-                          <span className="font-bold text-amber-600">${fmtC(precioMinimo)}</span>
+                          <span className="font-bold text-amber-600">{fmtC(precioMinimo)}</span>
                         </div>
                       </div>
                       <div className="pt-2 border-t border-navy-100">
@@ -1869,7 +1870,7 @@ ${price}
                           <div className="flex justify-between items-center">
                             <span className="text-navy-500">Ganancia real</span>
                             <span className={`font-bold ${ganancia >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              ${fmtC(ganancia)}
+                              {fmtC(ganancia)}
                             </span>
                           </div>
                         </div>
@@ -1970,8 +1971,8 @@ ${price}
                   location_of_home: `${property.address}, ${property.city || ''}, ${property.state || 'TX'}`,
                   hud_label_number: property.hud_number || '',
                   total_payment: showBosTemplate === 'purchase' 
-                    ? `$${property.purchase_price?.toLocaleString() || ''}` 
-                    : `$${property.sale_price?.toLocaleString() || ''}`,
+                    ? (property.purchase_price != null ? formatMoney(property.purchase_price) : '') 
+                    : (property.sale_price != null ? formatMoney(property.sale_price) : ''),
                   date_manufactured: property.year?.toString() || '',
                   buyer_date: new Date().toISOString().split('T')[0],
                   is_new: false,
@@ -2083,8 +2084,8 @@ ${price}
                     buyer_name: '',
                   }),
                   sale_price: showTitleAppTemplate === 'purchase'
-                    ? `$${property.purchase_price?.toLocaleString() || ''}`
-                    : `$${property.sale_price?.toLocaleString() || ''}`,
+                    ? (property.purchase_price != null ? formatMoney(property.purchase_price) : '')
+                    : (property.sale_price != null ? formatMoney(property.sale_price) : ''),
                   sale_date: new Date().toISOString().split('T')[0],
                   sale_transfer_date: new Date().toISOString().split('T')[0],
                   // Block 6 — default Inventory
@@ -2549,7 +2550,7 @@ ${price}
                         </div>
                       </div>
                       {move.quoted_cost > 0 && (
-                        <span className="text-sm font-bold text-navy-900">${Number(move.quoted_cost).toLocaleString()}</span>
+                        <span className="text-sm font-bold text-navy-900">{formatMoney(move.quoted_cost)}</span>
                       )}
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                     </div>
@@ -2583,7 +2584,7 @@ ${price}
                             </div>
                           )}
                           {move.final_cost > 0 && (
-                            <div><span className="text-gray-500">Costo final:</span> <span className="font-bold text-green-700">${Number(move.final_cost).toLocaleString()}</span></div>
+                            <div><span className="text-gray-500">Costo final:</span> <span className="font-bold text-green-700">{formatMoney(move.final_cost)}</span></div>
                           )}
                           {move.notes && (
                             <div className="col-span-2"><span className="text-gray-500">Notas:</span> <span className="text-navy-700">{move.notes}</span></div>
@@ -2856,9 +2857,9 @@ ${price}
         min={0}
         helpText={
           costBreakdown
-            ? `Inversión total: $${Math.round(Number(property?.purchase_price || 0) + Number(costBreakdown.renovation_cost || 0) + Number(costBreakdown.move_cost || 0)).toLocaleString()} (Compra $${Math.round(Number(property?.purchase_price || 0)).toLocaleString()} + Reno $${Math.round(Number(costBreakdown.renovation_cost || 0)).toLocaleString()} + Movida $${Math.round(Number(costBreakdown.move_cost || 0)).toLocaleString()}) → Precio mínimo: $${Math.round(costBreakdown.recommended_sale_price).toLocaleString()}`
+            ? `Inversión total: ${formatMoney(Number(property?.purchase_price || 0) + Number(costBreakdown.renovation_cost || 0) + Number(costBreakdown.move_cost || 0))} (Compra ${formatMoney(property?.purchase_price)} + Reno ${formatMoney(costBreakdown.renovation_cost)} + Movida ${formatMoney(costBreakdown.move_cost)}) → Precio mínimo: ${formatMoney(costBreakdown.recommended_sale_price)}`
             : recommendedPrice?.market_value
-              ? `Regla 80%: Valor mercado $${recommendedPrice.market_value.toLocaleString()} → Máximo venta $${recommendedPrice.max_sell_price_80?.toLocaleString() || '—'}`
+              ? `Regla 80%: Valor mercado ${formatMoney(recommendedPrice.market_value)} → Máximo venta ${recommendedPrice.max_sell_price_80 != null ? formatMoney(recommendedPrice.max_sell_price_80) : '—'}`
               : 'Este será el precio visible para compradores potenciales'
         }
         confirmText="Publicar"
@@ -2878,7 +2879,7 @@ ${price}
         required={false}
         helpText={
           postRenoPrice
-            ? `$9,500 margen + $${postRenoPrice.purchase_price.toLocaleString()} compra + $${postRenoPrice.commission.toLocaleString()} comision + $${postRenoPrice.renovation_cost.toLocaleString()} reparacion + $${postRenoPrice.move_cost.toLocaleString()} movida = $${postRenoPrice.recommended_sale_price.toLocaleString()}`
+            ? `${formatMoney(9500)} margen + ${formatMoney(postRenoPrice.purchase_price)} compra + ${formatMoney(postRenoPrice.commission)} comision + ${formatMoney(postRenoPrice.renovation_cost)} reparacion + ${formatMoney(postRenoPrice.move_cost)} movida = ${formatMoney(postRenoPrice.recommended_sale_price)}`
             : 'Dejar vacio para auto-calcular: 9500 + compra + comision + reparacion + movida'
         }
         confirmText="Publicar"

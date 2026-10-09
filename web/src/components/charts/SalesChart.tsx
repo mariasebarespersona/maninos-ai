@@ -15,6 +15,7 @@ import {
   Line,
   Legend,
 } from 'recharts'
+import { formatMoney } from '@/lib/money'
 
 interface SalesData {
   month: string
@@ -62,7 +63,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 {labels[entry.dataKey] || entry.name}:
               </span>
               <span className="font-medium" style={{ color: '#1e293b' }}>
-                {isCurrency ? `$${entry.value.toLocaleString()}` : entry.value}
+                {isCurrency ? formatMoney(entry.value) : entry.value}
               </span>
             </div>
           )

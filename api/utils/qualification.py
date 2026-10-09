@@ -239,10 +239,10 @@ def qualify_listing(
     # Rule 1: Price range $5K-$80K (50 points)
     passes_range = MIN_PRICE <= listing_price <= MAX_PRICE
     if passes_range:
-        reasons.append(f"✓ Rango: ${listing_price:,.0f} (dentro de $5K-$80K)")
+        reasons.append(f"✓ Rango: ${listing_price:,.2f} (dentro de $5,000.00-$80,000.00)")
         score += 50
     else:
-        reasons.append(f"✗ Rango: ${listing_price:,.0f} (fuera de $5K-$80K)")
+        reasons.append(f"✗ Rango: ${listing_price:,.2f} (fuera de $5,000.00-$80,000.00)")
 
     # Rule 2: Location — 200mi of Houston OR Dallas (50 points)
     passes_zone, min_distance = is_within_zone(city, state)
@@ -372,8 +372,8 @@ def get_sell_price_recommendation(
     warning = None
     if recommended < total_investment:
         warning = (
-            f"⚠️ La inversión total (${total_investment:,.0f}) es mayor que el máximo "
-            f"de venta al 80% (${max_sell:,.0f}). Considere renegociar el precio de compra."
+            f"⚠️ La inversión total (${total_investment:,.2f}) es mayor que el máximo "
+            f"de venta al 80% (${max_sell:,.2f}). Considere renegociar el precio de compra."
         )
 
     profit = round(recommended - total_investment, 2)

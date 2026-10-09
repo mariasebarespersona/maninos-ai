@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { TrendingUp, TrendingDown, DollarSign, Clock, Percent, Home } from 'lucide-react'
+import { formatMoney } from '@/lib/money'
 
 /**
  * KPI Cards Component
@@ -154,13 +155,13 @@ export function calculateKPIs(data: {
   return [
     {
       label: 'Ingreso Total',
-      value: `$${totalRevenue.toLocaleString()}`,
+      value: formatMoney(totalRevenue),
       icon: DollarSign,
       color: 'emerald',
     },
     {
       label: 'Precio Promedio',
-      value: `$${Math.round(avgSalePrice).toLocaleString()}`,
+      value: formatMoney(Math.round(avgSalePrice)),
       icon: Home,
       color: 'gold',
     },

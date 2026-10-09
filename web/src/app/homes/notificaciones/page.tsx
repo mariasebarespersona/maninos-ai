@@ -20,6 +20,7 @@ import {
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
+import { formatMoney } from '@/lib/money'
 
 interface PaymentOrder {
   id: string
@@ -469,8 +470,8 @@ export default function NotificacionesPage() {
     // Pago parcial: validar el monto antes de enviar
     const total = Number(completing.amount)
     const payNum = completeForm.paid_amount ? parseFloat(completeForm.paid_amount) : total
-    if (isNaN(payNum) || payNum <= 0) { toast.error('El monto a pagar debe ser mayor a $0'); return }
-    if (payNum > total + 0.005) { toast.error(`El monto no puede superar el total ($${total.toLocaleString('en-US', { minimumFractionDigits: 2 })})`); return }
+    if (isNaN(payNum) || payNum <= 0) { toast.error(`El monto a pagar debe ser mayor a ${formatMoney(0)}`); return }
+    if (payNum > total + 0.005) { toast.error(`El monto no puede superar el total (${formatMoney(total)})`); return }
     setSubmitting(true)
     try {
       const res = await fetch(`/api/payment-orders/${completing.id}/complete`, {
@@ -533,7 +534,7 @@ export default function NotificacionesPage() {
     }
   }
 
-  const formatCurrency = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+  const formatCurrency = (n: number) => formatMoney(n)
   const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 
   // Filter transfers: admin sees all, treasury only sees approved ones
@@ -768,7 +769,7 @@ export default function NotificacionesPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <CheckCircle className="w-4 h-4 text-emerald-500" />
                         <span className="font-medium text-sm" style={{ color: 'var(--ink)' }}>
-                          {o.payee_name} — ${Number(o.amount).toLocaleString()}
+                          {o.payee_name} — {formatMoney(o.amount)}
                         </span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Recibido</span>
                         {o.concept && (
@@ -911,7 +912,7 @@ export default function NotificacionesPage() {
                     )}
                   </div>
                   <span className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
-                    ${reno.total_cost?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
+                    {formatMoney(reno.total_cost)}
                   </span>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2" style={{ color: 'var(--slate)' }}>
                     {reno.responsable && <span>Responsable: <strong>{reno.responsable}</strong></span>}
@@ -1155,7 +1156,7 @@ export default function NotificacionesPage() {
             </h3>
             <div className="text-sm space-y-2" style={{ color: 'var(--charcoal)' }}>
               <p>
-                <strong>{deleteOrderTarget.payee_name}</strong> — ${Number(deleteOrderTarget.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                <strong>{deleteOrderTarget.payee_name}</strong> — {formatMoney(deleteOrderTarget.amount)}
                 {deleteOrderTarget.property_address ? ` · ${deleteOrderTarget.property_address}` : ''}
               </p>
               {deleteOrderTarget.status === 'completed' ? (
@@ -1235,14 +1236,14 @@ export default function NotificacionesPage() {
                   max={completing.amount}
                   value={completeForm.paid_amount}
                   onChange={e => setCompleteForm(prev => ({ ...prev, paid_amount: e.target.value }))}
-                  placeholder={`Total: $${Number(completing.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  placeholder={`Total: ${formatMoney(completing.amount)}`}
                   className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500"
                   style={{ borderColor: 'var(--stone)' }}
                 />
                 {completeForm.paid_amount && parseFloat(completeForm.paid_amount) > 0 &&
                  parseFloat(completeForm.paid_amount) < Number(completing.amount) - 0.005 && (
                   <p className="text-xs mt-1.5 rounded-lg p-2" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
-                    Pago parcial: el saldo de <strong>${(Number(completing.amount) - parseFloat(completeForm.paid_amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> quedará
+                    Pago parcial: el saldo de <strong>{formatMoney(Number(completing.amount) - parseFloat(completeForm.paid_amount))}</strong> quedará
                     como requisición <strong>ya aprobada</strong> para el siguiente abono (sin re-aprobación),
                     y seguirá contando en Por Pagar.
                   </p>
@@ -1287,7 +1288,7 @@ export default function NotificacionesPage() {
                     <option value="">Seleccionar cuenta...</option>
                     {bankAccounts.map(ba => (
                       <option key={ba.id} value={ba.id}>
-                        {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
+                        {ba.name} - {ba.bank_name} ({formatMoney(ba.current_balance)})
                       </option>
                     ))}
                   </select>
@@ -1354,7 +1355,7 @@ export default function NotificacionesPage() {
                   <option value="">Seleccionar cuenta...</option>
                   {bankAccounts.map(ba => (
                     <option key={ba.id} value={ba.id}>
-                      {ba.name} - {ba.bank_name} (${ba.current_balance?.toLocaleString()})
+                      {ba.name} - {ba.bank_name} ({formatMoney(ba.current_balance)})
                     </option>
                   ))}
                 </select>

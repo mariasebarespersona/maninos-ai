@@ -12,6 +12,7 @@ import {
   ShoppingCart
 } from 'lucide-react'
 import { useToast } from './ui/Toast'
+import { formatMoney } from '@/lib/money'
 
 interface Material {
   id: string
@@ -224,7 +225,7 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
               Costo Total
             </div>
             <p className="text-2xl font-serif font-bold text-gold-600 mt-1">
-              ${summary.total_cost.toLocaleString()}
+              {formatMoney(summary.total_cost)}
             </p>
           </div>
           <div className="card-luxury p-4">
@@ -233,7 +234,7 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
               Comprado
             </div>
             <p className="text-2xl font-serif font-bold text-emerald-600 mt-1">
-              ${summary.purchased_cost.toLocaleString()}
+              {formatMoney(summary.purchased_cost)}
             </p>
           </div>
           <div className="card-luxury p-4">
@@ -242,7 +243,7 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
               Pendiente
             </div>
             <p className="text-2xl font-serif font-bold text-amber-600 mt-1">
-              ${summary.pending_cost.toLocaleString()}
+              {formatMoney(summary.pending_cost)}
             </p>
           </div>
         </div>
@@ -313,7 +314,7 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gold-600">
-                      ${material.unit_price.toFixed(2)}
+                      {formatMoney(material.unit_price)}
                     </p>
                     <p className="text-xs text-navy-500">por {material.unit}</p>
                   </div>
@@ -376,7 +377,7 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
               <div className="flex justify-between items-center">
                 <span className="text-navy-700">Total estimado:</span>
                 <span className="text-2xl font-bold text-gold-600">
-                  ${((parseFloat(quantity) || 0) * (parseFloat(customPrice) || 0)).toFixed(2)}
+                  {formatMoney((parseFloat(quantity) || 0) * (parseFloat(customPrice) || 0))}
                 </span>
               </div>
             </div>
@@ -451,14 +452,14 @@ export default function RenovationMaterials({ propertyId, onTotalChange }: Props
                         {item.material_name}
                       </p>
                       <p className="text-sm text-navy-500">
-                        {item.quantity} {item.material_unit} × ${item.unit_price.toFixed(2)}
+                        {item.quantity} {item.material_unit} × {formatMoney(item.unit_price)}
                         {item.notes && ` • ${item.notes}`}
                       </p>
                     </div>
                     
                     <div className="text-right">
                       <p className="font-semibold text-gold-600">
-                        ${item.total_price.toFixed(2)}
+                        {formatMoney(item.total_price)}
                       </p>
                     </div>
                     

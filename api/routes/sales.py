@@ -639,7 +639,7 @@ async def register_sale_payment(sale_id: str, data: dict):
             if total_confirmed + 0.01 >= sale_price and sale.data.get("status") == "pending":
                 sb.table("sales").update({"status": "paid"}).eq("id", sale_id).execute()
                 logger.info(
-                    f"[sales] Sale {sale_id} status → paid (confirmed ${total_confirmed:.2f} ≥ price ${sale_price:.2f})"
+                    f"[sales] Sale {sale_id} status → paid (confirmed ${total_confirmed:,.2f} ≥ price ${sale_price:,.2f})"
                 )
     except Exception as e:
         logger.warning(f"[sales] Could not auto-promote sale status: {e}")
@@ -683,10 +683,10 @@ async def register_sale_payment(sale_id: str, data: dict):
             "concept": "pago_venta",
             "direction": "inbound",
             "notes": (
-                f"{label}: ${float(payment_data.amount):,.0f} de {client_name or 'cliente'} ({method}). "
+                f"{label}: ${float(payment_data.amount):,.2f} de {client_name or 'cliente'} ({method}). "
                 f"Propiedad: {prop_address}. "
                 f"Registrado por {source}. "
-                f"Progreso: ${total_paid:,.0f} de ${sale_price:,.0f} pagado, falta ${pending:,.0f}."
+                f"Progreso: ${total_paid:,.2f} de ${sale_price:,.2f} pagado, falta ${pending:,.2f}."
                 f"{' Ref: ' + payment_data.payment_reference if payment_data.payment_reference else ''}"
             ),
             "created_by": f"sistema_ventas_{reported_by}",
@@ -698,7 +698,7 @@ async def register_sale_payment(sale_id: str, data: dict):
             notify_payment_order_created(
                 po_result.data[0]["id"], property_id, float(payment_data.amount),
                 f"Pago de {client_name}", property_address=prop_address,
-                concept=f"{label} ({method}): ${float(payment_data.amount):,.0f} de {client_name}. Progreso: ${total_paid:,.0f}/${sale_price:,.0f}",
+                concept=f"{label} ({method}): ${float(payment_data.amount):,.2f} de {client_name}. Progreso: ${total_paid:,.2f}/${sale_price:,.2f}",
             )
         logger.info(f"[sales] Payment order created for sale payment: ${payment_data.amount}")
     except Exception as e:
@@ -1013,14 +1013,14 @@ async def create_sale(data: SaleCreate):
                 prop_addr = prop.get("address", "Propiedad")
                 sb.table("notifications").insert({
                     "type": "financed_sale",
-                    "title": f"Venta Financiada: ${float(data.sale_price):,.0f} — {prop_addr}",
+                    "title": f"Venta Financiada: ${float(data.sale_price):,.2f} — {prop_addr}",
                     "message": (
                         f"Nueva venta financiada registrada por Homes.\n"
                         f"Cliente: {client_name}\n"
-                        f"Precio: ${float(data.sale_price):,.0f}\n"
-                        f"Enganche: ${down_payment:,.0f} (Homes)\n"
-                        f"Restante: ${remaining:,.0f} (Capital debe pagar a Homes)\n"
-                        f"Mensualidad: ${float(data.rto_monthly_payment or 0):,.0f}\n"
+                        f"Precio: ${float(data.sale_price):,.2f}\n"
+                        f"Enganche: ${down_payment:,.2f} (Homes)\n"
+                        f"Restante: ${remaining:,.2f} (Capital debe pagar a Homes)\n"
+                        f"Mensualidad: ${float(data.rto_monthly_payment or 0):,.2f}\n"
                         f"Plazo: {data.rto_term_months or '—'} meses"
                     ),
                     "category": "both",
@@ -1050,10 +1050,10 @@ async def create_sale(data: SaleCreate):
                         "concept": "enganche",
                         "direction": "inbound",
                         "notes": (
-                            f"Enganche venta financiada: ${down_payment:,.0f} de {client_name}. "
+                            f"Enganche venta financiada: ${down_payment:,.2f} de {client_name}. "
                             f"Propiedad: {prop_addr}{code_str}. "
-                            f"Precio venta: ${float(data.sale_price):,.0f}. "
-                            f"Restante: ${remaining:,.0f} (Capital pagará a Homes)."
+                            f"Precio venta: ${float(data.sale_price):,.2f}. "
+                            f"Restante: ${remaining:,.2f} (Capital pagará a Homes)."
                         ),
                         "created_by": "sistema_ventas",
                     }
@@ -1064,9 +1064,9 @@ async def create_sale(data: SaleCreate):
                             po_result.data[0]["id"], data.property_id, down_payment,
                             f"Enganche de {client_name}",
                             property_address=prop_addr,
-                            concept=f"Enganche RTO: ${down_payment:,.0f} de {client_name}. {prop_addr}{code_str}",
+                            concept=f"Enganche RTO: ${down_payment:,.2f} de {client_name}. {prop_addr}{code_str}",
                         )
-                    logger.info(f"[sales] Enganche payment_order created: ${down_payment:,.0f}")
+                    logger.info(f"[sales] Enganche payment_order created: ${down_payment:,.2f}")
                 except Exception as po_err:
                     logger.warning(f"[sales] Could not create enganche payment_order: {po_err}")
 
@@ -1074,11 +1074,11 @@ async def create_sale(data: SaleCreate):
                 try:
                     sb.table("notifications").insert({
                         "type": "down_payment_received",
-                        "title": f"Enganche recibido: ${down_payment:,.0f} — {prop_addr}",
+                        "title": f"Enganche recibido: ${down_payment:,.2f} — {prop_addr}",
                         "message": (
-                            f"Cliente {client_name} pagó enganche de ${down_payment:,.0f} por {prop_addr}.\n"
+                            f"Cliente {client_name} pagó enganche de ${down_payment:,.2f} por {prop_addr}.\n"
                             f"Venta financiada — pendiente de aprobación por Capital.\n"
-                            f"Restante: ${remaining:,.0f} (Capital pagará a Homes al aprobar)."
+                            f"Restante: ${remaining:,.2f} (Capital pagará a Homes al aprobar)."
                         ),
                         "category": "homes",
                         "priority": "normal",
@@ -2154,12 +2154,12 @@ def _create_commission_payments(sale: dict):
                 property_id=property_id,
                 sale_id=sale["id"],
                 description=f"Comisión venta {tipo}: {emp_name} ({role_label}){code_str}",
-                notes=f"{tag} Comisión {tipo} ${float(row['amount']):,.0f} — {emp_name} ({role_label}). {prop_address}",
+                notes=f"{tag} Comisión {tipo} ${float(row['amount']):,.2f} — {emp_name} ({role_label}). {prop_address}",
             )
             # The commission_payment ↔ invoice link is the [COMM:<cp_id>] tag in
             # the invoice notes (consistent with [PO:]/[CAPFIN:]/[CONSIGN:]);
             # mark_commission_paid resolves it to settle the right invoice.
-            logger.info(f"[commissions] Payable invoice {inv.get('invoice_number')} created for {emp_name}: ${float(row['amount']):,.0f}")
+            logger.info(f"[commissions] Payable invoice {inv.get('invoice_number')} created for {emp_name}: ${float(row['amount']):,.2f}")
         except Exception as e:
             logger.warning(f"[commissions] Failed to create payable invoice for commission: {e}")
 

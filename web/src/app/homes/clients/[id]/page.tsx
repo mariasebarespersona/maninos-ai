@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
+import { formatMoney } from '@/lib/money'
 import {
   ArrowLeft,
   Pencil,
@@ -513,7 +514,7 @@ export default function ClientDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InfoItem icon={Building2} label="Empleador" value={client.employer_name} />
                 <InfoItem icon={Briefcase} label="Ocupación" value={client.occupation} />
-                <InfoItem icon={DollarSign} label="Ingreso Mensual" value={client.monthly_income ? `$${client.monthly_income.toLocaleString()}` : undefined} />
+                <InfoItem icon={DollarSign} label="Ingreso Mensual" value={client.monthly_income ? formatMoney(client.monthly_income) : undefined} />
                 <InfoItem icon={Clock} label="Tiempo en Empleo" value={
                   (client.time_at_job_years || client.time_at_job_months) 
                     ? `${client.time_at_job_years || 0} años, ${client.time_at_job_months || 0} meses`
@@ -523,7 +524,7 @@ export default function ClientDetailPage() {
                 <InfoItem icon={MapPin} label="Dirección Empleador" value={client.employer_address} />
                 {client.other_income_source && (
                   <InfoItem icon={Banknote} label="Otro Ingreso" value={
-                    client.other_income_amount ? `$${client.other_income_amount.toLocaleString()}/mes` : 'Sí'
+                    client.other_income_amount ? `${formatMoney(client.other_income_amount)}/mes` : 'Sí'
                   } />
                 )}
               </div>
@@ -596,7 +597,7 @@ export default function ClientDetailPage() {
                         </p>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-sm font-medium text-navy-700">
-                            ${sale.sale_price?.toLocaleString()}
+                            {formatMoney(sale.sale_price)}
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
                             sale.sale_type === 'rto' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
@@ -658,7 +659,7 @@ export default function ClientDetailPage() {
                   <div className="border-t border-navy-100 pt-3">
                     <StatRow 
                       label="Valor Total" 
-                      value={`$${sales.reduce((sum, s) => sum + (s.sale_price || 0), 0).toLocaleString()}`}
+                      value={formatMoney(sales.reduce((sum, s) => sum + (s.sale_price || 0), 0))}
                       highlight
                     />
                   </div>

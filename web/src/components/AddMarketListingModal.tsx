@@ -24,6 +24,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useToast } from './ui/Toast';
+import { formatMoney } from '@/lib/money';
 
 // Extracted listing data from backend
 interface ExtractedListing {
@@ -796,7 +797,7 @@ export default function AddMarketListingModal({ open, onClose, onListingAdded }:
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800 flex items-center gap-2">
                   <Edit3 className="w-4 h-4 flex-shrink-0" />
-                  <span>Puedes editar cualquier campo antes de guardar. Las <strong>reglas de calificación</strong> (60%, rango $0-$80K, zona 200mi) se aplicarán automáticamente.</span>
+                  <span>Puedes editar cualquier campo antes de guardar. Las <strong>reglas de calificación</strong> (60%, rango {formatMoney(0)}-{formatMoney(80000)}, zona 200mi) se aplicarán automáticamente.</span>
                 </p>
               </div>
             </div>

@@ -32,6 +32,7 @@ import {
   User,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { formatMoney } from '@/lib/money'
 
 // ============================================
 // TYPES — V4 with MO + Mat + Unidad + Subfields + Approval
@@ -395,7 +396,7 @@ export default function RenovationPage() {
           setQuote(prev => prev ? { ...prev, approval_status: 'pending_approval' } : prev)
           toast.success('Cotización enviada a aprobación')
         } else {
-          toast.success(`Cotización guardada — $${result.total?.toLocaleString() || '0'} (${result.active_items} items)`)
+          toast.success(`Cotización guardada — ${formatMoney(result.total)} (${result.active_items} items)`)
         }
         setHasUnsavedChanges(false)
         // Signal property page to refresh financiero
@@ -978,7 +979,7 @@ export default function RenovationPage() {
               Mano de Obra
             </div>
             <p className="text-xl font-bold text-navy-900 font-mono">
-              ${totals.mano_obra.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              {formatMoney(totals.mano_obra)}
             </p>
           </div>
 
@@ -988,7 +989,7 @@ export default function RenovationPage() {
               Materiales
             </div>
             <p className="text-xl font-bold text-navy-900 font-mono">
-              ${totals.materiales.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              {formatMoney(totals.materiales)}
             </p>
           </div>
 
@@ -998,7 +999,7 @@ export default function RenovationPage() {
               Total Renovación
             </div>
             <p className="text-xl font-bold text-green-700 font-mono">
-              ${totals.total.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              {formatMoney(totals.total)}
             </p>
           </div>
 
@@ -1009,7 +1010,7 @@ export default function RenovationPage() {
                 Precio Compra
               </div>
               <p className="text-xl font-bold text-navy-900 font-mono">
-                ${(quote.purchase_price || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                {formatMoney(quote.purchase_price || 0)}
               </p>
             </div>
           ) : (
@@ -1197,7 +1198,7 @@ export default function RenovationPage() {
                                 value={item.mano_obra || ''}
                                 onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
                                 className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                                placeholder="$0"
+                                placeholder="$0.00"
                               />
                             </td>
                             <td className="px-3 py-2.5">
@@ -1208,11 +1209,11 @@ export default function RenovationPage() {
                                 value={item.materiales || ''}
                                 onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
                                 className="w-full text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
-                                placeholder="$0"
+                                placeholder="$0.00"
                               />
                             </td>
                             <td className="px-3 py-2.5 text-right font-mono text-sm font-semibold text-green-700">
-                              ${item.precio.toLocaleString()}
+                              {formatMoney(item.precio)}
                             </td>
                             <td className="px-3 py-2.5">
                               <input
@@ -1246,7 +1247,7 @@ export default function RenovationPage() {
                               {item.precio > 0 && (
                                 <button
                                   onClick={async () => {
-                                    if (!confirm(`¿Enviar orden de pago por ${item.concepto} ($${item.precio.toLocaleString()})?`)) return
+                                    if (!confirm(`¿Enviar orden de pago por ${item.concepto} (${formatMoney(item.precio)})?`)) return
                                     try {
                                       const res = await fetch('/api/payment-orders', {
                                         method: 'POST',
@@ -1258,11 +1259,11 @@ export default function RenovationPage() {
                                           amount: item.precio,
                                           method: 'transferencia',
                                           concept: 'renovacion',
-                                          notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
+                                          notes: `Renovación: ${item.concepto} (MO: ${formatMoney(item.mano_obra)} + Mat: ${formatMoney(item.materiales)})`,
                                         }),
                                       })
                                       if (res.ok) {
-                                        toast.success(`Orden de pago enviada: ${item.concepto} — $${item.precio.toLocaleString()}`)
+                                        toast.success(`Orden de pago enviada: ${item.concepto} — ${formatMoney(item.precio)}`)
                                       } else {
                                         toast.error('Error al crear orden de pago')
                                       }
@@ -1346,16 +1347,16 @@ export default function RenovationPage() {
                 <div className="flex justify-end gap-8 text-sm">
                   <div className="text-right">
                     <span className="text-gray-500">MO:</span>{' '}
-                    <span className="font-mono font-semibold">${totals.mano_obra.toLocaleString()}</span>
+                    <span className="font-mono font-semibold">{formatMoney(totals.mano_obra)}</span>
                   </div>
                   <div className="text-right">
                     <span className="text-gray-500">Mat:</span>{' '}
-                    <span className="font-mono font-semibold">${totals.materiales.toLocaleString()}</span>
+                    <span className="font-mono font-semibold">{formatMoney(totals.materiales)}</span>
                   </div>
                   <div className="text-right text-base">
                     <span className="font-bold text-navy-900">Total:</span>{' '}
                     <span className="font-bold text-green-700 font-mono">
-                      ${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {formatMoney(totals.total)}
                     </span>
                   </div>
                 </div>
@@ -1396,7 +1397,7 @@ export default function RenovationPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-bold text-green-700 font-mono">${item.precio.toLocaleString()}</p>
+                        <p className="text-lg font-bold text-green-700 font-mono">{formatMoney(item.precio)}</p>
                         <p className="text-[10px] text-gray-400">{item.dias}d desde día {item.start_day}</p>
                       </div>
                     </div>
@@ -1410,7 +1411,7 @@ export default function RenovationPage() {
                           value={item.mano_obra || ''}
                           onChange={(e) => updateItem(item.id, 'mano_obra', parseFloat(e.target.value) || 0)}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
-                          placeholder="$0"
+                          placeholder="$0.00"
                         />
                       </div>
                       <div>
@@ -1421,7 +1422,7 @@ export default function RenovationPage() {
                           value={item.materiales || ''}
                           onChange={(e) => updateItem(item.id, 'materiales', parseFloat(e.target.value) || 0)}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono text-right focus:ring-2 focus:ring-gold-400"
-                          placeholder="$0"
+                          placeholder="$0.00"
                         />
                       </div>
                       <div>
@@ -1496,7 +1497,7 @@ export default function RenovationPage() {
                       {item.precio > 0 ? (
                         <button
                           onClick={async () => {
-                            if (!confirm(`¿Enviar orden de pago por ${item.concepto} ($${item.precio.toLocaleString()})?`)) return
+                            if (!confirm(`¿Enviar orden de pago por ${item.concepto} (${formatMoney(item.precio)})?`)) return
                             try {
                               const res = await fetch('/api/payment-orders', {
                                 method: 'POST',
@@ -1508,11 +1509,11 @@ export default function RenovationPage() {
                                   amount: item.precio,
                                   method: 'transferencia',
                                   concept: 'renovacion',
-                                  notes: `Renovación: ${item.concepto} (MO: $${item.mano_obra.toLocaleString()} + Mat: $${item.materiales.toLocaleString()})`,
+                                  notes: `Renovación: ${item.concepto} (MO: ${formatMoney(item.mano_obra)} + Mat: ${formatMoney(item.materiales)})`,
                                 }),
                               })
                               if (res.ok) {
-                                toast.success(`Orden de pago enviada: ${item.concepto} — $${item.precio.toLocaleString()}`)
+                                toast.success(`Orden de pago enviada: ${item.concepto} — ${formatMoney(item.precio)}`)
                               } else {
                                 toast.error('Error al crear orden de pago')
                               }

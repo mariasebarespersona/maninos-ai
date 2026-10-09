@@ -999,11 +999,11 @@ async def dashboard_drilldown(
             if (p.get("venta") or 0) <= 0 and (p.get("invertido") or 0) > 0:
                 parts = []
                 if p.get("compra"):
-                    parts.append(f"compra ${p['compra']:,.0f}")
+                    parts.append(f"compra ${p['compra']:,.2f}")
                 if p.get("renovacion"):
-                    parts.append(f"reno ${p['renovacion']:,.0f}")
+                    parts.append(f"reno ${p['renovacion']:,.2f}")
                 if p.get("movida"):
-                    parts.append(f"movida ${p['movida']:,.0f}")
+                    parts.append(f"movida ${p['movida']:,.2f}")
                 rows.append({
                     "label": p.get("code"),
                     "sublabel": " · ".join([p.get("address") or ""] + parts).strip(" ·"),
@@ -1376,7 +1376,7 @@ async def create_transaction(data: TransactionCreate):
     pnl_txn = result.data[0]
     pnl_txn_id = pnl_txn["id"]
     _log_audit("accounting_transactions", pnl_txn_id, "create",
-               description=f"Created {txn_number}: ${data.amount}")
+               description=f"Created {txn_number}: ${float(data.amount):,.2f}")
 
     # Double-entry: if a bank_account_id is provided, create the bank-side counterpart
     if data.bank_account_id:
@@ -1974,7 +1974,7 @@ async def transfer_between_banks(data: dict):
             status="confirmed",
         )
         logger.info(
-            f"[transfers] {from_name} → {to_name} ${amount_f:.2f} pair=({debit_id},{credit_id})"
+            f"[transfers] {from_name} → {to_name} ${amount_f:,.2f} pair=({debit_id},{credit_id})"
         )
         return {
             "ok": True,
@@ -2446,7 +2446,7 @@ async def delete_invoice(invoice_id: str):
     sb.table("accounting_invoices").delete().eq("id", invoice_id).execute()
 
     _log_audit("accounting_invoices", invoice_id, "delete",
-               description=f"Deleted invoice {invoice.get('invoice_number')} (${invoice.get('total_amount')})")
+               description=f"Deleted invoice {invoice.get('invoice_number')} (${float(invoice.get('total_amount') or 0):,.2f})")
     return {"message": "Factura eliminada",
             "invoice_number": invoice.get("invoice_number"),
             "deleted_ledger_rows": len(leg_ids)}
@@ -2596,7 +2596,7 @@ def record_invoice_payment(
                 logger.warning(f"[accounting] could not sync commission_payment {cp_id}: {e}")
 
     _log_audit("accounting_invoices", invoice_id, "update",
-               description=f"Payment of ${amt} on invoice {invoice.get('invoice_number')}")
+               description=f"Payment of ${float(amt):,.2f} on invoice {invoice.get('invoice_number')}")
 
     return {"payment": pay_result.data[0] if pay_result.data else None,
             "invoice_status": new_status, "new_amount_paid": new_paid,
@@ -4552,8 +4552,8 @@ async def _parse_statement_background(
                 diff = float(ending_balance) - ledger_bal
                 logger.info(
                     f"[BankStmt] {bank_account_id} period_end={period_end} "
-                    f"ledger=${ledger_bal:.2f} statement_ending=${float(ending_balance):.2f} "
-                    f"discrepancy=${diff:.2f}"
+                    f"ledger=${ledger_bal:,.2f} statement_ending=${float(ending_balance):,.2f} "
+                    f"discrepancy=${diff:,.2f}"
                 )
             except Exception as audit_err:
                 logger.warning(f"[BankStmt] Discrepancy check failed: {audit_err}")

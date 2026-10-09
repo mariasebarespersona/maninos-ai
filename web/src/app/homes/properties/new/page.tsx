@@ -30,6 +30,7 @@ import BillOfSaleTemplate, { type BillOfSaleData, generateSignedBillOfSalePDF } 
 import TitleApplicationTemplate, { type TitleApplicationData, generateSignedTitleAppPDF } from '@/components/TitleApplicationTemplate'
 import { BankTransferStep, usePayeeState, type PaymentInfo } from '@/components/BankTransferPayment'
 import DesktopEvaluatorPanel from '@/components/DesktopEvaluatorPanel'
+import { formatMoney } from '@/lib/money'
 
 /**
  * New Property — 4-step purchase flow (same as "Revisar Casa" in Market)
@@ -534,7 +535,7 @@ export default function NewPropertyPage() {
       home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
       seller_name: buyer,
       buyer_name: 'MANINOS HOMES LLC',
-      sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
+      sale_price: form.purchase_price ? formatMoney(form.purchase_price) : '',
       sale_date: today,
       sale_transfer_date: today,
       page2_hud_label: label,
@@ -881,7 +882,7 @@ export default function NewPropertyPage() {
               <p className="font-medium break-words">{form.address}</p>
               <div className="flex items-center gap-3 sm:gap-4 mt-2 text-sm flex-wrap">
                 {form.purchase_price && (
-                  <span className="text-2xl font-bold">${parseFloat(form.purchase_price).toLocaleString()}</span>
+                  <span className="text-2xl font-bold">{formatMoney(form.purchase_price)}</span>
                 )}
                 {form.city && <span className="text-navy-200">{form.city}, {form.state}</span>}
                 {form.length_ft && form.width_ft && (
@@ -1112,7 +1113,7 @@ export default function NewPropertyPage() {
                       serial_number: tdhcaResult?.serial_number || '',
                       hud_label_number: tdhcaResult?.label_seal || form.hud_number || '',
                       location_of_home: `${form.address || ''}, ${form.city || ''}, ${form.state || 'TX'}`,
-                      total_payment: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
+                      total_payment: form.purchase_price ? formatMoney(form.purchase_price) : '',
                       is_new: false,
                       is_used: true,
                     }}
@@ -1530,7 +1531,7 @@ export default function NewPropertyPage() {
                       home_moved: false, home_moved_no: true, home_installed: false, home_installed_no: true,
                       seller_name: buyer,
                       buyer_name: 'MANINOS HOMES LLC',
-                      sale_price: form.purchase_price ? `$${parseFloat(form.purchase_price).toLocaleString()}` : '',
+                      sale_price: form.purchase_price ? formatMoney(form.purchase_price) : '',
                       sale_date: new Date().toISOString().split('T')[0],
                       sale_transfer_date: new Date().toISOString().split('T')[0],
                       page2_hud_label: label,
@@ -1794,7 +1795,7 @@ export default function NewPropertyPage() {
                   <div className="flex justify-between items-start gap-3 py-2 border-b border-green-200 flex-wrap">
                     <span className="text-green-700 flex-shrink-0">Precio de Compra</span>
                     <span className="font-bold text-green-900 text-xl">
-                      ${parseFloat(form.purchase_price).toLocaleString()}
+                      {formatMoney(form.purchase_price)}
                     </span>
                   </div>
                 )}

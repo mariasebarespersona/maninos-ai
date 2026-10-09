@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { formatMoneyText } from '@/lib/money'
 import { Printer, Save, X, Edit3, Eye, Loader2 } from 'lucide-react'
 import { getMissingBlock2AFields } from '@/lib/titleApplicationValidation'
 
@@ -270,6 +271,8 @@ export default function TitleApplicationTemplate({
     // Auto-sync Page 2 header from Block 2A section 1
     if (m.section1_label && !m.page2_hud_label) m.page2_hud_label = m.section1_label
     if (m.section1_serial && !m.page2_serial) m.page2_serial = m.section1_serial
+    // Precio guardado antes como "$20,000" → $20,000.00
+    m.sale_price = formatMoneyText(m.sale_price)
 
     console.log('[TitleApp] ✅ v2 — initialData received:', {
       initialDataKeys: initialData ? Object.keys(initialData).filter(k => (initialData as any)[k]) : 'none',
@@ -342,7 +345,9 @@ export default function TitleApplicationTemplate({
     setSaving(true)
     try {
       const f = await generatePDF()
-      await onSave(f, data)
+      const clean = { ...data, sale_price: formatMoneyText(data.sale_price) }
+      setData(clean)
+      await onSave(f, clean)
     } catch (e) {
       console.error(e)
     } finally {
@@ -1207,7 +1212,7 @@ export async function generateSignedTitleAppPDF(
   pdf.setFont('times', 'normal')
   ln(`Seller/Transferor: ${data.seller_name || '—'}`, M, y); y += 4.5
   ln(`Buyer/Transferee: ${data.buyer_name || '—'}`, M, y); y += 4.5
-  ln(`Sale Price: ${data.sale_price || '—'}`, M, y); y += 4.5
+  ln(`Sale Price: ${formatMoneyText(data.sale_price) || '—'}`, M, y); y += 4.5
   ln(`Transfer Date: ${data.sale_transfer_date || data.sale_date || '—'}`, M, y); y += 4.5
   y += 2; hl(y); y += 5
 

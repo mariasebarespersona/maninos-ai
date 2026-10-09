@@ -237,7 +237,7 @@ async def save_property_quote(property_id: str, data: SaveQuoteV2Request):
             or float(v.get("precio", 0)) > 0
         )
     )
-    logger.info(f"[renovation] Saved V2 quote for {property_id}: ${total:.2f} ({active_items} items + {len(custom_items)} custom)")
+    logger.info(f"[renovation] Saved V2 quote for {property_id}: ${total:,.2f} ({active_items} items + {len(custom_items)} custom)")
 
     # Send approval email if submitting
     if data.submit_for_approval:
@@ -356,7 +356,7 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
                 "method": "transferencia",
                 "status": "approved",
                 "concept": "renovacion",
-                "notes": f"Renovación: {concepto} (MO: ${mo:,.0f} + Mat: ${mat:,.0f}). Responsable: {item_responsable or 'N/A'}. Propiedad: {prop_address}",
+                "notes": f"Renovación: {concepto} (MO: ${mo:,.2f} + Mat: ${mat:,.2f}). Responsable: {item_responsable or 'N/A'}. Propiedad: {prop_address}",
                 "approved_by": approved_by,
                 "approved_at": now,
                 "created_by": "sistema_renovacion",
@@ -380,7 +380,7 @@ async def approve_renovation_quote(property_id: str, data: ApproveQuoteRequest =
                 "method": "transferencia",
                 "status": "approved",
                 "concept": "renovacion",
-                "notes": f"Renovación: {concepto} (MO: ${mo:,.0f} + Mat: ${mat:,.0f}). Responsable: {responsable or 'N/A'}. Propiedad: {prop_address}",
+                "notes": f"Renovación: {concepto} (MO: ${mo:,.2f} + Mat: ${mat:,.2f}). Responsable: {responsable or 'N/A'}. Propiedad: {prop_address}",
                 "approved_by": approved_by,
                 "approved_at": now,
                 "created_by": "sistema_renovacion",

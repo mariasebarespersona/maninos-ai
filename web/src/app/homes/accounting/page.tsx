@@ -13,6 +13,7 @@ import {
   ChevronUp, Sparkles, ImageIcon, Trash2, Camera, Paperclip, Lock, ArrowRight, Pencil, Scissors, AlertTriangle, Package
 } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { formatMoney } from '@/lib/money'
 
 // ── Saved Statements Types ──
 interface SavedStatement {
@@ -107,8 +108,8 @@ interface InvoicePayment {
 }
 
 // ── Helpers ──
-const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
-const fmtFull = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+const fmt = (n: number) => formatMoney(n)
+const fmtFull = (n: number) => formatMoney(n)
 
 const TYPE_LABELS: Record<string, string> = {
   sale_cash: 'Venta Contado', sale_rto_capital: 'Venta Capital (RTO)',
@@ -856,7 +857,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
     const parts = splitParts.filter(p => p.amount && parseFloat(p.amount) !== 0)
       .map(p => ({ amount: Math.abs(parseFloat(p.amount)), description: p.description || txn.description }))
     const total = parts.reduce((s, p) => s + p.amount, 0)
-    if (Math.abs(total - absTotal) > 0.01) { alert(`Las partes suman $${total.toFixed(2)} pero la transacción es $${absTotal.toFixed(2)}`); return }
+    if (Math.abs(total - absTotal) > 0.01) { alert(`Las partes suman ${formatMoney(total)} pero la transacción es ${formatMoney(absTotal)}`); return }
     if (parts.length < 2) { alert('Necesitas al menos 2 partes'); return }
     try {
       const res = await fetch(`/api/accounting/transactions/${id}/split`, {
@@ -1143,7 +1144,7 @@ function TransactionsTab({ transactions, loading, search, setSearch, typeFilter,
                         {/* Split form */}
                         {splitTxnId === t.id && (
                           <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
-                            <p className="text-xs font-semibold mb-2">Dividir ${Math.abs(t.amount).toFixed(2)}</p>
+                            <p className="text-xs font-semibold mb-2">Dividir {formatMoney(Math.abs(t.amount))}</p>
                             {splitParts.map((part, i) => (
                               <div key={i} className="flex items-center gap-1 mb-1.5">
                                 <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
@@ -1926,7 +1927,7 @@ function QBTreeRow({ node, depth = 0, expanded, toggleExpand, onDrilldown, hideZ
   }
 
   const Money = ({ value }: { value: number }) => (
-    value !== 0 ? <>{fmtFull(value)}</> : <span style={{ color: 'var(--ash)' }}>0.00</span>
+    value !== 0 ? <>{fmtFull(value)}</> : <span style={{ color: 'var(--ash)' }}>{formatMoney(0)}</span>
   )
 
   return (
@@ -2089,8 +2090,7 @@ function StatementsTab() {
   const [showResetModal, setShowResetModal] = useState(false)
 
   const fmtMoney = (v: number | null | undefined) => {
-    if (v == null) return '$0.00'
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
+    return formatMoney(v)
   }
 
   const fetchSavedReports = useCallback(async () => {
@@ -3418,7 +3418,7 @@ function BanksTab({ banks, onAdd }: { banks: BankAccount[]; onAdd: () => void })
       })
       const data = await res.json()
       if (res.ok && data.ok) {
-        toast.success(`Transferido $${amt.toLocaleString()} de ${data.from_bank} a ${data.to_bank}`)
+        toast.success(`Transferido ${formatMoney(amt)} de ${data.from_bank} a ${data.to_bank}`)
         setShowTransfer(false)
         setTransferForm({ from_bank_id: '', to_bank_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' })
         setRefreshKey(k => k + 1)
@@ -5578,7 +5578,7 @@ function EstadoCuentaTab() {
                                       </p>
                                     </div>
                                     <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${m.is_credit ? 'text-emerald-600' : 'text-red-600'}`}>
-                                      {m.is_credit ? '+' : '-'}${Math.abs(m.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      {m.is_credit ? '+' : '-'}{formatMoney(Math.abs(m.amount))}
                                     </span>
                                   </div>
                                   {isLinked ? (
@@ -5617,7 +5617,7 @@ function EstadoCuentaTab() {
                                             </p>
                                             <p className="text-[9px] flex items-center gap-1.5">
                                               <span className={`font-bold tabular-nums ${aiIncome ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                {aiIncome ? '+' : '-'}${Math.abs(aiAmt).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                {aiIncome ? '+' : '-'}{formatMoney(Math.abs(aiAmt))}
                                               </span>
                                               <span className={amtMatches ? 'text-teal-600' : 'text-amber-600 font-medium'}>
                                                 {amtMatches ? 'monto ✓' : 'monto ✗'}
@@ -5706,7 +5706,7 @@ function EstadoCuentaTab() {
                                     </div>
                                     <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                                       <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${t.is_income ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        {t.is_income ? '+' : '-'}${Math.abs(Number(t.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                        {t.is_income ? '+' : '-'}{formatMoney(Math.abs(Number(t.amount)))}
                                       </span>
                                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{t.transaction_type}</span>
                                     </div>
@@ -5750,7 +5750,7 @@ function EstadoCuentaTab() {
                                         </div>
                                         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                                           <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${inv.direction === 'receivable' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {inv.direction === 'receivable' ? '+' : '-'}${Math.abs(Number(inv.balance_due || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            {inv.direction === 'receivable' ? '+' : '-'}{formatMoney(Math.abs(Number(inv.balance_due || 0)))}
                                           </span>
                                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">factura</span>
                                         </div>
@@ -6011,7 +6011,7 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
       <tr className="border-b bg-stone-50/50 opacity-60" style={{ borderColor: '#f0f0f0' }}>
         <td className="px-3 py-2.5 whitespace-nowrap"><span className="text-xs font-mono" style={{ color: 'var(--ash)' }}>{mv.movement_date}</span></td>
         <td className="px-3 py-2.5 max-w-md"><p className="text-xs line-through" style={{ color: 'var(--ash)' }}>{mv.description}</p></td>
-        <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">${Math.abs(mv.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+        <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">{formatMoney(Math.abs(mv.amount))}</span></td>
         <td className="px-3 py-2.5"><span className="text-xs text-stone-400">—</span></td>
         <td className="px-3 py-2.5 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-200 text-stone-600 font-medium">Dividido</span></td>
         <td className="px-3 py-2.5"></td>
@@ -6208,7 +6208,7 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
         {/* Split form overlay */}
         {showSplit && (
           <div className="absolute right-0 z-20 w-80 bg-white border rounded-lg shadow-xl p-3 text-left mt-1" style={{ borderColor: 'var(--stone)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir ${Math.abs(mv.amount).toFixed(2)}</p>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink)' }}>Dividir {formatMoney(Math.abs(mv.amount))}</p>
             {splitParts.map((part, i) => (
               <div key={i} className="flex items-center gap-1 mb-1.5">
                 <span className="text-[10px] text-stone-400 w-4">{i + 1}.</span>
