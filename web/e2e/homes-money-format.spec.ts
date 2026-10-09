@@ -77,7 +77,7 @@ test('Homes: todos los montos visibles con formato $20,000.00', async ({ page })
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
     await page.waitForTimeout(2500)
     const text = await visibleText(page)
-    for (const m of text.matchAll(AMOUNT)) {
+    for (const m of Array.from(text.matchAll(AMOUNT))) {
       const amt = m[0].trim().replace(/^\$\s?-/, '$')
       checked++
       if (!GOOD.test(amt)) {
@@ -97,5 +97,5 @@ test('Homes: todos los montos visibles con formato $20,000.00', async ({ page })
 
   console.log(`Montos revisados: ${checked}`)
   expect(checked, 'no se encontró ningún monto: la prueba no está viendo las páginas').toBeGreaterThan(20)
-  expect([...new Set(bad)]).toEqual([])
+  expect(Array.from(new Set(bad))).toEqual([])
 })

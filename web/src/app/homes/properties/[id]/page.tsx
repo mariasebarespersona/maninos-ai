@@ -130,6 +130,37 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 
 const fallbackStatusConfig = { label: 'Desconocido', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: Package }
 
+// Datos de la casa que no cambian entre la compra y la venta.
+const CAMPOS_CASA = [
+  'manufacturer', 'make', 'date_manufactured', 'bedrooms', 'baths',
+  'dimensions', 'serial_number', 'hud_label_number',
+] as const
+
+/**
+ * Datos de la casa ya escritos en la compra, para precargar el Bill of Sale
+ * de venta: primero el Bill of Sale de compra (también si se importó un PDF:
+ * entonces viven en _campos_previos) y, si falta algo, la aplicación de
+ * título de compra. Solo devuelve valores no vacíos.
+ */
+function datosCasaDeCompra(dd: Record<string, any> | null | undefined): Record<string, string> {
+  const bosRaw = dd?.bos_purchase || {}
+  const bos = bosRaw._uploaded_file ? (bosRaw._campos_previos || {}) : bosRaw
+  const ta = dd?.title_app_purchase || dd?.title_app || {}
+  const desdeTitulo: Record<string, any> = {
+    manufacturer: ta.manufacturer,
+    make: ta.make,
+    date_manufactured: ta.date_of_manufacture || ta.year,
+    serial_number: ta.section1_serial || ta.serial_number,
+    hud_label_number: ta.section1_label || ta.label_seal_number || ta.page2_hud_label,
+  }
+  const out: Record<string, string> = {}
+  for (const k of CAMPOS_CASA) {
+    const v = bos[k] || desdeTitulo[k]
+    if (v) out[k] = String(v)
+  }
+  return out
+}
+
 export default function PropertyDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -258,48 +289,56 @@ export default function PropertyDetailPage() {
   // Helper: save document data to property's document_data JSONB
   // Returns true if save succeeded, false otherwise
   /**
-   * Importa el bill of sale REAL (un PDF escaneado) en lugar de rellenar la
-   * plantilla. Antes esto solo se podía al dar de alta la casa; si el documento
-   * llegaba después no había dónde meterlo.
+   * Importa el documento REAL (un PDF escaneado) en lugar de rellenar la
+   * plantilla: Bill of Sale o Aplicación de cambio de título, de compra o de
+   * venta. Sirve sobre todo para cargar el inventario antiguo.
    *
    * El fichero va a DOS sitios a propósito:
    *   1. document_data de la propiedad → es lo que abre la ficha de la casa.
    *   2. el checklist del traspaso de título → es lo que leen Traspasos de
    *      Título y Casas Financiadas de Capital.
-   * Antes solo se guardaba en (1), así que un bill of sale importado seguía
-   * contando como "falta" en el traspaso y Capital no lo veía nunca.
    *
-   * Los campos que hubiera rellenados a mano NO se pierden: se guardan bajo
-   * `_campos_previos` por si hay que volver atrás. Manda el PDF, que es el
-   * documento de verdad.
+   * Los campos rellenados a mano NO se pierden:
+   *   - Bill of Sale: se guardan bajo `_campos_previos`. Manda el PDF.
+   *   - Aplicación de título: se quedan donde están, porque el monitor de
+   *     títulos y los traspasos leen de ahí la serie y el HUD; solo se añade
+   *     el enlace al PDF.
    */
-  const [importandoBos, setImportandoBos] = useState<'purchase' | 'sale' | null>(null)
+  const [importando, setImportando] = useState<string | null>(null)
 
-  const importarBillOfSale = async (tipo: 'purchase' | 'sale', file: File) => {
+  const importarDocumento = async (doc: 'bos' | 'title_app', tipo: 'purchase' | 'sale', file: File) => {
     if (!property) return
-    setImportandoBos(tipo)
+    const clave = `${doc}_${tipo}`
+    const esBos = doc === 'bos'
+    const nombre = esBos ? 'Bill of Sale' : 'Aplicación de título'
+    setImportando(clave)
     try {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('property_id', property.id)
-      fd.append('doc_type', `bill_of_sale_${tipo}`)
+      fd.append('doc_type', `${esBos ? 'bill_of_sale' : 'title_application'}_${tipo}`)
       const up = await fetch('/api/documents/upload', { method: 'POST', body: fd })
       if (!up.ok) { toast.error('No se pudo subir el archivo'); return }
       const { url } = await up.json()
       if (!url) { toast.error('La subida no devolvió una URL'); return }
 
-      const clave = `bos_${tipo}`
       const previos = property.document_data?.[clave] || {}
-      // Si ya era un importado, no se anida: se conserva el original.
-      const camposPrevios = previos._uploaded_file ? previos._campos_previos : previos
-      const nuevo: any = {
+      const meta = {
         _uploaded_file: true,
         file_url: url,
         file_name: file.name,
         _importado_el: new Date().toISOString(),
       }
-      if (camposPrevios && Object.keys(camposPrevios).length > 0) {
-        nuevo._campos_previos = camposPrevios
+      let nuevo: any
+      if (esBos) {
+        // Si ya era un importado, no se anida: se conserva el original.
+        const camposPrevios = previos._uploaded_file ? previos._campos_previos : previos
+        nuevo = { ...meta }
+        if (camposPrevios && Object.keys(camposPrevios).length > 0) {
+          nuevo._campos_previos = camposPrevios
+        }
+      } else {
+        nuevo = { ...previos, ...meta }
       }
       const okGuardado = await saveDocumentData(clave, nuevo)
       if (!okGuardado) { toast.error('No se pudo guardar en la propiedad'); return }
@@ -309,7 +348,7 @@ export default function PropertyDetailPage() {
       if (transferId) {
         const fd2 = new FormData()
         fd2.append('file', file)
-        const r2 = await fetch(`/api/transfers/${transferId}/document/bill_of_sale/upload`, {
+        const r2 = await fetch(`/api/transfers/${transferId}/document/${esBos ? 'bill_of_sale' : 'title_application'}/upload`, {
           method: 'POST', body: fd2,
         })
         if (!r2.ok) {
@@ -320,12 +359,12 @@ export default function PropertyDetailPage() {
       } else {
         toast.warning('Guardado en la casa. Esta casa no tiene traspaso de título, así que no aparecerá en Traspasos ni en Capital.')
       }
-      toast.success('Bill of Sale importado')
+      toast.success(`${nombre} importado`)
     } catch (e) {
-      console.error('[importarBillOfSale]', e)
-      toast.error('No se pudo importar el Bill of Sale')
+      console.error('[importarDocumento]', e)
+      toast.error(`No se pudo importar ${esBos ? 'el Bill of Sale' : 'la aplicación de título'}`)
     } finally {
-      setImportandoBos(null)
+      setImportando(null)
     }
   }
 
@@ -1977,6 +2016,9 @@ ${price}
                   buyer_date: new Date().toISOString().split('T')[0],
                   is_new: false,
                   is_used: true,
+                  // Venta: los datos de la casa salen de lo que ya se escribió en la
+                  // compra, para no volver a teclear fabricante, serie, HUD, etc.
+                  ...(showBosTemplate === 'sale' ? datosCasaDeCompra(property.document_data) : {}),
                   // Override with previously saved data (employee-filled fields)
                   // Filter out _uploaded_file metadata if BOS was uploaded as a file
                   ...(() => {
@@ -1985,6 +2027,10 @@ ${price}
                     // sin desenvolverlos la plantilla abría con los nombres en blanco.
                     const fuente = saved._uploaded_file ? (saved._campos_previos || {}) : saved
                     const { _uploaded_file, file_url, file_name, _importado_el, _campos_previos, ...templateData } = fuente
+                    // Un campo de la casa guardado vacío en la venta no borra el de la compra.
+                    if (showBosTemplate === 'sale') {
+                      for (const k of CAMPOS_CASA) if (!templateData[k]) delete templateData[k]
+                    }
                     return templateData
                   })(),
                   // Merge envelope signature (image/type only — don't override saved names)
@@ -2093,7 +2139,13 @@ ${price}
                   // Override with previously saved data (employee-filled fields)
                   // Also check legacy "title_app" key (before key was fixed to title_app_{type})
                   ...(property.document_data?.title_app || {}),
-                  ...(property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}),
+                  ...(() => {
+                    // Sin los datos del PDF importado: al guardar la plantilla, esta
+                    // pasa a ser el documento (igual que en el Bill of Sale).
+                    const { _uploaded_file, file_url, file_name, _importado_el, ...campos } =
+                      property.document_data?.[`title_app_${showTitleAppTemplate}`] || {}
+                    return campos
+                  })(),
                   // Merge envelope signature (image/type only — don't override saved names)
                   ...(() => {
                     const sigKey = showTitleAppTemplate === 'purchase' ? 'title_app' : 'title_app_sale'
@@ -2190,32 +2242,67 @@ ${price}
                 </button>
                 <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-blue-300 hover:text-blue-700"
                        title="Subir el PDF real en vez de rellenar la plantilla">
-                  {importandoBos === 'purchase' ? (
+                  {importando === 'bos_purchase' ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
                   ) : (
                     <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
                   )}
                   <input type="file" accept="application/pdf,image/*" className="hidden"
-                         disabled={importandoBos !== null}
+                         disabled={importando !== null}
                          onChange={e => {
                            const f = e.target.files?.[0]
-                           if (f) importarBillOfSale('purchase', f)
+                           if (f) importarDocumento('bos', 'purchase', f)
                            e.target.value = ''
                          }} />
                 </label>
               </div>
-              {/* Aplicación Título (Compra) */}
-              <button
-                onClick={() => setShowTitleAppTemplate('purchase')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.title_app_purchase
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                }`}
-              >
-                {property.document_data?.title_app_purchase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Aplicación Título (Compra)
-              </button>
+              {/* Aplicación Título (Compra) — uploaded file or template */}
+              <div className="flex items-center gap-1">
+                {property.document_data?.title_app_purchase?._uploaded_file && (
+                  <a
+                    href={property.document_data.title_app_purchase.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Aplicación Título (Compra) — Ver PDF ↗
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowTitleAppTemplate('purchase')}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                    property.document_data?.title_app_purchase
+                      ? property.document_data.title_app_purchase._uploaded_file
+                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                        : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                      : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                  }`}
+                >
+                  {property.document_data?.title_app_purchase?._uploaded_file ? (
+                    <><Pencil className="w-3.5 h-3.5" /> Editar</>
+                  ) : property.document_data?.title_app_purchase ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" /> Aplicación Título (Compra)</>
+                  ) : (
+                    <><FileText className="w-3.5 h-3.5" /> Aplicación Título (Compra)</>
+                  )}
+                </button>
+                <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-indigo-300 hover:text-indigo-700"
+                       title="Subir el PDF real de la aplicación de cambio de título en vez de rellenar la plantilla">
+                  {importando === 'title_app_purchase' ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
+                  ) : (
+                    <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
+                  )}
+                  <input type="file" accept="application/pdf,image/*" className="hidden"
+                         disabled={importando !== null}
+                         onChange={e => {
+                           const f = e.target.files?.[0]
+                           if (f) importarDocumento('title_app', 'purchase', f)
+                           e.target.value = ''
+                         }} />
+                </label>
+              </div>
               {/* Bill of Sale (Venta) */}
               <div className="flex items-center gap-1">
                 {property.document_data?.bos_sale?._uploaded_file && (
@@ -2249,32 +2336,67 @@ ${price}
                 </button>
                 <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-purple-300 hover:text-purple-700"
                        title="Subir el PDF real en vez de rellenar la plantilla">
-                  {importandoBos === 'sale' ? (
+                  {importando === 'bos_sale' ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
                   ) : (
                     <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
                   )}
                   <input type="file" accept="application/pdf,image/*" className="hidden"
-                         disabled={importandoBos !== null}
+                         disabled={importando !== null}
                          onChange={e => {
                            const f = e.target.files?.[0]
-                           if (f) importarBillOfSale('sale', f)
+                           if (f) importarDocumento('bos', 'sale', f)
                            e.target.value = ''
                          }} />
                 </label>
               </div>
-              {/* Aplicación Título (Venta) */}
-              <button
-                onClick={() => setShowTitleAppTemplate('sale')}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-                  property.document_data?.title_app_sale
-                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                {property.document_data?.title_app_sale ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                Aplicación Título (Venta)
-              </button>
+              {/* Aplicación Título (Venta) — uploaded file or template */}
+              <div className="flex items-center gap-1">
+                {property.document_data?.title_app_sale?._uploaded_file && (
+                  <a
+                    href={property.document_data.title_app_sale.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Aplicación Título (Venta) — Ver PDF ↗
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowTitleAppTemplate('sale')}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                    property.document_data?.title_app_sale
+                      ? property.document_data.title_app_sale._uploaded_file
+                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                        : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                      : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                  }`}
+                >
+                  {property.document_data?.title_app_sale?._uploaded_file ? (
+                    <><Pencil className="w-3.5 h-3.5" /> Editar</>
+                  ) : property.document_data?.title_app_sale ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" /> Aplicación Título (Venta)</>
+                  ) : (
+                    <><FileText className="w-3.5 h-3.5" /> Aplicación Título (Venta)</>
+                  )}
+                </button>
+                <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg cursor-pointer transition-colors bg-white text-gray-600 border-dashed border-gray-300 hover:border-purple-300 hover:text-purple-700"
+                       title="Subir el PDF real de la aplicación de cambio de título en vez de rellenar la plantilla">
+                  {importando === 'title_app_sale' ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo…</>
+                  ) : (
+                    <><Upload className="w-3.5 h-3.5" /> Importar PDF</>
+                  )}
+                  <input type="file" accept="application/pdf,image/*" className="hidden"
+                         disabled={importando !== null}
+                         onChange={e => {
+                           const f = e.target.files?.[0]
+                           if (f) importarDocumento('title_app', 'sale', f)
+                           e.target.value = ''
+                         }} />
+                </label>
+              </div>
 
               {/* TDHCA Title Link — always visible if serial/label exists */}
               {(() => {
