@@ -58,7 +58,7 @@ async function login(page: Page) {
 
 async function openProperty(page: Page) {
   await page.goto(`${APP_URL}/homes/properties/${propId}`, { waitUntil: 'domcontentloaded', timeout: 45000 })
-  await expect(page.getByRole('button', { name: /Bill of Sale \(Venta\)/ })).toBeVisible({ timeout: 30000 })
+  await expect(page.getByRole('button', { name: 'Bill of Sale (Venta)', exact: true })).toBeVisible({ timeout: 30000 })
 }
 
 const inputValues = (page: Page) =>
@@ -110,7 +110,7 @@ test('El Bill of Sale de venta trae los datos de la casa de la compra', async ({
   test.setTimeout(120000)
   await login(page)
   await openProperty(page)
-  await page.getByRole('button', { name: /Bill of Sale \(Venta\)/ }).click()
+  await page.getByRole('button', { name: 'Bill of Sale (Venta)', exact: true }).click()
   await expect(page.locator('.bos-container')).toBeVisible({ timeout: 15000 })
 
   const values = await inputValues(page)
