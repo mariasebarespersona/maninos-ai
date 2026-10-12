@@ -71,7 +71,7 @@ def test_anuncios_sin_superficie_se_descartan():
 def test_compra_por_encima_de_mercado_no_cumple():
     ev = evaluar_compra(45000, 0, 2000, 36, {"ok": True, "metodo": "mercado", "valor": 40000})
     assert ev["mercado"]["estado"] == "no_cumple" and ev["mercado"]["compra_vs_valor"] == 1.125
-    assert evaluar_compra(40000, 0, 2000, 36, {"ok": True, "metodo": "cartera", "valor": 40000})["mercado"]["estado"] == "cumple"
+    assert evaluar_compra(39000, 0, 2000, 36, {"ok": True, "metodo": "cartera", "valor": 40000})["mercado"]["estado"] == "cumple"
 
 
 def test_el_coste_no_es_valor_de_mercado():
@@ -99,3 +99,40 @@ def test_kpi_cuenta_las_que_llegan_al_30():
     assert (k["con_datos"], k["total"], k["cumplen"], k["no_cumplen"]) == (2, 3, 1, 1)
     assert k["rentabilidad_media"] == 0.24
     assert (k["mercado_evaluadas"], k["por_encima_de_mercado"]) == (1, 1)
+
+
+# ── Respuestas de Jorge (2026-10-12) ────────────────────────────────────────
+
+def test_margen_sobre_costo_total_incluye_el_enganche():
+    """40.000 de precio, 12.000 de enganche, 950 × 36: el cliente paga 46.200
+    → 15,5% sobre el costo total (5,17% anual)."""
+    ev = evaluar_compra(40000, 12000, 950, 36, SIN_VALOR)
+    ct = ev["rentabilidad"]["sobre_costo_total"]
+    assert ct["total_plazo"] == round(46200 / 40000 - 1, 4)
+    assert ct["anual"] == round((46200 / 40000 - 1) / 3, 4)
+
+
+def test_compra_igual_al_valor_ya_no_cumple():
+    """'Debería estar por debajo': igual al valor de mercado no cumple."""
+    ev = evaluar_compra(40000, 0, 2000, 36, {"ok": True, "metodo": "cartera", "valor": 40000})
+    assert ev["mercado"]["estado"] == "no_cumple"
+    assert evaluar_compra(39999, 0, 2000, 36, {"ok": True, "metodo": "cartera", "valor": 40000})["mercado"]["estado"] == "cumple"
+
+
+def test_renta_del_cliente_frente_a_la_de_mercado():
+    sin = evaluar_compra(30000, 3000, 1000, 36, SIN_VALOR)
+    assert sin["renta"]["estado"] == "sin_valor"
+    ok = evaluar_compra(30000, 3000, 1000, 36, SIN_VALOR, manual={"market_rent": 1100, "rent_source": "Zillow"})
+    assert ok["renta"]["estado"] == "cumple" and ok["renta"]["fuente"] == "Zillow"
+    ko = evaluar_compra(30000, 3000, 1200, 36, SIN_VALOR, manual={"market_rent": 1100, "rent_source": "Zillow"})
+    assert ko["renta"]["estado"] == "no_cumple" and ko["renta"]["mensualidad_vs_mercado"] == round(1200 / 1100, 4)
+    # Solo renta, sin valor manual: el mercado sigue "sin valor"
+    assert ok["mercado"]["estado"] == "sin_valor"
+
+
+def test_kpi_incluye_costo_total_y_renta():
+    evs = [evaluar_compra(10000, 0, 19000 / 36, 36, SIN_VALOR, manual={"market_rent": 500, "rent_source": "x"}),
+           evaluar_compra(10000, 2000, 400, 36, SIN_VALOR)]
+    k = kpi_compra(evs)
+    assert k["costo_total_media"] is not None
+    assert (k["renta_evaluadas"], k["renta_por_encima"]) == (1, 1)

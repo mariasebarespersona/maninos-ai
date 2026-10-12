@@ -317,10 +317,14 @@ def contexto_historico(sujeto: dict, precio_compra: Optional[float]) -> dict:
 # = 90%), y ese 30% es lo que fija la renta. Además la compra no puede estar
 # por encima del valor de mercado.
 #
-# Supuesto pendiente de confirmar: el 30% se mide sobre la inversión NETA de
-# Capital = precio de compra − enganche (en las casas de Homes el enganche lo
-# cobra Homes y Capital solo paga lo financiado). Los cobros son las
-# mensualidades del plazo. Si la base cambia, cambia solo `inversion_neta`.
+# Base del 30% (confirmado por Jorge): la inversión NETA de Capital = precio de
+# compra − enganche; los cobros son las mensualidades del plazo. Jorge pide
+# además un segundo KPI: el margen sobre el COSTO TOTAL de la casa (precio
+# completo, con el enganche como cobro) — informativo, sin mínimo.
+#
+# "Fuera de mercado" (Jorge): aplica a la COMPRA (debe quedar por debajo del
+# valor de mercado) y a la RENTA del cliente (no por encima de la renta de
+# mercado, que se escribe a mano con su fuente: la app no tiene datos de rentas).
 RENTABILIDAD_MINIMA_ANUAL = 0.30
 
 
@@ -375,6 +379,17 @@ def rentabilidad_anual(precio: Optional[float], enganche: Optional[float],
     return (cobros / inv - 1) / (int(plazo_meses) / 12)
 
 
+def margen_costo_total(precio: Optional[float], enganche: Optional[float],
+                       mensualidad: Optional[float], plazo_meses: Optional[int]) -> Optional[dict]:
+    """Margen sobre el costo total de la casa: todo lo que paga el cliente
+    (enganche + mensualidades) frente al precio completo de compra."""
+    if not precio or not mensualidad or not plazo_meses:
+        return None
+    cobros = float(enganche or 0) + float(mensualidad) * int(plazo_meses)
+    total = cobros / float(precio) - 1
+    return {"total_plazo": round(total, 4), "anual": round(total / (int(plazo_meses) / 12), 4)}
+
+
 def renta_minima(precio: Optional[float], enganche: Optional[float], plazo_meses: Optional[int],
                  tasa: float = RENTABILIDAD_MINIMA_ANUAL) -> Optional[float]:
     """Mensualidad mínima para sacar `tasa` anual en el plazo."""
@@ -402,11 +417,14 @@ def evaluar_compra(precio: Optional[float], enganche: Optional[float],
                    precio_venta_rto: Optional[float] = None) -> dict:
     """Checklist de compra de Capital.
 
-    1. Rentabilidad: ≥ 30% anual sobre la inversión neta (veredicto).
-    2. Mercado: la compra no supera el valor de mercado (veredicto). Valor:
-       manual del responsable (prevalece) > histórico > anuncios. El coste
-       nunca cuenta como valor de mercado.
-    3. Informativo: precio de venta RTO frente al mercado, y en casas de Homes
+    1. Rentabilidad: ≥ 30% anual sobre la inversión neta (veredicto), y el
+       margen sobre el costo total de la casa (KPI informativo).
+    2. Mercado: la compra queda POR DEBAJO del valor de mercado (veredicto).
+       Valor: manual del responsable (prevalece) > histórico > anuncios. El
+       coste nunca cuenta como valor de mercado.
+    3. Renta: la mensualidad del cliente no supera la renta de mercado
+       (veredicto; renta manual con su fuente).
+    4. Informativo: precio de venta RTO frente al mercado, y en casas de Homes
        el precio frente a su coste (la regla de Homes está pendiente).
     """
     tasa = RENTABILIDAD_MINIMA_ANUAL
@@ -425,7 +443,18 @@ def evaluar_compra(precio: Optional[float], enganche: Optional[float],
             "renta_minima": _r2(renta_minima(p, enganche, plazo_meses)),
             "precio_maximo": _r2(precio_maximo_compra(mensualidad, enganche, plazo_meses)),
             "estado": ("sin_datos" if rent is None else "cumple" if rent >= tasa - 1e-9 else "no_cumple"),
+            "sobre_costo_total": margen_costo_total(p, enganche, mensualidad, plazo_meses),
         },
+    }
+
+    renta_mdo = float(manual["market_rent"]) if (manual and manual.get("market_rent")) else None
+    m = float(mensualidad) if mensualidad else None
+    out["renta"] = {
+        "mercado": round(renta_mdo, 2) if renta_mdo else None,
+        "fuente": (manual or {}).get("rent_source") if renta_mdo else None,
+        "mensualidad_vs_mercado": round(m / renta_mdo, 4) if (m and renta_mdo) else None,
+        "estado": ("sin_valor" if not renta_mdo else "sin_datos" if not m
+                   else "cumple" if m <= renta_mdo + 1e-9 else "no_cumple"),
     }
 
     valor, fuente = None, None
@@ -437,8 +466,9 @@ def evaluar_compra(precio: Optional[float], enganche: Optional[float],
         "valor": round(valor, 2) if valor else None,
         "fuente": fuente,
         "compra_vs_valor": round(p / valor, 4) if (p and valor) else None,
+        # "Debería estar por debajo" (Jorge): igual al valor ya no cumple.
         "estado": ("sin_valor" if not valor else "sin_precio" if not p
-                   else "cumple" if p <= valor else "no_cumple"),
+                   else "cumple" if p < valor else "no_cumple"),
         "venta_rto_vs_valor": (round(float(precio_venta_rto) / valor, 4)
                                if (precio_venta_rto and valor) else None),
     }
@@ -463,6 +493,8 @@ def kpi_compra(evaluaciones: list[dict]) -> dict:
     media; y cuántas se compraron por encima del valor de mercado."""
     rents = [e["rentabilidad"]["anual"] for e in evaluaciones if e["rentabilidad"]["anual"] is not None]
     cumplen = sum(1 for e in evaluaciones if e["rentabilidad"]["estado"] == "cumple")
+    costo = [e["rentabilidad"]["sobre_costo_total"]["anual"] for e in evaluaciones
+             if e["rentabilidad"].get("sobre_costo_total")]
     return {
         "minima": RENTABILIDAD_MINIMA_ANUAL,
         "rentabilidad_media": round(statistics.mean(rents), 4) if rents else None,
@@ -471,6 +503,10 @@ def kpi_compra(evaluaciones: list[dict]) -> dict:
         "total": len(evaluaciones),
         "cumplen": cumplen,
         "no_cumplen": len(rents) - cumplen,
+        "costo_total_media": round(statistics.mean(costo), 4) if costo else None,
+        "costo_total_mediana": round(statistics.median(costo), 4) if costo else None,
         "mercado_evaluadas": sum(1 for e in evaluaciones if e["mercado"]["valor"]),
         "por_encima_de_mercado": sum(1 for e in evaluaciones if e["mercado"]["estado"] == "no_cumple"),
+        "renta_evaluadas": sum(1 for e in evaluaciones if e["renta"]["mercado"]),
+        "renta_por_encima": sum(1 for e in evaluaciones if e["renta"]["estado"] == "no_cumple"),
     }

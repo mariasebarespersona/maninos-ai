@@ -25,6 +25,13 @@ export interface EvaluacionCompra {
     renta_minima: number | null
     precio_maximo: number | null
     estado: Estado
+    sobre_costo_total: { anual: number; total_plazo: number } | null
+  }
+  renta: {
+    mercado: number | null
+    fuente: string | null
+    mensualidad_vs_mercado: number | null
+    estado: Estado
   }
   mercado: {
     valor: number | null

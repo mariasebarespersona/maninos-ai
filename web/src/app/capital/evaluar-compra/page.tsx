@@ -46,6 +46,8 @@ export default function EvaluarCompraPage() {
   const [city, setCity] = useState('')
   const [valorManual, setValorManual] = useState('')
   const [fuenteManual, setFuenteManual] = useState('')
+  const [rentaMdo, setRentaMdo] = useState('')
+  const [fuenteRenta, setFuenteRenta] = useState('')
   const [res, setRes] = useState<Resultado | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -71,6 +73,8 @@ export default function EvaluarCompraPage() {
           city: city.trim() || null,
           valor_mercado_manual: num(valorManual),
           fuente_valor_manual: fuenteManual.trim() || null,
+          renta_mercado_manual: num(rentaMdo),
+          fuente_renta_manual: fuenteRenta.trim() || null,
         }),
       })
       const d = await r.json()
@@ -99,7 +103,7 @@ export default function EvaluarCompraPage() {
         </h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--slate)' }}>
           A cuánto comprar una casa para sacarle mínimo un 30% anual sobre lo que pone Capital (precio − enganche),
-          sin pagar por encima del mercado. Solo calcula: no guarda nada.
+          comprando por debajo del mercado y sin cobrar una renta por encima de la de mercado. Solo calcula: no guarda nada.
         </p>
       </div>
 
@@ -145,6 +149,11 @@ export default function EvaluarCompraPage() {
               <label className="label">Fuente de ese valor</label>
               <input className="input w-full" value={fuenteManual} onChange={e => setFuenteManual(e.target.value)} placeholder="comparables, tasación…" />
             </div>
+            {field('Renta de mercado mensual (opcional)', rentaMdo, setRentaMdo, 'renta de casas parecidas')}
+            <div>
+              <label className="label">Fuente de esa renta</label>
+              <input className="input w-full" value={fuenteRenta} onChange={e => setFuenteRenta(e.target.value)} placeholder="anuncios de renta en la zona…" />
+            </div>
           </div>
         </details>
 
@@ -163,7 +172,14 @@ export default function EvaluarCompraPage() {
             <Grande label="Precio máximo con tu mensualidad" value={ev.rentabilidad.precio_maximo ? formatMoney(ev.rentabilidad.precio_maximo) : '—'} testId="precio-maximo" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <p className="text-sm" style={{ color: 'var(--slate)' }} data-testid="calc-costo-total">
+            Margen sobre el costo total de la casa (con enganche):{' '}
+            <strong style={{ color: 'var(--ink)' }}>
+              {ev.rentabilidad.sobre_costo_total ? `${pct(ev.rentabilidad.sobre_costo_total.anual)} anual · ${pct(ev.rentabilidad.sobre_costo_total.total_plazo)} en el plazo` : 'escribe una mensualidad'}
+            </strong>
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Veredicto
               testId="calc-rentabilidad"
               estado={ev.rentabilidad.estado}
@@ -175,10 +191,18 @@ export default function EvaluarCompraPage() {
             <Veredicto
               testId="calc-mercado"
               estado={ev.mercado.estado}
-              ok={`Compra dentro del mercado (${pct(ev.mercado.compra_vs_valor)} del valor)`}
-              ko={`Compra por encima del mercado (${pct(ev.mercado.compra_vs_valor)} del valor)`}
+              ok={`Compra por debajo del mercado (${pct(ev.mercado.compra_vs_valor)} del valor)`}
+              ko={`Compra no queda por debajo del mercado (${pct(ev.mercado.compra_vs_valor)} del valor)`}
               sinDatos="Sin valor de mercado: añade superficie y ciudad, o un valor conocido"
               detalle={ev.mercado.valor && ev.mercado.fuente ? `Valor ${formatMoney(ev.mercado.valor)} según ${FUENTE_VALOR[ev.mercado.fuente]}` : undefined}
+            />
+            <Veredicto
+              testId="calc-renta"
+              estado={ev.renta.estado}
+              ok={`Renta dentro de mercado (${pct(ev.renta.mensualidad_vs_mercado)} de la de mercado)`}
+              ko={`Renta por encima de mercado (${pct(ev.renta.mensualidad_vs_mercado)} de la de mercado)`}
+              sinDatos={ev.renta.estado === 'sin_datos' ? 'Escribe una mensualidad para compararla' : 'Añade la renta de mercado para comparar'}
+              detalle={ev.renta.mercado ? `Renta de mercado ${formatMoney(ev.renta.mercado)}` : undefined}
             />
           </div>
 

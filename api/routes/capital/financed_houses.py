@@ -960,9 +960,17 @@ _FALTA_115 = ("Falta la migración 115 (tabla capital_market_valuations). "
               "Ejecuta migrations/115_capital_market_valuations.sql en Supabase.")
 
 
+_FALTA_116 = ("Falta la migración 116 (renta de mercado). "
+              "Ejecuta migrations/116_capital_market_rent.sql en Supabase.")
+
+
 class ManualMarketValue(BaseModel):
-    market_value: float
-    source: str
+    """Valor de mercado y/o renta de mercado escritos por el responsable,
+    cada uno con su fuente."""
+    market_value: Optional[float] = None
+    source: Optional[str] = None
+    market_rent: Optional[float] = None
+    rent_source: Optional[str] = None
     notes: Optional[str] = None
     evaluated_by: Optional[str] = None
 
@@ -1066,25 +1074,36 @@ async def get_price_evaluation(sale_id: str):
 
 @router.put("/{sale_id}/price-evaluation")
 async def set_manual_market_value(sale_id: str, body: ManualMarketValue):
-    """Guarda (o reemplaza) el valor de mercado manual de la casa, con su fuente."""
-    if not body.market_value or body.market_value <= 0:
-        raise HTTPException(status_code=400, detail="El valor de mercado debe ser mayor que 0")
-    if not (body.source or "").strip():
-        raise HTTPException(status_code=400, detail="Indica de dónde sale el valor (comparables, tasación…)")
+    """Guarda (o reemplaza) el valor y/o la renta de mercado manuales, con su fuente."""
+    if not body.market_value and not body.market_rent:
+        raise HTTPException(status_code=400, detail="Escribe el valor de mercado, la renta de mercado o los dos")
+    for v, src, que in ((body.market_value, body.source, "el valor"), (body.market_rent, body.rent_source, "la renta")):
+        if v is not None and v <= 0:
+            raise HTTPException(status_code=400, detail=f"{que.capitalize()} de mercado debe ser mayor que 0")
+        if v and not (src or "").strip():
+            raise HTTPException(status_code=400, detail=f"Indica de dónde sale {que} de mercado (comparables, tasación, anuncios…)")
     if not sb.table("sales").select("id").eq("id", sale_id).limit(1).execute().data:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     from datetime import datetime, timezone
     row = {
         "sale_id": sale_id,
-        "market_value": round(float(body.market_value), 2),
-        "source": body.source.strip(),
+        "market_value": round(float(body.market_value), 2) if body.market_value else None,
+        "source": ((body.source or "").strip() or None) if body.market_value else None,
+        "market_rent": round(float(body.market_rent), 2) if body.market_rent else None,
+        "rent_source": ((body.rent_source or "").strip() or None) if body.market_rent else None,
         "notes": (body.notes or "").strip() or None,
         "evaluated_by": (body.evaluated_by or "").strip() or None,
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Sin renta, no se mandan sus columnas: así guardar solo el valor sigue
+    # funcionando aunque aún no se haya ejecutado la migración 116.
+    if row["market_rent"] is None:
+        row.pop("market_rent"); row.pop("rent_source")
     try:
         sb.table("capital_market_valuations").upsert(row, on_conflict="sale_id").execute()
     except Exception as e:
+        if "market_rent" in str(e) or "rent_source" in str(e) or "null value" in str(e):
+            raise HTTPException(status_code=400, detail=_FALTA_116)
         if "capital_market_valuations" in str(e):
             raise HTTPException(status_code=400, detail=_FALTA_115)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1120,6 +1139,8 @@ class PurchaseCalc(BaseModel):
     width_ft: Optional[float] = None
     valor_mercado_manual: Optional[float] = None
     fuente_valor_manual: Optional[str] = None
+    renta_mercado_manual: Optional[float] = None
+    fuente_renta_manual: Optional[str] = None
 
 
 @router.post("/purchase-calculator")
@@ -1137,8 +1158,12 @@ async def purchase_calculator(body: PurchaseCalc):
         "city": body.city, "zip_code": body.zip_code, "width_ft": body.width_ft,
     })
     val = valor_automatico(sujeto, cargar_historico(), _anuncios_comparables())
-    manual = ({"market_value": body.valor_mercado_manual, "source": body.fuente_valor_manual or "manual"}
-              if body.valor_mercado_manual else None)
+    manual = {
+        "market_value": body.valor_mercado_manual,
+        "source": body.fuente_valor_manual or "manual",
+        "market_rent": body.renta_mercado_manual,
+        "rent_source": body.fuente_renta_manual or "manual",
+    } if (body.valor_mercado_manual or body.renta_mercado_manual) else None
     ev = evaluar_compra(body.precio, body.enganche, body.mensualidad, body.plazo_meses, val, manual)
     return {
         "ok": True,

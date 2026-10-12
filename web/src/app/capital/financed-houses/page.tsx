@@ -66,6 +66,7 @@ interface PriceVsMarket {
     minima: number; rentabilidad_media: number | null; rentabilidad_mediana: number | null
     con_datos: number; total: number; cumplen: number; no_cumplen: number
     mercado_evaluadas: number; por_encima_de_mercado: number
+    costo_total_media: number | null; renta_evaluadas: number; renta_por_encima: number
   }
   por_casa: Record<string, { rentabilidad: number | null; rentabilidad_estado: string; mercado_estado: string }>
 }
@@ -173,9 +174,14 @@ export default function FinancedHousesPage() {
               <span className="text-sm ml-2" style={{ color: 'var(--ash)' }}>mínimo {pctTxt(pvm.kpi.minima)}</span>
             </p>
           </div>
+          <div>
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Margen s/ costo total (con enganche)</p>
+            <p className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>{pctTxt(pvm.kpi.costo_total_media)}<span className="text-sm ml-1" style={{ color: 'var(--ash)' }}>anual</span></p>
+          </div>
           <p className="text-sm" style={{ color: 'var(--slate)' }}>
             <strong>{pvm.kpi.cumplen} de {pvm.kpi.con_datos}</strong> casas llegan al {pctTxt(pvm.kpi.minima)} · mediana {pctTxt(pvm.kpi.rentabilidad_mediana)}
-            {' · '}{pvm.kpi.por_encima_de_mercado} de {pvm.kpi.mercado_evaluadas} con valor de mercado se compraron por encima
+            {' · '}{pvm.kpi.por_encima_de_mercado} de {pvm.kpi.mercado_evaluadas} con valor de mercado no se compraron por debajo
+            {' · '}{pvm.kpi.renta_por_encima} de {pvm.kpi.renta_evaluadas} con renta de mercado la superan
           </p>
           <Link href="/capital/evaluar-compra" className="btn-secondary btn-sm ml-auto">Calculadora de compra</Link>
         </div>

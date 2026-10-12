@@ -24,7 +24,10 @@ interface PriceEvaluation {
   evaluacion: EvaluacionCompra & { casa_de_homes: boolean }
   automatico: ValorAutomatico
   referencias: Referencias
-  manual: { market_value: number; source: string; notes: string | null; evaluated_by: string | null; evaluated_at: string } | null
+  manual: {
+    market_value: number | null; source: string | null; market_rent: number | null; rent_source: string | null
+    notes: string | null; evaluated_by: string | null; evaluated_at: string
+  } | null
   sqft_registrado: boolean
   falta_migracion: boolean
 }
@@ -35,6 +38,8 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
   const [source, setSource] = useState('')
+  const [rent, setRent] = useState('')
+  const [rentSource, setRentSource] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -49,8 +54,10 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
   useEffect(() => { load() }, [load])
 
   const startEdit = () => {
-    setValue(data?.manual ? String(data.manual.market_value) : '')
+    setValue(data?.manual?.market_value ? String(data.manual.market_value) : '')
     setSource(data?.manual?.source || '')
+    setRent(data?.manual?.market_rent ? String(data.manual.market_rent) : '')
+    setRentSource(data?.manual?.rent_source || '')
     setNotes(data?.manual?.notes || '')
     setError('')
     setEditing(true)
@@ -58,15 +65,21 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
 
   const save = async () => {
     setError('')
-    const v = parseFloat(value.replace(/[$,\s]/g, ''))
-    if (!v || v <= 0) { setError('Escribe un valor de mercado mayor que 0'); return }
-    if (!source.trim()) { setError('Indica de dónde sale el valor (comparables, tasación…)'); return }
+    const v = parseFloat(value.replace(/[$,\s]/g, '')) || null
+    const rr = parseFloat(rent.replace(/[$,\s]/g, '')) || null
+    if (!v && !rr) { setError('Escribe el valor de mercado, la renta de mercado o los dos'); return }
+    if (v && !source.trim()) { setError('Indica de dónde sale el valor (comparables, tasación…)'); return }
+    if (rr && !rentSource.trim()) { setError('Indica de dónde sale la renta de mercado (anuncios de renta, comparables…)'); return }
     setSaving(true)
     try {
       const res = await fetch(`/api/capital/financed-houses/${saleId}/price-evaluation`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ market_value: v, source: source.trim(), notes: notes.trim() || null, evaluated_by: user?.email || null }),
+        body: JSON.stringify({
+          market_value: v, source: source.trim() || null,
+          market_rent: rr, rent_source: rentSource.trim() || null,
+          notes: notes.trim() || null, evaluated_by: user?.email || null,
+        }),
       })
       const d = await res.json()
       if (!res.ok || !d.ok) { setError(d.detail || 'No se pudo guardar'); return }
@@ -94,6 +107,7 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
   const ev = data.evaluacion
   const r = ev.rentabilidad
   const m = ev.mercado
+  const rt = ev.renta
 
   return (
     <div className="card-luxury p-5" data-testid="price-vs-market">
@@ -103,10 +117,10 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
       </h2>
       <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
         Responsable de Adquisiciones. Mínimo {pct(r.minima)} anual sobre lo que pone Capital (precio − enganche),
-        y la compra no por encima del valor de mercado.
+        la compra por debajo del valor de mercado y la renta del cliente no por encima de la de mercado.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <Veredicto
           testId="eval-rentabilidad"
           estado={r.estado}
@@ -118,10 +132,18 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
         <Veredicto
           testId="eval-mercado"
           estado={m.estado}
-          ok="Compra dentro del valor de mercado"
-          ko="Compra por encima del valor de mercado"
+          ok="Compra por debajo del valor de mercado"
+          ko="Compra no queda por debajo del valor de mercado"
           sinDatos={m.estado === 'sin_precio' ? 'La venta no tiene precio registrado' : 'Sin valor de mercado: no se puede comparar todavía'}
           detalle={m.valor && m.fuente ? `Valor según ${FUENTE_VALOR[m.fuente]}` : undefined}
+        />
+        <Veredicto
+          testId="eval-renta"
+          estado={rt.estado}
+          ok={`Renta dentro de mercado (${pct(rt.mensualidad_vs_mercado)} de la de mercado)`}
+          ko={`Renta por encima de mercado (${pct(rt.mensualidad_vs_mercado)} de la de mercado)`}
+          sinDatos={rt.estado === 'sin_datos' ? 'Falta la mensualidad del cliente' : 'Sin renta de mercado: escríbela a mano abajo'}
+          detalle={rt.mercado ? `Renta de mercado ${formatMoney(rt.mercado)}${rt.fuente ? ` · ${rt.fuente}` : ''}` : undefined}
         />
       </div>
 
@@ -132,6 +154,8 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
         <Dato label="Mensualidad · plazo" value={ev.mensualidad ? `${formatMoney(ev.mensualidad)} × ${ev.plazo_meses ?? '—'}` : '—'} />
         <Dato label={`Renta mínima (${pct(r.minima)})`} value={r.renta_minima ? formatMoney(r.renta_minima) : '—'} strong />
         <Dato label="Precio máximo con esta renta" value={r.precio_maximo ? formatMoney(r.precio_maximo) : '—'} strong />
+        <Dato label="Margen s/ costo total (anual)" value={r.sobre_costo_total ? pct(r.sobre_costo_total.anual) : '—'} strong />
+        <Dato label="Margen s/ costo total (plazo)" value={r.sobre_costo_total ? pct(r.sobre_costo_total.total_plazo) : '—'} />
         <Dato label="Valor de mercado" value={m.valor ? formatMoney(m.valor) : '—'} />
         <Dato label="Compra / valor" value={pct(m.compra_vs_valor)} />
       </div>
@@ -186,12 +210,22 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Valor de mercado *</label>
+                <label className="label">Valor de mercado</label>
                 <input className="input w-full" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)} placeholder="45000" />
               </div>
               <div>
-                <label className="label">Fuente *</label>
+                <label className="label">Fuente del valor</label>
                 <input className="input w-full" value={source} onChange={e => setSource(e.target.value)} placeholder="3 comparables en MHVillage, tasación…" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Renta de mercado (mensual)</label>
+                <input className="input w-full" inputMode="decimal" value={rent} onChange={e => setRent(e.target.value)} placeholder="1100" />
+              </div>
+              <div>
+                <label className="label">Fuente de la renta</label>
+                <input className="input w-full" value={rentSource} onChange={e => setRentSource(e.target.value)} placeholder="anuncios de renta en la zona…" />
               </div>
             </div>
             <div>
@@ -209,10 +243,18 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
         ) : data.manual ? (
           <div className="flex items-start justify-between gap-3 text-sm">
             <div style={{ color: 'var(--slate)' }}>
-              <p>
-                <span className="font-medium" style={{ color: 'var(--ink)' }}>Valor manual: {formatMoney(data.manual.market_value)}</span>
-                {' · '}{data.manual.source}
-              </p>
+              {data.manual.market_value != null && (
+                <p>
+                  <span className="font-medium" style={{ color: 'var(--ink)' }}>Valor manual: {formatMoney(data.manual.market_value)}</span>
+                  {' · '}{data.manual.source}
+                </p>
+              )}
+              {data.manual.market_rent != null && (
+                <p>
+                  <span className="font-medium" style={{ color: 'var(--ink)' }}>Renta de mercado: {formatMoney(data.manual.market_rent)}</span>
+                  {' · '}{data.manual.rent_source}
+                </p>
+              )}
               {data.manual.notes && <p className="text-xs mt-0.5">{data.manual.notes}</p>}
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--ash)' }}>
                 {data.manual.evaluated_by || 'Sin autor'} · {new Date(data.manual.evaluated_at).toLocaleDateString('es-MX')} · prevalece sobre el automático
@@ -225,7 +267,7 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
           </div>
         ) : (
           <button onClick={startEdit} className="btn-secondary btn-sm">
-            <Pencil className="w-4 h-4" /> Escribir valor de mercado a mano
+            <Pencil className="w-4 h-4" /> Escribir valor / renta de mercado a mano
           </button>
         )}
       </div>

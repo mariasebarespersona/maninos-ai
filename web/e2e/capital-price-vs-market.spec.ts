@@ -1,7 +1,9 @@
 /**
  * E2E contra producción (casa + venta RTO desechables, teardown completo):
  * "Evaluar compra" de Capital (criterio de Jorge: mínimo 30% anual sobre lo
- * que pone Capital = precio − enganche, y la compra no por encima del mercado).
+ * que pone Capital = precio − enganche; margen sobre el costo total con
+ * enganche como KPI; compra POR DEBAJO del mercado; renta del cliente no por
+ * encima de la renta de mercado).
  *  - Ficha: 30.000 − 3.000 de enganche, 1.000 × 36 → 11,1% anual (no llega),
  *    renta mínima 1.425,00. Sin superficie → sin valor de mercado; con valor
  *    manual 50.000 → compra dentro del mercado; 25.000 → por encima.
@@ -93,26 +95,40 @@ test('Evaluar compra: rentabilidad 30% anual + mercado, KPI y calculadora', asyn
   await expect(page.getByTestId('eval-rentabilidad')).toContainText('11.1% anual: no llega al 30%')
   await expect(card).toContainText('$1,425.00')          // renta mínima
   await expect(card).toContainText('$27,000.00')         // pone Capital
+  // Costo total: (3.000 + 36.000) / 30.000 − 1 = 30% en el plazo → 10% anual
+  await expect(card).toContainText('Margen s/ costo total (anual)')
+  await expect(card.getByText('10%', { exact: true }).first()).toBeVisible()
+  await expect(page.getByTestId('eval-renta')).toContainText('Sin renta de mercado')
   await expect(page.getByTestId('eval-mercado')).toContainText('Sin valor de mercado')
   await expect(card).toContainText('no tiene superficie')
   await expect(card).toContainText('Históricos de referencia')
 
   // Valor manual 50.000 → compra (30.000) dentro del mercado
-  await card.getByRole('button', { name: /Escribir valor de mercado a mano/ }).click()
-  await card.locator('label:text-is("Valor de mercado *")').locator('xpath=..').locator('input').fill('50000')
-  await card.locator('label:text-is("Fuente *")').locator('xpath=..').locator('input').fill('E2E: 3 comparables')
+  await card.getByRole('button', { name: /Escribir valor \/ renta de mercado a mano/ }).click()
+  await card.locator('label:text-is("Valor de mercado")').locator('xpath=..').locator('input').fill('50000')
+  await card.locator('label:text-is("Fuente del valor")').locator('xpath=..').locator('input').fill('E2E: 3 comparables')
+  await card.locator('label:text-is("Renta de mercado (mensual)")').locator('xpath=..').locator('input').fill('1100')
+  await card.locator('label:text-is("Fuente de la renta")').locator('xpath=..').locator('input').fill('E2E: rentas zona')
   await card.getByRole('button', { name: /Guardar valor/ }).click()
-  await expect(page.getByTestId('eval-mercado')).toContainText('Compra dentro del valor de mercado', { timeout: 20000 })
+  await expect(page.getByTestId('eval-mercado')).toContainText('Compra por debajo del valor de mercado', { timeout: 20000 })
+  // 1.000 / 1.100 = 90,9% → renta dentro de mercado
+  await expect(page.getByTestId('eval-renta')).toContainText('Renta dentro de mercado (90.9%')
   await expect(card).toContainText(process.env.E2E_CAPITAL_EMAIL!)
   const row = (await sb.from('capital_market_valuations').select('market_value, source').eq('sale_id', saleId).single()).data
   expect(row).toMatchObject({ market_value: 50000, source: 'E2E: 3 comparables' })
+  const rentRow = (await sb.from('capital_market_valuations').select('market_rent, rent_source').eq('sale_id', saleId).single()).data
+  expect(rentRow).toMatchObject({ market_rent: 1100, rent_source: 'E2E: rentas zona' })
 
   // 25.000 → compra por encima del mercado (120%)
   await card.getByTitle('Editar').click()
-  await card.locator('label:text-is("Valor de mercado *")').locator('xpath=..').locator('input').fill('25000')
+  await card.locator('label:text-is("Valor de mercado")').locator('xpath=..').locator('input').fill('30000')
+  await card.locator('label:text-is("Renta de mercado (mensual)")').locator('xpath=..').locator('input').fill('900')
   await card.getByRole('button', { name: /Guardar valor/ }).click()
-  await expect(page.getByTestId('eval-mercado')).toContainText('Compra por encima del valor de mercado', { timeout: 20000 })
-  await expect(card).toContainText('120%')
+  // Compra = valor → ya no cumple ("debería estar por debajo")
+  await expect(page.getByTestId('eval-mercado')).toContainText('Compra no queda por debajo del valor de mercado', { timeout: 20000 })
+  await expect(card).toContainText('100%')
+  // 1.000 / 900 = 111,1% → renta por encima de mercado
+  await expect(page.getByTestId('eval-renta')).toContainText('Renta por encima de mercado (111.1%')
 
   // Listado: KPI de rentabilidad y etiqueta de la casa
   await page.goto(`${APP_URL}/capital/financed-houses`, { waitUntil: 'domcontentloaded' })
@@ -123,6 +139,7 @@ test('Evaluar compra: rentabilidad 30% anual + mercado, KPI y calculadora', asyn
   await page.goto(`${APP_URL}/capital/financed-houses/${saleId}`, { waitUntil: 'domcontentloaded' })
   await page.getByTestId('price-vs-market').getByTitle('Quitar valor manual').click()
   await expect(page.getByTestId('eval-mercado')).toContainText('Sin valor de mercado', { timeout: 20000 })
+  await expect(page.getByTestId('eval-renta')).toContainText('Sin renta de mercado')
 
   // Calculadora de compra (desde el menú)
   await page.getByRole('link', { name: 'Evaluar compra' }).first().click()
@@ -130,8 +147,14 @@ test('Evaluar compra: rentabilidad 30% anual + mercado, KPI y calculadora', asyn
   await page.getByRole('button', { name: 'Tercero (mercado)' }).click()
   await page.locator('label:text-is("Precio de compra *")').locator('xpath=..').locator('input').fill('10000')
   await page.locator('label:text-is("Mensualidad (opcional)")').locator('xpath=..').locator('input').fill('600')
+  await page.getByText('Datos de la casa para estimar su valor de mercado').click()
+  await page.locator('label:text-is("Renta de mercado mensual (opcional)")').locator('xpath=..').locator('input').fill('550')
   await page.getByRole('button', { name: /Calcular/ }).click()
   await expect(page.getByTestId('renta-minima')).toHaveText('$527.78', { timeout: 30000 })   // 10.000 × 1,9 / 36
   await expect(page.getByTestId('precio-maximo')).toHaveText('$11,368.42')                  // 600 × 36 / 1,9
   await expect(page.getByTestId('calc-rentabilidad')).toContainText('llega al 30%')
+  // Costo total: 21.600 / 10.000 − 1 = 116% en el plazo → 38,7% anual
+  await expect(page.getByTestId('calc-costo-total')).toContainText('38.7% anual · 116% en el plazo')
+  // 600 / 550 = 109,1% → renta por encima
+  await expect(page.getByTestId('calc-renta')).toContainText('Renta por encima de mercado (109.1%')
 })
