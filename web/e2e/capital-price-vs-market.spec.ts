@@ -29,6 +29,7 @@ loadRootEnv()
 let sb: SupabaseClient
 let propId = ''
 let saleId = ''
+let clientId = ''
 
 async function login(page: Page) {
   await page.addInitScript(() => {
@@ -55,8 +56,11 @@ test.beforeAll(async () => {
   }).select('id').single()
   expect(p.error).toBeFalsy()
   propId = p.data!.id
+  const c = await sb.from('clients').insert({ name: `E2E Cliente ${PCODE}`, state: 'TX' }).select('id').single()
+  expect(c.error).toBeFalsy()
+  clientId = c.data!.id
   const s = await sb.from('sales').insert({
-    property_id: propId, sale_type: 'rto', sale_price: 30000, status: 'rto_active', source: 'manual_capital',
+    property_id: propId, client_id: clientId, sale_type: 'rto', sale_price: 30000, status: 'rto_active', source: 'manual_capital',
   }).select('id').single()
   expect(s.error).toBeFalsy()
   saleId = s.data!.id
@@ -70,6 +74,7 @@ test.afterAll(async () => {
       await sb.from('sales').delete().eq('id', saleId)
     }
     if (propId) await sb.from('properties').delete().eq('id', propId)
+    if (clientId) await sb.from('clients').delete().eq('id', clientId)
   } catch (e) { console.warn('teardown warning:', e) }
 })
 
