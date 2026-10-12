@@ -7,7 +7,7 @@ Completing an order creates an accounting transaction for reconciliation.
 """
 
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -322,6 +322,75 @@ async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
     return {"ok": True, "data": after.data[0]}
 
 
+_ENGPEND_ORDER_TAG = "[ENGPEND-INV:"
+
+
+def _engpend_invoice_of(order: dict) -> Optional[dict]:
+    """Si la orden cobra el resto de un enganche, su factura por cobrar."""
+    notes = order.get("notes") or ""
+    i = notes.find(_ENGPEND_ORDER_TAG)
+    if i < 0:
+        return None
+    inv_id = notes[i + len(_ENGPEND_ORDER_TAG):].split("]", 1)[0].strip()
+    rows = sb.table("accounting_invoices").select("*").eq("id", inv_id).limit(1).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=400, detail="No se encuentra la factura del resto de este enganche")
+    return rows[0]
+
+
+def _crear_resto_enganche(order: dict, resto: float, factura: Optional[dict]) -> dict:
+    """Deja lo que falta del enganche como deuda del cliente con Homes.
+
+    - Primera vez: factura por cobrar al cliente por el resto (A/R ← House
+      Sales - RTO, el mismo ingreso que el enganche cobrado), etiquetada
+      [ENGPEND:<venta>] → sale sola en Por Cobrar de Homes.
+    - Siempre: una orden de cobro nueva, pendiente, enlazada a esa factura,
+      para aprobarla en Notificaciones cuando el cliente traiga el dinero.
+    Si la orden ya era un cobro del resto, se reutiliza su factura."""
+    resto = round(resto, 2)
+    property_id = order.get("property_id")
+    if factura is None:
+        sale = (sb.table("sales").select("id, client_id, clients(name)")
+                .eq("property_id", property_id).eq("sale_type", "rto").neq("status", "cancelled")
+                .order("created_at", desc=True).limit(1).execute().data or [])
+        sale = sale[0] if sale else {}
+        cliente = ((sale.get("clients") or {}).get("name")
+                   or (order.get("payee_name") or "").replace("Enganche de ", "").strip() or "Cliente")
+        from api.routes.accounting import issue_invoice
+        due = (date.today() + timedelta(days=30)).isoformat()
+        factura = issue_invoice(
+            direction="receivable",
+            counterparty_name=cliente,
+            counterparty_type="client",
+            total_amount=resto,
+            account_code="House Sales - RTO",
+            client_id=sale.get("client_id"),
+            property_id=property_id,
+            sale_id=sale.get("id"),
+            due_date=due,
+            description=f"Resto del enganche — {order.get('property_address') or cliente}",
+            notes=(f"[ENGPEND:{sale.get('id') or property_id}] Resto del enganche que el cliente quedó a "
+                   f"deber (orden #{(order.get('id') or '')[:8]})."),
+        )
+    nueva = sb.table("payment_orders").insert({
+        "property_id": property_id,
+        "property_address": order.get("property_address"),
+        "payee_name": order.get("payee_name") or "Enganche",
+        "amount": resto,
+        "method": order.get("method") or "transferencia",
+        "status": "pending",
+        "concept": "enganche",
+        "direction": "inbound",
+        "notes": (f"Resto del enganche pendiente: ${resto:,.2f}. Aprobar cuando el cliente lo traiga. "
+                  f"{_ENGPEND_ORDER_TAG}{factura['id']}]"),
+        "created_by": "sistema_ventas",
+    }).execute().data[0]
+    logger.info(f"[payment_orders] Resto de enganche ${resto:,.2f}: factura {factura.get('invoice_number')} "
+                f"+ orden pendiente {nueva['id']}")
+    return {"amount": resto, "invoice_id": factura["id"], "invoice_number": factura.get("invoice_number"),
+            "order_id": nueva["id"]}
+
+
 @router.patch("/{order_id}/approve")
 async def approve_payment_order(
     order_id: str,
@@ -332,6 +401,12 @@ async def approve_payment_order(
         description='Reparto del cobro entre varias cuentas, como JSON: '
                     '[{"bank_account_id": "...", "amount": 4000}, ...]. '
                     'La suma debe ser exactamente el importe de la orden.',
+    ),
+    received_amount: Optional[float] = Query(
+        None,
+        description='Solo enganches: lo que de verdad se recibió, si es menos que '
+                    'la orden. El resto queda como factura por cobrar al cliente '
+                    'y como una orden nueva pendiente para cuando lo traiga.',
     ),
 ):
     """
@@ -351,12 +426,54 @@ async def approve_payment_order(
     if order["status"] != "pending":
         raise HTTPException(status_code=400, detail=f"Solo se pueden aprobar ordenes pendientes (estado actual: '{order['status']}')")
 
+    # ── Enganche parcial ──────────────────────────────────────────────────
+    # El cliente a veces da solo una parte del enganche ("el mes que entra te
+    # traigo lo que falta") y el contrato arranca igual. La orden pasa a ser
+    # SOLO lo recibido hoy; el resto queda como factura por cobrar al cliente
+    # (sale en Por Cobrar de Homes) y como orden pendiente para cobrarlo.
+    full_amount = round(float(order["amount"]), 2)
+    recibido = full_amount
+    parcial = False
+    if isinstance(received_amount, (int, float)):
+        r = round(float(received_amount), 2)
+        if r <= 0:
+            raise HTTPException(status_code=400, detail="Lo recibido debe ser mayor que $0")
+        if r > full_amount + 0.005:
+            raise HTTPException(status_code=400,
+                                detail=f"Lo recibido (${r:,.2f}) no puede superar la orden (${full_amount:,.2f})")
+        if r < full_amount - 0.005:
+            if order.get("direction") != "inbound" or (order.get("concept") or "").lower() != "enganche":
+                raise HTTPException(status_code=400, detail="Solo el enganche admite un cobro parcial")
+            recibido, parcial = r, True
+
+    # Orden que cobra el RESTO de un enganche: liquida su factura por cobrar en
+    # vez de volver a reconocer el ingreso. Se valida antes de tocar nada.
+    engpend_invoice = _engpend_invoice_of(order)
+    if engpend_invoice is not None:
+        saldo = round(float(engpend_invoice.get("balance_due") or 0), 2)
+        if saldo <= 0.005:
+            raise HTTPException(
+                status_code=400,
+                detail="La factura de este resto de enganche ya está cobrada (se registró desde Contabilidad). "
+                       "Cancela esta orden en vez de aprobarla.",
+            )
+        if recibido > saldo + 0.005:
+            raise HTTPException(status_code=400,
+                                detail=f"Lo recibido (${recibido:,.2f}) supera lo que queda por cobrar (${saldo:,.2f})")
+
     now = datetime.utcnow().isoformat()
-    result = sb.table("payment_orders").update({
+    upd = {
         "status": "approved",
         "approved_by": approved_by,
         "approved_at": now,
-    }).eq("id", order_id).execute()
+    }
+    if parcial:
+        upd["amount"] = recibido
+        upd["notes"] = ((order.get("notes") or "") +
+                        f" [Enganche parcial: recibido ${recibido:,.2f} de ${full_amount:,.2f}; "
+                        f"resta ${full_amount - recibido:,.2f}]").strip()
+        order["amount"] = recibido
+    result = sb.table("payment_orders").update(upd).eq("id", order_id).execute()
 
     if not result.data:
         raise HTTPException(status_code=500, detail="Error al aprobar orden")
@@ -388,7 +505,7 @@ async def approve_payment_order(
             raise HTTPException(status_code=400, detail="El reparto no es un JSON válido")
         if not isinstance(crudo, list) or not crudo:
             raise HTTPException(status_code=400, detail="El reparto debe ser una lista con al menos un destino")
-        total_orden = round(float(order["amount"]), 2)
+        total_orden = recibido
         suma = 0.0
         for parte in crudo:
             cuenta = (parte or {}).get("bank_account_id")
@@ -464,6 +581,26 @@ async def approve_payment_order(
                         logger.info(f"[payment_orders] pago_capital settled AR invoice {inv_q.data[0].get('invoice_number')} for order {order_id} en {len(destinos)} destino(s)")
                         settled_invoice = True
 
+                # Resto de un enganche: liquida su factura por cobrar (banco ←
+                # A/R). El ingreso ya se reconoció UNA vez al emitirla.
+                if engpend_invoice is not None:
+                    from api.routes.accounting import record_invoice_payment
+                    for d in destinos:
+                        res = record_invoice_payment(
+                            engpend_invoice["id"], d["amount"],
+                            bank_account_id=d["bank_account_id"],
+                            payment_method=order.get("method"),
+                            notes=f"Resto del enganche — orden #{order_id[:8]}",
+                            cap_to_balance=True,
+                        )
+                        pay = res.get("payment") or {}
+                        primer_txn_id = primer_txn_id or pay.get("transaction_id")
+                    sb.table("payment_orders").update({
+                        "accounting_transaction_id": primer_txn_id,
+                        "bank_account_id": destino_principal,
+                    }).eq("id", order_id).execute()
+                    settled_invoice = True
+
                 # enganche / pago_venta (and pago_capital with no AR invoice —
                 # legacy) post income directly.
                 if not settled_invoice:
@@ -521,7 +658,20 @@ async def approve_payment_order(
                 f"reparto) — no se escribió ningún asiento."
             )
 
-        return {"ok": True, "data": result.data[0], "message": "Pago recibido aprobado."}
+        resto = None
+        aviso = None
+        if parcial:
+            try:
+                resto = _crear_resto_enganche(order, full_amount - recibido, engpend_invoice)
+            except Exception as e:
+                logger.error(f"[payment_orders] No se pudo crear el resto del enganche de {order_id}: {e!r}")
+                aviso = (f"Se registró lo recibido, pero NO se pudo dejar pendiente el resto "
+                         f"(${full_amount - recibido:,.2f}): {e}. Regístralo a mano en Contabilidad.")
+        msg = "Pago recibido aprobado."
+        if resto:
+            msg = (f"Enganche parcial aprobado: ${recibido:,.2f} recibidos. "
+                   f"Quedan ${resto['amount']:,.2f} por cobrar al cliente.")
+        return {"ok": True, "data": result.data[0], "message": msg, "resto": resto, "aviso": aviso}
 
     return {"ok": True, "data": result.data[0], "message": "Orden aprobada. Tesorería puede ejecutar el pago."}
 

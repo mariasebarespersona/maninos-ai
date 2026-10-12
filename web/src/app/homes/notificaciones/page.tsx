@@ -332,7 +332,16 @@ export default function NotificacionesPage() {
     { bank_account_id: '', amount: '' },
   ])
 
-  const totalOrden = Number(inboundApproveTarget?.amount || 0)
+  // Enganche parcial: el cliente dio solo una parte. Lo recibido se registra
+  // hoy; el resto queda como factura por cobrar + orden pendiente.
+  const [parcialEng, setParcialEng] = useState(false)
+  const [recibidoEng, setRecibidoEng] = useState('')
+  const esEnganche = ((inboundApproveTarget as any)?.concept || '').toLowerCase() === 'enganche'
+  const montoOrden = Number(inboundApproveTarget?.amount || 0)
+  const recibidoNum = parseFloat(recibidoEng) || 0
+  const parcialValido = !parcialEng || (recibidoNum > 0 && recibidoNum < montoOrden - 0.005)
+  const restoEng = parcialEng ? Math.round((montoOrden - recibidoNum) * 100) / 100 : 0
+  const totalOrden = parcialEng ? recibidoNum : montoOrden
   const sumaPartes = partes.reduce((a, p) => a + (parseFloat(p.amount) || 0), 0)
   const restante = Math.round((totalOrden - sumaPartes) * 100) / 100
   const repartoValido = repartir
@@ -343,9 +352,11 @@ export default function NotificacionesPage() {
     if (!inboundApproveTarget) return
     if (!repartir && !inboundApproveBankId) return
     if (repartir && !repartoValido) return
+    if (!parcialValido) return
     setApprovingId(inboundApproveTarget.id)
     try {
       const qs = new URLSearchParams({ approved_by: teamUser?.id || '' })
+      if (parcialEng) qs.set('received_amount', String(recibidoNum))
       if (repartir) {
         qs.set('splits', JSON.stringify(
           partes.map(p => ({ bank_account_id: p.bank_account_id, amount: parseFloat(p.amount) }))
@@ -358,9 +369,12 @@ export default function NotificacionesPage() {
       })
       const data = await res.json()
       if (data.ok) {
-        toast.success('Pago recibido aprobado y registrado en contabilidad')
+        toast.success(data.resto ? data.message : 'Pago recibido aprobado y registrado en contabilidad')
+        if (data.aviso) toast.error(data.aviso)
         setInboundApproveTarget(null)
         setInboundApproveBankId('')
+        setParcialEng(false)
+        setRecibidoEng('')
         setRepartir(false)
         setPartes([{ bank_account_id: '', amount: '' }, { bank_account_id: '', amount: '' }])
         fetchOrders()
@@ -1341,6 +1355,39 @@ export default function NotificacionesPage() {
                 <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(inboundApproveTarget.amount)}</span>
               </div>
             </div>
+            {esEnganche && (
+              <div className="rounded-lg p-3 text-sm space-y-2" style={{ border: '1px solid var(--stone)' }}>
+                <label className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={parcialEng} onChange={e => { setParcialEng(e.target.checked); setRecibidoEng('') }} />
+                  El cliente dio solo una parte del enganche
+                </label>
+                {parcialEng && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>¿Cuánto se recibió? *</label>
+                      <input
+                        type="number" step="0.01" min="0" placeholder="Monto recibido"
+                        value={recibidoEng} onChange={e => setRecibidoEng(e.target.value)}
+                        className="w-full p-2.5 border rounded-lg text-sm" style={{ borderColor: 'var(--stone)' }}
+                        data-testid="enganche-recibido"
+                      />
+                    </div>
+                    {recibidoNum > 0 && (
+                      parcialValido ? (
+                        <p className="text-xs" style={{ color: 'var(--slate)' }} data-testid="enganche-resto">
+                          Quedarán <strong style={{ color: 'var(--ink)' }}>{formatCurrency(restoEng)}</strong> por cobrar al cliente:
+                          aparecen en Por Cobrar de Contabilidad y como una orden pendiente aquí, para aprobarla cuando lo traiga.
+                        </p>
+                      ) : (
+                        <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                          Debe ser menor que el enganche ({formatCurrency(montoOrden)}). Si llegó completo, desmarca la casilla.
+                        </p>
+                      )
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {!repartir ? (
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
@@ -1414,7 +1461,7 @@ export default function NotificacionesPage() {
                   <span className="text-xs font-medium"
                         style={{ color: Math.abs(restante) < 0.005 ? 'var(--success)' : 'var(--danger)' }}>
                     {Math.abs(restante) < 0.005
-                      ? 'Cuadra con el monto de la orden'
+                      ? (parcialEng ? 'Cuadra con lo recibido' : 'Cuadra con el monto de la orden')
                       : restante > 0
                         ? `Falta por repartir ${formatCurrency(restante)}`
                         : `Te pasas por ${formatCurrency(Math.abs(restante))}`}
@@ -1429,7 +1476,7 @@ export default function NotificacionesPage() {
             )}
             <div className="flex gap-3 pt-2">
               <button
-                onClick={() => { setInboundApproveTarget(null); setInboundApproveBankId('') }}
+                onClick={() => { setInboundApproveTarget(null); setInboundApproveBankId(''); setParcialEng(false); setRecibidoEng('') }}
                 className="flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium hover:bg-gray-50"
                 style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
               >
@@ -1437,7 +1484,7 @@ export default function NotificacionesPage() {
               </button>
               <button
                 onClick={submitInboundApprove}
-                disabled={(repartir ? !repartoValido : !inboundApproveBankId) || approvingId === inboundApproveTarget.id}
+                disabled={(repartir ? !repartoValido : !inboundApproveBankId) || !parcialValido || approvingId === inboundApproveTarget.id}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--navy-800)' }}
               >
