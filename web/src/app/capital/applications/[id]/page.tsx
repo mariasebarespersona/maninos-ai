@@ -891,6 +891,11 @@ export default function ApplicationDetailPage() {
         <ArrowLeft className="w-4 h-4" />
         Volver a Clientes
       </button>
+      {app?.sales?.id && app.sales.sale_type === 'rto' && (
+        <Link href={`/capital/financed-houses/${app.sales.id}`} className="btn-ghost btn-sm ml-2">
+          Ver casa financiada
+        </Link>
+      )}
 
       {/* Client header with property */}
       <div className="card-luxury p-5">

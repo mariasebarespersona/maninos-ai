@@ -29,6 +29,9 @@ interface ExistingProperty {
   sale_price: number | null
   client_name?: string | null
   bucket?: string | null
+  // Ya tiene una operación RTO viva (o liquidada): otra alta duplicaría la casa
+  // en Casas Financiadas y en Contratos. Solo se reutiliza si la previa se canceló.
+  busy?: boolean
 }
 
 const fmt = (n: number) =>
@@ -46,6 +49,20 @@ export default function AltaManualPage() {
   const router = useRouter()
   const toast = useToast()
   const [step, setStep] = useState(1)
+  // ?desde=casas → se entra desde "Casas Financiadas": la casa va primero y se
+  // vuelve allí. Mismo asistente y misma llamada; solo cambia el orden.
+  const [desdeCasas, setDesdeCasas] = useState(false)
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('desde') === 'casas') {
+        setDesdeCasas(true)
+        setStep(2)
+      }
+    } catch { /* ignore */ }
+  }, [])
+  const order = desdeCasas ? [2, 1, 3, 4, 5] : [1, 2, 3, 4, 5]
+  const pos = order.indexOf(step)
+  const orderedSteps = order.map(n => STEPS.find(s => s.n === n)!)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<any>(null)
 
@@ -96,13 +113,15 @@ export default function AltaManualPage() {
     // deduplicadas por propiedad. El inventario general de Homes NO aplica aquí.
     fetch('/api/capital/financed-houses').then(r => r.json())
       .then(d => {
-        const seen = new Set<string>()
-        const props: ExistingProperty[] = []
+        const byId = new Map<string, ExistingProperty>()
         for (const h of (d.houses || [])) {
           const p = h.property || {}
-          if (!p.id || seen.has(p.id)) continue
-          seen.add(p.id)
-          props.push({
+          if (!p.id) continue
+          const live = h.bucket !== 'cancelada'
+          const prev = byId.get(p.id)
+          // La fila mostrada es la operación viva si existe (no la cancelada).
+          if (prev && (prev.busy || !live)) continue
+          byId.set(p.id, {
             id: p.id,
             property_code: p.code || null,
             address: p.address || '—',
@@ -110,9 +129,10 @@ export default function AltaManualPage() {
             sale_price: h.terms?.sale_price ?? null,
             client_name: h.client?.name || null,
             bucket: h.bucket || null,
+            busy: live,
           })
         }
-        setExistingProps(props)
+        setExistingProps(Array.from(byId.values()))
       })
       .catch(() => {})
   }, [])
@@ -172,7 +192,7 @@ export default function AltaManualPage() {
   const next = () => {
     const err = stepValid(step)
     if (err) { toast.warning(err); return }
-    setStep(Math.min(5, step + 1))
+    setStep(order[Math.min(order.length - 1, pos + 1)])
   }
 
   const handleSubmit = async () => {
@@ -257,12 +277,13 @@ export default function AltaManualPage() {
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-3 mt-6">
-            <Link href={`/capital/applications/${result.application_id}`} className="btn-primary btn-sm">Ver Cliente RTO</Link>
+            {desdeCasas && <Link href={`/capital/financed-houses/${result.sale_id}`} className="btn-primary btn-sm">Ver Casa Financiada</Link>}
+            <Link href={`/capital/applications/${result.application_id}`} className={desdeCasas ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'}>Ver Cliente RTO</Link>
             <Link href={`/capital/contracts/${result.contract_id}`} className="btn-secondary btn-sm">Ver Contrato</Link>
-            <Link href="/capital/financed-houses" className="btn-ghost btn-sm">Casas Financiadas</Link>
+            {!desdeCasas && <Link href={`/capital/financed-houses/${result.sale_id}`} className="btn-ghost btn-sm">Ver Casa Financiada</Link>}
           </div>
-          <button onClick={() => { setResult(null); setStep(1) }} className="btn-ghost btn-sm mt-4">
-            Dar de alta otro cliente
+          <button onClick={() => { setResult(null); setStep(order[0]) }} className="btn-ghost btn-sm mt-4">
+            {desdeCasas ? 'Dar de alta otra casa' : 'Dar de alta otro cliente'}
           </button>
         </div>
       </div>
@@ -271,12 +292,12 @@ export default function AltaManualPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-      <button onClick={() => router.push('/capital/applications')} className="btn-ghost btn-sm">
-        <ArrowLeft className="w-4 h-4" /> Volver a Clientes RTO
+      <button onClick={() => router.push(desdeCasas ? '/capital/financed-houses' : '/capital/applications')} className="btn-ghost btn-sm">
+        <ArrowLeft className="w-4 h-4" /> {desdeCasas ? 'Volver a Casas Financiadas' : 'Volver a Clientes RTO'}
       </button>
 
       <div>
-        <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Alta Manual — Cliente RTO Antiguo</h1>
+        <h1 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>{desdeCasas ? 'Alta Manual — Casa Financiada' : 'Alta Manual — Cliente RTO Antiguo'}</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--slate)' }}>
           Para clientes que ya venían pagando antes de usar la app. Se crea todo linkeado (solicitud,
           contrato, cronograma, casa financiada) sin tocar el portal Homes ni su contabilidad.
@@ -285,20 +306,20 @@ export default function AltaManualPage() {
 
       {/* Stepper */}
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
-        {STEPS.map((s, i) => (
+        {orderedSteps.map((s, i) => (
           <div key={s.n} className="flex items-center gap-1 flex-shrink-0">
             <button
-              onClick={() => s.n < step && setStep(s.n)}
+              onClick={() => i < pos && setStep(s.n)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
               style={{
-                backgroundColor: step === s.n ? 'var(--gold-700)' : step > s.n ? 'var(--success-light)' : 'var(--cream)',
-                color: step === s.n ? 'white' : step > s.n ? 'var(--success)' : 'var(--ash)',
-                cursor: s.n < step ? 'pointer' : 'default',
+                backgroundColor: step === s.n ? 'var(--gold-700)' : pos > i ? 'var(--success-light)' : 'var(--cream)',
+                color: step === s.n ? 'white' : pos > i ? 'var(--success)' : 'var(--ash)',
+                cursor: i < pos ? 'pointer' : 'default',
               }}
             >
               <s.icon className="w-3.5 h-3.5" /> {s.label}
             </button>
-            {i < STEPS.length - 1 && <ArrowRight className="w-3 h-3" style={{ color: 'var(--ash)' }} />}
+            {i < orderedSteps.length - 1 && <ArrowRight className="w-3 h-3" style={{ color: 'var(--ash)' }} />}
           </div>
         ))}
       </div>
@@ -381,9 +402,10 @@ export default function AltaManualPage() {
                 </p>
                 <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--sand)' }}>
                   {filteredProps.map(p => (
-                    <button key={p.id} onClick={() => setSelectedPropId(p.id)}
+                    <button key={p.id} onClick={() => !p.busy && setSelectedPropId(p.id)} disabled={p.busy}
+                      title={p.busy ? 'Esta casa ya tiene una operación RTO. Ábrela en Casas Financiadas.' : undefined}
                       className="w-full text-left p-3 flex items-center justify-between hover:bg-cream/50"
-                      style={{ backgroundColor: selectedPropId === p.id ? 'var(--gold-100)' : 'transparent' }}>
+                      style={{ backgroundColor: selectedPropId === p.id ? 'var(--gold-100)' : 'transparent', opacity: p.busy ? 0.5 : 1, cursor: p.busy ? 'not-allowed' : 'pointer' }}>
                       <span>
                         <span className="font-medium block" style={{ color: 'var(--charcoal)' }}>
                           {p.property_code ? `${p.property_code} · ` : ''}{p.address}
@@ -391,7 +413,7 @@ export default function AltaManualPage() {
                         <span className="text-xs" style={{ color: 'var(--ash)' }}>
                           {p.city || ''} {p.sale_price ? `· ${fmt(p.sale_price)}` : ''}
                           {p.client_name ? ` · cliente actual: ${p.client_name}` : ''}
-                          {p.bucket === 'activa' ? ' · ⚠ contrato activo' : p.bucket === 'liquidada' ? ' · liquidada' : ''}
+                          {p.busy ? ` · ya financiada (${p.bucket === 'activa' ? 'contrato activo' : p.bucket === 'liquidada' ? 'liquidada' : 'en curso'}) — no se puede reutilizar` : ' · operación anterior cancelada — se puede reutilizar'}
                         </span>
                       </span>
                       {selectedPropId === p.id && <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />}
@@ -519,10 +541,10 @@ export default function AltaManualPage() {
 
         {/* Nav buttons */}
         <div className="flex justify-between pt-4" style={{ borderTop: '1px solid var(--sand)' }}>
-          <button onClick={() => setStep(Math.max(1, step - 1))} className="btn-ghost btn-sm" disabled={step === 1 || submitting}>
+          <button onClick={() => setStep(order[Math.max(0, pos - 1)])} className="btn-ghost btn-sm" disabled={pos === 0 || submitting}>
             <ArrowLeft className="w-4 h-4" /> Anterior
           </button>
-          {step < 5 ? (
+          {pos < order.length - 1 ? (
             <button onClick={next} className="btn-primary btn-sm">
               Siguiente <ArrowRight className="w-4 h-4" />
             </button>

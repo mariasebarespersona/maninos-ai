@@ -195,6 +195,19 @@ async def create_manual_intake(data: ManualIntake):
             if not pr.data:
                 raise HTTPException(status_code=404, detail="Propiedad no encontrada")
             property_id, prop_row = pr.data["id"], pr.data
+            # Una casa = una operación RTO viva. Otra alta duplicaría la casa en
+            # Casas Financiadas y abriría un segundo contrato; solo se reutiliza
+            # si la operación anterior se canceló.
+            live = sb.table("sales").select("id, status, clients(name)") \
+                .eq("property_id", property_id).eq("sale_type", "rto") \
+                .neq("status", "cancelled").limit(1).execute().data
+            if live:
+                who = (live[0].get("clients") or {}).get("name") or "otro cliente"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Esta casa ya tiene una operación RTO ({live[0]['status']}) con {who}. "
+                           f"Ábrela en Casas Financiadas en vez de darla de alta otra vez.",
+                )
         elif data.property:
             p = data.property
             code = (p.property_code or "").strip().upper() or None

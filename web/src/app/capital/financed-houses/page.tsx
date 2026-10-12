@@ -109,6 +109,9 @@ export default function FinancedHousesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/capital/applications/alta-manual?desde=casas" className="btn-primary btn-sm flex-shrink-0">
+            ＋ Alta manual de casa
+          </Link>
           <Filter className="w-4 h-4" style={{ color: 'var(--ash)' }} />
           <select
             value={filter}

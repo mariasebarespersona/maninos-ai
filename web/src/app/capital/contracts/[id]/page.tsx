@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ArrowLeft, FileSignature, User, MapPin, DollarSign,
   Calendar, Clock, CheckCircle2, AlertTriangle,
@@ -399,6 +400,11 @@ export default function ContractDetailPage() {
       <button onClick={() => router.push('/capital/contracts')} className="btn-ghost btn-sm">
         <ArrowLeft className="w-4 h-4" /> Volver a Contratos
       </button>
+      {contract.sale_id && (
+        <Link href={`/capital/financed-houses/${contract.sale_id}`} className="btn-ghost btn-sm ml-2">
+          Ver casa financiada
+        </Link>
+      )}
 
       {/* Header Card */}
       <div className="card-luxury p-6">

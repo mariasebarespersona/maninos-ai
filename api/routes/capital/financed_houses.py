@@ -473,6 +473,11 @@ async def get_financed_house(sale_id: str):
             ).eq("rto_contract_id", cid).order("payment_number").execute().data or []
         card["schedule"] = schedule
 
+        # Ficha del cliente en Clientes RTO (la solicitud más reciente de esta venta)
+        app = sb.table("rto_applications").select("id").eq("sale_id", sale_id) \
+            .order("created_at", desc=True).limit(1).execute().data
+        card["application_id"] = app[0]["id"] if app else None
+
         return {"ok": True, "house": card}
     except HTTPException:
         raise

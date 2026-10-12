@@ -64,6 +64,7 @@ interface ScheduleRow {
 }
 
 interface HouseDetail {
+  application_id?: string | null
   sale_id: string
   status: string
   bucket: string
@@ -381,7 +382,7 @@ export default function FinancedHouseDetailPage() {
 
         {/* Cross-links: Clientes RTO ↔ Casas Financiadas */}
         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t" style={{ borderColor: 'var(--cream)' }}>
-          <Link href="/capital/applications" className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
+          <Link href={house.application_id ? `/capital/applications/${house.application_id}` : '/capital/applications'} className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--cream)', color: 'var(--slate)' }}>
             Ver en Clientes RTO
           </Link>
           {house.contract && (
