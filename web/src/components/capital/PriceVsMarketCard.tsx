@@ -1,57 +1,33 @@
 'use client'
 
 /**
- * Checklist de la casa — "Evaluar precio vs. mercado" (Responsable de Adquisiciones).
+ * Checklist de la casa — "Evaluar compra" (Responsable de Adquisiciones).
  *
- * Regla: el precio que paga Capital (precio de venta RTO) ≤ 70% del valor de
- * mercado. El valor sale del histórico de ventas de Maninos, luego de los
- * anuncios scrapeados, y si no hay base lo escribe el responsable con su fuente
- * (el manual prevalece). En casas de Homes se enseña además el precio frente a
- * su coste, sin veredicto: esa regla de Homes está pendiente.
+ * Criterio de Capital: mínimo 30% ANUAL sobre lo que pone Capital (precio −
+ * enganche), sumado sin capitalizar (3 años = 90%); ese 30% fija la renta. Y la
+ * compra no puede estar por encima del valor de mercado. El valor sale del
+ * valor manual del responsable (prevalece), del histórico de ventas de Maninos
+ * o de los anuncios scrapeados. En casas de Homes se enseña además el precio
+ * frente a su coste, sin veredicto: esa regla de Homes está pendiente.
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, XCircle, HelpCircle, Scale, Pencil, Trash2, Loader2, Info } from 'lucide-react'
+import { Scale, Pencil, Trash2, Loader2, Info } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { useAuth } from '@/components/Auth/AuthProvider'
-
-interface Comparable { referencia: string | null; precio: number; sqft: number; year: number | null; precio_sqft: number }
+import {
+  EvaluacionCompra, Referencias, ValorAutomatico, Veredicto, ReferenciasHistoricas, ComparablesTable,
+  FUENTE_VALOR, pct,
+} from '@/components/capital/evaluacionCompra'
 
 interface PriceEvaluation {
-  evaluacion: {
-    precio: number | null
-    valor_mercado: number | null
-    fuente_valor: 'manual' | 'cartera' | 'mercado' | null
-    regla: number
-    precio_maximo: number | null
-    ratio: number | null
-    estado: 'cumple' | 'no_cumple' | 'sin_valor' | 'sin_precio'
-    casa_de_homes: boolean
-    coste_homes?: { coste: number | null; margen: number | null; margen_pct: number | null; regla: null }
-  }
-  automatico: {
-    ok: boolean
-    metodo: string | null
-    valor: number | null
-    rango_min: number | null
-    rango_max: number | null
-    confianza: string | null
-    n_comparables: number
-    comparables: Comparable[]
-    motivo: string | null
-  }
+  evaluacion: EvaluacionCompra & { casa_de_homes: boolean }
+  automatico: ValorAutomatico
+  referencias: Referencias
   manual: { market_value: number; source: string; notes: string | null; evaluated_by: string | null; evaluated_at: string } | null
   sqft_registrado: boolean
   falta_migracion: boolean
 }
-
-const FUENTE: Record<string, string> = {
-  manual: 'valor manual del responsable',
-  cartera: 'histórico de ventas de Maninos',
-  mercado: 'anuncios del mercado',
-}
-
-const pct = (r: number | null | undefined) => (r == null ? '—' : `${Math.round(r * 1000) / 10}%`)
 
 export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
   const { user } = useAuth()
@@ -62,7 +38,6 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [showComps, setShowComps] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -117,57 +92,55 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
 
   if (!data) return null
   const ev = data.evaluacion
-  const auto = data.automatico
-
-  const estado = {
-    cumple: { icon: CheckCircle2, color: 'var(--success)', bg: 'var(--success-light)', label: `Cumple: precio ≤ ${pct(ev.regla)} del valor de mercado` },
-    no_cumple: { icon: XCircle, color: 'var(--danger)', bg: 'var(--danger-light, #fdecec)', label: `No cumple: el precio supera el ${pct(ev.regla)} del valor de mercado` },
-    sin_valor: { icon: HelpCircle, color: 'var(--warning)', bg: 'var(--warning-light, #fdf6e3)', label: 'Sin valor de mercado: no se puede evaluar todavía' },
-    sin_precio: { icon: HelpCircle, color: 'var(--warning)', bg: 'var(--warning-light, #fdf6e3)', label: 'La venta no tiene precio registrado' },
-  }[ev.estado]
-  const Icon = estado.icon
+  const r = ev.rentabilidad
+  const m = ev.mercado
 
   return (
     <div className="card-luxury p-5" data-testid="price-vs-market">
       <h2 className="font-serif text-lg mb-1 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
         <Scale className="w-4 h-4" style={{ color: 'var(--gold-700)' }} />
-        Checklist · Precio vs. mercado
+        Checklist · Evaluar compra
       </h2>
       <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
-        Responsable de Adquisiciones. Precio que paga Capital frente al valor de mercado de la casa (regla ≤ {pct(ev.regla)}).
+        Responsable de Adquisiciones. Mínimo {pct(r.minima)} anual sobre lo que pone Capital (precio − enganche),
+        y la compra no por encima del valor de mercado.
       </p>
 
-      {/* Veredicto */}
-      <div className="flex items-start gap-2 rounded-lg p-3 mb-4" style={{ backgroundColor: estado.bg }}>
-        <Icon className="w-5 h-5 flex-none" style={{ color: estado.color }} />
-        <div className="text-sm">
-          <p className="font-medium" style={{ color: 'var(--ink)' }} data-testid="price-vs-market-estado">{estado.label}</p>
-          {ev.valor_mercado && ev.fuente_valor && (
-            <p className="text-xs mt-0.5" style={{ color: 'var(--slate)' }}>Valor según {FUENTE[ev.fuente_valor]}.</p>
-          )}
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <Veredicto
+          testId="eval-rentabilidad"
+          estado={r.estado}
+          ok={`Rentabilidad ${pct(r.anual)} anual: llega al ${pct(r.minima)}`}
+          ko={`Rentabilidad ${pct(r.anual)} anual: no llega al ${pct(r.minima)}`}
+          sinDatos="Faltan mensualidad o plazo para calcular la rentabilidad"
+          detalle={r.anual != null ? `${pct(r.total_plazo)} en ${ev.plazo_meses} meses` : undefined}
+        />
+        <Veredicto
+          testId="eval-mercado"
+          estado={m.estado}
+          ok="Compra dentro del valor de mercado"
+          ko="Compra por encima del valor de mercado"
+          sinDatos={m.estado === 'sin_precio' ? 'La venta no tiene precio registrado' : 'Sin valor de mercado: no se puede comparar todavía'}
+          detalle={m.valor && m.fuente ? `Valor según ${FUENTE_VALOR[m.fuente]}` : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
-        <div>
-          <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Precio Capital</p>
-          <p className="font-semibold" style={{ color: 'var(--ink)' }}>{ev.precio ? formatMoney(ev.precio) : '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Valor de mercado</p>
-          <p className="font-semibold" style={{ color: 'var(--ink)' }}>{ev.valor_mercado ? formatMoney(ev.valor_mercado) : '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Precio / valor</p>
-          <p className="font-semibold" style={{ color: ev.estado === 'cumple' ? 'var(--success)' : ev.estado === 'no_cumple' ? 'var(--danger)' : 'var(--ink)' }}>
-            {pct(ev.ratio)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>Precio máximo ({pct(ev.regla)})</p>
-          <p className="font-semibold" style={{ color: 'var(--ink)' }}>{ev.precio_maximo ? formatMoney(ev.precio_maximo) : '—'}</p>
-        </div>
+        <Dato label="Precio de compra" value={ev.precio ? formatMoney(ev.precio) : '—'} />
+        <Dato label="Enganche" value={formatMoney(ev.enganche)} />
+        <Dato label="Pone Capital" value={ev.inversion_neta ? formatMoney(ev.inversion_neta) : '—'} />
+        <Dato label="Mensualidad · plazo" value={ev.mensualidad ? `${formatMoney(ev.mensualidad)} × ${ev.plazo_meses ?? '—'}` : '—'} />
+        <Dato label={`Renta mínima (${pct(r.minima)})`} value={r.renta_minima ? formatMoney(r.renta_minima) : '—'} strong />
+        <Dato label="Precio máximo con esta renta" value={r.precio_maximo ? formatMoney(r.precio_maximo) : '—'} strong />
+        <Dato label="Valor de mercado" value={m.valor ? formatMoney(m.valor) : '—'} />
+        <Dato label="Compra / valor" value={pct(m.compra_vs_valor)} />
       </div>
+
+      {m.venta_rto_vs_valor != null && (
+        <p className="text-xs mb-4" style={{ color: 'var(--slate)' }}>
+          Precio de venta RTO al cliente: {pct(m.venta_rto_vs_valor)} del valor de mercado (informativo).
+        </p>
+      )}
 
       {/* Casas de Homes: precio vs. su coste, sin veredicto */}
       {ev.coste_homes && (
@@ -186,52 +159,19 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
         </div>
       )}
 
+      <ReferenciasHistoricas refs={data.referencias} precio={ev.precio} />
+
       {/* Comparador: valor automático y sus comparables */}
       <div className="text-sm mb-4">
         <p className="font-medium mb-1" style={{ color: 'var(--ink)' }}>Valor automático</p>
-        {auto.ok && auto.valor ? (
-          <>
-            <p style={{ color: 'var(--slate)' }}>
-              {formatMoney(auto.valor)}
-              {auto.rango_min != null && auto.rango_max != null && ` (probable ${formatMoney(auto.rango_min)} – ${formatMoney(auto.rango_max)})`}
-              {' · '}{auto.n_comparables} comparables de {FUENTE[auto.metodo || ''] || auto.metodo} · confianza {auto.confianza}
-            </p>
-            <button onClick={() => setShowComps(s => !s)} className="text-xs underline mt-1" style={{ color: 'var(--gold-700)' }}>
-              {showComps ? 'Ocultar comparables' : 'Ver comparables'}
-            </button>
-            {showComps && (
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ color: 'var(--ash)' }}>
-                      <th className="text-left py-1 pr-3">Referencia</th>
-                      <th className="text-right py-1 pr-3">Precio</th>
-                      <th className="text-right py-1 pr-3">sqft</th>
-                      <th className="text-right py-1 pr-3">Año</th>
-                      <th className="text-right py-1">$/sqft</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auto.comparables.map((c, i) => (
-                      <tr key={i} className="border-t" style={{ borderColor: 'var(--sand)', color: 'var(--slate)' }}>
-                        <td className="py-1 pr-3">{c.referencia || '—'}</td>
-                        <td className="text-right py-1 pr-3">{formatMoney(c.precio)}</td>
-                        <td className="text-right py-1 pr-3">{c.sqft}</td>
-                        <td className="text-right py-1 pr-3">{c.year || '—'}</td>
-                        <td className="text-right py-1">{formatMoney(c.precio_sqft)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        {data.automatico.ok && data.automatico.valor ? (
+          <ComparablesTable auto={data.automatico} />
         ) : (
           <p className="flex items-start gap-1.5" style={{ color: 'var(--slate)' }}>
             <Info className="w-3.5 h-3.5 flex-none mt-0.5" />
             {!data.sqft_registrado
               ? 'La casa no tiene superficie (sqft) registrada, así que no se puede comparar con otras. Escribe el valor a mano.'
-              : (auto.motivo || 'No hay comparables suficientes. Escribe el valor a mano.')}
+              : (data.automatico.motivo || 'No hay comparables suficientes. Escribe el valor a mano.')}
           </p>
         )}
       </div>
@@ -289,6 +229,15 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+function Dato({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs mb-1" style={{ color: 'var(--ash)' }}>{label}</p>
+      <p className={strong ? 'font-semibold' : 'font-medium'} style={{ color: 'var(--ink)' }}>{value}</p>
     </div>
   )
 }

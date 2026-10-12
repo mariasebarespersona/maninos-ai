@@ -311,10 +311,17 @@ def contexto_historico(sujeto: dict, precio_compra: Optional[float]) -> dict:
     return out
 
 
-# ── Evaluación de precio vs. mercado (Responsable de Adquisiciones) ──────────
-# Regla de Capital: el precio que paga por la casa no debe pasar del 70% de su
-# valor de mercado. La KPI de cartera es la misma regla sobre el promedio.
-REGLA_PRECIO_MERCADO = 0.70
+# ── Evaluar compra: rentabilidad + mercado (Responsable de Adquisiciones) ────
+# Criterio de Capital (Jorge, 2026-10-12): a cada casa hay que sacarle como
+# mínimo un 30% ANUAL sobre lo que pone Capital, sumado sin capitalizar (3 años
+# = 90%), y ese 30% es lo que fija la renta. Además la compra no puede estar
+# por encima del valor de mercado.
+#
+# Supuesto pendiente de confirmar: el 30% se mide sobre la inversión NETA de
+# Capital = precio de compra − enganche (en las casas de Homes el enganche lo
+# cobra Homes y Capital solo paga lo financiado). Los cobros son las
+# mensualidades del plazo. Si la base cambia, cambia solo `inversion_neta`.
+RENTABILIDAD_MINIMA_ANUAL = 0.30
 
 
 def comparables_de_anuncios(filas: list[dict]) -> list[dict]:
@@ -350,37 +357,91 @@ def valor_automatico(sujeto: dict, historico: list[dict], anuncios: list[dict],
     return valorar(sujeto, coste_base=coste_base)
 
 
-def evaluar_precio(precio: Optional[float], valor_auto: dict,
-                   manual: Optional[dict] = None,
-                   coste_homes: Optional[float] = None) -> dict:
-    """¿El precio que paga Capital es ≤ 70% del valor de mercado?
+def inversion_neta(precio: Optional[float], enganche: Optional[float]) -> Optional[float]:
+    """Lo que pone Capital: precio de compra menos el enganche del cliente."""
+    if not precio:
+        return None
+    inv = float(precio) - float(enganche or 0)
+    return inv if inv > 0 else None
 
-    - `manual` ({market_value, source, ...}) prevalece: es la evaluación
-      explícita del responsable, con su fuente.
-    - El coste (compra + renovaciones) nunca cuenta como valor de mercado.
-    - `coste_homes` solo en casas de Homes: precio frente a lo que le costó a
-      Homes. Su regla está pendiente, así que es informativo (sin veredicto).
+
+def rentabilidad_anual(precio: Optional[float], enganche: Optional[float],
+                       mensualidad: Optional[float], plazo_meses: Optional[int]) -> Optional[float]:
+    """Rentabilidad anual simple: (cobros / inversión − 1) / años."""
+    inv = inversion_neta(precio, enganche)
+    if not inv or not mensualidad or not plazo_meses:
+        return None
+    cobros = float(mensualidad) * int(plazo_meses)
+    return (cobros / inv - 1) / (int(plazo_meses) / 12)
+
+
+def renta_minima(precio: Optional[float], enganche: Optional[float], plazo_meses: Optional[int],
+                 tasa: float = RENTABILIDAD_MINIMA_ANUAL) -> Optional[float]:
+    """Mensualidad mínima para sacar `tasa` anual en el plazo."""
+    inv = inversion_neta(precio, enganche)
+    if not inv or not plazo_meses:
+        return None
+    anios = int(plazo_meses) / 12
+    return inv * (1 + tasa * anios) / int(plazo_meses)
+
+
+def precio_maximo_compra(mensualidad: Optional[float], enganche: Optional[float],
+                         plazo_meses: Optional[int],
+                         tasa: float = RENTABILIDAD_MINIMA_ANUAL) -> Optional[float]:
+    """Lo más que se puede pagar por la casa para sacar `tasa` anual con esa renta."""
+    if not mensualidad or not plazo_meses:
+        return None
+    anios = int(plazo_meses) / 12
+    return float(mensualidad) * int(plazo_meses) / (1 + tasa * anios) + float(enganche or 0)
+
+
+def evaluar_compra(precio: Optional[float], enganche: Optional[float],
+                   mensualidad: Optional[float], plazo_meses: Optional[int],
+                   valor_auto: dict, manual: Optional[dict] = None,
+                   coste_homes: Optional[float] = None,
+                   precio_venta_rto: Optional[float] = None) -> dict:
+    """Checklist de compra de Capital.
+
+    1. Rentabilidad: ≥ 30% anual sobre la inversión neta (veredicto).
+    2. Mercado: la compra no supera el valor de mercado (veredicto). Valor:
+       manual del responsable (prevalece) > histórico > anuncios. El coste
+       nunca cuenta como valor de mercado.
+    3. Informativo: precio de venta RTO frente al mercado, y en casas de Homes
+       el precio frente a su coste (la regla de Homes está pendiente).
     """
+    tasa = RENTABILIDAD_MINIMA_ANUAL
+    p = float(precio) if precio else None
+    rent = rentabilidad_anual(p, enganche, mensualidad, plazo_meses)
+    out: dict = {
+        "precio": p,
+        "enganche": float(enganche or 0),
+        "mensualidad": float(mensualidad) if mensualidad else None,
+        "plazo_meses": int(plazo_meses) if plazo_meses else None,
+        "inversion_neta": inversion_neta(p, enganche),
+        "rentabilidad": {
+            "minima": tasa,
+            "anual": round(rent, 4) if rent is not None else None,
+            "total_plazo": round(rent * int(plazo_meses) / 12, 4) if rent is not None else None,
+            "renta_minima": _r2(renta_minima(p, enganche, plazo_meses)),
+            "precio_maximo": _r2(precio_maximo_compra(mensualidad, enganche, plazo_meses)),
+            "estado": ("sin_datos" if rent is None else "cumple" if rent >= tasa - 1e-9 else "no_cumple"),
+        },
+    }
+
     valor, fuente = None, None
     if manual and manual.get("market_value"):
         valor, fuente = float(manual["market_value"]), "manual"
     elif valor_auto.get("ok") and valor_auto.get("metodo") in ("cartera", "mercado"):
         valor, fuente = float(valor_auto["valor"]), valor_auto["metodo"]
-
-    p = float(precio) if precio else None
-    out: dict = {
-        "precio": p,
-        "valor_mercado": round(valor, 2) if valor else None,
-        "fuente_valor": fuente,
-        "regla": REGLA_PRECIO_MERCADO,
-        "precio_maximo": round(valor * REGLA_PRECIO_MERCADO, 2) if valor else None,
-        "ratio": None,
-        "estado": "sin_precio" if not p else "sin_valor",
+    out["mercado"] = {
+        "valor": round(valor, 2) if valor else None,
+        "fuente": fuente,
+        "compra_vs_valor": round(p / valor, 4) if (p and valor) else None,
+        "estado": ("sin_valor" if not valor else "sin_precio" if not p
+                   else "cumple" if p <= valor else "no_cumple"),
+        "venta_rto_vs_valor": (round(float(precio_venta_rto) / valor, 4)
+                               if (precio_venta_rto and valor) else None),
     }
-    if p and valor:
-        ratio = p / valor
-        out["ratio"] = round(ratio, 4)
-        out["estado"] = "cumple" if ratio <= REGLA_PRECIO_MERCADO else "no_cumple"
 
     if coste_homes is not None:
         c = float(coste_homes)
@@ -393,19 +454,23 @@ def evaluar_precio(precio: Optional[float], valor_auto: dict,
     return out
 
 
-def kpi_precio_mercado(evaluaciones: list[dict]) -> dict:
-    """KPI de cartera: precio promedio frente al valor de mercado (meta ≤ 70%).
-    Promedio de los ratios de las casas que tienen valor; las demás se cuentan
-    aparte para que el número no aparente más cobertura de la que tiene."""
-    ratios = [e["ratio"] for e in evaluaciones if e.get("ratio") is not None]
-    prom = round(statistics.mean(ratios), 4) if ratios else None
+def _r2(x: Optional[float]) -> Optional[float]:
+    return round(x, 2) if x is not None else None
+
+
+def kpi_compra(evaluaciones: list[dict]) -> dict:
+    """KPI de cartera: cuántas casas llegan al 30% anual y la rentabilidad
+    media; y cuántas se compraron por encima del valor de mercado."""
+    rents = [e["rentabilidad"]["anual"] for e in evaluaciones if e["rentabilidad"]["anual"] is not None]
+    cumplen = sum(1 for e in evaluaciones if e["rentabilidad"]["estado"] == "cumple")
     return {
-        "meta": REGLA_PRECIO_MERCADO,
-        "ratio_promedio": prom,
-        "cumple": (prom <= REGLA_PRECIO_MERCADO) if prom is not None else None,
-        "evaluadas": len(ratios),
+        "minima": RENTABILIDAD_MINIMA_ANUAL,
+        "rentabilidad_media": round(statistics.mean(rents), 4) if rents else None,
+        "rentabilidad_mediana": round(statistics.median(rents), 4) if rents else None,
+        "con_datos": len(rents),
         "total": len(evaluaciones),
-        "casas_cumplen": sum(1 for e in evaluaciones if e.get("estado") == "cumple"),
-        "casas_no_cumplen": sum(1 for e in evaluaciones if e.get("estado") == "no_cumple"),
-        "sin_valor": sum(1 for e in evaluaciones if e.get("estado") == "sin_valor"),
+        "cumplen": cumplen,
+        "no_cumplen": len(rents) - cumplen,
+        "mercado_evaluadas": sum(1 for e in evaluaciones if e["mercado"]["valor"]),
+        "por_encima_de_mercado": sum(1 for e in evaluaciones if e["mercado"]["estado"] == "no_cumple"),
     }

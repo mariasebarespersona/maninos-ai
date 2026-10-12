@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, FileCheck, FileSignature, CreditCard, Landmark, Menu, X, ChevronRight, LogOut, Loader2, AlertTriangle, BarChart3, ArrowRightLeft, FileText, Users, BookOpen, Bell, Target, Home, CalendarClock, Heart, ClipboardList, Table2 } from 'lucide-react'
+import { LayoutDashboard, FileCheck, FileSignature, CreditCard, Landmark, Menu, X, ChevronRight, LogOut, Loader2, AlertTriangle, BarChart3, ArrowRightLeft, FileText, Users, BookOpen, Bell, Target, Home, CalendarClock, Heart, ClipboardList, Table2, Calculator } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
 import AIChatWidget from '@/components/AIChatWidget'
@@ -42,6 +42,7 @@ const navigationSections: NavSection[] = [
     title: 'Compra',
     items: [
       { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
+      { name: 'Evaluar compra', href: '/capital/evaluar-compra', icon: Calculator },
     ],
   },
   {

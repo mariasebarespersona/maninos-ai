@@ -819,19 +819,73 @@ def _valores_manuales(sale_ids: list) -> dict:
     return out
 
 
+def _terminos(sale: dict, contract: Optional[dict]) -> dict:
+    """Precio, enganche, mensualidad y plazo. El contrato manda: sus números son
+    los definitivos; la venta solo es el respaldo si aún no hay contrato."""
+    c = contract or {}
+    return {
+        "precio": c.get("purchase_price") or sale.get("sale_price"),
+        "enganche": c.get("down_payment") if c.get("down_payment") is not None else sale.get("rto_down_payment"),
+        "mensualidad": c.get("monthly_rent") or sale.get("rto_monthly_payment"),
+        "plazo_meses": c.get("term_months") or sale.get("rto_term_months"),
+    }
+
+
 def _evaluacion_de(sale: dict, prop: dict, historico: list, anuncios: list,
-                   manual: Optional[dict], reno: Optional[float]) -> tuple:
-    """(evaluación precio vs. mercado, valoración automática) de una venta."""
-    from api.services.market_valuation import valor_automatico, evaluar_precio
+                   manual: Optional[dict], reno: Optional[float],
+                   contract: Optional[dict] = None) -> tuple:
+    """(evaluación de compra: rentabilidad + mercado, valoración automática)."""
+    from api.services.market_valuation import valor_automatico, evaluar_compra
     compra = float(prop.get("purchase_price") or 0)
     coste = (compra + (reno or 0.0)) or None
     val = valor_automatico(_sujeto_valoracion(prop), historico, anuncios, coste)
     # Frente al coste solo en casas de Homes: las de alta manual no tienen un
     # coste de Homes detrás.
     es_homes = sale.get("source") != "manual_capital"
-    ev = evaluar_precio(sale.get("sale_price"), val, manual, coste if es_homes else None)
+    t = _terminos(sale, contract)
+    ev = evaluar_compra(t["precio"], t["enganche"], t["mensualidad"], t["plazo_meses"],
+                        val, manual, coste if es_homes else None,
+                        precio_venta_rto=sale.get("sale_price"))
     ev["casa_de_homes"] = es_homes
     return ev, val
+
+
+def _referencias_historicas(sujeto: Optional[dict] = None) -> dict:
+    """Las dos referencias de precio que pide Capital para decidir una compra:
+    lo que vende Homes (histórico de operaciones, precios cobrados) y lo que
+    Capital ha venido pagando por las casas (ventas RTO registradas). Si la
+    casa tiene superficie, el histórico se filtra a casas comparables."""
+    import statistics as st
+    from api.services.market_valuation import cargar_historico, es_comparable
+
+    def resumen(vals: list) -> Optional[dict]:
+        vals = sorted(float(v) for v in vals if v)
+        if not vals:
+            return None
+        mitad = len(vals) // 2
+        return {
+            "n": len(vals),
+            "mediana": round(st.median(vals), 2),
+            "p25": round(st.median(vals[:mitad]), 2) if mitad else round(vals[0], 2),
+            "p75": round(st.median(vals[-mitad:]), 2) if mitad else round(vals[-1], 2),
+        }
+
+    hist = cargar_historico()
+    comparables = bool(sujeto and sujeto.get("sqft"))
+    if comparables:
+        filtrado = [c for c in hist if es_comparable(sujeto, c)]
+        if len(filtrado) >= 3:
+            hist = filtrado
+        else:
+            comparables = False
+    capital = sb.table("sales").select("sale_price").eq("sale_type", "rto") \
+        .neq("status", "cancelled").execute().data or []
+    return {
+        "ventas_homes": resumen([c["price"] for c in hist]),
+        "compras_homes": resumen([c.get("precio_compra") for c in hist]),
+        "ventas_homes_comparables": comparables,
+        "compras_capital": resumen([r.get("sale_price") for r in capital]),
+    }
 
 
 @router.get("/{sale_id}/valuation")
@@ -917,12 +971,13 @@ class ManualMarketValue(BaseModel):
 async def price_vs_market_kpi():
     """KPI de cartera (precio promedio ≤ 70% del valor de mercado) y el
     veredicto por casa, para el listado. Excluye ventas canceladas."""
-    from api.services.market_valuation import cargar_historico, kpi_precio_mercado
+    from api.services.market_valuation import cargar_historico, kpi_compra
     try:
         sales: list = []
         page = 0
         while True:
-            rows = sb.table("sales").select("id, sale_price, source, status, property_id") \
+            rows = sb.table("sales").select("id, sale_price, source, status, property_id, rto_contract_id, "
+                                            "rto_down_payment, rto_monthly_payment, rto_term_months") \
                 .eq("sale_type", "rto").neq("status", "cancelled") \
                 .range(page * 1000, page * 1000 + 999).execute().data or []
             sales.extend(rows)
@@ -941,17 +996,23 @@ async def price_vs_market_kpi():
             manuales, falta_migracion = {}, True
         renos = _reno_costs_by_code([(props.get(s.get("property_id")) or {}).get("property_code") for s in sales])
         historico, anuncios = cargar_historico(), _anuncios_comparables()
+        contratos = _fetch_contracts([s["rto_contract_id"] for s in sales if s.get("rto_contract_id")])
 
         por_casa: dict = {}
         evaluaciones = []
         for s in sales:
             prop = props.get(s.get("property_id")) or {}
             ev, _ = _evaluacion_de(s, prop, historico, anuncios, manuales.get(s["id"]),
-                                   renos.get(prop.get("property_code")))
+                                   renos.get(prop.get("property_code")),
+                                   contratos.get(s.get("rto_contract_id")))
             evaluaciones.append(ev)
-            por_casa[s["id"]] = {k: ev.get(k) for k in ("estado", "ratio", "valor_mercado", "fuente_valor")}
+            por_casa[s["id"]] = {
+                "rentabilidad": ev["rentabilidad"]["anual"],
+                "rentabilidad_estado": ev["rentabilidad"]["estado"],
+                "mercado_estado": ev["mercado"]["estado"],
+            }
 
-        return {"ok": True, "kpi": kpi_precio_mercado(evaluaciones), "por_casa": por_casa,
+        return {"ok": True, "kpi": kpi_compra(evaluaciones), "por_casa": por_casa,
                 "falta_migracion": falta_migracion}
     except Exception as e:
         logger.error(f"Error en KPI precio vs. mercado: {e}")
@@ -962,10 +1023,14 @@ async def price_vs_market_kpi():
 async def get_price_evaluation(sale_id: str):
     """Checklist de la casa — precio vs. mercado y, en casas de Homes, vs. coste."""
     from api.services.market_valuation import cargar_historico
-    res = sb.table("sales").select("id, sale_price, source, property_id").eq("id", sale_id).limit(1).execute()
+    res = sb.table("sales").select("id, sale_price, source, property_id, rto_contract_id, "
+                                   "rto_down_payment, rto_monthly_payment, rto_term_months") \
+        .eq("id", sale_id).limit(1).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     sale = res.data[0]
+    contract = _fetch_contracts([sale["rto_contract_id"]]).get(sale["rto_contract_id"]) \
+        if sale.get("rto_contract_id") else None
     prop = {}
     if sale.get("property_id"):
         pr = sb.table("properties").select(_PROP_VALUATION_SELECT).eq("id", sale["property_id"]).limit(1).execute()
@@ -976,10 +1041,11 @@ async def get_price_evaluation(sale_id: str):
     except _TablaManualAusente:
         manual, falta_migracion = None, True
     reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
-    ev, val = _evaluacion_de(sale, prop, cargar_historico(), _anuncios_comparables(), manual, reno)
+    ev, val = _evaluacion_de(sale, prop, cargar_historico(), _anuncios_comparables(), manual, reno, contract)
     return {
         "ok": True,
         "evaluacion": ev,
+        "referencias": _referencias_historicas(_sujeto_valoracion(prop)),
         # Comparador: con qué casas y método se estimó el valor automático
         "automatico": {
             "ok": bool(val.get("ok")) and val.get("metodo") in ("cartera", "mercado"),
@@ -1035,3 +1101,59 @@ async def clear_manual_market_value(sale_id: str):
             raise HTTPException(status_code=400, detail=_FALTA_115)
         raise HTTPException(status_code=500, detail=str(e))
     return await get_price_evaluation(sale_id)
+
+
+class PurchaseCalc(BaseModel):
+    """Una compra que Capital está pensando hacer: a Homes, a un tercero o
+    recomprando a un cliente que terminó su plazo. No se guarda nada."""
+    origen: Optional[str] = None          # homes | mercado | recompra
+    precio: float
+    enganche: float = 0
+    plazo_meses: int = 36
+    mensualidad: Optional[float] = None
+    # Datos de la casa (opcionales) para estimar su valor de mercado
+    sqft: Optional[float] = None
+    bedrooms: Optional[int] = None
+    year: Optional[int] = None
+    city: Optional[str] = None
+    zip_code: Optional[str] = None
+    width_ft: Optional[float] = None
+    valor_mercado_manual: Optional[float] = None
+    fuente_valor_manual: Optional[str] = None
+
+
+@router.post("/purchase-calculator")
+async def purchase_calculator(body: PurchaseCalc):
+    """Calculadora de compra de Capital: renta mínima para el 30% anual,
+    precio máximo con una renta dada, y la compra frente al mercado y a los
+    históricos de Homes y de Capital. Solo cálculo: no escribe nada."""
+    from api.services.market_valuation import cargar_historico, valor_automatico, evaluar_compra
+    if body.precio <= 0 or body.plazo_meses <= 0:
+        raise HTTPException(status_code=400, detail="Precio y plazo deben ser mayores que 0")
+    if body.enganche < 0 or body.enganche >= body.precio:
+        raise HTTPException(status_code=400, detail="El enganche debe ser menor que el precio")
+    sujeto = _sujeto_valoracion({
+        "square_feet": body.sqft, "year": body.year, "bedrooms": body.bedrooms,
+        "city": body.city, "zip_code": body.zip_code, "width_ft": body.width_ft,
+    })
+    val = valor_automatico(sujeto, cargar_historico(), _anuncios_comparables())
+    manual = ({"market_value": body.valor_mercado_manual, "source": body.fuente_valor_manual or "manual"}
+              if body.valor_mercado_manual else None)
+    ev = evaluar_compra(body.precio, body.enganche, body.mensualidad, body.plazo_meses, val, manual)
+    return {
+        "ok": True,
+        "origen": body.origen,
+        "evaluacion": ev,
+        "automatico": {
+            "ok": bool(val.get("ok")) and val.get("metodo") in ("cartera", "mercado"),
+            "metodo": val.get("metodo"),
+            "valor": val.get("valor") if val.get("metodo") in ("cartera", "mercado") else None,
+            "rango_min": val.get("rango_min"),
+            "rango_max": val.get("rango_max"),
+            "confianza": val.get("confianza"),
+            "n_comparables": val.get("n_comparables", 0),
+            "comparables": val.get("comparables", []),
+            "motivo": val.get("motivo"),
+        },
+        "referencias": _referencias_historicas(sujeto),
+    }

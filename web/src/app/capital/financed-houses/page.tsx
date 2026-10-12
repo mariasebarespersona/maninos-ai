@@ -63,10 +63,11 @@ const bucketStyles: Record<string, { bg: string; color: string; label: string }>
 
 interface PriceVsMarket {
   kpi: {
-    meta: number; ratio_promedio: number | null; cumple: boolean | null
-    evaluadas: number; total: number; casas_cumplen: number; casas_no_cumplen: number; sin_valor: number
+    minima: number; rentabilidad_media: number | null; rentabilidad_mediana: number | null
+    con_datos: number; total: number; cumplen: number; no_cumplen: number
+    mercado_evaluadas: number; por_encima_de_mercado: number
   }
-  por_casa: Record<string, { estado: string; ratio: number | null }>
+  por_casa: Record<string, { rentabilidad: number | null; rentabilidad_estado: string; mercado_estado: string }>
 }
 
 const pctTxt = (r: number | null | undefined) => (r == null ? '—' : `${Math.round(r * 1000) / 10}%`)
@@ -162,20 +163,21 @@ export default function FinancedHousesPage() {
         </div>
       )}
 
-      {/* KPI: precio promedio vs. valor de mercado (meta ≤ 70%) */}
+      {/* KPI: rentabilidad anual de la cartera (mínimo 30%) y compras vs. mercado */}
       {pvm && (
         <div className="card-luxury p-4 flex flex-wrap items-center gap-x-6 gap-y-2" data-testid="kpi-price-vs-market">
           <div>
-            <p className="text-xs" style={{ color: 'var(--ash)' }}>Precio promedio vs. valor de mercado</p>
-            <p className="font-serif text-2xl" style={{ color: pvm.kpi.cumple == null ? 'var(--ink)' : pvm.kpi.cumple ? 'var(--success)' : 'var(--danger)' }}>
-              {pctTxt(pvm.kpi.ratio_promedio)}
-              <span className="text-sm ml-2" style={{ color: 'var(--ash)' }}>meta ≤ {pctTxt(pvm.kpi.meta)}</span>
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Rentabilidad anual media</p>
+            <p className="font-serif text-2xl" style={{ color: pvm.kpi.rentabilidad_media == null ? 'var(--ink)' : pvm.kpi.rentabilidad_media >= pvm.kpi.minima ? 'var(--success)' : 'var(--danger)' }}>
+              {pctTxt(pvm.kpi.rentabilidad_media)}
+              <span className="text-sm ml-2" style={{ color: 'var(--ash)' }}>mínimo {pctTxt(pvm.kpi.minima)}</span>
             </p>
           </div>
           <p className="text-sm" style={{ color: 'var(--slate)' }}>
-            {pvm.kpi.evaluadas} de {pvm.kpi.total} casas con valor de mercado · {pvm.kpi.casas_cumplen} cumplen · {pvm.kpi.casas_no_cumplen} no cumplen
-            {pvm.kpi.sin_valor > 0 && <> · <strong>{pvm.kpi.sin_valor} sin valor</strong> (falta superficie o comparables: se puede escribir a mano en la ficha)</>}
+            <strong>{pvm.kpi.cumplen} de {pvm.kpi.con_datos}</strong> casas llegan al {pctTxt(pvm.kpi.minima)} · mediana {pctTxt(pvm.kpi.rentabilidad_mediana)}
+            {' · '}{pvm.kpi.por_encima_de_mercado} de {pvm.kpi.mercado_evaluadas} con valor de mercado se compraron por encima
           </p>
+          <Link href="/capital/evaluar-compra" className="btn-secondary btn-sm ml-auto">Calculadora de compra</Link>
         </div>
       )}
 
@@ -228,13 +230,13 @@ export default function FinancedHousesPage() {
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {(() => {
                         const e = pvm?.por_casa[h.sale_id]
-                        if (!e || e.ratio == null) return null
-                        const ok = e.estado === 'cumple'
+                        if (!e || e.rentabilidad == null) return null
+                        const ok = e.rentabilidad_estado === 'cumple'
                         return (
                           <span className="px-2 py-1 rounded-full text-[11px] font-medium whitespace-nowrap"
-                                title="Precio que paga Capital / valor de mercado (meta ≤ 70%)"
+                                title="Rentabilidad anual sobre lo que pone Capital (mínimo 30%)"
                                 style={{ backgroundColor: ok ? 'var(--success-light)' : 'var(--error-light)', color: ok ? 'var(--success)' : 'var(--error)' }}>
-                            {pctTxt(e.ratio)} mdo.
+                            {pctTxt(e.rentabilidad)} anual
                           </span>
                         )
                       })()}
