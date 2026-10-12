@@ -64,6 +64,7 @@ La zona de mayor riesgo del proyecto. Léelas antes de tocar nada del ledger.
 | [project_investor_interest_split](project_investor_interest_split.md) | Pagos a inversionista: principal e interés separados **por cuenta**, no por `txn_type` |
 | [project_investor_ledger_estado_validado](project_investor_ledger_estado_validado.md) | El ledger de inversionistas fue validado tal cual; los depósitos `pending_confirmation` son estado aceptado, no bugs |
 | [project_capital_financed_houses](project_capital_financed_houses.md) | "Casas Financiadas": agregación read-only de ventas RTO; nunca toca la contabilidad de Homes |
+| [project_capital_price_vs_market](project_capital_price_vs_market.md) | Evaluar precio vs. mercado: precio de Capital ≤ 70% del valor de mercado; valor manual > histórico > anuncios; coste nunca es valor de mercado |
 | [project_manual_capital_intake](project_manual_capital_intake.md) | Alta manual de clientes RTO antiguos: cadena `manual_capital` oculta en Homes, pagos históricos sin asientos |
 | [project_rto_terms_authority](project_rto_terms_authority.md) | Quién manda en los términos de un contrato RTO |
 
