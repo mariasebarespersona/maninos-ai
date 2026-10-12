@@ -34,7 +34,12 @@ let saleId = ''
 
 async function login(page: Page) {
   await page.addInitScript(() => {
-    try { localStorage.setItem('maninos_tour_completed_capital', 'true') } catch (e) { /* ignore */ }
+    try {
+      localStorage.setItem('maninos_tour_completed_capital', 'true')
+      for (const p of ['', '_financed-houses', '_applications', '_applications_alta-manual', '_contracts']) {
+        localStorage.setItem(`maninos_tour_page_capital__capital${p}`, 'true')
+      }
+    } catch (e) { /* ignore */ }
   })
   await page.goto(`${APP_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 45000 })
   await page.locator('input[type="email"]').fill(process.env.E2E_CAPITAL_EMAIL!)
@@ -44,7 +49,7 @@ async function login(page: Page) {
 }
 
 const field = (page: Page, label: string) =>
-  page.locator('div', { has: page.locator(`label.label:text-is("${label}")`) }).locator('input').last()
+  page.locator(`label.label:text-is("${label}")`).locator('xpath=..').locator('input').first()
 
 test.describe.configure({ mode: 'serial' })
 
