@@ -114,8 +114,10 @@ function SalesPage() {
     fetchStats()
   }, [statusFilter])
 
-  const fetchSales = async () => {
-    setLoading(true)
+  // silent: recarga sin el spinner, para no desmontar las tarjetas (y cerrar
+  // el panel que el usuario tiene abierto) después de una acción.
+  const fetchSales = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const url = new URL('/api/sales', window.location.origin)
       if (statusFilter) url.searchParams.set('status', statusFilter)
@@ -250,7 +252,7 @@ function SalesPage() {
             <SaleCard
               key={sale.id}
               sale={sale}
-              onUpdate={() => { fetchSales(); fetchStats() }}
+              onUpdate={() => { fetchSales(true); fetchStats() }}
             />
           ))}
         </div>
