@@ -11,9 +11,9 @@
 --
 -- Idempotente.
 
-CREATE TABLE IF NOT EXISTS capital_market_valuations (
+CREATE TABLE IF NOT EXISTS public.capital_market_valuations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sale_id UUID NOT NULL UNIQUE REFERENCES sales(id) ON DELETE CASCADE,
+    sale_id UUID NOT NULL UNIQUE REFERENCES public.sales(id) ON DELETE CASCADE,
     market_value DECIMAL(12, 2) NOT NULL CHECK (market_value > 0),
     -- De dónde sale el número. Obligatorio: un valor sin fuente no se audita.
     source TEXT NOT NULL CHECK (length(trim(source)) > 0),
@@ -22,4 +22,4 @@ CREATE TABLE IF NOT EXISTS capital_market_valuations (
     evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Comprobación:  SELECT sale_id, market_value, source, evaluated_by FROM capital_market_valuations;
+-- Comprobación:  SELECT sale_id, market_value, source, evaluated_by FROM public.capital_market_valuations;
