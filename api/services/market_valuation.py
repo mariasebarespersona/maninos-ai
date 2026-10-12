@@ -309,3 +309,103 @@ def contexto_historico(sujeto: dict, precio_compra: Optional[float]) -> dict:
         pc = float(precio_compra)
         out["percentil_compra"] = round(sum(1 for x in compras if x < pc) / len(compras) * 100)
     return out
+
+
+# ── Evaluación de precio vs. mercado (Responsable de Adquisiciones) ──────────
+# Regla de Capital: el precio que paga por la casa no debe pasar del 70% de su
+# valor de mercado. La KPI de cartera es la misma regla sobre el promedio.
+REGLA_PRECIO_MERCADO = 0.70
+
+
+def comparables_de_anuncios(filas: list[dict]) -> list[dict]:
+    """Anuncios scrapeados (market_listings) en el formato de `valorar`.
+
+    Son precios PEDIDOS, no cobrados: por eso van detrás del histórico propio.
+    """
+    out: list[dict] = []
+    for f in filas or []:
+        if not f.get("listing_price") or not _sqft_valido(f.get("sqft")):
+            continue
+        out.append({
+            "ref": f"{f.get('source') or 'anuncio'} · {f.get('city') or ''}".strip(" ·"),
+            "price": float(f["listing_price"]),
+            "sqft": float(f["sqft"]),
+            "year": f.get("year_built"),
+            "bedrooms": f.get("bedrooms"),
+            "city": f.get("city"),
+            "zip_code": f.get("zip_code"),
+        })
+    return out
+
+
+def valor_automatico(sujeto: dict, historico: list[dict], anuncios: list[dict],
+                     coste_base: Optional[float] = None) -> dict:
+    """Valor de mercado por orden de preferencia: histórico de ventas de
+    Maninos (precios cobrados) → anuncios del mercado (precios pedidos) → coste
+    como suelo (solo informativo: NO es valor de mercado)."""
+    for kwargs in ({"comparables_cartera": historico}, {"comparables_mercado": anuncios}):
+        v = valorar(sujeto, **kwargs)
+        if v.get("ok"):
+            return v
+    return valorar(sujeto, coste_base=coste_base)
+
+
+def evaluar_precio(precio: Optional[float], valor_auto: dict,
+                   manual: Optional[dict] = None,
+                   coste_homes: Optional[float] = None) -> dict:
+    """¿El precio que paga Capital es ≤ 70% del valor de mercado?
+
+    - `manual` ({market_value, source, ...}) prevalece: es la evaluación
+      explícita del responsable, con su fuente.
+    - El coste (compra + renovaciones) nunca cuenta como valor de mercado.
+    - `coste_homes` solo en casas de Homes: precio frente a lo que le costó a
+      Homes. Su regla está pendiente, así que es informativo (sin veredicto).
+    """
+    valor, fuente = None, None
+    if manual and manual.get("market_value"):
+        valor, fuente = float(manual["market_value"]), "manual"
+    elif valor_auto.get("ok") and valor_auto.get("metodo") in ("cartera", "mercado"):
+        valor, fuente = float(valor_auto["valor"]), valor_auto["metodo"]
+
+    p = float(precio) if precio else None
+    out: dict = {
+        "precio": p,
+        "valor_mercado": round(valor, 2) if valor else None,
+        "fuente_valor": fuente,
+        "regla": REGLA_PRECIO_MERCADO,
+        "precio_maximo": round(valor * REGLA_PRECIO_MERCADO, 2) if valor else None,
+        "ratio": None,
+        "estado": "sin_precio" if not p else "sin_valor",
+    }
+    if p and valor:
+        ratio = p / valor
+        out["ratio"] = round(ratio, 4)
+        out["estado"] = "cumple" if ratio <= REGLA_PRECIO_MERCADO else "no_cumple"
+
+    if coste_homes is not None:
+        c = float(coste_homes)
+        out["coste_homes"] = {
+            "coste": round(c, 2) if c else None,
+            "margen": round(p - c, 2) if (p and c) else None,
+            "margen_pct": round((p / c - 1) * 100, 1) if (p and c) else None,
+            "regla": None,   # pendiente de definir por Homes
+        }
+    return out
+
+
+def kpi_precio_mercado(evaluaciones: list[dict]) -> dict:
+    """KPI de cartera: precio promedio frente al valor de mercado (meta ≤ 70%).
+    Promedio de los ratios de las casas que tienen valor; las demás se cuentan
+    aparte para que el número no aparente más cobertura de la que tiene."""
+    ratios = [e["ratio"] for e in evaluaciones if e.get("ratio") is not None]
+    prom = round(statistics.mean(ratios), 4) if ratios else None
+    return {
+        "meta": REGLA_PRECIO_MERCADO,
+        "ratio_promedio": prom,
+        "cumple": (prom <= REGLA_PRECIO_MERCADO) if prom is not None else None,
+        "evaluadas": len(ratios),
+        "total": len(evaluaciones),
+        "casas_cumplen": sum(1 for e in evaluaciones if e.get("estado") == "cumple"),
+        "casas_no_cumplen": sum(1 for e in evaluaciones if e.get("estado") == "no_cumple"),
+        "sin_valor": sum(1 for e in evaluaciones if e.get("estado") == "sin_valor"),
+    }

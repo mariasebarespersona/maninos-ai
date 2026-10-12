@@ -761,6 +761,79 @@ async def create_title_to_capital(sale_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_PROP_VALUATION_SELECT = (
+    "id, property_code, city, zip_code, year, bedrooms, bathrooms, "
+    "square_feet, width_ft, length_ft, purchase_price"
+)
+
+
+def _sujeto_valoracion(prop: dict) -> dict:
+    """La casa en el formato que espera el motor de valoración."""
+    # SINGLE / DOUBLE se deduce del ancho: en el histórico los single miden
+    # 14–18 pies y los double 26–32. Entre medias no hay casos, así que 20 es
+    # un corte seguro. Sin ancho registrado no se declara tipo y el filtro
+    # simplemente no se aplica.
+    ancho = prop.get("width_ft")
+    tipo = None
+    if ancho:
+        tipo = "SINGLE" if float(ancho) < 20 else "DOUBLE"
+    return {
+        "sqft": prop.get("square_feet"),
+        "year": prop.get("year"),
+        "bedrooms": prop.get("bedrooms"),
+        "city": prop.get("city"),
+        "zip_code": prop.get("zip_code"),
+        "tipo": tipo,
+    }
+
+
+def _anuncios_comparables() -> list:
+    """Anuncios scrapeados con superficie, como comparables de mercado."""
+    from api.services.market_valuation import comparables_de_anuncios
+    try:
+        rows = sb.table("market_listings") \
+            .select("source, city, zip_code, listing_price, sqft, year_built, bedrooms") \
+            .not_.is_("sqft", "null").limit(2000).execute().data or []
+    except Exception as e:
+        logger.warning(f"[valoracion] no se pudieron leer los anuncios: {e}")
+        rows = []
+    return comparables_de_anuncios(rows)
+
+
+class _TablaManualAusente(Exception):
+    pass
+
+
+def _valores_manuales(sale_ids: list) -> dict:
+    """{sale_id: valor manual}. Lanza _TablaManualAusente si falta la migración 115."""
+    out: dict = {}
+    try:
+        for chunk in _chunks([x for x in sale_ids if x], 100):
+            for r in sb.table("capital_market_valuations").select("*") \
+                    .in_("sale_id", chunk).execute().data or []:
+                out[r["sale_id"]] = r
+    except Exception as e:
+        if "capital_market_valuations" in str(e):
+            raise _TablaManualAusente()
+        raise
+    return out
+
+
+def _evaluacion_de(sale: dict, prop: dict, historico: list, anuncios: list,
+                   manual: Optional[dict], reno: Optional[float]) -> tuple:
+    """(evaluación precio vs. mercado, valoración automática) de una venta."""
+    from api.services.market_valuation import valor_automatico, evaluar_precio
+    compra = float(prop.get("purchase_price") or 0)
+    coste = (compra + (reno or 0.0)) or None
+    val = valor_automatico(_sujeto_valoracion(prop), historico, anuncios, coste)
+    # Frente al coste solo en casas de Homes: las de alta manual no tienen un
+    # coste de Homes detrás.
+    es_homes = sale.get("source") != "manual_capital"
+    ev = evaluar_precio(sale.get("sale_price"), val, manual, coste if es_homes else None)
+    ev["casa_de_homes"] = es_homes
+    return ev, val
+
+
 @router.get("/{sale_id}/valuation")
 async def get_house_valuation(sale_id: str):
     """Valor de mercado estimado de la casa, con su respaldo.
@@ -769,7 +842,7 @@ async def get_house_valuation(sale_id: str):
     operaciones de Maninos. No escribe nada ni toca la contabilidad.
     """
     from api.services.market_valuation import (
-        valorar, contraste, contexto_historico, cargar_historico,
+        valor_automatico, contraste, contexto_historico, cargar_historico,
     )
 
     res = sb.table("sales").select("id, property_id, sale_price").eq("id", sale_id).limit(1).execute()
@@ -779,31 +852,14 @@ async def get_house_valuation(sale_id: str):
 
     prop = {}
     if sale.get("property_id"):
-        pr = sb.table("properties") \
-            .select("id, property_code, city, zip_code, year, bedrooms, bathrooms, "
-                    "square_feet, width_ft, length_ft, purchase_price") \
+        pr = sb.table("properties").select(_PROP_VALUATION_SELECT) \
             .eq("id", sale["property_id"]).limit(1).execute()
         prop = pr.data[0] if pr.data else {}
     if not prop:
         raise HTTPException(status_code=404, detail="La venta no tiene propiedad asociada")
 
-    # SINGLE / DOUBLE se deduce del ancho: en el histórico los single miden
-    # 14–18 pies y los double 26–32. Entre medias no hay casos, así que 20 es
-    # un corte seguro. Sin ancho registrado no se declara tipo y el filtro
-    # simplemente no se aplica.
-    ancho = prop.get("width_ft")
-    tipo = None
-    if ancho:
-        tipo = "SINGLE" if float(ancho) < 20 else "DOUBLE"
-
-    sujeto = {
-        "sqft": prop.get("square_feet"),
-        "year": prop.get("year"),
-        "bedrooms": prop.get("bedrooms"),
-        "city": prop.get("city"),
-        "zip_code": prop.get("zip_code"),
-        "tipo": tipo,
-    }
+    sujeto = _sujeto_valoracion(prop)
+    tipo = sujeto["tipo"]
 
     # Suelo de coste: lo que la casa lleva gastado. Solo se usa si no hay
     # comparables suficientes.
@@ -814,7 +870,7 @@ async def get_house_valuation(sale_id: str):
     reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
     coste = (compra + (reno or 0.0)) or None
 
-    val = valorar(sujeto, comparables_cartera=cargar_historico(), coste_base=coste)
+    val = valor_automatico(sujeto, cargar_historico(), _anuncios_comparables(), coste)
     venta_rto = float(sale.get("sale_price") or 0) or None
 
     return {
@@ -837,3 +893,145 @@ async def get_house_valuation(sale_id: str):
         "contraste": contraste(val, compra or None, venta_rto),
         "contexto": contexto_historico(sujeto, compra or None),
     }
+
+
+# =============================================================================
+# EVALUAR PRECIO VS. MERCADO (Responsable de Adquisiciones)
+# Precio que paga Capital (precio de venta RTO) ≤ 70% del valor de mercado.
+# Valor: manual (con fuente) > histórico de Maninos > anuncios. Solo lectura
+# salvo el valor manual, que no toca la contabilidad.
+# =============================================================================
+
+_FALTA_115 = ("Falta la migración 115 (tabla capital_market_valuations). "
+              "Ejecuta migrations/115_capital_market_valuations.sql en Supabase.")
+
+
+class ManualMarketValue(BaseModel):
+    market_value: float
+    source: str
+    notes: Optional[str] = None
+    evaluated_by: Optional[str] = None
+
+
+@router.get("/kpi/price-vs-market")
+async def price_vs_market_kpi():
+    """KPI de cartera (precio promedio ≤ 70% del valor de mercado) y el
+    veredicto por casa, para el listado. Excluye ventas canceladas."""
+    from api.services.market_valuation import cargar_historico, kpi_precio_mercado
+    try:
+        sales: list = []
+        page = 0
+        while True:
+            rows = sb.table("sales").select("id, sale_price, source, status, property_id") \
+                .eq("sale_type", "rto").neq("status", "cancelled") \
+                .range(page * 1000, page * 1000 + 999).execute().data or []
+            sales.extend(rows)
+            if len(rows) < 1000:
+                break
+            page += 1
+
+        props: dict = {}
+        for chunk in _chunks([s["property_id"] for s in sales if s.get("property_id")], 100):
+            for p in sb.table("properties").select(_PROP_VALUATION_SELECT).in_("id", chunk).execute().data or []:
+                props[p["id"]] = p
+        try:
+            manuales = _valores_manuales([s["id"] for s in sales])
+            falta_migracion = False
+        except _TablaManualAusente:
+            manuales, falta_migracion = {}, True
+        renos = _reno_costs_by_code([(props.get(s.get("property_id")) or {}).get("property_code") for s in sales])
+        historico, anuncios = cargar_historico(), _anuncios_comparables()
+
+        por_casa: dict = {}
+        evaluaciones = []
+        for s in sales:
+            prop = props.get(s.get("property_id")) or {}
+            ev, _ = _evaluacion_de(s, prop, historico, anuncios, manuales.get(s["id"]),
+                                   renos.get(prop.get("property_code")))
+            evaluaciones.append(ev)
+            por_casa[s["id"]] = {k: ev.get(k) for k in ("estado", "ratio", "valor_mercado", "fuente_valor")}
+
+        return {"ok": True, "kpi": kpi_precio_mercado(evaluaciones), "por_casa": por_casa,
+                "falta_migracion": falta_migracion}
+    except Exception as e:
+        logger.error(f"Error en KPI precio vs. mercado: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{sale_id}/price-evaluation")
+async def get_price_evaluation(sale_id: str):
+    """Checklist de la casa — precio vs. mercado y, en casas de Homes, vs. coste."""
+    from api.services.market_valuation import cargar_historico
+    res = sb.table("sales").select("id, sale_price, source, property_id").eq("id", sale_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    sale = res.data[0]
+    prop = {}
+    if sale.get("property_id"):
+        pr = sb.table("properties").select(_PROP_VALUATION_SELECT).eq("id", sale["property_id"]).limit(1).execute()
+        prop = pr.data[0] if pr.data else {}
+    try:
+        manual = _valores_manuales([sale_id]).get(sale_id)
+        falta_migracion = False
+    except _TablaManualAusente:
+        manual, falta_migracion = None, True
+    reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
+    ev, val = _evaluacion_de(sale, prop, cargar_historico(), _anuncios_comparables(), manual, reno)
+    return {
+        "ok": True,
+        "evaluacion": ev,
+        # Comparador: con qué casas y método se estimó el valor automático
+        "automatico": {
+            "ok": bool(val.get("ok")) and val.get("metodo") in ("cartera", "mercado"),
+            "metodo": val.get("metodo"),
+            "valor": val.get("valor") if val.get("metodo") in ("cartera", "mercado") else None,
+            "rango_min": val.get("rango_min"),
+            "rango_max": val.get("rango_max"),
+            "confianza": val.get("confianza"),
+            "n_comparables": val.get("n_comparables", 0),
+            "comparables": val.get("comparables", []),
+            "motivo": val.get("motivo") or val.get("aviso"),
+        },
+        "manual": manual,
+        "sqft_registrado": bool(prop.get("square_feet")),
+        "falta_migracion": falta_migracion,
+    }
+
+
+@router.put("/{sale_id}/price-evaluation")
+async def set_manual_market_value(sale_id: str, body: ManualMarketValue):
+    """Guarda (o reemplaza) el valor de mercado manual de la casa, con su fuente."""
+    if not body.market_value or body.market_value <= 0:
+        raise HTTPException(status_code=400, detail="El valor de mercado debe ser mayor que 0")
+    if not (body.source or "").strip():
+        raise HTTPException(status_code=400, detail="Indica de dónde sale el valor (comparables, tasación…)")
+    if not sb.table("sales").select("id").eq("id", sale_id).limit(1).execute().data:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    from datetime import datetime, timezone
+    row = {
+        "sale_id": sale_id,
+        "market_value": round(float(body.market_value), 2),
+        "source": body.source.strip(),
+        "notes": (body.notes or "").strip() or None,
+        "evaluated_by": (body.evaluated_by or "").strip() or None,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        sb.table("capital_market_valuations").upsert(row, on_conflict="sale_id").execute()
+    except Exception as e:
+        if "capital_market_valuations" in str(e):
+            raise HTTPException(status_code=400, detail=_FALTA_115)
+        raise HTTPException(status_code=500, detail=str(e))
+    return await get_price_evaluation(sale_id)
+
+
+@router.delete("/{sale_id}/price-evaluation")
+async def clear_manual_market_value(sale_id: str):
+    """Quita el valor manual: la casa vuelve al valor automático (si lo hay)."""
+    try:
+        sb.table("capital_market_valuations").delete().eq("sale_id", sale_id).execute()
+    except Exception as e:
+        if "capital_market_valuations" in str(e):
+            raise HTTPException(status_code=400, detail=_FALTA_115)
+        raise HTTPException(status_code=500, detail=str(e))
+    return await get_price_evaluation(sale_id)

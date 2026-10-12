@@ -61,6 +61,16 @@ const bucketStyles: Record<string, { bg: string; color: string; label: string }>
   cancelada: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Cancelada' },
 }
 
+interface PriceVsMarket {
+  kpi: {
+    meta: number; ratio_promedio: number | null; cumple: boolean | null
+    evaluadas: number; total: number; casas_cumplen: number; casas_no_cumplen: number; sin_valor: number
+  }
+  por_casa: Record<string, { estado: string; ratio: number | null }>
+}
+
+const pctTxt = (r: number | null | undefined) => (r == null ? '—' : `${Math.round(r * 1000) / 10}%`)
+
 const FILTERS = [
   { value: '', label: 'Todas' },
   { value: 'por_revisar', label: 'Por revisar' },
@@ -76,8 +86,15 @@ export default function FinancedHousesPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [deleteSaleId, setDeleteSaleId] = useState<string | null>(null)
+  const [pvm, setPvm] = useState<PriceVsMarket | null>(null)
 
   useEffect(() => { loadHouses() }, [filter])
+
+  // KPI "precio promedio ≤ 70% del valor de mercado" + veredicto por casa
+  useEffect(() => {
+    fetch('/api/capital/financed-houses/kpi/price-vs-market', { cache: 'no-store' })
+      .then(r => r.json()).then(d => { if (d.ok) setPvm(d) }).catch(() => {})
+  }, [])
 
   const loadHouses = async () => {
     setLoading(true)
@@ -145,6 +162,23 @@ export default function FinancedHousesPage() {
         </div>
       )}
 
+      {/* KPI: precio promedio vs. valor de mercado (meta ≤ 70%) */}
+      {pvm && (
+        <div className="card-luxury p-4 flex flex-wrap items-center gap-x-6 gap-y-2" data-testid="kpi-price-vs-market">
+          <div>
+            <p className="text-xs" style={{ color: 'var(--ash)' }}>Precio promedio vs. valor de mercado</p>
+            <p className="font-serif text-2xl" style={{ color: pvm.kpi.cumple == null ? 'var(--ink)' : pvm.kpi.cumple ? 'var(--success)' : 'var(--danger)' }}>
+              {pctTxt(pvm.kpi.ratio_promedio)}
+              <span className="text-sm ml-2" style={{ color: 'var(--ash)' }}>meta ≤ {pctTxt(pvm.kpi.meta)}</span>
+            </p>
+          </div>
+          <p className="text-sm" style={{ color: 'var(--slate)' }}>
+            {pvm.kpi.evaluadas} de {pvm.kpi.total} casas con valor de mercado · {pvm.kpi.casas_cumplen} cumplen · {pvm.kpi.casas_no_cumplen} no cumplen
+            {pvm.kpi.sin_valor > 0 && <> · <strong>{pvm.kpi.sin_valor} sin valor</strong> (falta superficie o comparables: se puede escribir a mano en la ficha)</>}
+          </p>
+        </div>
+      )}
+
       {/* List */}
       {loading ? (
         <div className="flex justify-center py-12">
@@ -192,6 +226,18 @@ export default function FinancedHousesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {(() => {
+                        const e = pvm?.por_casa[h.sale_id]
+                        if (!e || e.ratio == null) return null
+                        const ok = e.estado === 'cumple'
+                        return (
+                          <span className="px-2 py-1 rounded-full text-[11px] font-medium whitespace-nowrap"
+                                title="Precio que paga Capital / valor de mercado (meta ≤ 70%)"
+                                style={{ backgroundColor: ok ? 'var(--success-light)' : 'var(--error-light)', color: ok ? 'var(--success)' : 'var(--error)' }}>
+                            {pctTxt(e.ratio)} mdo.
+                          </span>
+                        )
+                      })()}
                       <span className="px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap"
                             style={{ backgroundColor: s.bg, color: s.color }}>
                         {s.label}

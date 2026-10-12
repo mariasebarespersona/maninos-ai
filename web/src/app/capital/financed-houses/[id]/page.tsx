@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import PriceVsMarketCard from '@/components/capital/PriceVsMarketCard'
 import { useParams } from 'next/navigation'
 import {
   Home, User, MapPin, ArrowLeft, Users, Plus, X, Loader2,
@@ -608,6 +609,9 @@ export default function FinancedHouseDetailPage() {
         )}
       </div>
 
+      {/* Checklist de la casa: precio que paga Capital vs. valor de mercado (≤ 70%) */}
+      {saleId && <PriceVsMarketCard saleId={saleId} />}
+
       {/* Valor de mercado — estimado del histórico de operaciones de Maninos.
           Solo lectura: no se guarda ni afecta a la contabilidad. */}
       {val && (
@@ -617,8 +621,10 @@ export default function FinancedHouseDetailPage() {
             Valor de mercado
           </h2>
           <p className="text-xs mb-4" style={{ color: 'var(--ash)' }}>
-            Estimado con {val.contexto?.n ?? val.valoracion.n_comparables ?? 0} operaciones reales de Maninos
-            de tamaño y tipo parecidos. Precios cobrados, no anuncios.
+            {val.valoracion.metodo === 'mercado'
+              ? <>Estimado con {val.valoracion.n_comparables ?? 0} anuncios del mercado de tamaño parecido (precios pedidos, no cobrados).</>
+              : <>Estimado con {val.contexto?.n ?? val.valoracion.n_comparables ?? 0} operaciones reales de Maninos
+                de tamaño y tipo parecidos. Precios cobrados, no anuncios.</>}
           </p>
 
           {!val.valoracion.ok ? (
