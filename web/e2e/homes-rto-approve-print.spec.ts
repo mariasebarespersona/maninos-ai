@@ -1,0 +1,201 @@
+/**
+ * E2E contra producción (casa + cliente desechables, teardown completo):
+ * aprobar una solicitud RTO DESDE HOMES e imprimir su contrato (pedido de
+ * Sebastian, 2026-10-12).
+ *
+ *  1. Homes → Nueva Venta RTO.
+ *  2. Homes → Ventas → "Aprobar solicitud RTO" → Confirmar. Es el mismo
+ *     endpoint que usa Capital: solicitud aprobada + contrato creado.
+ *  3. Homes: el panel muestra el contrato y "Descargar contrato para
+ *     imprimir" baja un PDF de verdad.
+ *  4. Capital ve lo mismo: la solicitud aprobada y el contrato abre.
+ *
+ * El cliente de prueba NO tiene email, para que la aprobación no mande el
+ * correo de firma a nadie.
+ * Necesita SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY y E2E_CAPITAL_EMAIL +
+ * E2E_CAPITAL_PASSWORD (usuario con acceso a Homes y a Capital, en ../.env).
+ */
+import { test, expect, Page } from '@playwright/test'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import * as fs from 'fs'
+import * as path from 'path'
+
+const APP_URL = process.env.E2E_BASE_URL || 'https://maninos-ai.vercel.app'
+const PCODE = `E2EHA${Date.now() % 100000}`
+const ADDRESS = `E2E Aprobar en Homes ${PCODE}`
+const CLIENT = `E2E Cliente RTO ${PCODE}`
+const PRICE = 40000
+const DOWN = 12000
+const MONTHLY = 950
+
+function loadRootEnv() {
+  const envPath = path.resolve(process.cwd(), '../.env')
+  if (!fs.existsSync(envPath)) return
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
+  }
+}
+loadRootEnv()
+
+let sb: SupabaseClient
+let propId = ''
+let clientId = ''
+
+async function login(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      for (const k of ['maninos_tour_completed_homes', 'maninos_tour_completed_capital',
+        'maninos_tour_page_homes__homes_sales', 'maninos_tour_page_homes__homes',
+        'maninos_tour_page_capital__capital', 'maninos_tour_page_capital__capital_applications',
+        'maninos_tour_page_capital__capital_contracts']) {
+        localStorage.setItem(k, 'true')
+      }
+    } catch (e) { /* ignore */ }
+  })
+  await page.goto(`${APP_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await page.locator('input[type="email"]').fill(process.env.E2E_CAPITAL_EMAIL!)
+  await page.locator('input[type="password"]').fill(process.env.E2E_CAPITAL_PASSWORD!)
+  await page.getByRole('button', { name: /ingresar|login|submit/i }).click()
+  for (let i = 0; i < 15; i++) { await page.waitForTimeout(2000); if (!page.url().includes('/login')) break }
+}
+
+test.beforeAll(async () => {
+  for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'E2E_CAPITAL_EMAIL', 'E2E_CAPITAL_PASSWORD']) {
+    expect(process.env[k], `${k} missing`).toBeTruthy()
+  }
+  sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const p = await sb.from('properties').insert({
+    address: ADDRESS, city: 'Houston', state: 'Texas',
+    property_code: PCODE, status: 'published', sale_price: PRICE,
+  }).select('id').single()
+  expect(p.error).toBeFalsy()
+  propId = p.data!.id
+  const c = await sb.from('clients').insert({ name: CLIENT, status: 'active', monthly_income: 4000 })
+    .select('id').single()
+  expect(c.error).toBeFalsy()
+  clientId = c.data!.id
+})
+
+test.afterAll(async () => {
+  if (!sb) return
+  try {
+    const sales = (await sb.from('sales').select('id').eq('property_id', propId)).data || []
+    for (const s of sales) {
+      await sb.from('sales').update({ rto_contract_id: null }).eq('id', s.id)
+      const cs = ((await sb.from('rto_contracts').select('id').eq('sale_id', s.id)).data || []).map(c => c.id)
+      if (cs.length) {
+        await sb.from('rto_payments').delete().in('rto_contract_id', cs)
+        await sb.from('capital_down_payment_installments').delete().in('contract_id', cs)
+        await sb.from('rto_contracts').delete().in('id', cs)
+      }
+      await sb.from('commission_payments').delete().eq('sale_id', s.id)
+      await sb.from('rto_applications').delete().eq('sale_id', s.id)
+      await sb.from('title_transfers').delete().eq('sale_id', s.id)
+      await sb.from('scheduled_emails').delete().eq('sale_id', s.id)
+      await sb.from('notifications').delete().eq('related_entity_id', s.id)
+      const invs = (await sb.from('accounting_invoices').select('id').eq('sale_id', s.id)).data || []
+      for (const inv of invs) {
+        await sb.from('accounting_transactions').delete().eq('entity_id', inv.id)
+        await sb.from('accounting_invoices').delete().eq('id', inv.id)
+      }
+      await sb.from('accounting_transactions').delete().eq('property_id', propId)
+      await sb.from('payment_orders').delete().eq('property_id', propId)
+      await sb.from('sales').delete().eq('id', s.id)
+    }
+    await sb.from('notifications').delete().eq('property_id', propId)
+    await sb.from('accounting_accounts').delete().ilike('code', `%${PCODE}`)
+    if (clientId) await sb.from('clients').delete().eq('id', clientId)
+    if (propId) await sb.from('properties').delete().eq('id', propId)
+  } catch (e) { console.warn('teardown warning:', e) }
+})
+
+test('Aprobar la solicitud RTO desde Homes e imprimir el contrato', async ({ page }) => {
+  test.setTimeout(240000)
+  await login(page)
+
+  // ── 1. Homes: asistente de Nueva Venta ──────────────────────────────────
+  await page.goto(`${APP_URL}/homes/sales/new`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  const skip = page.getByRole('button', { name: /Omitir tour/i })
+  if (await skip.isVisible({ timeout: 3000 }).catch(() => false)) await skip.click().catch(() => {})
+
+  await page.getByPlaceholder(/Buscar por dirección/i).fill(ADDRESS)
+  const propBtn = page.getByRole('button').filter({ hasText: ADDRESS })
+  await expect(propBtn).toBeVisible({ timeout: 20000 })
+  await propBtn.click()
+  await page.getByRole('button', { name: /Siguiente/i }).click()
+
+  await page.getByRole('button', { name: 'Cliente Existente' }).click().catch(() => {})
+  await page.getByPlaceholder(/Buscar cliente/i).fill(CLIENT)
+  const cliBtn = page.getByRole('button').filter({ hasText: CLIENT })
+  await expect(cliBtn).toBeVisible({ timeout: 20000 })
+  await cliBtn.click()
+  await page.getByRole('button', { name: /Siguiente/i }).click()
+
+  // empleados / comisión: sin asignar
+  await page.getByRole('button', { name: /Siguiente/i }).click()
+
+  await page.getByRole('button', { name: /Financiada \(RTO\)/i }).click()
+  const rtoBox = page.locator('div.bg-purple-50').filter({ hasText: 'Términos Financiados' })
+  await expect(rtoBox).toBeVisible({ timeout: 10000 })
+  await rtoBox.locator('input[type="number"]').first().fill(String(DOWN))
+  await rtoBox.locator('input[type="number"]').nth(1).fill(String(MONTHLY))
+  await rtoBox.locator('select').selectOption('36').catch(() => {})
+
+  const salePost = page.waitForResponse(
+    (r) => r.url().includes('/api/sales') && r.request().method() === 'POST', { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: /Crear Venta/i }).click()
+  expect((await salePost).status(), 'POST /api/sales').toBeLessThan(300)
+  await page.waitForURL((url) => url.pathname.endsWith('/homes/sales'), { timeout: 30000 })
+
+  const sale = (await sb.from('sales').select('id, status').eq('property_id', propId).single()).data!
+  expect(sale.status).toBe('rto_pending')
+  const app0 = (await sb.from('rto_applications').select('id, status').eq('sale_id', sale.id).single()).data!
+  expect(app0.status).toBe('submitted')
+
+  // ── 2. Homes → Ventas → Aprobar solicitud RTO ───────────────────────────
+  await page.goto(`${APP_URL}/homes/sales`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  const open = page.getByTestId(`rto-open-${sale.id}`)
+  await expect(open).toBeVisible({ timeout: 45000 })
+  await expect(open).toHaveText(/Aprobar solicitud RTO/)
+  await open.click()
+  const panel = page.getByTestId('rto-panel')
+  await expect(panel.getByTestId('rto-app-status')).toHaveText(/Pendiente de aprobar/, { timeout: 30000 })
+  await panel.getByRole('button', { name: /Aprobar solicitud RTO/ }).click()
+  const review = page.waitForResponse(r => r.url().includes(`/api/capital/applications/${app0.id}/review`), { timeout: 60000 })
+  await panel.getByRole('button', { name: /Confirmar aprobación/ }).click()
+  const rv = await review
+  expect(rv.status(), JSON.stringify(await rv.json().catch(() => ({})))).toBe(200)
+
+  await expect(panel.getByTestId('rto-app-status')).toHaveText(/Aprobada/, { timeout: 30000 })
+  await expect(panel.getByTestId('rto-contract-status')).toBeVisible({ timeout: 30000 })
+
+  // Base: misma aprobación que Capital
+  const app1 = (await sb.from('rto_applications').select('status, review_notes').eq('id', app0.id).single()).data!
+  expect(app1.status).toBe('approved')
+  expect(app1.review_notes).toContain('Homes')
+  const sale1 = (await sb.from('sales').select('status, rto_contract_id').eq('id', sale.id).single()).data!
+  expect(sale1.status).toBe('rto_approved')
+  expect(sale1.rto_contract_id).toBeTruthy()
+  const contract = (await sb.from('rto_contracts').select('id, monthly_rent, term_months, down_payment')
+    .eq('id', sale1.rto_contract_id).single()).data!
+  expect(Number(contract.monthly_rent)).toBe(MONTHLY)
+  expect(Number(contract.term_months)).toBe(36)
+  expect(Number(contract.down_payment)).toBe(DOWN)
+
+  // ── 3. Descargar el contrato para imprimir ──────────────────────────────
+  const dl = page.waitForEvent('download', { timeout: 60000 })
+  await panel.getByTestId('rto-download-contract').click()
+  const file = await dl
+  expect(file.suggestedFilename()).toMatch(/\.pdf$/)
+  const p = await file.path()
+  const head = fs.readFileSync(p!).subarray(0, 5).toString()
+  expect(head).toBe('%PDF-')
+  expect(fs.statSync(p!).size).toBeGreaterThan(5000)
+
+  // ── 4. Capital ve lo mismo ──────────────────────────────────────────────
+  await page.goto(`${APP_URL}/capital/contracts/${contract.id}`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await expect(page.getByText(CLIENT).first()).toBeVisible({ timeout: 45000 })
+  await expect(page.getByRole('button', { name: /Descargar Contrato PDF/ })).toBeVisible()
+})

@@ -28,6 +28,7 @@ import {
 import { ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatMoney } from '@/lib/money'
+import RtoSalePanel from '@/components/homes/RtoSalePanel'
 
 // Maninos bank info for client payments
 const MANINOS_BANK_INFO = {
@@ -530,6 +531,17 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
 
           {/* Actions */}
           <div className="flex gap-2 flex-shrink-0 flex-wrap">
+            {/* RTO: aprobar la solicitud / descargar el contrato desde Homes */}
+            {sale.sale_type === 'rto' && sale.status !== 'cancelled' && (
+              <button
+                onClick={() => setShowDocs(true)}
+                data-testid={`rto-open-${sale.id}`}
+                className="btn-primary text-sm py-2 flex items-center gap-1.5"
+              >
+                <FileText className="w-4 h-4" />
+                {sale.status === 'rto_pending' ? 'Aprobar solicitud RTO' : 'Contrato RTO'}
+              </button>
+            )}
             {/* RTO sales: link to Capital portal */}
             {sale.sale_type === 'rto' && (
               <Link
@@ -800,22 +812,8 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
         {showDocs && (
           <div className="mt-3 pt-3 border-t border-navy-100">
             {sale.sale_type === 'rto' ? (
-              /* RTO: Redirect to Capital portal */
-              <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
-                <h4 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
-                  <Landmark className="w-4 h-4" />
-                  Documentos RTO
-                </h4>
-                <p className="text-sm text-purple-600 mb-3">
-                  Los documentos de esta venta RTO se gestionan desde el portal Capital.
-                </p>
-                <Link
-                  href="/capital/applications"
-                  className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1 font-medium"
-                >
-                  Ir al portal Capital →
-                </Link>
-              </div>
+              /* RTO: aprobar la solicitud y descargar el contrato desde Homes */
+              <RtoSalePanel saleId={sale.id} onChanged={onUpdate} />
             ) : (
               /* Contado: Direct sale docs */
               <div className="p-4 bg-navy-50 rounded-xl">

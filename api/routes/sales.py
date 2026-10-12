@@ -1634,6 +1634,61 @@ async def cancel_sale(sale_id: str):
 # RTO COMPLETION
 # ============================================================================
 
+@router.get("/{sale_id}/rto-status")
+async def get_rto_status(sale_id: str):
+    """Estado RTO de una venta para el portal Homes: la solicitud (para
+    aprobarla también desde Homes, con el MISMO endpoint que usa Capital) y el
+    contrato (para descargarlo e imprimirlo en el cierre). Solo lectura."""
+    sale = sb.table("sales").select(
+        "id, sale_type, status, sale_price, rto_down_payment, rto_monthly_payment, "
+        "rto_term_months, rto_contract_id, property_id, client_id, clients(name)"
+    ).eq("id", sale_id).limit(1).execute().data
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    sale = sale[0]
+    if sale.get("sale_type") != "rto":
+        raise HTTPException(status_code=400, detail="La venta no es RTO")
+
+    app = sb.table("rto_applications").select(
+        "id, status, reviewed_at, reviewed_by, review_notes, desired_down_payment, desired_term_months"
+    ).eq("sale_id", sale_id).order("created_at", desc=True).limit(1).execute().data
+    app = app[0] if app else None
+
+    contract = None
+    cid = sale.get("rto_contract_id")
+    q = sb.table("rto_contracts").select(
+        "id, status, monthly_rent, down_payment, term_months, purchase_price, start_date, contract_pdf_url, signed_at"
+    )
+    rows = (q.eq("id", cid) if cid else q.eq("sale_id", sale_id)).order("created_at", desc=True).limit(1).execute().data
+    if rows:
+        contract = rows[0]
+
+    afford = None
+    if app:
+        try:
+            from api.routes.capital.applications import _affordability_cap
+            afford = _affordability_cap(app["id"])
+        except Exception as e:
+            logger.warning(f"[sales] rto-status: no se pudo calcular la capacidad de pago: {e}")
+
+    return {
+        "ok": True,
+        "sale": {
+            "id": sale["id"],
+            "status": sale.get("status"),
+            "client_name": (sale.get("clients") or {}).get("name"),
+            "sale_price": sale.get("sale_price"),
+            "down_payment": sale.get("rto_down_payment"),
+            "monthly_payment": sale.get("rto_monthly_payment"),
+            "term_months": sale.get("rto_term_months"),
+            "property_id": sale.get("property_id"),
+        },
+        "application": app,
+        "contract": contract,
+        "affordability": afford,
+    }
+
+
 @router.get("/{sale_id}/rto-completion-status")
 async def rto_completion_status(sale_id: str):
     """
