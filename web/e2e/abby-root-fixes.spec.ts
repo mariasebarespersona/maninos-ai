@@ -126,6 +126,8 @@ test.afterAll(async () => {
     const ids = Array.from(tx)
     if (ids.length) {
       await sb.from('commission_payments').update({ accounting_transaction_id: null }).in('accounting_transaction_id', ids)
+      await sb.from('statement_movements').update({ transaction_id: null }).in('transaction_id', ids)
+      await sb.from('statement_movements').update({ matched_transaction_id: null }).in('matched_transaction_id', ids)
       await sb.from('accounting_transactions').update({ linked_transaction_id: null }).in('id', ids)
       await sb.from('accounting_transactions').delete().in('id', ids)
     }
@@ -143,6 +145,7 @@ test.afterAll(async () => {
       await sb.from('sales').delete().eq('id', sid)
     }
     await sb.from('notifications').delete().eq('property_id', propId)
+    await sb.from('bank_statements').delete().eq('original_filename', `E2E-${PCODE}.csv`)
     await sb.from('accounting_accounts').delete().ilike('code', `%${PCODE}`)
     if (clientId) await sb.from('clients').delete().eq('id', clientId)
     await sb.from('properties').delete().eq('id', propId)
@@ -242,13 +245,44 @@ test('C: comisiones — sin borrar su factura, sin gasto duplicado, y pagar con 
   expect(t.status(), await t.text()).toBe(409)
   expect(JSON.stringify(await t.json())).toContain('saldrá duplicada')
 
+  // Por estado de cuenta (lo que hizo Abby): un retiro de $400 a la cuenta de
+  // la comisión LIQUIDA parte de su factura; no crea un gasto nuevo.
+  const st = await sb.from('bank_statements').insert({
+    account_key: 'cuenta_houston', account_label: 'E2E', bank_account_id: bankId,
+    original_filename: `E2E-${PCODE}.csv`, file_type: 'csv', status: 'review',
+  }).select('id').single()
+  expect(st.error, JSON.stringify(st.error)).toBeFalsy()
+  const hoy = new Date().toISOString().slice(0, 10)
+  const mv = await sb.from('statement_movements').insert({
+    statement_id: st.data!.id, movement_date: hoy, description: `E2E COMISION ${PCODE}`,
+    amount: -400, is_credit: false, status: 'confirmed', final_account_id: acct.account_id,
+    final_transaction_type: 'commission',
+  }).select('id').single()
+  expect(mv.error, JSON.stringify(mv.error)).toBeFalsy()
+  const post = await request.post(`${APP_URL}/api/accounting/bank-statements/${st.data!.id}/post`)
+  expect(post.status(), await post.text()).toBe(200)
+  const billP = (await sb.from('accounting_invoices').select('balance_due, status').eq('id', bill.id).single()).data!
+  expect(Number(billP.balance_due)).toBe(600)
+  expect(billP.status).toBe('partial')
+  const mv2 = (await sb.from('statement_movements').select('status, transaction_id').eq('id', mv.data!.id).single()).data!
+  expect(mv2.status).toBe('posted')
+  // Ningún gasto nuevo: lo único en la cuenta de la comisión es el devengo de la factura
+  const gastos = (await sb.from('accounting_transactions').select('id, entity_type')
+    .eq('account_id', acct.account_id).neq('status', 'voided')).data || []
+  expect(gastos.every(g => g.entity_type === 'invoice'), JSON.stringify(gastos)).toBe(true)
+
   // Pagar desde Notificaciones → Aprobadas, con fecha de ayer
   const ayer = new Date(Date.now() - 86400000)
   const fecha = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`
   await login(page)
   await page.goto(`${APP_URL}/homes/notificaciones`, { waitUntil: 'domcontentloaded', timeout: 45000 })
-  await page.getByRole('button', { name: /^Aprobadas/ }).first().click()
+  await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
   const row = page.getByTestId(`commission-row-${cp.id}`)
+  const tab = page.getByRole('button', { name: 'Aprobadas', exact: true })
+  for (let i = 0; i < 5 && !(await row.isVisible().catch(() => false)); i++) {
+    await tab.click()
+    await page.waitForTimeout(3000)
+  }
   await expect(row).toBeVisible({ timeout: 45000 })
   await expect(row).toContainText(COMISIONISTA)
   await expect(row).toContainText(PCODE)
@@ -267,8 +301,10 @@ test('C: comisiones — sin borrar su factura, sin gasto duplicado, y pagar con 
   const bill2 = (await sb.from('accounting_invoices').select('balance_due, status').eq('id', bill.id).single()).data!
   expect(Number(bill2.balance_due)).toBe(0)
   expect(bill2.status).toBe('paid')
-  const p = ((await sb.from('accounting_invoice_payments').select('payment_date, transaction_id').eq('invoice_id', bill.id)).data || [])[0]
-  expect(p.payment_date).toBe(fecha)
+  const pays = (await sb.from('accounting_invoice_payments').select('payment_date, transaction_id, amount').eq('invoice_id', bill.id)).data || []
+  const p = pays.find(x => x.payment_date === fecha)!
+  expect(p, JSON.stringify(pays)).toBeTruthy()
+  expect(Number(p.amount)).toBe(600)
   const leg = (await sb.from('accounting_transactions').select('transaction_date, bank_account_id').eq('id', p.transaction_id).single()).data!
   expect(leg.transaction_date).toBe(fecha)
 })
