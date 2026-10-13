@@ -301,9 +301,9 @@ test('C: comisiones — sin borrar su factura, sin gasto duplicado, y pagar con 
   expect(Number(bill2.balance_due)).toBe(0)
   expect(bill2.status).toBe('paid')
   const pays = (await sb.from('accounting_invoice_payments').select('payment_date, transaction_id, amount').eq('invoice_id', bill.id)).data || []
-  const p = pays.find(x => x.payment_date === fecha)!
+  const p = pays.find(x => Number(x.amount) === 600)!
   expect(p, JSON.stringify(pays)).toBeTruthy()
-  expect(Number(p.amount)).toBe(600)
+  expect(p.payment_date).toBe(fecha)
   const leg = (await sb.from('accounting_transactions').select('transaction_date, bank_account_id').eq('id', p.transaction_id).single()).data!
   expect(leg.transaction_date).toBe(fecha)
 })

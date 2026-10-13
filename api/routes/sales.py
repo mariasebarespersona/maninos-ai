@@ -464,7 +464,7 @@ async def mark_commission_paid(
     payment_date: Optional[str] = Query(None, description="Fecha real del pago (YYYY-MM-DD); por defecto hoy"),
 ):
     """Mark a commission payment as paid. Posts a debit-60640/credit-bank pair."""
-    from datetime import date
+    from datetime import date, timedelta
 
     # Sin banco no hay asiento: antes se marcaba "pagada" igualmente y la
     # comisión desaparecía de pendientes sin haber salido de ninguna cuenta.
@@ -480,7 +480,8 @@ async def mark_commission_paid(
         paid_by = None
     fecha = payment_date if isinstance(payment_date, str) and payment_date.strip() else date.today().isoformat()
     try:
-        if date.fromisoformat(fecha) > date.today():
+        # +1 día: el servidor va en UTC y el usuario puede ir por delante (España)
+        if date.fromisoformat(fecha) > date.today() + timedelta(days=1):
             raise HTTPException(status_code=400, detail="La fecha del pago no puede ser futura")
     except ValueError:
         raise HTTPException(status_code=400, detail="Fecha del pago no válida (usa AAAA-MM-DD)")
@@ -606,14 +607,16 @@ async def list_sale_payments(sale_id: str):
 
 def _resolve_sale_date(value: Optional[str]) -> str:
     """Fecha de la venta: la indicada (AAAA-MM-DD, no futura) o hoy."""
-    from datetime import date as _date
+    from datetime import date as _date, timedelta as _td
     if not (isinstance(value, str) and value.strip()):
         return _date.today().isoformat()
     try:
         d = _date.fromisoformat(value.strip()[:10])
     except ValueError:
         raise HTTPException(status_code=400, detail="Fecha de la venta no válida (usa AAAA-MM-DD)")
-    if d > _date.today():
+    # +1 día de margen: el servidor va en UTC y quien registra puede estar por
+    # delante (p. ej. España de madrugada): su "hoy" ya es mañana en el servidor.
+    if d > _date.today() + _td(days=1):
         raise HTTPException(status_code=400, detail="La fecha de la venta no puede ser futura")
     return d.isoformat()
 
@@ -1280,6 +1283,7 @@ async def create_sale(data: SaleCreate):
         sale_record,
         prop["address"],
         client_result.data["name"],
+        property_code=prop.get("property_code"),
     )
 
 

@@ -477,7 +477,8 @@ async def approve_payment_order(
             break
     fecha_cobro = fecha_cobro or date.today().isoformat()
     try:
-        if date.fromisoformat(fecha_cobro) > date.today():
+        # +1 día: el servidor va en UTC y el usuario puede ir por delante
+        if date.fromisoformat(fecha_cobro) > date.today() + timedelta(days=1):
             raise HTTPException(status_code=400, detail="La fecha del cobro no puede ser futura")
     except ValueError:
         raise HTTPException(status_code=400, detail="Fecha del cobro no válida (usa AAAA-MM-DD)")
