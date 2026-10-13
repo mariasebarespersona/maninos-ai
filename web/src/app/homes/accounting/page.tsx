@@ -83,7 +83,7 @@ interface YardBreakdown {
 }
 
 interface PropertyPnl {
-  property_id: string; address: string; city: string; status: string
+  property_id: string; property_code?: string | null; address: string; city: string; status: string
   purchase_price: number; renovation_cost: number; total_cost: number
   movida_cost?: number; commission_cost?: number
   sale_price: number; profit: number; margin: number
@@ -342,7 +342,7 @@ export default function AccountingPage() {
           <>
             <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
               className="px-3 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--stone)', color: 'var(--charcoal)' }}>
-              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              {Array.from({ length: new Date().getFullYear() - 2023 + 1 }, (_, i) => 2024 + i).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             {period === 'month' && (
               <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))}
@@ -378,7 +378,7 @@ export default function AccountingPage() {
       {activeTab === 'overview' && s && <OverviewTab summary={s} cashFlow={cf} maxCf={maxCf} yardBreakdown={dashboard?.yard_breakdown || []} recentTransactions={(dashboard?.recent_transactions || []).filter((t: any) => t.entity_type !== 'opening_balance')} bankAccounts={dashboard?.bank_accounts || []} totals={dashboard?.totals || { properties_count: 0, sales_count: 0, renovations_count: 0, transactions_count: 0 }} propertyInventory={dashboard?.property_inventory || []} salesReceivables={dashboard?.sales_receivables || []} period={period} year={selectedYear} month={selectedMonth} />}
       {activeTab === 'transactions' && <TransactionsTab transactions={transactions} loading={txnLoading} search={txnSearch} setSearch={setTxnSearch} typeFilter={txnTypeFilter} setTypeFilter={setTxnTypeFilter} accountFilter={txnAccountFilter} setAccountFilter={setTxnAccountFilter} allAccounts={allAccounts} flowFilter={txnFlowFilter} setFlowFilter={setTxnFlowFilter} page={txnPage} setPage={setTxnPage} onRefresh={fetchTransactions} />}
       {activeTab === 'invoices' && <InvoicesTab />}
-      {activeTab === 'statements' && <StatementsTab />}
+      {activeTab === 'statements' && <StatementsTab period={period} year={selectedYear} month={selectedMonth} yardId={selectedYard} />}
       {activeTab === 'estado_cuenta' && <EstadoCuentaTab />}
       {activeTab === 'chart' && <ChartOfAccountsTab />}
       {activeTab === 'properties' && <PropertiesTab properties={dashboard?.property_pnl || []} />}
@@ -1795,7 +1795,7 @@ interface QBTreeNode {
 function TransactionsDrilldownModal({ title, subtitle, filter, onClose }: {
   title: string
   subtitle?: string
-  filter: { account_id?: string; bank_account_id?: string; property_id?: string; transaction_type?: string }
+  filter: { account_id?: string; bank_account_id?: string; property_id?: string; transaction_type?: string; start_date?: string; end_date?: string }
   onClose: () => void
 }) {
   const [txns, setTxns] = useState<Transaction[]>([])
@@ -2043,7 +2043,34 @@ function QBComputedLine({ label, amount, bold, thick, highlight, hideZeros = fal
   )
 }
 
-function StatementsTab() {
+/** Rango del periodo elegido arriba, igual que _period_range del backend. */
+function periodRange(period: string, year: number, month: number): { start: string; end: string } {
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (period === 'month') return { start: iso(new Date(year, month - 1, 1)), end: iso(new Date(year, month, 0)) }
+  if (period === 'quarter') {
+    const q = Math.floor((month - 1) / 3)
+    return { start: iso(new Date(year, q * 3, 1)), end: iso(new Date(year, q * 3 + 3, 0)) }
+  }
+  if (period === 'year') return { start: `${year}-01-01`, end: `${year}-12-31` }
+  return { start: '2020-01-01', end: '2030-12-31' }
+}
+
+// Estados Financieros respetan el periodo elegido arriba (lista de Abby, punto
+// 5): antes los informes se pedían sin fechas y siempre salía el año hasta hoy.
+function StatementsTab({ period, year, month, yardId }: { period: string; year: number; month: number; yardId?: string }) {
+  const { start: pStart, end: pEnd } = periodRange(period, year, month)
+  const hoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+  // El balance es "a una fecha": el último día del periodo (sin pasar de hoy).
+  const asOf = pEnd > hoy ? hoy : pEnd
+  const reportQuery = (rep: string) => {
+    const q = new URLSearchParams()
+    if (rep === 'income' || rep === 'cashflow') { q.set('start_date', pStart); q.set('end_date', pEnd) }
+    if (rep === 'balance') q.set('as_of_date', asOf)
+    if (yardId && (rep === 'income' || rep === 'balance')) q.set('yard_id', yardId)
+    const s = q.toString()
+    return s ? `?${s}` : ''
+  }
+  const periodKey = `${pStart}|${pEnd}|${yardId || ''}`
   const toast = useToast()
   const [activeReport, setActiveReport] = useState<'income' | 'balance' | 'cashflow' | 'customer' | 'vendor'>('income')
   const [report, setReport] = useState<any>(null)
@@ -2118,11 +2145,12 @@ function StatementsTab() {
         customer: '/api/accounting/reports/customer-balance-summary',
         vendor: '/api/accounting/reports/vendor-balance-summary',
       }
-      const res = await fetch(endpoints[activeReport])
+      const res = await fetch(endpoints[activeReport] + reportQuery(activeReport))
       if (res.ok) setReport(await res.json())
     } catch (e) { /* ignore */ }
     finally { setLoading(false) }
-  }, [activeReport])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeReport, periodKey])
 
   const handleResetBalances = useCallback(async (scope: string) => {
     try {
@@ -2158,12 +2186,13 @@ function StatementsTab() {
           customer: '/api/accounting/reports/customer-balance-summary',
           vendor: '/api/accounting/reports/vendor-balance-summary',
         }
-        const res = await fetch(endpoints[activeReport])
+        const res = await fetch(endpoints[activeReport] + reportQuery(activeReport))
         if (res.ok) setReport(await res.json())
       } catch (e) { /* ignore */ }
       finally { setLoading(false) }
     })()
-  }, [activeReport])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeReport, periodKey])
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => ({ ...prev, [id]: prev[id] === false ? true : false }))
@@ -2203,6 +2232,11 @@ function StatementsTab() {
           report_type: reportType,
           name: saveName.trim(),
           notes: saveNotes.trim() || undefined,
+          // Se guarda el periodo que se está viendo, no el año hasta hoy
+          start_date: reportType === 'balance_sheet' ? undefined : pStart,
+          end_date: reportType === 'balance_sheet' ? undefined : pEnd,
+          as_of_date: reportType === 'balance_sheet' ? asOf : undefined,
+          yard_id: yardId || undefined,
         }),
       })
       if (res.ok) {
@@ -2282,9 +2316,9 @@ function StatementsTab() {
           </button>
           {activeReport !== 'cashflow' && !isViewingSaved && (
             <a
-              href={activeReport === 'income'
+              href={(activeReport === 'income'
                 ? '/api/accounting/reports/income-statement/export-csv'
-                : '/api/accounting/reports/balance-sheet/export-csv'}
+                : '/api/accounting/reports/balance-sheet/export-csv') + reportQuery(activeReport)}
               download
               className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border hover:bg-stone-50 transition-colors"
               style={{ borderColor: 'var(--stone)', color: 'var(--slate)' }}
@@ -2348,7 +2382,9 @@ function StatementsTab() {
         <TransactionsDrilldownModal
           title={drilldown.label}
           subtitle={`Cuenta ${drilldown.code} · transacciones que componen este monto`}
-          filter={{ account_id: drilldown.accountId }}
+          filter={activeReport === 'balance'
+            ? { account_id: drilldown.accountId, end_date: asOf }
+            : { account_id: drilldown.accountId, start_date: pStart, end_date: pEnd }}
           onClose={() => setDrilldown(null)}
         />
       )}
@@ -3360,7 +3396,7 @@ function PropertiesTab({ properties }: { properties: PropertyPnl[] }) {
         {sorted.map(p => (
           <div key={p.property_id} className="card-luxury p-5 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-3">
-              <div><p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>{p.address}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{p.city}</p></div>
+              <div><p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>{p.property_code && <span className="text-[10px] bg-navy-100 text-navy-600 px-1.5 py-0.5 rounded font-bold mr-1.5" data-testid="pnl-code">{p.property_code}</span>}{p.address}</p><p className="text-xs" style={{ color: 'var(--ash)' }}>{p.city}</p></div>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.status === 'sold' ? 'bg-emerald-100 text-emerald-700' : p.status === 'published' ? 'bg-blue-100 text-blue-700' : p.status === 'renovating' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
             </div>
             <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs mb-3">

@@ -53,6 +53,7 @@ interface Sale {
   created_at: string
   completed_at?: string
   property_address?: string
+  property_code?: string | null
   client_name?: string
   // Commission fields
   found_by_employee_id?: string
@@ -470,6 +471,11 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
               <span className="flex items-center gap-1 min-w-0">
                 <Users className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="truncate">{sale.client_name || 'Cliente'}</span>
+                {sale.property_code && (
+                  <span className="text-[10px] bg-navy-100 text-navy-600 px-1.5 py-0.5 rounded font-bold flex-shrink-0" data-testid={`sale-code-${sale.id}`}>
+                    {sale.property_code}
+                  </span>
+                )}
               </span>
               <span className="text-xs text-navy-400 whitespace-nowrap">
                 {new Date(sale.created_at).toLocaleDateString('es-MX')}

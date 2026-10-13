@@ -662,7 +662,8 @@ async def get_accounting_dashboard(
         total_cost = round(compra + reno + movida + comision, 2)
         profit = round(sp - total_cost, 2) if sp > 0 else 0
         margin = (profit / sp * 100) if sp > 0 else 0
-        property_pnl.append({"property_id": pid, "address": prop.get("address", "?"),
+        property_pnl.append({"property_id": pid, "property_code": code or None,
+                             "address": prop.get("address", "?"),
                              "city": prop.get("city", "?"), "status": prop.get("status", "?"),
                              "yard_id": prop.get("yard_id"), "purchase_price": compra,
                              "renovation_cost": reno, "movida_cost": movida,
@@ -943,7 +944,9 @@ async def get_accounting_dashboard(
         "cash_flow": cash_flow,
         "bank_accounts": bank_accounts,
         "yard_breakdown": list(yard_breakdown.values()),
-        "property_pnl": property_pnl[:20],
+        # Todas las casas del periodo (antes solo las 20 con más beneficio, y en
+        # "Por Propiedad" faltaban casas sin que nada lo indicara).
+        "property_pnl": property_pnl,
         "property_inventory": property_inventory,
         "sales_receivables": sales_receivables,
         "recent_transactions": recent_data,
@@ -3387,6 +3390,12 @@ class SaveStatementRequest(BaseModel):
     name: str
     notes: Optional[str] = None
     saved_by: Optional[str] = None
+    # Periodo que se está viendo en pantalla. Sin ellos se guardaba siempre el
+    # año hasta hoy (P&L / flujo) o el balance a hoy, se viera lo que se viera.
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    as_of_date: Optional[str] = None
+    yard_id: Optional[str] = None
 
 
 @router.post("/reports/save")
@@ -3394,7 +3403,7 @@ async def save_financial_statement(data: SaveStatementRequest):
     """Save an immutable snapshot of the current Balance Sheet, P&L, or Cash Flow for Homes."""
     try:
         if data.report_type == "balance_sheet":
-            report = await get_balance_sheet()
+            report = await get_balance_sheet(as_of_date=data.as_of_date, yard_id=data.yard_id)
             record = {
                 "portal": "homes",
                 "report_type": "balance_sheet",
@@ -3411,7 +3420,7 @@ async def save_financial_statement(data: SaveStatementRequest):
             period_start = None
             period_end = report.get("as_of_date", date.today().isoformat())
         elif data.report_type == "profit_loss":
-            report = await get_income_statement()
+            report = await get_income_statement(start_date=data.start_date, end_date=data.end_date, yard_id=data.yard_id)
             sections = report.get("sections", {})
             record = {
                 "portal": "homes",
@@ -3429,7 +3438,7 @@ async def save_financial_statement(data: SaveStatementRequest):
             period_start = report.get("period", {}).get("start")
             period_end = report.get("period", {}).get("end")
         elif data.report_type == "cash_flow":
-            report = await get_cash_flow_statement()
+            report = await get_cash_flow_statement(start_date=data.start_date, end_date=data.end_date)
             record = {
                 "portal": "homes",
                 "report_type": "cash_flow",

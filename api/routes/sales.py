@@ -150,14 +150,16 @@ async def list_sales(
     property_ids = list(set(s["property_id"] for s in result.data))
     client_ids = list(set(s["client_id"] for s in result.data))
     
-    props = sb.table("properties").select("id, address").in_("id", property_ids).execute()
+    props = sb.table("properties").select("id, address, property_code").in_("id", property_ids).execute()
     clients = sb.table("clients").select("id, name").in_("id", client_ids).execute()
     
     props_map = {p["id"]: p["address"] for p in (props.data or [])}
+    codes_map = {p["id"]: p.get("property_code") for p in (props.data or [])}
     clients_map = {c["id"]: c["name"] for c in (clients.data or [])}
     
     return [
-        _format_sale(s, props_map.get(s["property_id"]), clients_map.get(s["client_id"]))
+        _format_sale(s, props_map.get(s["property_id"]), clients_map.get(s["client_id"]),
+                     property_code=codes_map.get(s["property_id"]))
         for s in result.data
     ]
 
@@ -877,13 +879,14 @@ async def get_sale(sale_id: str):
         raise HTTPException(status_code=404, detail="Sale not found")
     
     # Get property and client info
-    prop = sb.table("properties").select("address").eq("id", result.data["property_id"]).single().execute()
+    prop = sb.table("properties").select("address, property_code").eq("id", result.data["property_id"]).single().execute()
     client = sb.table("clients").select("name").eq("id", result.data["client_id"]).single().execute()
     
     return _format_sale(
         result.data,
         prop.data["address"] if prop.data else None,
         client.data["name"] if client.data else None,
+        property_code=prop.data.get("property_code") if prop.data else None,
     )
 
 
@@ -2068,8 +2071,11 @@ def _format_sale(
     data: dict, 
     property_address: Optional[str] = None,
     client_name: Optional[str] = None,
+    property_code: Optional[str] = None,
 ) -> SaleResponse:
     """Format database row to SaleResponse."""
+    def _dec(v):
+        return Decimal(str(v)) if v is not None else None
     return SaleResponse(
         id=data["id"],
         property_id=data["property_id"],
@@ -2094,7 +2100,14 @@ def _format_sale(
         # Payment tracking
         amount_paid=Decimal(str(data.get("amount_paid") or 0)),
         amount_pending=Decimal(str(data.get("amount_pending") or data.get("sale_price", 0))),
+        rto_down_payment=_dec(data.get("rto_down_payment")),
+        rto_monthly_payment=_dec(data.get("rto_monthly_payment")),
+        rto_term_months=data.get("rto_term_months"),
+        financed_down_payment=_dec(data.get("financed_down_payment")),
+        financed_remaining=_dec(data.get("financed_remaining")),
+        capital_payment_status=data.get("capital_payment_status"),
         property_address=property_address,
+        property_code=property_code,
         client_name=client_name,
     )
 

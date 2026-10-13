@@ -311,8 +311,18 @@ class SaleResponse(BaseModel):
     amount_paid: Optional[Decimal] = Decimal("0")
     amount_pending: Optional[Decimal] = None
 
+    # RTO / financiamiento (la tarjeta de Ventas los muestra; antes se perdían
+    # porque no estaban en la respuesta y salía "$0.00/mes × — meses")
+    rto_down_payment: Optional[Decimal] = None
+    rto_monthly_payment: Optional[Decimal] = None
+    rto_term_months: Optional[int] = None
+    financed_down_payment: Optional[Decimal] = None
+    financed_remaining: Optional[Decimal] = None
+    capital_payment_status: Optional[str] = None
+
     # Populated from joins
     property_address: Optional[str] = None
+    property_code: Optional[str] = None
     client_name: Optional[str] = None
     found_by_name: Optional[str] = None
     sold_by_name: Optional[str] = None
