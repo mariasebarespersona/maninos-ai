@@ -81,8 +81,7 @@ test.beforeAll(async ({ request }) => {
     expect(process.env[k], `${k} missing`).toBeTruthy()
   }
   sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  bankId = ((await sb.from('bank_accounts').select('id').eq('is_active', true).limit(1)).data || [])[0]?.id
-    || ((await sb.from('bank_accounts').select('id').limit(1)).data || [])[0]?.id
+  bankId = ((await sb.from('bank_accounts').select('id').not('accounting_account_id', 'is', null).limit(1)).data || [])[0]?.id
   expect(bankId, 'cuenta bancaria').toBeTruthy()
   const p = await sb.from('properties').insert({
     address: ADDRESS, city: 'Houston', state: 'Texas', property_code: PCODE, status: 'published', sale_price: PRICE,
