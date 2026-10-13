@@ -604,6 +604,20 @@ async def list_sale_payments(sale_id: str):
     return {"ok": True, "payments": result.data or []}
 
 
+def _resolve_sale_date(value: Optional[str]) -> str:
+    """Fecha de la venta: la indicada (AAAA-MM-DD, no futura) o hoy."""
+    from datetime import date as _date
+    if not (isinstance(value, str) and value.strip()):
+        return _date.today().isoformat()
+    try:
+        d = _date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha de la venta no válida (usa AAAA-MM-DD)")
+    if d > _date.today():
+        raise HTTPException(status_code=400, detail="La fecha de la venta no puede ser futura")
+    return d.isoformat()
+
+
 def _insert_sale_payment(row: dict):
     """Inserta un sale_payment. Si aún no se ejecutó la migración 117
     (payment_order_id), lo guarda sin el enlace en vez de fallar."""
@@ -906,6 +920,7 @@ async def create_sale(data: SaleCreate):
     from postgrest.exceptions import APIError as PGError
     # Orden del enganche RTO (si se crea): el pago inicial queda enlazado a ella.
     enganche_order_id = None
+    sale_date = _resolve_sale_date(data.sale_date)
     
     # Validate property exists and is available for sale
     try:
@@ -1033,7 +1048,8 @@ async def create_sale(data: SaleCreate):
         insert_data["capital_payment_status"] = "pending"
 
     insert_data["status"] = status
-    
+    insert_data["sale_date"] = sale_date
+
     result = sb.table("sales").insert(insert_data).execute()
     
     if not result.data:
@@ -1107,6 +1123,7 @@ async def create_sale(data: SaleCreate):
                         account_code="House Sales - RTO",  # financed sale income → Ventas RTO
                         property_id=data.property_id,
                         sale_id=sale_record["id"],
+                        issue_date=sale_date,
                         description=f"Financiamiento RTO por cobrar a Maninos Capital — {prop_addr}",
                         notes=f"[CAPFIN:{sale_record['id']}] Parte financiada de la venta RTO que Capital paga a Homes.",
                     )
@@ -1157,6 +1174,8 @@ async def create_sale(data: SaleCreate):
                         "status": "pending",
                         "concept": "enganche",
                         "direction": "inbound",
+                        # Por defecto, el enganche se cobró el día de la venta
+                        "payment_date": sale_date,
                         "notes": (
                             f"Enganche venta financiada: ${down_payment:,.2f} de {client_name}. "
                             f"Propiedad: {prop_addr}{code_str}. "
@@ -1227,8 +1246,7 @@ async def create_sale(data: SaleCreate):
     # where their revenue posts.
     if data.sale_type == SaleType.RTO:
         try:
-            _recognize_house_cogs(data.property_id, sale_record["id"],
-                                  datetime.utcnow().date().isoformat())
+            _recognize_house_cogs(data.property_id, sale_record["id"], sale_date)
         except Exception as cogs_err:
             logger.warning(f"[sales] Could not recognize COGS at RTO sale creation: {cogs_err}")
 
@@ -1244,7 +1262,7 @@ async def create_sale(data: SaleCreate):
                 "payment_type": ptype,
                 "amount": float(data.initial_payment_amount),
                 "payment_method": data.initial_payment_method,
-                "payment_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "payment_date": sale_date,
                 "status": "confirmed",
                 "reported_by": "staff",
                 "confirmed_by": "staff",
@@ -1744,6 +1762,68 @@ async def cancel_sale(sale_id: str):
 # RTO COMPLETION
 # ============================================================================
 
+class SaleDateUpdate(BaseModel):
+    sale_date: str
+    changed_by: Optional[str] = None
+
+
+@router.patch("/{sale_id}/sale-date")
+async def update_sale_date(sale_id: str, body: SaleDateUpdate):
+    """Cambia la fecha de una venta ya registrada (lista de Abby, punto 2).
+
+    Re-fecha SOLO lo que la venta devenga al crearse: la factura a Capital
+    [CAPFIN:], las facturas de comisión [COMM:] y el traspaso del costo de la
+    casa a COGS (asientos entity_type='sale'). Nunca toca cobros ni pagos: esos
+    siguen la fecha real en que se movió el dinero."""
+    nueva = _resolve_sale_date(body.sale_date)
+    rows = sb.table("sales").select("id, sale_date, created_at").eq("id", sale_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    anterior = rows[0].get("sale_date") or (rows[0].get("created_at") or "")[:10]
+
+    # Facturas devengadas por la venta y sus asientos de emisión (no los de pago)
+    invs = sb.table("accounting_invoices").select("id, notes").eq("sale_id", sale_id).execute().data or []
+    invs = [i for i in invs if any(t in (i.get("notes") or "") for t in ("[CAPFIN:", "[COMM:"))]
+    redated_inv = 0
+    redated_legs = 0
+    for inv in invs:
+        pay_legs = set()
+        for p in sb.table("accounting_invoice_payments").select("transaction_id").eq("invoice_id", inv["id"]).execute().data or []:
+            if p.get("transaction_id"):
+                pay_legs.add(p["transaction_id"])
+        if pay_legs:
+            for r in sb.table("accounting_transactions").select("linked_transaction_id").in_("id", list(pay_legs)).execute().data or []:
+                if r.get("linked_transaction_id"):
+                    pay_legs.add(r["linked_transaction_id"])
+        legs = [l["id"] for l in (sb.table("accounting_transactions").select("id")
+                .eq("entity_type", "invoice").eq("entity_id", inv["id"]).execute().data or [])
+                if l["id"] not in pay_legs]
+        if legs:
+            sb.table("accounting_transactions").update({"transaction_date": nueva}).in_("id", legs).execute()
+            redated_legs += len(legs)
+        sb.table("accounting_invoices").update({"issue_date": nueva}).eq("id", inv["id"]).execute()
+        redated_inv += 1
+
+    # Costo de la casa reconocido por la venta (inventario → COGS)
+    # Solo el traspaso a COGS (transaction_type='cogs'): con entity_type='sale'
+    # también hay pagos de comisión antiguos, que son dinero y no se re-fechan.
+    cogs = (sb.table("accounting_transactions").select("id").eq("entity_type", "sale")
+            .eq("entity_id", sale_id).eq("transaction_type", "cogs").execute().data or [])
+    if cogs:
+        sb.table("accounting_transactions").update({"transaction_date": nueva}).in_("id", [c["id"] for c in cogs]).execute()
+        redated_legs += len(cogs)
+
+    sb.table("sales").update({"sale_date": nueva}).eq("id", sale_id).execute()
+    try:
+        from api.routes.accounting import _log_audit
+        _log_audit("sales", sale_id, "update",
+                   description=(f"Fecha de la venta {anterior} → {nueva} por {body.changed_by or 'desconocido'}: "
+                                f"{redated_inv} factura(s) y {redated_legs} asiento(s) devengados re-fechados"))
+    except Exception as e:
+        logger.warning(f"[sales] sale-date audit failed: {e}")
+    return {"ok": True, "sale_date": nueva, "invoices": redated_inv, "ledger_rows": redated_legs}
+
+
 @router.get("/{sale_id}/rto-status")
 async def get_rto_status(sale_id: str):
     """Estado RTO de una venta para el portal Homes: la solicitud (para
@@ -2100,6 +2180,7 @@ def _format_sale(
         # Payment tracking
         amount_paid=Decimal(str(data.get("amount_paid") or 0)),
         amount_pending=Decimal(str(data.get("amount_pending") or data.get("sale_price", 0))),
+        sale_date=(str(data.get("sale_date"))[:10] if data.get("sale_date") else None),
         rto_down_payment=_dec(data.get("rto_down_payment")),
         rto_monthly_payment=_dec(data.get("rto_monthly_payment")),
         rto_term_months=data.get("rto_term_months"),
@@ -2145,8 +2226,8 @@ async def commission_report(
     
     sales = sb.table("sales")\
         .select("*, properties(address), clients(name)")\
-        .gte("created_at", start_date)\
-        .lt("created_at", end_date)\
+        .gte("sale_date", start_date)\
+        .lt("sale_date", end_date)\
         .in_("status", ["paid", "completed", "rto_active", "rto_approved"])\
         .or_("source.is.null,source.neq.manual_capital")\
         .execute()
@@ -2328,6 +2409,7 @@ def _create_commission_payments(sale: dict):
                 account_code=comm_account,
                 property_id=property_id,
                 sale_id=sale["id"],
+                issue_date=(sale.get("sale_date") or None),
                 description=f"Comisión venta {tipo}: {emp_name} ({role_label}){code_str}",
                 notes=f"{tag} Comisión {tipo} ${float(row['amount']):,.2f} — {emp_name} ({role_label}). {prop_address}",
             )

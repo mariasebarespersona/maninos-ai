@@ -434,10 +434,10 @@ async def get_accounting_dashboard(
     # dinero de Homes. Filtro NULL-safe (un .neq a secas ocultaría los NULL).
     _NOT_MANUAL = "source.is.null,source.neq.manual_capital"
     sales_q = sb.table("sales") \
-        .select("id, sale_price, sale_type, status, payment_method, created_at, property_id, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, city, yard_id, purchase_price)") \
+        .select("id, sale_price, sale_type, status, payment_method, created_at, sale_date, property_id, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, city, yard_id, purchase_price)") \
         .or_(_NOT_MANUAL) \
-        .gte("created_at", start_str) \
-        .lte("created_at", end_str + "T23:59:59")
+        .gte("sale_date", start_str) \
+        .lte("sale_date", end_str)
     sales = (sales_q.execute()).data or []
 
     props_q = sb.table("properties") \
@@ -725,10 +725,10 @@ async def get_accounting_dashboard(
         actual_sale_by_property = {}
         try:
             sold_rows = (sb.table("sales")
-                         .select("property_id, sale_price, status, created_at")
+                         .select("property_id, sale_price, status, created_at, sale_date")
                          .neq("status", "cancelled")
                          .or_("source.is.null,source.neq.manual_capital")
-                         .order("created_at", desc=True)
+                         .order("sale_date", desc=True)
                          .execute()).data or []
             for s in sold_rows:
                 pid = s.get("property_id")
@@ -1047,9 +1047,9 @@ async def dashboard_drilldown(
         title = "Casas vendidas del período"
         note = "Precio de venta de cada casa vendida (contado y RTO)."
         sq = (sb.table("sales")
-              .select("id, sale_price, sale_type, status, created_at, property_id, "
+              .select("id, sale_price, sale_type, status, created_at, sale_date, property_id, "
                       "clients(name), properties(property_code, address)")
-              .gte("created_at", start_str).lte("created_at", end_str + "T23:59:59")
+              .gte("sale_date", start_str).lte("sale_date", end_str)
               .neq("status", "cancelled")
               .or_("source.is.null,source.neq.manual_capital")
               .execute()).data or []
@@ -1061,7 +1061,7 @@ async def dashboard_drilldown(
             stype = (x.get("sale_type") or "").upper() or "—"
             rows.append({
                 "label": prop.get("property_code") or "Venta",
-                "sublabel": f"{stype} · {cli.get('name') or 'Cliente'} · {(x.get('created_at') or '')[:10]}",
+                "sublabel": f"{stype} · {cli.get('name') or 'Cliente'} · {(x.get('sale_date') or x.get('created_at') or '')[:10]}",
                 "amount": round(float(x.get("sale_price") or 0), 2),
                 "property_id": x.get("property_id"),
             })
@@ -4175,7 +4175,7 @@ async def sync_from_existing_data():
 
     # 2. Sales
     sales = (sb.table("sales")
-             .select("id, property_id, client_id, sale_price, sale_type, status, payment_method, created_at, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, yard_id)")
+             .select("id, property_id, client_id, sale_price, sale_type, status, payment_method, created_at, sale_date, commission_amount, commission_found_by, commission_sold_by, found_by_employee_id, sold_by_employee_id, clients(name), properties(address, yard_id)")
              .or_("source.is.null,source.neq.manual_capital")
              .in_("status", ["paid", "completed", "rto_approved", "rto_active"]).execute()).data or []
     for sale in sales:
@@ -4191,7 +4191,7 @@ async def sync_from_existing_data():
         is_rto = sale.get("sale_type") == "rto"
         txn_data = {
             "transaction_number": _generate_transaction_number(),
-            "transaction_date": sale.get("created_at", "")[:10] or date.today().isoformat(),
+            "transaction_date": (sale.get("sale_date") or sale.get("created_at") or "")[:10] or date.today().isoformat(),
             "transaction_type": "sale_rto_capital" if is_rto else "sale_cash",
             "amount": sp, "is_income": True,
             "account_id": get_account("ventas_capital" if is_rto else "ventas_contado"),
@@ -4219,7 +4219,7 @@ async def sync_from_existing_data():
         if comm > 0 and f"commission:{sale['id']}" not in existing_keys:
             comm_data = {
                 "transaction_number": _generate_transaction_number(),
-                "transaction_date": sale.get("created_at", "")[:10] or date.today().isoformat(),
+                "transaction_date": (sale.get("sale_date") or sale.get("created_at") or "")[:10] or date.today().isoformat(),
                 "transaction_type": "commission", "amount": comm, "is_income": False,
                 "account_id": get_account("comisiones"),
                 "entity_type": "commission", "entity_id": sale["id"],

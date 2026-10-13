@@ -746,7 +746,7 @@ async def approve_payment_order(
                 try:
                     # Con reparto, bank_account_id puede venir vacío: se pasa el
                     # destino principal para que el asiento de COGS tenga banco.
-                    _maybe_recognize_cogs_for_sale(property_id, bank_account_id or destino_principal, approved_by)
+                    _recognize_contado_cogs_if_paid(property_id)
                 except Exception as cogs_err:
                     logger.warning(f"[payment_orders] COGS check failed: {cogs_err}")
             except ValueError as e:
@@ -984,7 +984,9 @@ async def complete_payment_order(order_id: str, req: PaymentOrderComplete):
     # has_prior_cogs path correctly now.
     if property_id and (order.get("concept") or "").lower() in ("comision", "renovacion", "movida", "compra"):
         try:
-            _maybe_recognize_cogs_for_sale(property_id, req.bank_account_id, req.completed_by)
+            # Costos que llegan después de vender (p. ej. una renovación pagada
+            # tarde): si la casa ya se vendió al contado, pasan a COGS también.
+            _recognize_contado_cogs_if_paid(property_id)
         except Exception as e:
             logger.warning(f"[payment_orders] post-complete COGS sweep failed: {e}")
 
@@ -1160,6 +1162,38 @@ async def cancel_payment_order(order_id: str, cancelled_by: Optional[str] = None
 # ---------------------------------------------------------------------------
 # COGS helper (called from approve_payment_order on inbound payments)
 # ---------------------------------------------------------------------------
+
+def _recognize_contado_cogs_if_paid(property_id: Optional[str]) -> None:
+    """Venta de CONTADO cobrada por completo → el costo de la casa pasa de
+    inventario a COGS, en la fecha de la venta (política vigente desde
+    2026-07-13: los costos se capitalizan y se reconocen al vender).
+
+    La función de abajo (_maybe_recognize_cogs_for_sale) quedó desactivada con
+    un `return` de una política anterior, así que las ventas de contado cobradas
+    por Notificaciones nunca reconocían su costo (H47: beneficio inflado).
+    _recognize_house_cogs es la misma que usa la venta RTO e idempotente: si ya
+    se reconoció, no vuelve a mover nada."""
+    if not property_id:
+        return
+    sales = (sb.table("sales").select("id, sale_type, status, sale_price, sale_date, created_at")
+             .eq("property_id", property_id).neq("status", "cancelled")
+             .order("created_at", desc=True).limit(1).execute().data or [])
+    if not sales or (sales[0].get("sale_type") or "").lower() != "contado":
+        return
+    sale = sales[0]
+    cobrado = sum(float(o.get("amount") or 0) for o in (
+        sb.table("payment_orders").select("amount, status, created_at")
+        .eq("property_id", property_id).eq("direction", "inbound").eq("concept", "pago_venta")
+        .in_("status", ["approved", "completed"]).gte("created_at", sale["created_at"])
+        .execute().data or []))
+    if cobrado + 0.01 < float(sale.get("sale_price") or 0):
+        return
+    from api.routes.sales import _recognize_house_cogs
+    fecha = (sale.get("sale_date") or sale.get("created_at") or "")[:10] or date.today().isoformat()
+    moved = _recognize_house_cogs(property_id, sale["id"], fecha)
+    if moved:
+        logger.info(f"[payment_orders] COGS ${moved:,.2f} reconocido para la venta de contado {sale['id']} al {fecha}")
+
 
 def _maybe_recognize_cogs_for_sale(
     property_id: Optional[str],

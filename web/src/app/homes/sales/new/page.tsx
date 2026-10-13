@@ -109,6 +109,12 @@ function NewSaleContent() {
   const [rtoDownPayment, setRtoDownPayment] = useState('')
   const [rtoMonthlyPayment, setRtoMonthlyPayment] = useState('')
   const [rtoTermMonths, setRtoTermMonths] = useState('36')
+  // Fecha real de la venta (punto 2 de Abby): por defecto hoy, en hora local
+  const hoyLocal = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const [saleDate, setSaleDate] = useState(hoyLocal())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -355,6 +361,7 @@ function NewSaleContent() {
         commission_found_by: commissionFoundBy,
         commission_sold_by: commissionSoldBy,
         commission_amount: commissionFoundBy + commissionSoldBy,
+        sale_date: saleDate || undefined,
       }
       if (paymentType === 'rto') {
         salePayload.rto_down_payment = rtoDownPayment ? parseFloat(rtoDownPayment) : undefined
@@ -1062,6 +1069,23 @@ function NewSaleContent() {
                   </div>
                   <p className="text-xs text-blue-600">{commissionPreview.note}</p>
                 </div>
+              </div>
+
+              {/* Fecha real de la venta: la factura a Capital, las comisiones y el
+                  costo de la casa se registran en esta fecha (mes correcto). */}
+              <div className="p-3 bg-navy-50 rounded-lg border border-navy-100">
+                <label className="flex items-center justify-between gap-3 text-sm text-navy-800">
+                  <span className="font-medium">Fecha de la venta</span>
+                  <input
+                    type="date"
+                    value={saleDate}
+                    max={hoyLocal()}
+                    onChange={e => setSaleDate(e.target.value)}
+                    className="border border-navy-200 rounded px-2 py-1 text-sm"
+                    data-testid="sale-date"
+                  />
+                </label>
+                <p className="text-xs text-navy-500 mt-1">Si la venta se cerró otro día, pon esa fecha: se contabiliza en ese mes.</p>
               </div>
 
               {/* Note: payments are registered after sale creation */}

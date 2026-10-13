@@ -54,6 +54,7 @@ interface Sale {
   completed_at?: string
   property_address?: string
   property_code?: string | null
+  sale_date?: string | null
   client_name?: string
   // Commission fields
   found_by_employee_id?: string
@@ -259,6 +260,47 @@ function SalesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/** Fecha de la venta, editable (punto 2 de Abby). Cambiarla re-fecha lo que la
+ *  venta devengó (factura a Capital, comisiones, costo de la casa); los cobros
+ *  y pagos conservan su fecha real. */
+function SaleDateEditor({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
+  const toast = useToast()
+  const [editing, setEditing] = useState(false)
+  const actual = (sale.sale_date || sale.created_at || '').slice(0, 10)
+  const [value, setValue] = useState(actual)
+  const [saving, setSaving] = useState(false)
+  const fmt = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('es-MX') }
+  if (!editing) {
+    return (
+      <button onClick={() => { setValue(actual); setEditing(true) }} title="Cambiar la fecha de la venta"
+        className="text-xs text-navy-400 whitespace-nowrap hover:text-navy-700 hover:underline" data-testid={`sale-date-${sale.id}`}>
+        {actual ? fmt(actual) : '—'}
+      </button>
+    )
+  }
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/sale-date`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sale_date: value }),
+      })
+      const d = await res.json()
+      if (!res.ok || !d.ok) { toast.error(d.detail || 'No se pudo cambiar la fecha'); return }
+      toast.success('Fecha de la venta actualizada')
+      setEditing(false)
+      onUpdate()
+    } catch { toast.error('Error de conexión') } finally { setSaving(false) }
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input type="date" value={value} max={hoyLocal()} onChange={e => setValue(e.target.value)}
+        className="text-xs border border-navy-200 rounded px-1 py-0.5" data-testid={`sale-date-input-${sale.id}`} />
+      <button onClick={save} disabled={saving || !value} className="text-xs text-emerald-700 font-medium">{saving ? '…' : 'Guardar'}</button>
+      <button onClick={() => setEditing(false)} className="text-xs text-navy-400">✕</button>
+    </span>
   )
 }
 
@@ -477,9 +519,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                   </span>
                 )}
               </span>
-              <span className="text-xs text-navy-400 whitespace-nowrap">
-                {new Date(sale.created_at).toLocaleDateString('es-MX')}
-              </span>
+              <SaleDateEditor sale={sale} onUpdate={onUpdate} />
             </div>
 
             {/* Quick Action Buttons (expandable sections) */}

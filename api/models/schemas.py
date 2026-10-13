@@ -277,6 +277,10 @@ class SaleCreate(BaseModel):
     rto_monthly_payment: Optional[Decimal] = None
     rto_term_months: Optional[int] = None
     rto_down_payment: Optional[Decimal] = None
+    # Fecha real de la venta (YYYY-MM-DD). Por defecto, hoy. Todo lo que la
+    # venta contabiliza al crearse (factura a Capital, comisiones, costo de la
+    # casa) usa esta fecha, así cae en el mes en que se vendió de verdad.
+    sale_date: Optional[str] = None
 
 
 class SaleComplete(BaseModel):
@@ -307,6 +311,8 @@ class SaleResponse(BaseModel):
     commission_found_by: Optional[Decimal] = None
     commission_sold_by: Optional[Decimal] = None
     
+    sale_date: Optional[str] = None
+
     # Payment tracking
     amount_paid: Optional[Decimal] = Decimal("0")
     amount_pending: Optional[Decimal] = None
