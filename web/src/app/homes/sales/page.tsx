@@ -261,6 +261,12 @@ function SalesPage() {
   )
 }
 
+// Fecha de hoy en la zona del usuario (toISOString es UTC y de noche da "mañana").
+const hoyLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
   const status = statusConfig[sale.status] || statusConfig.pending
   const StatusIcon = status.icon
@@ -286,6 +292,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
     payment_method: 'bank_transfer',
     payment_reference: '',
     notes: '',
+    payment_date: hoyLocal(),
   })
 
   const copyToClipboard = (text: string, label: string) => {
@@ -370,7 +377,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
       if (data.ok) {
         toast.success('Pago registrado')
         setShowAddPayment(false)
-        setNewPayment({ payment_type: 'partial', amount: '', payment_method: 'bank_transfer', payment_reference: '', notes: '' })
+        setNewPayment({ payment_type: 'partial', amount: '', payment_method: 'bank_transfer', payment_reference: '', notes: '', payment_date: hoyLocal() })
         fetchPayments()
         onUpdate()
       } else toast.error(data.detail || 'Error al registrar pago')
@@ -739,6 +746,17 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
                       className="text-sm border border-navy-200 rounded px-2 py-1.5"
                     />
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-navy-600">
+                    Fecha en que se recibió
+                    <input
+                      type="date"
+                      value={newPayment.payment_date}
+                      max={hoyLocal()}
+                      onChange={(e) => setNewPayment({ ...newPayment, payment_date: e.target.value })}
+                      className="text-sm border border-navy-200 rounded px-2 py-1"
+                      data-testid="sale-payment-date"
+                    />
+                  </label>
                   <input
                     type="text"
                     placeholder="Notas (opcional)"

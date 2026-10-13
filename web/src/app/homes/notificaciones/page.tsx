@@ -60,6 +60,13 @@ interface BankAccount {
   current_balance: number
 }
 
+// Fecha de hoy en la zona del usuario. toISOString() es UTC: a partir de las
+// ~7pm de Texas devolvía "mañana" como valor por defecto.
+const hoyLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function NotificacionesPage() {
   const toast = useToast()
   const { teamUser } = useAuth()
@@ -301,6 +308,7 @@ export default function NotificacionesPage() {
       // Open the bank-picker modal — actual approve happens on submit
       if (bankAccounts.length === 0) fetchBankAccounts()
       setInboundApproveBankId('')
+      setFechaCobro((orderObj as any).payment_date || hoyLocal())
       setInboundApproveTarget(orderObj)
       return
     }
@@ -335,6 +343,9 @@ export default function NotificacionesPage() {
 
   // Enganche parcial: el cliente dio solo una parte. Lo recibido se registra
   // hoy; el resto queda como factura por cobrar + orden pendiente.
+  // Fecha real en que entró el dinero (punto 6 de Abby). Por defecto la que
+  // se puso al registrar el pago en Ventas, o hoy.
+  const [fechaCobro, setFechaCobro] = useState('')
   const [parcialEng, setParcialEng] = useState(false)
   const [recibidoEng, setRecibidoEng] = useState('')
   const esEnganche = ((inboundApproveTarget as any)?.concept || '').toLowerCase() === 'enganche'
@@ -358,6 +369,7 @@ export default function NotificacionesPage() {
     try {
       const qs = new URLSearchParams({ approved_by: teamUser?.id || '' })
       if (parcialEng) qs.set('received_amount', String(recibidoNum))
+      if (fechaCobro) qs.set('payment_date', fechaCobro)
       if (repartir) {
         qs.set('splits', JSON.stringify(
           partes.map(p => ({ bank_account_id: p.bank_account_id, amount: parseFloat(p.amount) }))
@@ -476,7 +488,7 @@ export default function NotificacionesPage() {
   // ── Complete (treasury) ───────────────────────────────────────────────
   const openCompleteModal = (order: PaymentOrder) => {
     setCompleting(order)
-    setCompleteForm({ reference: '', payment_date: new Date().toISOString().split('T')[0], bank_account_id: '', paid_amount: '' })
+    setCompleteForm({ reference: '', payment_date: hoyLocal(), bank_account_id: '', paid_amount: '' })
     if (bankAccounts.length === 0) fetchBankAccounts()
   }
 
@@ -512,6 +524,7 @@ export default function NotificacionesPage() {
 
   const [confirmTransferBankId, setConfirmTransferBankId] = useState('')
   const [confirmTransferRef, setConfirmTransferRef] = useState('')
+  const [confirmTransferDate, setConfirmTransferDate] = useState(hoyLocal())
 
   const handleConfirmTransfer = async (saleId: string) => {
     if (!confirmTransferBankId) {
@@ -526,7 +539,7 @@ export default function NotificacionesPage() {
         body: JSON.stringify({
           bank_account_id: confirmTransferBankId,
           payment_reference: confirmTransferRef || undefined,
-          payment_date: new Date().toISOString().split('T')[0],
+          payment_date: confirmTransferDate || hoyLocal(),
         }),
       })
       const data = await res.json()
@@ -673,6 +686,19 @@ export default function NotificacionesPage() {
                           value={confirmTransferRef}
                           onChange={e => setConfirmTransferRef(e.target.value)}
                           placeholder="# de confirmación"
+                          className="w-full p-2 border rounded-lg text-xs"
+                          style={{ borderColor: 'var(--stone)' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>
+                          Fecha del pago *
+                        </label>
+                        <input
+                          type="date"
+                          value={confirmTransferDate}
+                          max={hoyLocal()}
+                          onChange={e => setConfirmTransferDate(e.target.value)}
                           className="w-full p-2 border rounded-lg text-xs"
                           style={{ borderColor: 'var(--stone)' }}
                         />
@@ -1360,6 +1386,17 @@ export default function NotificacionesPage() {
                 <span className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{formatCurrency(inboundApproveTarget.amount)}</span>
               </div>
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                ¿Qué día entró el dinero? *
+              </label>
+              <input
+                type="date" value={fechaCobro} max={hoyLocal()}
+                onChange={e => setFechaCobro(e.target.value)}
+                className="w-full p-3 border rounded-lg text-sm" style={{ borderColor: 'var(--stone)' }}
+                data-testid="fecha-cobro"
+              />
+            </div>
             {esEnganche && (
               <div className="rounded-lg p-3 text-sm space-y-2" style={{ border: '1px solid var(--stone)' }}>
                 <label className="flex items-center gap-2 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
@@ -1489,7 +1526,7 @@ export default function NotificacionesPage() {
               </button>
               <button
                 onClick={submitInboundApprove}
-                disabled={(repartir ? !repartoValido : !inboundApproveBankId) || !parcialValido || approvingId === inboundApproveTarget.id}
+                disabled={(repartir ? !repartoValido : !inboundApproveBankId) || !parcialValido || !fechaCobro || approvingId === inboundApproveTarget.id}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--navy-800)' }}
               >

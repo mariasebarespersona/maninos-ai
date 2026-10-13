@@ -438,6 +438,11 @@ async def approve_payment_order(
                     '[{"bank_account_id": "...", "amount": 4000}, ...]. '
                     'La suma debe ser exactamente el importe de la orden.',
     ),
+    payment_date: Optional[str] = Query(
+        None,
+        description='Fecha REAL en que entró el dinero (YYYY-MM-DD). Por defecto, la '
+                    'que se puso al registrar el pago en Ventas, o hoy.',
+    ),
     received_amount: Optional[float] = Query(
         None,
         description='Solo enganches: lo que de verdad se recibió, si es menos que '
@@ -461,6 +466,21 @@ async def approve_payment_order(
     order = order_res.data[0]
     if order["status"] != "pending":
         raise HTTPException(status_code=400, detail=f"Solo se pueden aprobar ordenes pendientes (estado actual: '{order['status']}')")
+
+    # ── Fecha real del cobro (lista de Abby, punto 6) ─────────────────────
+    # Antes todo cobro se contabilizaba con la fecha del día de la aprobación,
+    # así que un depósito de agosto aprobado en septiembre caía en septiembre.
+    fecha_cobro = None
+    for cand in (payment_date, order.get("payment_date")):
+        if isinstance(cand, str) and cand.strip():
+            fecha_cobro = cand.strip()[:10]
+            break
+    fecha_cobro = fecha_cobro or date.today().isoformat()
+    try:
+        if date.fromisoformat(fecha_cobro) > date.today():
+            raise HTTPException(status_code=400, detail="La fecha del cobro no puede ser futura")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha del cobro no válida (usa AAAA-MM-DD)")
 
     # ── Enganche parcial ──────────────────────────────────────────────────
     # El cliente a veces da solo una parte del enganche ("el mes que entra te
@@ -514,6 +534,7 @@ async def approve_payment_order(
         "status": "approved",
         "approved_by": approved_by,
         "approved_at": now,
+        "payment_date": fecha_cobro,
     }
     if parcial:
         upd["amount"] = recibido
@@ -618,6 +639,7 @@ async def approve_payment_order(
                                 bank_account_id=d["bank_account_id"],
                                 payment_method=order.get("method"),
                                 notes=f"Pago de Maninos Capital — orden #{order_id[:8]} [PO-PAY:{order_id}]",
+                                payment_date=fecha_cobro,
                                 cap_to_balance=True,
                             )
                             pay = res.get("payment") or {}
@@ -639,6 +661,7 @@ async def approve_payment_order(
                             bank_account_id=d["bank_account_id"],
                             payment_method=order.get("method"),
                             notes=f"Resto del enganche — orden #{order_id[:8]} [PO-PAY:{order_id}]",
+                                payment_date=fecha_cobro,
                             cap_to_balance=True,
                         )
                         pay = res.get("payment") or {}
@@ -668,6 +691,7 @@ async def approve_payment_order(
                                 bank_account_id=d["bank_account_id"],
                                 payment_method=order.get("method"),
                                 notes=f"Cobro venta RTO — orden #{order_id[:8]} [PO-PAY:{order_id}]",
+                                payment_date=fecha_cobro,
                                 cap_to_balance=True,
                             )
                             pay = res.get("payment") or {}
@@ -695,7 +719,7 @@ async def approve_payment_order(
                             event_type=event_type,
                             amount=d["amount"],
                             bank_account_id=d["bank_account_id"],
-                            date=date.today().isoformat(),
+                            date=fecha_cobro,
                             counterparty_name=order.get("payee_name") or "Cliente",
                             counterparty_type="client",
                             entity_type="payment_order",

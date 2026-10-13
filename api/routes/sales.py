@@ -691,6 +691,9 @@ async def register_sale_payment(sale_id: str, data: dict):
             f" [SALE:{sale_id}]"
         ),
         "created_by": f"sistema_ventas_{reported_by}",
+        # Fecha real del pago tal como se registró en Ventas: la aprobación en
+        # Notificaciones la usa por defecto para el asiento (punto 6 de Abby).
+        "payment_date": insert["payment_date"],
     }
     try:
         po_result = sb.table("payment_orders").insert(order_data).execute()
