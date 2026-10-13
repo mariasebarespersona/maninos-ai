@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { formatMoney } from '@/lib/money'
+import { CommissionPayModal } from '@/components/homes/CommissionsToPay'
 
 // ============================================================================
 // TYPES
@@ -166,6 +167,7 @@ function ComisionesTab({
   const [loading, setLoading] = useState(true)
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null)
 
+  const [payTarget, setPayTarget] = useState<any>(null)
   const fetchPayments = useCallback(async () => {
     setLoading(true)
     try {
@@ -411,10 +413,20 @@ function ComisionesTab({
                                   Pagada
                                 </span>
                               ) : (
-                                <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  Pendiente
-                                </span>
+                                <>
+                                  <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Pendiente
+                                  </span>
+                                  <button
+                                    onClick={() => setPayTarget(p)}
+                                    data-testid={`commission-pay-${p.id}`}
+                                    className="text-xs px-3 py-1 rounded-lg font-medium text-white"
+                                    style={{ backgroundColor: 'var(--navy-800)' }}
+                                  >
+                                    Pagar
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -425,6 +437,14 @@ function ComisionesTab({
                 </div>
               ))}
             </div>
+          )}
+
+          {payTarget && (
+            <CommissionPayModal
+              commission={payTarget}
+              onClose={() => setPayTarget(null)}
+              onPaid={() => { setPayTarget(null); fetchPayments() }}
+            />
           )}
 
           {/* Commission Rules */}

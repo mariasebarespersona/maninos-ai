@@ -21,6 +21,7 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { formatMoney } from '@/lib/money'
+import CommissionsToPay from '@/components/homes/CommissionsToPay'
 
 interface PaymentOrder {
   id: string
@@ -874,6 +875,10 @@ export default function NotificacionesPage() {
           )}
         </>
       )}
+
+      {/* Comisiones por pagar: se devengan como factura al crear la venta y
+          se pagan desde aquí (lista de Abby). */}
+      {activeTab === 'approved' && isTreasury && <CommissionsToPay />}
 
       {/* Orders List (pending/approved/completed tabs) */}
       {activeTab !== 'received' && (() => {

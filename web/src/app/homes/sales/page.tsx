@@ -392,7 +392,7 @@ function SaleCard({ sale, onUpdate }: { sale: Sale; onUpdate: () => void }) {
         setEditingPaymentId(null)
         fetchPayments()
         onUpdate()
-      } else toast.error('Error al actualizar')
+      } else toast.error(data.detail || 'Error al actualizar')
     } catch { toast.error('Error de conexion') }
   }
 

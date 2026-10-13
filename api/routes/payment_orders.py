@@ -323,6 +323,42 @@ async def update_payment_order(order_id: str, req: PaymentOrderUpdate):
 
 
 _ENGPEND_ORDER_TAG = "[ENGPEND-INV:"
+_SALE_TAG = "[SALE:"
+
+
+def _rto_receivables_of(order: dict) -> Optional[list]:
+    """Si un cobro 'pago_venta' es de una venta RTO, sus facturas por cobrar
+    abiertas, en el orden en que se liquidan: primero el resto del enganche
+    que debe el cliente [ENGPEND:], luego lo financiado [CAPFIN:]. None si la
+    venta no es RTO (contado: el ingreso se reconoce al cobrar, como siempre).
+
+    Por qué: en una RTO todo el precio ya está reconocido (el enganche al
+    cobrarlo y lo financiado con la factura a Capital al crear la venta).
+    Contabilizar un pago más como "venta de contado" duplicaba el ingreso
+    (H42, H54, H59 llegaron a $49k de ingreso sobre casas de $36k–$46k)."""
+    if (order.get("concept") or "").lower() != "pago_venta":
+        return None
+    notes = order.get("notes") or ""
+    sale = None
+    i = notes.find(_SALE_TAG)
+    if i >= 0:
+        sid = notes[i + len(_SALE_TAG):].split("]", 1)[0].strip()
+        rows = sb.table("sales").select("id, sale_type, status").eq("id", sid).limit(1).execute().data or []
+        sale = rows[0] if rows else None
+    elif order.get("property_id"):
+        rows = (sb.table("sales").select("id, sale_type, status")
+                .eq("property_id", order["property_id"]).neq("status", "cancelled")
+                .order("created_at", desc=True).limit(1).execute().data or [])
+        sale = rows[0] if rows else None
+    if not sale or (sale.get("sale_type") or "").lower() != "rto":
+        return None
+    invs = (sb.table("accounting_invoices").select("id, invoice_number, notes, balance_due, issue_date")
+            .eq("sale_id", sale["id"]).eq("direction", "receivable")
+            .in_("status", ["sent", "partial", "overdue"]).execute().data or [])
+    invs = [v for v in invs if float(v.get("balance_due") or 0) > 0.005
+            and ("[ENGPEND:" in (v.get("notes") or "") or "[CAPFIN:" in (v.get("notes") or ""))]
+    invs.sort(key=lambda v: (0 if "[ENGPEND:" in (v.get("notes") or "") else 1, v.get("issue_date") or ""))
+    return invs
 
 
 def _engpend_invoice_of(order: dict) -> Optional[dict]:
@@ -461,6 +497,18 @@ async def approve_payment_order(
             raise HTTPException(status_code=400,
                                 detail=f"Lo recibido (${recibido:,.2f}) supera lo que queda por cobrar (${saldo:,.2f})")
 
+    rto_invoices = _rto_receivables_of(order)
+    if rto_invoices is not None:
+        abierto = round(sum(float(v["balance_due"]) for v in rto_invoices), 2)
+        if recibido > abierto + 0.005:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Esta venta es RTO y su precio ya está reconocido: solo quedan ${abierto:,.2f} por cobrar "
+                        f"(resto del enganche y/o lo financiado). Este cobro de ${recibido:,.2f} lo supera, así "
+                        f"que se contaría dos veces como ingreso. Revisa el importe; si es el enganche, apruébalo "
+                        f"desde su orden de enganche."),
+            )
+
     now = datetime.utcnow().isoformat()
     upd = {
         "status": "approved",
@@ -569,7 +617,7 @@ async def approve_payment_order(
                                 inv_q.data[0]["id"], d["amount"],
                                 bank_account_id=d["bank_account_id"],
                                 payment_method=order.get("method"),
-                                notes=f"Pago de Maninos Capital — orden #{order_id[:8]}",
+                                notes=f"Pago de Maninos Capital — orden #{order_id[:8]} [PO-PAY:{order_id}]",
                                 cap_to_balance=True,
                             )
                             pay = res.get("payment") or {}
@@ -590,11 +638,42 @@ async def approve_payment_order(
                             engpend_invoice["id"], d["amount"],
                             bank_account_id=d["bank_account_id"],
                             payment_method=order.get("method"),
-                            notes=f"Resto del enganche — orden #{order_id[:8]}",
+                            notes=f"Resto del enganche — orden #{order_id[:8]} [PO-PAY:{order_id}]",
                             cap_to_balance=True,
                         )
                         pay = res.get("payment") or {}
                         primer_txn_id = primer_txn_id or pay.get("transaction_id")
+                    sb.table("payment_orders").update({
+                        "accounting_transaction_id": primer_txn_id,
+                        "bank_account_id": destino_principal,
+                    }).eq("id", order_id).execute()
+                    settled_invoice = True
+
+                # Cobro de una venta RTO: liquida sus facturas por cobrar
+                # (banco ← A/R), primero el resto del enganche y luego lo
+                # financiado. Nunca vuelve a reconocer el ingreso.
+                if not settled_invoice and rto_invoices is not None:
+                    from api.routes.accounting import record_invoice_payment
+                    pend = [[v["id"], float(v["balance_due"])] for v in rto_invoices]
+                    for d in destinos:
+                        restante_d = d["amount"]
+                        for item in pend:
+                            if restante_d <= 0.005:
+                                break
+                            if item[1] <= 0.005:
+                                continue
+                            pieza = round(min(restante_d, item[1]), 2)
+                            res = record_invoice_payment(
+                                item[0], pieza,
+                                bank_account_id=d["bank_account_id"],
+                                payment_method=order.get("method"),
+                                notes=f"Cobro venta RTO — orden #{order_id[:8]} [PO-PAY:{order_id}]",
+                                cap_to_balance=True,
+                            )
+                            pay = res.get("payment") or {}
+                            primer_txn_id = primer_txn_id or pay.get("transaction_id")
+                            item[1] -= pieza
+                            restante_d = round(restante_d - pieza, 2)
                     sb.table("payment_orders").update({
                         "accounting_transaction_id": primer_txn_id,
                         "bank_account_id": destino_principal,
@@ -945,18 +1024,33 @@ async def delete_payment_order(order_id: str, deleted_by: Optional[str] = None):
             .eq("id", order["accounting_transaction_id"]).execute().data or []
         if pair and pair[0].get("linked_transaction_id"):
             leg_ids.add(pair[0]["linked_transaction_id"])
+    # Cobros que LIQUIDARON facturas (pago de Capital, resto del enganche,
+    # cobro de venta RTO): sus piernas son pagos de factura, etiquetados
+    # [PO-PAY:<orden>]. Se incluyen todas, y _purge_transaction_refs revierte
+    # el amount_paid de cada factura: borrar la orden la deja otra vez por cobrar.
+    try:
+        pays = (sb.table("accounting_invoice_payments").select("transaction_id")
+                .ilike("notes", f"%[PO-PAY:{order_id}]%").execute().data or [])
+        for p in pays:
+            if p.get("transaction_id"):
+                leg_ids.add(p["transaction_id"])
+                pr = (sb.table("accounting_transactions").select("linked_transaction_id")
+                      .eq("id", p["transaction_id"]).execute().data or [])
+                if pr and pr[0].get("linked_transaction_id"):
+                    leg_ids.add(pr[0]["linked_transaction_id"])
+    except Exception as e:
+        logger.warning(f"[payment_orders] delete: invoice-payment legs lookup failed: {e}")
     legs_removed = 0
     if leg_ids:
         ids = list(leg_ids)
         try:
-            sb.table("statement_movements").update({"transaction_id": None, "status": "pending"}) \
-                .in_("transaction_id", ids).execute()
-            sb.table("statement_movements").update({"matched_transaction_id": None}) \
-                .in_("matched_transaction_id", ids).execute()
+            # Antes de des-enlazar: los movimientos de estado de cuenta que
+            # apuntaban a estas piernas vuelven a la cola de pendientes.
+            sb.table("statement_movements").update({"status": "pending"}).in_("transaction_id", ids).execute()
         except Exception as e:
             logger.warning(f"[payment_orders] delete: statement unlink failed: {e}")
-        sb.table("payment_orders").update({"accounting_transaction_id": None}).eq("id", order_id).execute()
-        sb.table("accounting_transactions").update({"linked_transaction_id": None}).in_("id", ids).execute()
+        from api.routes.accounting import _purge_transaction_refs
+        _purge_transaction_refs(ids)
         deleted = sb.table("accounting_transactions").delete().in_("id", ids).execute().data or []
         legs_removed = len(deleted)
 
@@ -992,6 +1086,15 @@ async def delete_payment_order(order_id: str, deleted_by: Optional[str] = None):
     except Exception:
         pass
     sb.table("payment_orders").delete().eq("id", order_id).execute()
+    # Rastro: borrar una orden no dejaba huella y luego no se podía saber si un
+    # pago "huérfano" había perdido su orden por un fallo o por un borrado.
+    try:
+        from api.routes.accounting import _log_audit
+        _log_audit("payment_orders", order_id, "delete",
+                   description=(f"Orden eliminada ({order.get('concept')}, ${float(order.get('amount') or 0):,.2f}, "
+                                f"estado {status_was}) por {deleted_by or 'desconocido'}"))
+    except Exception as e:
+        logger.warning(f"[payment_orders] delete: audit log failed: {e}")
 
     logger.info(f"[payment_orders] DELETED order {order_id} (was {status_was}) by {deleted_by}: "
                 f"legs={legs_removed}, invoice={invoice_removed}, consignment_reverted={consignment_reverted}")

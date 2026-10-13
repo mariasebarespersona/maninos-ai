@@ -1351,6 +1351,19 @@ async def create_transaction(data: TransactionCreate):
         if cat:
             account_id = _get_account_by_category(cat)
 
+    # Pago de una comisión que ya tiene su factura por pagar: registrarlo como
+    # gasto nuevo la contaba dos veces en el P&L (lista de Abby, H42/H47).
+    if not data.is_income:
+        bill = _open_commission_bill_for_account(account_id)
+        if bill:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Esta comisión ya está registrada como factura por pagar ({bill.get('invoice_number')}, "
+                        f"{bill.get('counterparty_name') or ''}, ${float(bill.get('balance_due') or 0):,.2f} pendiente). "
+                        f"Si registras el pago como gasto nuevo saldrá duplicada. Págala con 'Pagar' en Comisiones "
+                        f"o en Notificaciones → Aprobadas, o registra el pago en esa factura."),
+            )
+
     # Flip is_income to TRUE for routed inventory sub-account entries —
     # asset debits store is_income=True in this codebase so
     # _signed_balance returns +amt (the asset grows). Without this the
@@ -1546,6 +1559,44 @@ def _resolve_transaction_legs(txn_id: str, db=sb) -> list:
     for b in (db.table("accounting_transactions").select("id").eq("linked_transaction_id", txn_id).execute().data or []):
         ids.add(b["id"])
     return list(ids)
+
+
+# Facturas que crea la app sola (no se borran a mano desde Facturación).
+_AUTO_INVOICE_TAGS = (
+    ("[COMM:", "comisión de venta"),
+    ("[CAPFIN:", "financiamiento de Capital"),
+    ("[CONSIGN:", "consignación"),
+    ("[ENGPEND:", "resto del enganche"),
+)
+_AUTO_INVOICE_HINT = {
+    "comisión de venta": "Para pagarla usa 'Pagar' en Comisiones o en Notificaciones → Aprobadas.",
+    "resto del enganche": "Se cobra aprobando su orden pendiente en Notificaciones → Por Aprobar.",
+}
+
+
+def _open_commission_bill_for_account(account_id: Optional[str]) -> Optional[dict]:
+    """Factura de comisión [COMM:] abierta cuyo gasto está en `account_id`
+    (la cuenta 'Comisión <CODE>' de la casa). Sirve para no registrar el pago
+    de una comisión como un gasto NUEVO cuando ya está devengada: eso la
+    duplicaba en el estado de resultados."""
+    if not account_id:
+        return None
+    try:
+        invs = (sb.table("accounting_invoices").select("id, invoice_number, balance_due, counterparty_name, issue_date")
+                .eq("direction", "payable").ilike("notes", "%[COMM:%")
+                .in_("status", ["sent", "partial", "overdue"]).execute().data or [])
+        invs = [v for v in invs if float(v.get("balance_due") or 0) > 0.005]
+        if not invs:
+            return None
+        legs = (sb.table("accounting_transactions").select("entity_id")
+                .eq("entity_type", "invoice").eq("account_id", account_id)
+                .in_("entity_id", [v["id"] for v in invs]).execute().data or [])
+        ids = {l["entity_id"] for l in legs}
+        match = sorted([v for v in invs if v["id"] in ids], key=lambda v: v.get("issue_date") or "")
+        return match[0] if match else None
+    except Exception as e:
+        logger.warning(f"[accounting] commission bill lookup failed for account {account_id}: {e}")
+        return None
 
 
 def _purge_transaction_refs(leg_ids: list, db=sb):
@@ -2403,15 +2454,31 @@ async def update_invoice(invoice_id: str, data: dict):
 
 
 @router.delete("/invoices/{invoice_id}")
-async def delete_invoice(invoice_id: str):
+async def delete_invoice(invoice_id: str, force: bool = False):
     """Delete an invoice and everything linked to it: its ledger entries
     (issuance + payment legs, all tagged entity_type='invoice'), its payment
     records, and any statement_movements links. Powers the Facturas delete
-    button so staff can remove invoices without leaving orphaned ledger rows."""
+    button so staff can remove invoices without leaving orphaned ledger rows.
+
+    Las facturas que crea la app sola (comisión, financiamiento de Capital,
+    consignación, resto del enganche) NO se borran desde Facturación: borrar
+    las de comisión dejó comisiones a $0 en el P&L y su pago "pendiente" sin
+    factura (lista de Abby). Se gestionan desde su origen; `force` lo usan
+    solo los flujos internos (p. ej. cancelar la venta)."""
     inv = sb.table("accounting_invoices").select("*").eq("id", invoice_id).execute()
     if not inv.data:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
     invoice = inv.data[0]
+    if not force:
+        notes = invoice.get("notes") or ""
+        origen = next((lbl for tag, lbl in _AUTO_INVOICE_TAGS if tag in notes), None)
+        if origen:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Esta factura la creó la app automáticamente ({origen}) y no se puede borrar desde "
+                        f"Facturación: se descuadraría la contabilidad de la venta. "
+                        f"{_AUTO_INVOICE_HINT.get(origen, '')}").strip(),
+            )
 
     # 1. All ledger rows tied to this invoice (issuance AR/AP pair + payment legs)
     legs = sb.table("accounting_transactions").select("id") \
@@ -5620,6 +5687,41 @@ async def post_confirmed_movements(statement_id: str):
                         _log_audit("accounting_transactions", target_leg, "update",
                                    description="Reclasificada por Abby desde conciliación")
                         logger.info(f"[bank-stmt] reclassified leg {target_leg} → account {chosen} (reconciled override)")
+            elif (not bank_is_income and statement.get("bank_account_id")
+                  and (comm_bill := _open_commission_bill_for_account(account_id))
+                  and abs_amount <= float(comm_bill.get("balance_due") or 0) + 0.005):
+                # Pago de una comisión ya devengada (su factura [COMM:] está
+                # abierta): el movimiento del banco LIQUIDA esa factura (A/P →
+                # banco). Crear un gasto nuevo la duplicaba en el P&L (lista de
+                # Abby). record_invoice_payment escribe las dos piernas, así que
+                # aquí no se crea la contrapartida bancaria.
+                res = record_invoice_payment(
+                    comm_bill["id"], abs_amount,
+                    bank_account_id=statement["bank_account_id"],
+                    payment_date=mv.get("movement_date"),
+                    payment_method=mv.get("payment_method") or "transferencia",
+                    payment_reference=mv.get("reference"),
+                    notes=f"Pago de comisión desde estado de cuenta: {stmt_label}",
+                    cap_to_balance=True,
+                )
+                pay = res.get("payment") or {}
+                pay_txn = pay.get("transaction_id")
+                sb.table("statement_movements").update({
+                    "status": "posted",
+                    "transaction_id": pay_txn,
+                }).eq("id", mv["id"]).execute()
+                if pay_txn:
+                    legs_ = [pay_txn]
+                    pr_ = (sb.table("accounting_transactions").select("linked_transaction_id")
+                           .eq("id", pay_txn).execute().data or [])
+                    if pr_ and pr_[0].get("linked_transaction_id"):
+                        legs_.append(pr_[0]["linked_transaction_id"])
+                    sb.table("accounting_transactions").update({
+                        "reconciled_at": mv.get("movement_date") or date.today().isoformat(),
+                    }).in_("id", legs_).execute()
+                posted += 1
+                logger.info(f"[BankStmt] movimiento {mv['id']} liquidó la factura de comisión {comm_bill.get('invoice_number')}")
+                continue
             else:
                 # Non-reconciled: create new P&L transaction
                 txn_data = {

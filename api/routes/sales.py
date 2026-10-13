@@ -435,8 +435,9 @@ async def list_commission_payments(
                 p["sale_price"] = sale.data.get("sale_price", 0)
                 p["sale_created_at"] = sale.data.get("created_at", "")
                 try:
-                    prop = sb.table("properties").select("address").eq("id", sale.data["property_id"]).single().execute()
+                    prop = sb.table("properties").select("address, property_code").eq("id", sale.data["property_id"]).single().execute()
                     p["property_address"] = prop.data["address"] if prop.data else ""
+                    p["property_code"] = prop.data.get("property_code") if prop.data else None
                 except Exception:
                     p["property_address"] = ""
             else:
@@ -458,9 +459,21 @@ async def mark_commission_paid(
     payment_id: str,
     paid_by: str = Query(..., description="User ID of who is marking as paid"),
     bank_account_id: Optional[str] = Query(None, description="Bank account that paid the commission"),
+    payment_date: Optional[str] = Query(None, description="Fecha real del pago (YYYY-MM-DD); por defecto hoy"),
 ):
     """Mark a commission payment as paid. Posts a debit-60640/credit-bank pair."""
     from datetime import date
+
+    # Sin banco no hay asiento: antes se marcaba "pagada" igualmente y la
+    # comisión desaparecía de pendientes sin haber salido de ninguna cuenta.
+    if not (isinstance(bank_account_id, str) and bank_account_id.strip()):
+        raise HTTPException(status_code=400, detail="Indica de qué cuenta bancaria salió el pago de la comisión")
+    fecha = payment_date if isinstance(payment_date, str) and payment_date.strip() else date.today().isoformat()
+    try:
+        if date.fromisoformat(fecha) > date.today():
+            raise HTTPException(status_code=400, detail="La fecha del pago no puede ser futura")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha del pago no válida (usa AAAA-MM-DD)")
 
     payment = sb.table("commission_payments").select("*").eq("id", payment_id).single().execute()
     if not payment.data:
@@ -509,6 +522,7 @@ async def mark_commission_paid(
         res = record_invoice_payment(
             inv_row["id"], float(payment.data["amount"]),
             bank_account_id=bank_account_id,
+            payment_date=fecha,
             payment_method="transferencia",
             notes=f"Pago de comisión — {emp_name}",
             cap_to_balance=True,
@@ -523,7 +537,7 @@ async def mark_commission_paid(
                 event_type="commission_paid",
                 amount=float(payment.data["amount"]),
                 bank_account_id=bank_account_id,
-                date=date.today().isoformat(),
+                date=fecha,
                 counterparty_name=emp_name,
                 counterparty_type="employee",
                 entity_type="sale",
@@ -580,6 +594,20 @@ async def list_sale_payments(sale_id: str):
     return {"ok": True, "payments": result.data or []}
 
 
+def _insert_sale_payment(row: dict):
+    """Inserta un sale_payment. Si aún no se ejecutó la migración 117
+    (payment_order_id), lo guarda sin el enlace en vez de fallar."""
+    try:
+        return sb.table("sale_payments").insert(row).execute()
+    except Exception as e:
+        if "payment_order_id" in row and "payment_order_id" in str(e):
+            logger.warning("[sales] Falta la migración 117 (sale_payments.payment_order_id): pago guardado sin enlace a su orden")
+            r = dict(row)
+            r.pop("payment_order_id")
+            return sb.table("sale_payments").insert(r).execute()
+        raise
+
+
 @router.post("/{sale_id}/payments")
 async def register_sale_payment(sale_id: str, data: dict):
     """
@@ -599,6 +627,23 @@ async def register_sale_payment(sale_id: str, data: dict):
     reported_by = data.get("reported_by", "staff")
     is_staff = reported_by == "staff"
 
+    # RTO con el enganche aún por aprobar: lo que entre del enganche se registra
+    # AL APROBAR esa orden (con "el cliente dio solo una parte" si es parcial).
+    # Registrarlo aquí como pago suelto creaba una orden pago_venta aparte que
+    # se contabilizaba como venta de contado (ingreso contado dos veces: H59).
+    if is_staff and (sale.data.get("sale_type") or "").lower() == "rto" and sale.data.get("property_id"):
+        pend = (sb.table("payment_orders").select("id, amount")
+                .eq("property_id", sale.data["property_id"]).eq("concept", "enganche")
+                .eq("status", "pending").execute().data or [])
+        if pend:
+            falta = sum(float(o.get("amount") or 0) for o in pend)
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Esta venta RTO tiene el enganche (${falta:,.2f}) pendiente de aprobar. "
+                        f"Lo que el cliente pague del enganche se registra en Notificaciones → Por Aprobar: "
+                        f"al aprobarlo marca \"el cliente dio solo una parte\" e indica lo recibido."),
+            )
+
     insert = {
         "sale_id": sale_id,
         "payment_type": payment_data.payment_type,
@@ -614,9 +659,68 @@ async def register_sale_payment(sale_id: str, data: dict):
         insert["confirmed_by"] = "staff"
         insert["confirmed_at"] = datetime.utcnow().isoformat()
 
-    result = sb.table("sale_payments").insert(insert).execute()
+    # ── Orden de cobro PRIMERO: el pago solo existe si su orden existe ──────
+    # Antes la orden se creaba después y un fallo se tragaba en silencio: el
+    # pago quedaba registrado pero sin orden, así que nunca llegaba al banco
+    # (H42, H59). Ahora, si la orden falla, no se guarda el pago y se avisa.
+    client_name = (sale.data.get("clients") or {}).get("name", "")
+    property_id = sale.data.get("property_id")
+    prop_address = (sale.data.get("properties") or {}).get("address", "")
+    sale_price = float(sale.data.get("sale_price") or 0)
+    total_paid = float(sale.data.get("amount_paid") or 0) + float(payment_data.amount)
+    pending = max(0, sale_price - total_paid)
+    type_labels = {"down_payment": "Enganche", "remaining": "Saldo restante", "full": "Pago total", "partial": "Pago parcial", "adjustment": "Ajuste"}
+    label = type_labels.get(payment_data.payment_type, "Pago")
+    method = payment_data.payment_method or "transferencia"
+    source = "cliente" if reported_by == "client" else "empleado"
+    order_data = {
+        "property_id": property_id,
+        "property_address": prop_address,
+        "payee_name": f"Pago de {client_name or 'cliente'}",
+        "amount": float(payment_data.amount),
+        "method": method,
+        "status": "pending",
+        "concept": "pago_venta",
+        "direction": "inbound",
+        "notes": (
+            f"{label}: ${float(payment_data.amount):,.2f} de {client_name or 'cliente'} ({method}). "
+            f"Propiedad: {prop_address}. "
+            f"Registrado por {source}. "
+            f"Progreso: ${total_paid:,.2f} de ${sale_price:,.2f} pagado, falta ${pending:,.2f}."
+            f"{' Ref: ' + payment_data.payment_reference if payment_data.payment_reference else ''}"
+            f" [SALE:{sale_id}]"
+        ),
+        "created_by": f"sistema_ventas_{reported_by}",
+    }
+    try:
+        po_result = sb.table("payment_orders").insert(order_data).execute()
+    except Exception as e:
+        logger.error(f"[sales] Payment order creation error: {e!r}")
+        raise HTTPException(status_code=500, detail=f"No se pudo crear la orden de cobro, así que el pago NO se registró: {e}")
+    if not po_result.data:
+        raise HTTPException(status_code=500, detail="No se pudo crear la orden de cobro, así que el pago NO se registró")
+    order_id = po_result.data[0]["id"]
+
+    insert["payment_order_id"] = order_id
+    try:
+        result = _insert_sale_payment(insert)
+    except Exception as e:
+        sb.table("payment_orders").delete().eq("id", order_id).execute()
+        raise HTTPException(status_code=500, detail=f"No se pudo registrar el pago: {e}")
     if not result.data:
+        sb.table("payment_orders").delete().eq("id", order_id).execute()
         raise HTTPException(status_code=500, detail="Failed to register payment")
+
+    try:
+        from api.services.notification_service import notify_payment_order_created
+        notify_payment_order_created(
+            order_id, property_id, float(payment_data.amount),
+            f"Pago de {client_name}", property_address=prop_address,
+            concept=f"{label} ({method}): ${float(payment_data.amount):,.2f} de {client_name}. Progreso: ${total_paid:,.2f}/${sale_price:,.2f}",
+        )
+    except Exception as e:
+        logger.warning(f"[sales] Payment order notification error: {e}")
+    logger.info(f"[sales] Payment ${payment_data.amount} registered with order {order_id}")
 
     # Once the cumulative confirmed payments cover the sale_price, promote
     # the sale from "pending" to "paid". Earlier code only flipped the
@@ -656,54 +760,6 @@ async def register_sale_payment(sale_id: str, data: dict):
         except Exception as e:
             logger.warning(f"[sales] Could not update property status to sold: {e}")
 
-    # Create payment_order so it flows through Notificaciones tabs
-    # (Por Aprobar → Aprobadas → Recibidos → Contabilidad)
-    try:
-        client_name = sale.data.get("clients", {}).get("name", "")
-        property_id = sale.data.get("property_id")
-        prop_data = sale.data.get("properties") or {}
-        prop_address = prop_data.get("address", "")
-        sale_price = float(sale.data.get("sale_price", 0))
-        amount_paid_so_far = float(sale.data.get("amount_paid", 0))
-        total_paid = amount_paid_so_far + float(payment_data.amount)
-        pending = max(0, sale_price - total_paid)
-
-        type_labels = {"down_payment": "Enganche", "remaining": "Saldo restante", "full": "Pago total", "partial": "Pago parcial", "adjustment": "Ajuste"}
-        label = type_labels.get(payment_data.payment_type, "Pago")
-        method = payment_data.payment_method or "transferencia"
-        source = "cliente" if reported_by == "client" else "empleado"
-
-        order_data = {
-            "property_id": property_id,
-            "property_address": prop_address,
-            "payee_name": f"Pago de {client_name or 'cliente'}",
-            "amount": float(payment_data.amount),
-            "method": method,
-            "status": "pending",
-            "concept": "pago_venta",
-            "direction": "inbound",
-            "notes": (
-                f"{label}: ${float(payment_data.amount):,.2f} de {client_name or 'cliente'} ({method}). "
-                f"Propiedad: {prop_address}. "
-                f"Registrado por {source}. "
-                f"Progreso: ${total_paid:,.2f} de ${sale_price:,.2f} pagado, falta ${pending:,.2f}."
-                f"{' Ref: ' + payment_data.payment_reference if payment_data.payment_reference else ''}"
-            ),
-            "created_by": f"sistema_ventas_{reported_by}",
-        }
-        po_result = sb.table("payment_orders").insert(order_data).execute()
-
-        if po_result.data:
-            from api.services.notification_service import notify_payment_order_created
-            notify_payment_order_created(
-                po_result.data[0]["id"], property_id, float(payment_data.amount),
-                f"Pago de {client_name}", property_address=prop_address,
-                concept=f"{label} ({method}): ${float(payment_data.amount):,.2f} de {client_name}. Progreso: ${total_paid:,.2f}/${sale_price:,.2f}",
-            )
-        logger.info(f"[sales] Payment order created for sale payment: ${payment_data.amount}")
-    except Exception as e:
-        logger.warning(f"[sales] Payment order creation error: {e}")
-
     return {"ok": True, "payment": result.data[0]}
 
 
@@ -742,6 +798,42 @@ async def edit_sale_payment(sale_id: str, payment_id: str, data: dict):
 
     if not update:
         return {"ok": True, "payment": existing.data}
+
+    # ── El importe del pago y su orden de cobro tienen que ir juntos ───────
+    # Antes editar el importe solo cambiaba esta fila: la orden (y por tanto
+    # el banco) se quedaba con el número viejo, o no había orden (H42, H59).
+    amount_change = update_data.amount is not None and abs(float(update_data.amount) - old_amount) > 0.005
+    cancelling = update_data.status == "cancelled" and existing.data.get("status") != "cancelled"
+    if amount_change or cancelling:
+        order = None
+        if existing.data.get("payment_order_id"):
+            o = sb.table("payment_orders").select("id, status, amount, notes, approved_at") \
+                .eq("id", existing.data["payment_order_id"]).limit(1).execute().data
+            order = o[0] if o else None
+        if order is None:
+            if amount_change:
+                raise HTTPException(
+                    status_code=400,
+                    detail=("Este pago no está enlazado con su orden de cobro, así que cambiar el importe no "
+                            "llegaría a contabilidad ni al banco. Márcalo como cancelado y registra el importe "
+                            "correcto como un pago nuevo."),
+                )
+        elif order["status"] != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=("Este pago ya está registrado en contabilidad (su orden de cobro está aprobada). Para "
+                        "corregirlo, elimina esa orden en Notificaciones → Recibidos (se revierte el asiento) y "
+                        "registra el pago correcto."),
+            )
+        elif cancelling:
+            sb.table("payment_orders").delete().eq("id", order["id"]).execute()
+            update["payment_order_id"] = None
+        else:
+            sb.table("payment_orders").update({
+                "amount": float(update_data.amount),
+                "notes": ((order.get("notes") or "") +
+                          f" [Editado en Ventas: ${old_amount:,.2f} → ${float(update_data.amount):,.2f}]").strip(),
+            }).eq("id", order["id"]).execute()
 
     result = sb.table("sale_payments").update(update) \
         .eq("id", payment_id).execute()
@@ -798,6 +890,8 @@ async def create_sale(data: SaleCreate):
     Note: Property status is NOT changed until sale is completed.
     """
     from postgrest.exceptions import APIError as PGError
+    # Orden del enganche RTO (si se crea): el pago inicial queda enlazado a ella.
+    enganche_order_id = None
     
     # Validate property exists and is available for sale
     try:
@@ -1059,6 +1153,7 @@ async def create_sale(data: SaleCreate):
                     }
                     po_result = sb.table("payment_orders").insert(order_data).execute()
                     if po_result.data:
+                        enganche_order_id = po_result.data[0]["id"]
                         from api.services.notification_service import notify_payment_order_created
                         notify_payment_order_created(
                             po_result.data[0]["id"], data.property_id, down_payment,
@@ -1129,8 +1224,9 @@ async def create_sale(data: SaleCreate):
             ptype = data.initial_payment_type or "down_payment"
             if float(data.initial_payment_amount) >= float(data.sale_price):
                 ptype = "full"
-            sb.table("sale_payments").insert({
+            _insert_sale_payment({
                 "sale_id": sale_record["id"],
+                "payment_order_id": enganche_order_id,
                 "payment_type": ptype,
                 "amount": float(data.initial_payment_amount),
                 "payment_method": data.initial_payment_method,
@@ -1139,7 +1235,7 @@ async def create_sale(data: SaleCreate):
                 "reported_by": "staff",
                 "confirmed_by": "staff",
                 "confirmed_at": datetime.utcnow().isoformat(),
-            }).execute()
+            })
             logger.info(f"[sales] Initial payment of ${data.initial_payment_amount} registered for sale {sale_record['id']}")
         except Exception as e:
             logger.warning(f"[sales] Failed to register initial payment: {e}")
@@ -1594,7 +1690,7 @@ async def cancel_sale(sale_id: str):
             .eq("sale_id", sale_id).execute().data or []
         for inv_row in invs:
             if float(inv_row.get("amount_paid") or 0) == 0:
-                await _delete_invoice(inv_row["id"])
+                await _delete_invoice(inv_row["id"], force=True)
                 logger.info(f"[sales] Cancelled sale {sale_id}: deleted invoice {inv_row.get('invoice_number')} + ledger accrual")
             else:
                 logger.warning(f"[sales] Cancelled sale {sale_id}: invoice {inv_row.get('invoice_number')} has payments — kept, revert manually")
