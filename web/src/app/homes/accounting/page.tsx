@@ -4581,6 +4581,7 @@ interface StatementMovement {
   status: string; transaction_id?: string; matched_transaction_id?: string
   matched_account_id?: string; matched_account_code?: string; matched_account_name?: string
   parent_movement_id?: string; is_split_parent?: boolean
+  yard_id?: string | null
   accounting_accounts?: { code: string; name: string; account_type: string; category: string }
 }
 
@@ -4965,6 +4966,12 @@ function EstadoCuentaTab() {
     }
     finally { setClassifying(false) }
   }
+
+  // Clases (yards) para asignarlas a cada movimiento (punto 8 de Abby)
+  const [stmtYards, setStmtYards] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    fetch('/api/team/yards').then(r => r.json()).then(d => setStmtYards(d.yards || [])).catch(() => {})
+  }, [])
 
   const updateMovement = async (mvId: string, data: Record<string, any>) => {
     // Optimistic update — instant UI feedback
@@ -5912,13 +5919,14 @@ function EstadoCuentaTab() {
                           <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Descripción</th>
                           <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-right" style={{ color: 'var(--slate)' }}>Monto</th>
                           <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Cuenta Contable</th>
+                          <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--slate)' }}>Clase</th>
                           <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Estado</th>
                           <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-center" style={{ color: 'var(--slate)' }}>Acción</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeMovements.map((mv) => (
-                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => !a.is_header)} onUpdate={updateMovement} onSplit={splitMovement} />
+                          <MovementRow key={mv.id} movement={mv} accounts={allAccounts.filter((a: any) => !a.is_header)} yards={stmtYards} onUpdate={updateMovement} onSplit={splitMovement} />
                         ))}
                       </tbody>
                     </table>
@@ -5983,9 +5991,10 @@ function EstadoCuentaTab() {
 }
 
 
-function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
+function MovementRow({ movement: mv, accounts, yards = [], onUpdate, onSplit }: {
   movement: StatementMovement
   accounts: any[]
+  yards?: { id: string; name: string }[]
   onUpdate: (id: string, data: Record<string, any>) => void
   onSplit: (id: string, parts: { amount: number; description: string }[]) => void
 }) {
@@ -6049,6 +6058,7 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
         <td className="px-3 py-2.5 max-w-md"><p className="text-xs line-through" style={{ color: 'var(--ash)' }}>{mv.description}</p></td>
         <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="text-sm font-semibold tabular-nums text-stone-400">{formatMoney(Math.abs(mv.amount))}</span></td>
         <td className="px-3 py-2.5"><span className="text-xs text-stone-400">—</span></td>
+        <td className="px-3 py-2.5"></td>
         <td className="px-3 py-2.5 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-stone-200 text-stone-600 font-medium">Dividido</span></td>
         <td className="px-3 py-2.5"></td>
       </tr>
@@ -6185,6 +6195,22 @@ function MovementRow({ movement: mv, accounts, onUpdate, onSplit }: {
             )}
           </button>
         )}
+      </td>
+
+      {/* Clase (yard): va a las dos piernas del asiento al publicar */}
+      <td className="px-3 py-2.5">
+        <select
+          value={mv.yard_id || ''}
+          disabled={mv.status === 'posted'}
+          onChange={e => onUpdate(mv.id, { yard_id: e.target.value || null })}
+          className="text-xs border rounded px-1.5 py-1 bg-white disabled:opacity-60"
+          style={{ borderColor: 'var(--stone)' }}
+          title={mv.status === 'posted' ? 'Ya publicado: cambia la clase desde el asiento' : 'Clase (yard) del movimiento'}
+          data-testid={`mv-yard-${mv.id}`}
+        >
+          <option value="">Sin clase</option>
+          {yards.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}
+        </select>
       </td>
 
       {/* Status */}

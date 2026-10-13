@@ -5431,11 +5431,20 @@ async def update_movement_classification(movement_id: str, data: dict):
     """Accountant confirms or changes the classification of a movement."""
     allowed = {"final_account_id", "final_transaction_type", "final_notes", "status"}
     update = {k: v for k, v in data.items() if k in allowed and v is not None}
+    # Clase (yard) del movimiento (punto 8 de Abby). Se acepta null para
+    # quitarla; requiere la migración 118.
+    if "yard_id" in data:
+        update["yard_id"] = data.get("yard_id") or None
 
     if not update:
         raise HTTPException(status_code=400, detail="No valid fields to update")
 
-    result = sb.table("statement_movements").update(update).eq("id", movement_id).execute()
+    try:
+        result = sb.table("statement_movements").update(update).eq("id", movement_id).execute()
+    except Exception as e:
+        if "yard_id" in str(e):
+            raise HTTPException(status_code=400, detail="Falta la migración 118 (clase en los movimientos). Ejecuta migrations/118_statement_movement_yard.sql en Supabase.")
+        raise
     if not result.data:
         raise HTTPException(status_code=404, detail="Movement not found")
 
@@ -5527,6 +5536,8 @@ async def split_movement(movement_id: str, data: dict):
             "description": part.get("description", parent.get("description", ""))[:500],
             "amount": sign * abs(float(part["amount"])),
             "is_credit": parent["is_credit"],
+            # Las partes heredan la clase del movimiento original
+            **({"yard_id": parent["yard_id"]} if parent.get("yard_id") else {}),
             "reference": parent.get("reference"),
             "counterparty": part.get("counterparty", parent.get("counterparty")),
             "parent_movement_id": movement_id,
@@ -5637,6 +5648,8 @@ async def post_confirmed_movements(statement_id: str):
                 "counterparty_name": mv.get("counterparty"),
                 "description": mv.get("description", "")[:500],
                 "property_id": mv.get("property_id"),
+                # La clase elegida en el movimiento va a las DOS piernas.
+                "yard_id": mv.get("yard_id"),
                 "source": "bank_statement",
             }
             common_fields = {k: v for k, v in common_fields.items() if v is not None}
@@ -5678,6 +5691,13 @@ async def post_confirmed_movements(statement_id: str):
                 sb.table("accounting_transactions").update({
                     "reconciled_at": mv.get("movement_date") or date.today().isoformat(),
                 }).eq("id", matched_id).execute()
+                # Clase elegida en el movimiento → al asiento existente (sus dos
+                # piernas). Solo la dimensión: no cambia importes ni cuentas.
+                if mv.get("yard_id"):
+                    pair_ = (sb.table("accounting_transactions").select("linked_transaction_id")
+                             .eq("id", matched_id).execute().data or [])
+                    ids_ = [matched_id] + ([pair_[0]["linked_transaction_id"]] if pair_ and pair_[0].get("linked_transaction_id") else [])
+                    sb.table("accounting_transactions").update({"yard_id": mv["yard_id"]}).in_("id", ids_).execute()
                 pnl_txn_id = matched_id
                 # OPT-IN reclassify: only when the accountant EXPLICITLY picked a
                 # different account for this reconciled movement do we move the
@@ -5725,9 +5745,10 @@ async def post_confirmed_movements(statement_id: str):
                            .eq("id", pay_txn).execute().data or [])
                     if pr_ and pr_[0].get("linked_transaction_id"):
                         legs_.append(pr_[0]["linked_transaction_id"])
-                    sb.table("accounting_transactions").update({
-                        "reconciled_at": mv.get("movement_date") or date.today().isoformat(),
-                    }).in_("id", legs_).execute()
+                    upd_ = {"reconciled_at": mv.get("movement_date") or date.today().isoformat()}
+                    if mv.get("yard_id"):
+                        upd_["yard_id"] = mv["yard_id"]
+                    sb.table("accounting_transactions").update(upd_).in_("id", legs_).execute()
                 posted += 1
                 logger.info(f"[BankStmt] movimiento {mv['id']} liquidó la factura de comisión {comm_bill.get('invoice_number')}")
                 continue
