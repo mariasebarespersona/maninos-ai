@@ -92,6 +92,9 @@ test.afterAll(async () => {
       await sb.from('sales').delete().eq('id', s.id)
     }
     await sb.from('notifications').delete().eq('property_id', propId)
+    // Cuentas de la casa que la app crea al vender (Compra/COGS House/... <CODE>)
+    await sb.from('accounting_accounts').delete().ilike('code', `%${PCODE}`).not('parent_account_id', 'is', null)
+    await sb.from('accounting_accounts').delete().ilike('code', `%${PCODE}`)
     if (clientId) await sb.from('clients').delete().eq('id', clientId)
     if (propId) await sb.from('properties').delete().eq('id', propId)
   } catch (e) { console.warn('teardown warning:', e) }
