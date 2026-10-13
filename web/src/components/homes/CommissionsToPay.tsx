@@ -55,7 +55,7 @@ export function CommissionPayModal({ commission, onClose, onPaid }: {
     if (!bankId || !fecha) return
     setSaving(true)
     try {
-      const qs = new URLSearchParams({ paid_by: teamUser?.id || 'staff', bank_account_id: bankId, payment_date: fecha })
+      const qs = new URLSearchParams({ paid_by: teamUser?.id || '', bank_account_id: bankId, payment_date: fecha })
       const res = await fetch(`/api/sales/commission-payments/${commission.id}/pay?${qs}`, { method: 'PATCH' })
       const d = await res.json()
       if (!res.ok || !d.ok) { toast.error(d.detail || 'No se pudo registrar el pago'); return }

@@ -468,6 +468,14 @@ async def mark_commission_paid(
     # comisión desaparecía de pendientes sin haber salido de ninguna cuenta.
     if not (isinstance(bank_account_id, str) and bank_account_id.strip()):
         raise HTTPException(status_code=400, detail="Indica de qué cuenta bancaria salió el pago de la comisión")
+    # paid_by es una columna uuid. Se valida ANTES de contabilizar: un valor que
+    # no es uuid (p. ej. 'staff') hacía fallar la última escritura después de
+    # haber pagado ya la factura, dejando el pago a medias.
+    import uuid as _uuid
+    try:
+        paid_by = str(_uuid.UUID(str(paid_by)))
+    except (ValueError, TypeError):
+        paid_by = None
     fecha = payment_date if isinstance(payment_date, str) and payment_date.strip() else date.today().isoformat()
     try:
         if date.fromisoformat(fecha) > date.today():
