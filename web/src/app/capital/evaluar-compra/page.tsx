@@ -63,6 +63,27 @@ export default function EvaluarCompraPage() {
   const toast = useToast()
   const [origen, setOrigen] = useState('homes')
   const [casa, setCasa] = useState('')
+  // Casa real de la app ligada a la propuesta (si existe); si no, texto libre
+  const [propertyId, setPropertyId] = useState<string | null>(null)
+  const [sugerencias, setSugerencias] = useState<any[]>([])
+  useEffect(() => {
+    if (propertyId || casa.trim().length < 2) { setSugerencias([]); return }
+    const t = setTimeout(() => {
+      fetch(`/api/capital/purchase-proposals/properties-search?q=${encodeURIComponent(casa.trim())}`, { cache: 'no-store' })
+        .then(r => r.json()).then(d => setSugerencias(d.properties || [])).catch(() => {})
+    }, 300)
+    return () => clearTimeout(t)
+  }, [casa, propertyId])
+  const elegirCasa = (p: any) => {
+    setPropertyId(p.id)
+    setCasa([p.property_code, p.address].filter(Boolean).join(' · '))
+    setSugerencias([])
+    if (!precio && p.sale_price) setPrecio(String(p.sale_price))
+    if (p.square_feet) setSqft(String(p.square_feet))
+    if (p.bedrooms) setBeds(String(p.bedrooms))
+    if (p.year) setYear(String(p.year))
+    if (p.city) setCity(p.city)
+  }
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
@@ -127,7 +148,7 @@ export default function EvaluarCompraPage() {
   }
 
   const payload = () => ({
-    origen, casa: casa.trim() || null, precio: num(precio), enganche: num(enganche) || 0,
+    origen, casa: casa.trim() || null, property_id: propertyId, precio: num(precio), enganche: num(enganche) || 0,
     plazo_meses: parseInt(plazo) || 36, mensualidad: num(mensualidad),
     sqft: num(sqft), bedrooms: beds ? parseInt(beds) : null, year: year ? parseInt(year) : null, city: city.trim() || null,
     valor_mercado_manual: num(valorManual), fuente_valor_manual: fuenteManual.trim() || null,
@@ -208,9 +229,26 @@ export default function EvaluarCompraPage() {
           </div>
         </div>
 
-        <div>
+        <div className="relative">
           <label className="label">Casa (código o dirección)</label>
-          <input className="input w-full" value={casa} onChange={e => setCasa(e.target.value)} placeholder="H61, 123 Main St…" />
+          <div className="flex gap-2">
+            <input className="input w-full" value={casa} disabled={!!propertyId}
+              onChange={e => setCasa(e.target.value)} placeholder="Busca una casa de la app (H61, dirección…) o escríbela si es de un tercero" />
+            {propertyId && (
+              <button onClick={() => { setPropertyId(null); setCasa('') }} className="btn-ghost btn-sm whitespace-nowrap" data-testid="quitar-casa">Cambiar</button>
+            )}
+          </div>
+          {propertyId && <p className="text-xs mt-1" style={{ color: 'var(--success)' }} data-testid="casa-ligada">Ligada a la casa de la app: la autorización se verá en su ficha.</p>}
+          {sugerencias.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border shadow-sm" style={{ borderColor: 'var(--sand)' }} data-testid="sugerencias-casa">
+              {sugerencias.map(p => (
+                <button key={p.id} onClick={() => elegirCasa(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-cream/50">
+                  <strong>{p.property_code || '—'}</strong> · {p.address}{p.city ? `, ${p.city}` : ''}
+                  <span className="text-xs ml-2" style={{ color: 'var(--ash)' }}>{p.source === 'manual_capital' ? 'Capital' : 'Homes'} · {p.status}{p.sale_price ? ` · ${formatMoney(p.sale_price)}` : ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import PriceVsMarketCard from '@/components/capital/PriceVsMarketCard'
+import AutorizacionCasa from '@/components/capital/AutorizacionCasa'
 import { useParams } from 'next/navigation'
 import {
   Home, User, MapPin, ArrowLeft, Users, Plus, X, Loader2,
@@ -584,6 +585,12 @@ export default function FinancedHouseDetailPage() {
       </div>
 
       {/* Checklist de la casa: precio que paga Capital vs. valor de mercado (≤ 70%) */}
+      {/* Autorización de compra (Comité + VoBo) de esta casa, comparada con los términos de la venta */}
+      <AutorizacionCasa propertyId={house.property.id} terminos={{
+        precio: house.terms.sale_price, enganche: house.terms.down_payment,
+        mensualidad: house.terms.monthly_payment, plazo_meses: house.terms.term_months,
+      }} />
+
       {saleId && <PriceVsMarketCard saleId={saleId} />}
 
       {/* Investors */}

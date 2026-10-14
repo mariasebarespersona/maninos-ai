@@ -15,6 +15,15 @@
 export const DEFAULT_ANNUAL_RATE = 0.24 // 24 %
 
 /**
+ * Objetivo de margen anual de Capital (Jorge, 2026-10-12). Es el mismo valor
+ * que RENTABILIDAD_MINIMA_ANUAL en api/services/market_valuation.py: el motor
+ * de Propuesta de compra, el checklist de cada casa y el Cálculo RTO. Las
+ * pantallas de Capital lo usan para que todas den la misma mensualidad.
+ * (El portal de clientes sigue con DEFAULT_ANNUAL_RATE: es precio público.)
+ */
+export const CAPITAL_TARGET_RATE = 0.30
+
+/**
  * Default rate table indexed by term length (months).
  * All start at 24 %; Capital can override per-application.
  * If a term is not in the table we fall back to DEFAULT_ANNUAL_RATE.

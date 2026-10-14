@@ -118,11 +118,13 @@ def _missing_table(e: Exception) -> bool:
 
 
 @router.get("")
-async def list_proposals(status: Optional[str] = None, limit: int = 50):
+async def list_proposals(status: Optional[str] = None, limit: int = 50, property_id: Optional[str] = None):
     try:
         q = sb.table("capital_purchase_proposals").select("*").order("created_at", desc=True).limit(limit)
         if status:
             q = q.eq("status", status)
+        if property_id:
+            q = q.eq("property_id", property_id)
         props = q.execute().data or []
         votos: dict = {}
         try:
@@ -154,11 +156,34 @@ async def list_proposals(status: Optional[str] = None, limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/properties-search")
+async def search_properties(q: str = "", limit: int = 10):
+    """Casas de la app para ligar una propuesta: inventario de Homes y casas
+    solo-Capital (alta manual). Por código o dirección."""
+    q = (q or "").strip()
+    if len(q) < 1:
+        return {"ok": True, "properties": []}
+    cols = ("id, property_code, address, city, status, sale_price, purchase_price, "
+            "square_feet, bedrooms, year, source")
+    like = f"%{q}%"
+    rows = (sb.table("properties").select(cols)
+            .or_(f"property_code.ilike.{like},address.ilike.{like}")
+            .order("created_at", desc=True).limit(limit).execute().data or [])
+    return {"ok": True, "properties": rows}
+
+
 @router.post("")
 async def create_proposal(body: ProposalCreate):
     """Guarda la propuesta con los números recalculados en el servidor."""
     if not body.casa and not body.property_id:
         raise HTTPException(status_code=400, detail="Indica qué casa es (código o dirección)")
+    # Casa real de la app: se valida y el nombre sale de la ficha (código · dirección)
+    if body.property_id:
+        pr = (sb.table("properties").select("id, property_code, address")
+              .eq("id", body.property_id).limit(1).execute().data)
+        if not pr:
+            raise HTTPException(status_code=404, detail="La casa elegida no existe")
+        body.casa = " · ".join(x for x in (pr[0].get("property_code"), pr[0].get("address")) if x)
     if body.mensualidad <= 0:
         raise HTTPException(status_code=400, detail="La propuesta necesita una mensualidad")
     from api.routes.capital.financed_houses import purchase_calculator, PurchaseCalc

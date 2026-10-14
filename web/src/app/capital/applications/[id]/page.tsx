@@ -12,7 +12,8 @@ import {
   Calendar, Hash, AlertCircle,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
-import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE, getDefaultRate } from '@/lib/rto-calculator'
+import { calculateRTOMonthly, CAPITAL_TARGET_RATE, getDefaultRate } from '@/lib/rto-calculator'
+import AutorizacionCasa from '@/components/capital/AutorizacionCasa'
 
 
 interface ApplicationDetail {
@@ -99,7 +100,8 @@ export default function ApplicationDetailPage() {
   const [monthlyRent, setMonthlyRent] = useState('')
   const [termMonths, setTermMonths] = useState('')
   const [downPayment, setDownPayment] = useState('')
-  const [annualRatePct, setAnnualRatePct] = useState(DEFAULT_ANNUAL_RATE * 100) // editable %
+  // Mismo objetivo que el motor de Capital (30%), editable para simular
+  const [annualRatePct, setAnnualRatePct] = useState(CAPITAL_TARGET_RATE * 100) // editable %
 
   // Client credit application (filled by client)
   const [clientCreditApp, setClientCreditApp] = useState<any>(null)
@@ -1856,6 +1858,12 @@ export default function ApplicationDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Autorización de compra de esta casa vs. los términos de la venta */}
+              <AutorizacionCasa propertyId={app?.properties?.id || null} terminos={{
+                precio: app?.sales?.sale_price ?? null, enganche: app?.sales?.rto_down_payment ?? null,
+                mensualidad: app?.sales?.rto_monthly_payment ?? null, plazo_meses: app?.sales?.rto_term_months ?? null,
+              }} />
 
               {/* C: Scenario Comparison Table */}
               <div className="card-luxury p-5">

@@ -8,7 +8,7 @@ import {
   AlertTriangle, Filter, Trash2,
 } from 'lucide-react'
 import DeleteChainModal from '@/components/capital/DeleteChainModal'
-import { calculateRTOMonthly, DEFAULT_ANNUAL_RATE } from '@/lib/rto-calculator'
+import { calculateRTOMonthly, CAPITAL_TARGET_RATE } from '@/lib/rto-calculator'
 
 interface Application {
   id: string
@@ -239,7 +239,7 @@ export default function ApplicationsPage() {
                       if (!precio || !plazo) return null
                       const m = calculateRTOMonthly({
                         salePrice: precio, downPayment: enganche,
-                        termMonths: plazo, annualRate: DEFAULT_ANNUAL_RATE,
+                        termMonths: plazo, annualRate: CAPITAL_TARGET_RATE,
                       }).monthlyPayment
                       return (
                         <span style={{ color: 'var(--charcoal)' }}>
