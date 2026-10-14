@@ -1,7 +1,13 @@
 'use client'
 
 /**
- * Evaluar compra — calculadora del Responsable de Adquisiciones (Capital).
+ * Propuesta de compra — Responsable de Adquisiciones (Capital).
+ * Pasos del proceso "Evaluar precio vs. mercado" + "Calcular renta y margen":
+ * renta sugerida por plazo (24/36/48), margen anual frente al costo del
+ * fondeo (semáforo), fondeo disponible, y la propuesta se guarda para
+ * aprobarla o rechazarla. Mismo motor que el Cálculo RTO de Clientes RTO.
+ *
+ * (Antes "Evaluar compra".)
  *
  * Para decidir a cuánto comprar una casa, venga de Homes, de un tercero o de
  * un cliente que terminó su plazo: renta mínima para sacar el 30% anual sobre
@@ -9,19 +15,31 @@
  * valor de mercado y a los históricos de Homes y de Capital. No guarda nada.
  */
 
-import { useState } from 'react'
-import { Calculator, Loader2, Info } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Calculator, Loader2, Info, Save, Check, X, Trash2 } from 'lucide-react'
+import { useAuth } from '@/components/Auth/AuthProvider'
+import { useToast } from '@/components/ui/Toast'
 import { formatMoney } from '@/lib/money'
 import {
   EvaluacionCompra, Referencias, ValorAutomatico, Veredicto, ReferenciasHistoricas, ComparablesTable,
-  FUENTE_VALOR, pct,
+  FUENTE_VALOR, pct, RentaMargen, RentaMargenPanel,
 } from '@/components/capital/evaluacionCompra'
 
 interface Resultado {
   evaluacion: EvaluacionCompra
   automatico: ValorAutomatico
   referencias: Referencias
+  renta_margen: RentaMargen
 }
+
+interface Propuesta {
+  id: string; origen: string | null; casa: string | null; precio: number; enganche: number
+  plazo_meses: number; mensualidad: number; margen_anual: number | null; costo_fondeo: number | null
+  semaforo: string | null; status: 'borrador' | 'aprobada' | 'rechazada'; notas: string | null
+  created_by: string | null; created_at: string; decided_by: string | null
+}
+
+const COLOR_SEMAFORO: Record<string, string> = { verde: 'var(--success)', amarillo: 'var(--warning, #b7791f)', rojo: 'var(--danger)' }
 
 const ORIGENES = [
   { value: 'homes', label: 'Maninos Homes' },
@@ -35,7 +53,22 @@ const num = (v: string) => {
 }
 
 export default function EvaluarCompraPage() {
+  const { user } = useAuth()
+  const toast = useToast()
   const [origen, setOrigen] = useState('homes')
+  const [casa, setCasa] = useState('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [propuestas, setPropuestas] = useState<Propuesta[]>([])
+  const [faltaMigracion, setFaltaMigracion] = useState(false)
+
+  const cargarPropuestas = useCallback(async () => {
+    try {
+      const d = await (await fetch('/api/capital/purchase-proposals', { cache: 'no-store' })).json()
+      if (d.ok) { setPropuestas(d.proposals || []); setFaltaMigracion(!!d.falta_migracion) }
+    } catch { /* la lista simplemente no aparece */ }
+  }, [])
+  useEffect(() => { cargarPropuestas() }, [cargarPropuestas])
   const [precio, setPrecio] = useState('')
   const [enganche, setEnganche] = useState('')
   const [plazo, setPlazo] = useState('36')
@@ -52,7 +85,7 @@ export default function EvaluarCompraPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const calcular = async () => {
+  const calcular = async (over?: { plazo?: number; mensualidad?: number }) => {
     setError('')
     const p = num(precio)
     if (!p || p <= 0) { setError('Escribe el precio de compra'); return }
@@ -65,8 +98,8 @@ export default function EvaluarCompraPage() {
           origen,
           precio: p,
           enganche: num(enganche) || 0,
-          plazo_meses: parseInt(plazo) || 36,
-          mensualidad: num(mensualidad),
+          plazo_meses: over?.plazo ?? (parseInt(plazo) || 36),
+          mensualidad: over?.mensualidad ?? num(mensualidad),
           sqft: num(sqft),
           bedrooms: beds ? parseInt(beds) : null,
           year: year ? parseInt(year) : null,
@@ -87,6 +120,52 @@ export default function EvaluarCompraPage() {
     }
   }
 
+  const payload = () => ({
+    origen, casa: casa.trim() || null, precio: num(precio), enganche: num(enganche) || 0,
+    plazo_meses: parseInt(plazo) || 36, mensualidad: num(mensualidad),
+    sqft: num(sqft), bedrooms: beds ? parseInt(beds) : null, year: year ? parseInt(year) : null, city: city.trim() || null,
+    valor_mercado_manual: num(valorManual), fuente_valor_manual: fuenteManual.trim() || null,
+    renta_mercado_manual: num(rentaMdo), fuente_renta_manual: fuenteRenta.trim() || null,
+  })
+
+  const elegirPlazo = (pl: number, renta: number) => {
+    setPlazo(String(pl))
+    setMensualidad(String(renta))
+    calcular({ plazo: pl, mensualidad: renta })
+  }
+
+  const guardar = async () => {
+    if (!casa.trim()) { toast.error('Escribe qué casa es (código o dirección) para guardar la propuesta'); return }
+    if (!num(mensualidad)) { toast.error('La propuesta necesita una mensualidad: escríbela o usa una de la tabla'); return }
+    setSaving(true)
+    try {
+      const r = await fetch('/api/capital/purchase-proposals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload(), notas: notas.trim() || null, created_by: user?.email || null }),
+      })
+      const d = await r.json()
+      if (!r.ok || !d.ok) { toast.error(d.detail || 'No se pudo guardar'); return }
+      toast.success('Propuesta de compra guardada')
+      setNotas('')
+      cargarPropuestas()
+    } catch { toast.error('No se pudo guardar') } finally { setSaving(false) }
+  }
+
+  const decidir = async (id: string, status: 'aprobada' | 'rechazada') => {
+    const r = await fetch(`/api/capital/purchase-proposals/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, decided_by: user?.email || null }),
+    })
+    const d = await r.json()
+    if (!r.ok || !d.ok) { toast.error(d.detail || 'No se pudo actualizar'); return }
+    cargarPropuestas()
+  }
+
+  const borrar = async (id: string) => {
+    const r = await fetch(`/api/capital/purchase-proposals/${id}`, { method: 'DELETE' })
+    if (r.ok) cargarPropuestas()
+  }
+
   const ev = res?.evaluacion
   const field = (label: string, value: string, set: (v: string) => void, placeholder = '') => (
     <div>
@@ -99,7 +178,7 @@ export default function EvaluarCompraPage() {
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="font-serif text-2xl flex items-center gap-2" style={{ color: 'var(--ink)' }}>
-          <Calculator className="w-6 h-6" style={{ color: 'var(--gold-700)' }} /> Evaluar compra
+          <Calculator className="w-6 h-6" style={{ color: 'var(--gold-700)' }} /> Propuesta de compra
         </h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--slate)' }}>
           A cuánto comprar una casa para sacarle mínimo un 30% anual sobre lo que pone Capital (precio − enganche),
@@ -118,6 +197,11 @@ export default function EvaluarCompraPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="label">Casa (código o dirección)</label>
+          <input className="input w-full" value={casa} onChange={e => setCasa(e.target.value)} placeholder="H61, 123 Main St…" />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -158,13 +242,17 @@ export default function EvaluarCompraPage() {
         </details>
 
         {error && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-        <button onClick={calcular} disabled={loading} className="btn-primary">
+        <button onClick={() => calcular()} disabled={loading} className="btn-primary">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />} Calcular
         </button>
       </div>
 
       {ev && res && (
         <div className="card-luxury p-6 space-y-5" data-testid="resultado-compra">
+          <div>
+            <h2 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Renta y margen</h2>
+            <RentaMargenPanel rm={res.renta_margen} margen={ev.rentabilidad.anual} onElegir={elegirPlazo} plazoActual={ev.plazo_meses} />
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Grande label={`Renta mínima (${pct(ev.rentabilidad.minima)} anual)`} value={ev.rentabilidad.renta_minima ? formatMoney(ev.rentabilidad.renta_minima) : '—'} testId="renta-minima" />
             <Grande label="Pone Capital" value={ev.inversion_neta ? formatMoney(ev.inversion_neta) : '—'} />
@@ -208,6 +296,19 @@ export default function EvaluarCompraPage() {
 
           <ReferenciasHistoricas refs={res.referencias} precio={ev.precio} />
 
+          {/* Guardar la propuesta: foto de los números de hoy, para aprobarla o rechazarla */}
+          <div className="pt-4 border-t space-y-2" style={{ borderColor: 'var(--sand)' }}>
+            <label className="label">Notas de la propuesta</label>
+            <input className="input w-full" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Opcional" />
+            {faltaMigracion ? (
+              <p className="text-xs" style={{ color: 'var(--warning)' }}>Para guardar propuestas falta ejecutar la migración 120 en Supabase.</p>
+            ) : (
+              <button onClick={guardar} disabled={saving} className="btn-primary btn-sm" data-testid="guardar-propuesta">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar propuesta de compra
+              </button>
+            )}
+          </div>
+
           <div className="text-sm">
             <p className="font-medium mb-1" style={{ color: 'var(--ink)' }}>Valor automático</p>
             {res.automatico.ok && res.automatico.valor ? (
@@ -218,6 +319,49 @@ export default function EvaluarCompraPage() {
                 {res.automatico.motivo || 'No hay comparables suficientes.'}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {propuestas.length > 0 && (
+        <div className="card-luxury p-6" data-testid="propuestas">
+          <h2 className="font-serif text-lg mb-3" style={{ color: 'var(--ink)' }}>Propuestas guardadas</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs" style={{ color: 'var(--ash)' }}>
+                  <th className="text-left py-1 pr-3">Casa</th>
+                  <th className="text-right py-1 pr-3">Precio</th>
+                  <th className="text-right py-1 pr-3">Renta × plazo</th>
+                  <th className="text-right py-1 pr-3">Margen</th>
+                  <th className="text-left py-1 pr-3">Estado</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {propuestas.map(p => (
+                  <tr key={p.id} className="border-t" style={{ borderColor: 'var(--sand)' }} data-testid={`propuesta-${p.id}`}>
+                    <td className="py-1.5 pr-3" style={{ color: 'var(--ink)' }}>
+                      {p.casa || '—'}
+                      <span className="block text-[11px]" style={{ color: 'var(--ash)' }}>{new Date(p.created_at).toLocaleDateString('es-MX')}{p.created_by ? ` · ${p.created_by}` : ''}</span>
+                    </td>
+                    <td className="text-right py-1.5 pr-3">{formatMoney(p.precio)}</td>
+                    <td className="text-right py-1.5 pr-3">{formatMoney(p.mensualidad)} × {p.plazo_meses}</td>
+                    <td className="text-right py-1.5 pr-3 font-semibold" style={{ color: COLOR_SEMAFORO[p.semaforo || ''] || 'var(--ink)' }}>{pct(p.margen_anual)}</td>
+                    <td className="py-1.5 pr-3 capitalize">{p.status}</td>
+                    <td className="py-1.5 text-right whitespace-nowrap">
+                      {p.status === 'borrador' ? (
+                        <>
+                          <button onClick={() => decidir(p.id, 'aprobada')} className="btn-ghost btn-sm" title="Aprobar"><Check className="w-4 h-4" /></button>
+                          <button onClick={() => decidir(p.id, 'rechazada')} className="btn-ghost btn-sm" title="Rechazar"><X className="w-4 h-4" /></button>
+                        </>
+                      ) : null}
+                      <button onClick={() => borrar(p.id)} className="btn-ghost btn-sm" title="Borrar"><Trash2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

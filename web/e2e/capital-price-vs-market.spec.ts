@@ -142,8 +142,8 @@ test('Evaluar compra: rentabilidad 30% anual + mercado, KPI y calculadora', asyn
   await expect(page.getByTestId('eval-renta')).toContainText('Sin renta de mercado')
 
   // Calculadora de compra (desde el menú)
-  await page.getByRole('link', { name: 'Evaluar compra' }).first().click()
-  await expect(page.getByRole('heading', { name: /Evaluar compra/ })).toBeVisible({ timeout: 30000 })
+  await page.getByRole('link', { name: 'Propuesta de compra' }).first().click()
+  await expect(page.getByRole('heading', { name: /Propuesta de compra/ })).toBeVisible({ timeout: 30000 })
   await page.getByRole('button', { name: 'Tercero (mercado)' }).click()
   await page.locator('label:text-is("Precio de compra *")').locator('xpath=..').locator('input').fill('10000')
   await page.locator('label:text-is("Mensualidad (opcional)")').locator('xpath=..').locator('input').fill('600')

@@ -17,13 +17,14 @@ import { formatMoney } from '@/lib/money'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import {
   EvaluacionCompra, Referencias, ValorAutomatico, Veredicto, ReferenciasHistoricas, ComparablesTable,
-  FUENTE_VALOR, pct,
+  FUENTE_VALOR, pct, RentaMargen,
 } from '@/components/capital/evaluacionCompra'
 
 interface PriceEvaluation {
   evaluacion: EvaluacionCompra & { casa_de_homes: boolean }
   automatico: ValorAutomatico
   referencias: Referencias
+  renta_margen?: RentaMargen
   manual: {
     market_value: number | null; source: string | null; market_rent: number | null; rent_source: string | null
     notes: string | null; evaluated_by: string | null; evaluated_at: string
@@ -159,6 +160,16 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
         <Dato label="Valor de mercado" value={m.valor ? formatMoney(m.valor) : '—'} />
         <Dato label="Compra / valor" value={pct(m.compra_vs_valor)} />
       </div>
+
+      {data.renta_margen && (
+        <p className="text-sm mb-4" data-testid="eval-fondeo" style={{
+          color: data.renta_margen.semaforo === 'rojo' ? 'var(--danger)' : data.renta_margen.semaforo === 'verde' ? 'var(--success)' : 'var(--warning, #b7791f)',
+        }}>
+          {data.renta_margen.semaforo === 'rojo' && <>Margen {pct(r.anual)}: no cubre el costo del fondeo ({pct(data.renta_margen.costo_fondeo)}).</>}
+          {data.renta_margen.semaforo === 'amarillo' && <>Margen {pct(r.anual)}: cubre el costo del fondeo ({pct(data.renta_margen.costo_fondeo)}) pero no llega al {pct(data.renta_margen.objetivo)}.</>}
+          {data.renta_margen.semaforo === 'verde' && <>Margen {pct(r.anual)}: por encima del fondeo ({pct(data.renta_margen.costo_fondeo)}) y del objetivo.</>}
+        </p>
+      )}
 
       {m.venta_rto_vs_valor != null && (
         <p className="text-xs mb-4" style={{ color: 'var(--slate)' }}>

@@ -510,3 +510,60 @@ def kpi_compra(evaluaciones: list[dict]) -> dict:
         "renta_evaluadas": sum(1 for e in evaluaciones if e["renta"]["mercado"]),
         "renta_por_encima": sum(1 for e in evaluaciones if e["renta"]["estado"] == "no_cumple"),
     }
+
+
+# ── Calcular renta y margen (Propuesta de compra) ───────────────────────────
+# Proceso de Capital: "la plataforma calcula la renta sugerida según plazo
+# (24/36/48) y enganche, el margen anual vs. fondeo, y confirma que hay fondeo
+# disponible". Margen anual = (renta × plazo − saldo financiado) ÷ saldo
+# financiado ÷ años — la misma fórmula que `rentabilidad_anual`.
+#
+# Semáforo (decisión de Maria, 2026-10-14):
+#   rojo     → no cubre el coste del fondeo (tasa media ponderada de los
+#              pagarés vivos con inversionistas, calculada en vivo)
+#   amarillo → cubre el fondeo pero no llega al objetivo (30%, Jorge)
+#   verde    → llega al objetivo
+PLAZOS_SUGERIDOS = (24, 36, 48)
+
+
+def semaforo_margen(margen: Optional[float], costo_fondeo: Optional[float],
+                    objetivo: float = RENTABILIDAD_MINIMA_ANUAL) -> str:
+    if margen is None:
+        return "sin_datos"
+    if costo_fondeo is not None and margen < costo_fondeo - 1e-9:
+        return "rojo"
+    if margen < objetivo - 1e-9:
+        return "amarillo"
+    return "verde"
+
+
+def rentas_por_plazo(precio: Optional[float], enganche: Optional[float],
+                     costo_fondeo: Optional[float],
+                     plazos=PLAZOS_SUGERIDOS,
+                     objetivo: float = RENTABILIDAD_MINIMA_ANUAL) -> list[dict]:
+    """Para cada plazo: la renta que llega al objetivo (sugerida) y la mínima
+    que cubre el fondeo; con el margen y el cobro total de la sugerida."""
+    out = []
+    for plazo in plazos:
+        sugerida = renta_minima(precio, enganche, plazo, objetivo)
+        piso = renta_minima(precio, enganche, plazo, costo_fondeo) if costo_fondeo is not None else None
+        out.append({
+            "plazo_meses": plazo,
+            "renta_sugerida": _r2(sugerida),
+            "renta_minima_fondeo": _r2(piso),
+            "cobro_total": _r2(sugerida * plazo) if sugerida else None,
+            "margen_anual": round(objetivo, 4) if sugerida else None,
+        })
+    return out
+
+
+def fondeo_check(saldo_financiado: Optional[float], disponible: Optional[float]) -> dict:
+    """¿Hay capital de inversionistas disponible para financiar esta casa?"""
+    if saldo_financiado is None or disponible is None:
+        return {"estado": "sin_datos", "necesario": saldo_financiado, "disponible": disponible}
+    return {
+        "estado": "ok" if disponible + 0.005 >= saldo_financiado else "insuficiente",
+        "necesario": round(float(saldo_financiado), 2),
+        "disponible": round(float(disponible), 2),
+        "despues": round(float(disponible) - float(saldo_financiado), 2),
+    }

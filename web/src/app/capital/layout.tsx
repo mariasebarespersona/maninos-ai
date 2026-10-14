@@ -42,7 +42,7 @@ const navigationSections: NavSection[] = [
     title: 'Compra',
     items: [
       { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
-      { name: 'Evaluar compra', href: '/capital/evaluar-compra', icon: Calculator },
+      { name: 'Propuesta de compra', href: '/capital/evaluar-compra', icon: Calculator },
     ],
   },
   {

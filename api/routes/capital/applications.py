@@ -621,7 +621,16 @@ async def rto_calculation(application_id: str):
         down_payment_pct = round(down_payment / sale_price * 100, 1) if sale_price > 0 else 0
 
         finance_amount = sale_price - down_payment
-        annual_rate = 0.24
+        # Misma regla que Evaluar compra / Propuesta de compra (un solo motor):
+        # objetivo de margen anual de Capital (30%, Jorge) en lugar del 24% fijo
+        # que había aquí, y semáforo frente al coste real del fondeo.
+        from api.services.market_valuation import (
+            RENTABILIDAD_MINIMA_ANUAL, PLAZOS_SUGERIDOS, rentabilidad_anual, semaforo_margen,
+            renta_minima, fondeo_check,
+        )
+        from api.routes.capital.financed_houses import _fondeo
+        annual_rate = RENTABILIDAD_MINIMA_ANUAL
+        fondeo = _fondeo()
 
         # 6. Predict future value
         fv_result = predict_future_value(
@@ -633,8 +642,8 @@ async def rto_calculation(application_id: str):
             home_type=prop.get("type"),
         )
 
-        # 7. Calculate scenarios for [24, 36, 48, 60] months
-        term_options = [24, 36, 48, 60]
+        # 7. Escenarios a 24 / 36 / 48 meses (plazos del proceso de Capital)
+        term_options = list(PLAZOS_SUGERIDOS)
         scenarios = []
         recommended = None
 
@@ -676,6 +685,11 @@ async def rto_calculation(application_id: str):
                 },
                 "affordable": affordable,
                 "dti_ratio": dti_ratio,
+                # Margen real con la mensualidad redondeada, y su semáforo
+                "margen_anual": round(rentabilidad_anual(sale_price, down_payment, monthly_payment, term) or 0, 4),
+                "semaforo": semaforo_margen(rentabilidad_anual(sale_price, down_payment, monthly_payment, term), fondeo.get("costo")),
+                "renta_minima_fondeo": (round(renta_minima(sale_price, down_payment, term, fondeo["costo"]), 2)
+                                        if fondeo.get("costo") is not None else None),
             }
             scenarios.append(scenario)
 
@@ -819,6 +833,12 @@ async def rto_calculation(application_id: str):
         return {
             "ok": True,
             "calculation": {
+                # Margen frente al fondeo (mismo motor que Propuesta de compra)
+                "renta_margen": {
+                    "objetivo": RENTABILIDAD_MINIMA_ANUAL,
+                    "costo_fondeo": fondeo.get("costo"),
+                    "fondeo": fondeo_check(finance_amount, fondeo.get("disponible")),
+                },
                 "property": {
                     "address": prop.get("address"),
                     "sale_price": sale_price,

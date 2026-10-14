@@ -21,6 +21,7 @@ from .payment_orders import router as capital_payment_orders_router
 from .financed_houses import router as financed_houses_router
 from .manual_intake import router as manual_intake_router
 from .chain_delete import router as chain_delete_router
+from .purchase_proposals import router as purchase_proposals_router
 
 router = APIRouter()
 
@@ -41,4 +42,4 @@ router.include_router(capital_payment_orders_router)
 router.include_router(financed_houses_router)
 router.include_router(manual_intake_router)
 router.include_router(chain_delete_router)
-
+router.include_router(purchase_proposals_router)

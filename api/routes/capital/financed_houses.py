@@ -850,6 +850,46 @@ def _evaluacion_de(sale: dict, prop: dict, historico: list, anuncios: list,
     return ev, val
 
 
+def _fondeo() -> dict:
+    """Coste y disponibilidad del fondeo de Capital, en vivo.
+
+    - coste: tasa anual media ponderada (por importe) de los pagarés vivos con
+      inversionistas — lo que le cuesta a Capital el dinero.
+    - disponible: capital de inversionistas activos aún sin colocar."""
+    out = {"costo": None, "saldo_pagares": 0.0, "n_pagares": 0, "disponible": None, "n_inversionistas": 0}
+    try:
+        notes = (sb.table("promissory_notes").select("loan_amount, annual_rate, status")
+                 .eq("status", "active").execute().data or [])
+        pares = [(float(n.get("loan_amount") or 0), float(n.get("annual_rate") or 0)) for n in notes
+                 if n.get("annual_rate") and float(n.get("loan_amount") or 0) > 0]
+        if pares:
+            total = sum(a for a, _ in pares)
+            out["costo"] = round(sum(a * r for a, r in pares) / total / 100, 4)
+            out["saldo_pagares"] = round(total, 2)
+            out["n_pagares"] = len(pares)
+    except Exception as e:
+        logger.warning(f"[fondeo] no se pudo calcular el coste: {e}")
+    try:
+        invs = sb.table("investors").select("available_capital, status").eq("status", "active").execute().data or []
+        out["disponible"] = round(sum(float(i.get("available_capital") or 0) for i in invs), 2)
+        out["n_inversionistas"] = len(invs)
+    except Exception as e:
+        logger.warning(f"[fondeo] no se pudo leer el capital disponible: {e}")
+    return out
+
+
+def _renta_y_margen(ev: dict, fondeo: dict) -> dict:
+    """Bloque 'Calcular renta y margen' sobre una evaluación de compra."""
+    from api.services.market_valuation import semaforo_margen, rentas_por_plazo, fondeo_check
+    return {
+        "costo_fondeo": fondeo.get("costo"),
+        "objetivo": ev["rentabilidad"]["minima"],
+        "semaforo": semaforo_margen(ev["rentabilidad"]["anual"], fondeo.get("costo")),
+        "rentas_por_plazo": rentas_por_plazo(ev.get("precio"), ev.get("enganche"), fondeo.get("costo")),
+        "fondeo": fondeo_check(ev.get("inversion_neta"), fondeo.get("disponible")),
+    }
+
+
 def _referencias_historicas(sujeto: Optional[dict] = None) -> dict:
     """Las dos referencias de precio que pide Capital para decidir una compra:
     lo que vende Homes (histórico de operaciones, precios cobrados) y lo que
@@ -1008,6 +1048,8 @@ async def price_vs_market_kpi():
 
         por_casa: dict = {}
         evaluaciones = []
+        fondeo = _fondeo()
+        from api.services.market_valuation import semaforo_margen
         for s in sales:
             prop = props.get(s.get("property_id")) or {}
             ev, _ = _evaluacion_de(s, prop, historico, anuncios, manuales.get(s["id"]),
@@ -1017,10 +1059,14 @@ async def price_vs_market_kpi():
             por_casa[s["id"]] = {
                 "rentabilidad": ev["rentabilidad"]["anual"],
                 "rentabilidad_estado": ev["rentabilidad"]["estado"],
+                "semaforo": semaforo_margen(ev["rentabilidad"]["anual"], fondeo.get("costo")),
                 "mercado_estado": ev["mercado"]["estado"],
             }
 
-        return {"ok": True, "kpi": kpi_compra(evaluaciones), "por_casa": por_casa,
+        kpi = kpi_compra(evaluaciones)
+        kpi["costo_fondeo"] = fondeo.get("costo")
+        kpi["bajo_fondeo"] = sum(1 for v in por_casa.values() if v["semaforo"] == "rojo")
+        return {"ok": True, "kpi": kpi, "fondeo": fondeo, "por_casa": por_casa,
                 "falta_migracion": falta_migracion}
     except Exception as e:
         logger.error(f"Error en KPI precio vs. mercado: {e}")
@@ -1050,9 +1096,11 @@ async def get_price_evaluation(sale_id: str):
         manual, falta_migracion = None, True
     reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
     ev, val = _evaluacion_de(sale, prop, cargar_historico(), _anuncios_comparables(), manual, reno, contract)
+    fondeo = _fondeo()
     return {
         "ok": True,
         "evaluacion": ev,
+        "renta_margen": _renta_y_margen(ev, fondeo),
         "referencias": _referencias_historicas(_sujeto_valoracion(prop)),
         # Comparador: con qué casas y método se estimó el valor automático
         "automatico": {
@@ -1165,10 +1213,13 @@ async def purchase_calculator(body: PurchaseCalc):
         "rent_source": body.fuente_renta_manual or "manual",
     } if (body.valor_mercado_manual or body.renta_mercado_manual) else None
     ev = evaluar_compra(body.precio, body.enganche, body.mensualidad, body.plazo_meses, val, manual)
+    fondeo = _fondeo()
     return {
         "ok": True,
         "origen": body.origen,
         "evaluacion": ev,
+        "renta_margen": _renta_y_margen(ev, fondeo),
+        "fondeo": fondeo,
         "automatico": {
             "ok": bool(val.get("ok")) and val.get("metodo") in ("cartera", "mercado"),
             "metodo": val.get("metodo"),

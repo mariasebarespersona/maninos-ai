@@ -67,8 +67,9 @@ interface PriceVsMarket {
     con_datos: number; total: number; cumplen: number; no_cumplen: number
     mercado_evaluadas: number; por_encima_de_mercado: number
     costo_total_media: number | null; renta_evaluadas: number; renta_por_encima: number
+    costo_fondeo?: number | null; bajo_fondeo?: number
   }
-  por_casa: Record<string, { rentabilidad: number | null; rentabilidad_estado: string; mercado_estado: string }>
+  por_casa: Record<string, { rentabilidad: number | null; rentabilidad_estado: string; semaforo?: string; mercado_estado: string }>
 }
 
 const pctTxt = (r: number | null | undefined) => (r == null ? '—' : `${Math.round(r * 1000) / 10}%`)
@@ -182,8 +183,13 @@ export default function FinancedHousesPage() {
             <strong>{pvm.kpi.cumplen} de {pvm.kpi.con_datos}</strong> casas llegan al {pctTxt(pvm.kpi.minima)} · mediana {pctTxt(pvm.kpi.rentabilidad_mediana)}
             {' · '}{pvm.kpi.por_encima_de_mercado} de {pvm.kpi.mercado_evaluadas} con valor de mercado no se compraron por debajo
             {' · '}{pvm.kpi.renta_por_encima} de {pvm.kpi.renta_evaluadas} con renta de mercado la superan
+            {pvm.kpi.costo_fondeo != null && (
+              <span className="block" data-testid="kpi-bajo-fondeo" style={{ color: (pvm.kpi.bajo_fondeo || 0) > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                <strong>{pvm.kpi.bajo_fondeo || 0}</strong> casas con margen por debajo del costo del fondeo ({pctTxt(pvm.kpi.costo_fondeo)})
+              </span>
+            )}
           </p>
-          <Link href="/capital/evaluar-compra" className="btn-secondary btn-sm ml-auto">Calculadora de compra</Link>
+          <Link href="/capital/evaluar-compra" className="btn-secondary btn-sm ml-auto">Propuesta de compra</Link>
         </div>
       )}
 
@@ -237,11 +243,14 @@ export default function FinancedHousesPage() {
                       {(() => {
                         const e = pvm?.por_casa[h.sale_id]
                         if (!e || e.rentabilidad == null) return null
-                        const ok = e.rentabilidad_estado === 'cumple'
+                        const sem = e.semaforo || (e.rentabilidad_estado === 'cumple' ? 'verde' : 'rojo')
+                        const col = sem === 'verde' ? { bg: 'var(--success-light)', fg: 'var(--success)' }
+                          : sem === 'amarillo' ? { bg: 'var(--warning-light, #fdf6e3)', fg: 'var(--warning, #b7791f)' }
+                          : { bg: 'var(--error-light)', fg: 'var(--error)' }
                         return (
                           <span className="px-2 py-1 rounded-full text-[11px] font-medium whitespace-nowrap"
-                                title="Rentabilidad anual sobre lo que pone Capital (mínimo 30%)"
-                                style={{ backgroundColor: ok ? 'var(--success-light)' : 'var(--error-light)', color: ok ? 'var(--success)' : 'var(--error)' }}>
+                                title="Margen anual sobre lo que pone Capital: rojo = no cubre el fondeo, amarillo = no llega al 30%, verde = llega"
+                                style={{ backgroundColor: col.bg, color: col.fg }}>
                             {pctTxt(e.rentabilidad)} anual
                           </span>
                         )

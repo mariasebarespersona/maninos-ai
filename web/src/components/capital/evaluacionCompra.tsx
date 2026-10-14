@@ -166,3 +166,86 @@ export function ComparablesTable({ auto }: { auto: ValorAutomatico }) {
     </>
   )
 }
+
+// ── Calcular renta y margen ─────────────────────────────────────────────────
+export interface RentaMargen {
+  costo_fondeo: number | null
+  objetivo: number
+  semaforo: 'rojo' | 'amarillo' | 'verde' | 'sin_datos'
+  rentas_por_plazo: {
+    plazo_meses: number; renta_sugerida: number | null; renta_minima_fondeo: number | null
+    cobro_total: number | null; margen_anual: number | null
+  }[]
+  fondeo: { estado: 'ok' | 'insuficiente' | 'sin_datos'; necesario: number | null; disponible: number | null; despues?: number }
+}
+
+const SEMAFORO = {
+  verde: { bg: 'var(--success-light)', color: 'var(--success)', txt: 'llega al objetivo' },
+  amarillo: { bg: 'var(--warning-light, #fdf6e3)', color: 'var(--warning, #b7791f)', txt: 'cubre el fondeo pero no llega al objetivo' },
+  rojo: { bg: 'var(--danger-light, #fdecec)', color: 'var(--danger)', txt: 'NO cubre el costo del fondeo' },
+  sin_datos: { bg: 'var(--cream)', color: 'var(--slate)', txt: 'escribe una mensualidad para calcularlo' },
+} as const
+
+/** Margen anual frente al fondeo (semáforo), renta sugerida por plazo y
+ *  fondeo disponible. `onElegir` permite usar una fila (plazo + renta). */
+export function RentaMargenPanel({ rm, margen, onElegir, plazoActual }: {
+  rm: RentaMargen; margen: number | null; onElegir?: (plazo: number, renta: number) => void; plazoActual?: number | null
+}) {
+  const s = SEMAFORO[rm.semaforo] || SEMAFORO.sin_datos
+  return (
+    <div className="space-y-3" data-testid="renta-margen">
+      <div className="rounded-lg p-3 flex flex-wrap items-center gap-x-6 gap-y-1" style={{ backgroundColor: s.bg }}>
+        <div>
+          <p className="text-xs" style={{ color: 'var(--slate)' }}>Margen anual</p>
+          <p className="font-serif text-2xl" style={{ color: s.color }} data-testid="margen-anual">{pct(margen)}</p>
+        </div>
+        <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+          <strong style={{ color: s.color }} data-testid="semaforo">{s.txt}</strong>
+          <span className="block text-xs" style={{ color: 'var(--slate)' }}>
+            Costo del fondeo {pct(rm.costo_fondeo)} (pagarés vivos) · objetivo {pct(rm.objetivo)}
+          </span>
+        </p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs" style={{ color: 'var(--ash)' }}>
+              <th className="text-left py-1 pr-3">Plazo</th>
+              <th className="text-right py-1 pr-3">Renta sugerida ({pct(rm.objetivo)})</th>
+              <th className="text-right py-1 pr-3">Mínima que cubre el fondeo</th>
+              <th className="text-right py-1 pr-3">Cobro total</th>
+              {onElegir && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {rm.rentas_por_plazo.map(r => (
+              <tr key={r.plazo_meses} className="border-t" style={{ borderColor: 'var(--sand)', backgroundColor: plazoActual === r.plazo_meses ? 'var(--gold-100, #fdf6e3)' : undefined }}
+                  data-testid={`plazo-${r.plazo_meses}`}>
+                <td className="py-1.5 pr-3 font-medium" style={{ color: 'var(--ink)' }}>{r.plazo_meses} meses</td>
+                <td className="text-right py-1.5 pr-3 font-semibold" style={{ color: 'var(--ink)' }}>{r.renta_sugerida != null ? formatMoney(r.renta_sugerida) : '—'}</td>
+                <td className="text-right py-1.5 pr-3" style={{ color: 'var(--slate)' }}>{r.renta_minima_fondeo != null ? formatMoney(r.renta_minima_fondeo) : '—'}</td>
+                <td className="text-right py-1.5 pr-3" style={{ color: 'var(--slate)' }}>{r.cobro_total != null ? formatMoney(r.cobro_total) : '—'}</td>
+                {onElegir && (
+                  <td className="text-right py-1.5">
+                    {r.renta_sugerida != null && (
+                      <button onClick={() => onElegir(r.plazo_meses, r.renta_sugerida as number)} className="text-xs underline" style={{ color: 'var(--gold-700)' }}>
+                        Usar
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-sm" data-testid="fondeo-check" style={{ color: rm.fondeo.estado === 'insuficiente' ? 'var(--danger)' : 'var(--slate)' }}>
+        {rm.fondeo.estado === 'ok' && <>Fondeo disponible: {formatMoney(rm.fondeo.disponible || 0)} de inversionistas; esta casa necesita {formatMoney(rm.fondeo.necesario || 0)}.</>}
+        {rm.fondeo.estado === 'insuficiente' && <>No hay fondeo suficiente: esta casa necesita {formatMoney(rm.fondeo.necesario || 0)} y hay {formatMoney(rm.fondeo.disponible || 0)} disponibles.</>}
+        {rm.fondeo.estado === 'sin_datos' && <>No se pudo comprobar el fondeo disponible.</>}
+      </p>
+    </div>
+  )
+}

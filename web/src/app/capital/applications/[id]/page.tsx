@@ -1859,7 +1859,14 @@ export default function ApplicationDetailPage() {
 
               {/* C: Scenario Comparison Table */}
               <div className="card-luxury p-5">
-                <h3 className="font-serif text-base mb-4" style={{ color: 'var(--ink)' }}>Comparación de Escenarios</h3>
+                <h3 className="font-serif text-base mb-1" style={{ color: 'var(--ink)' }}>Comparación de Escenarios</h3>
+                {rtoCalc.renta_margen?.fondeo && (
+                  <p className="text-xs mb-3" data-testid="rto-fondeo" style={{ color: rtoCalc.renta_margen.fondeo.estado === 'insuficiente' ? 'var(--danger)' : 'var(--slate)' }}>
+                    {rtoCalc.renta_margen.fondeo.estado === 'insuficiente'
+                      ? `No hay fondeo suficiente: hacen falta ${fmt(rtoCalc.renta_margen.fondeo.necesario)} y hay ${fmt(rtoCalc.renta_margen.fondeo.disponible)} disponibles.`
+                      : `Fondeo disponible: ${fmt(rtoCalc.renta_margen.fondeo.disponible || 0)} de inversionistas; esta casa necesita ${fmt(rtoCalc.renta_margen.fondeo.necesario || 0)}.`}
+                  </p>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -1889,10 +1896,27 @@ export default function ApplicationDetailPage() {
                           <td key={s.term_months} className="py-2 text-center text-sm" style={{ color: 'var(--charcoal)' }}>{fmt(s.total_client_pays)}</td>
                         ))}
                       </tr>
+                      {/* Margen anual frente al fondeo (mismo motor que Propuesta de compra) */}
                       <tr>
-                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>ROI Maninos</td>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+                          Margen anual
+                          {rtoCalc.renta_margen?.costo_fondeo != null && (
+                            <span className="block text-[10px]" style={{ color: 'var(--ash)' }}>
+                              fondeo {(rtoCalc.renta_margen.costo_fondeo * 100).toFixed(1)}% · objetivo {(rtoCalc.renta_margen.objetivo * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </td>
                         {rtoCalc.scenarios.map((s: any) => (
-                          <td key={s.term_months} className="py-2 text-center text-sm font-semibold" style={{ color: 'var(--success)' }}>{s.roi_maninos_pct.toFixed(1)}%</td>
+                          <td key={s.term_months} className="py-2 text-center text-sm font-semibold" data-testid={`rto-margen-${s.term_months}`}
+                              style={{ color: s.semaforo === 'rojo' ? 'var(--danger)' : s.semaforo === 'amarillo' ? 'var(--warning, #b7791f)' : 'var(--success)' }}>
+                            {s.margen_anual != null ? `${(s.margen_anual * 100).toFixed(1)}%` : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Mínimo que cubre el fondeo</td>
+                        {rtoCalc.scenarios.map((s: any) => (
+                          <td key={s.term_months} className="py-2 text-center text-sm" style={{ color: 'var(--slate)' }}>{s.renta_minima_fondeo != null ? fmt(s.renta_minima_fondeo) : '—'}</td>
                         ))}
                       </tr>
                       <tr>

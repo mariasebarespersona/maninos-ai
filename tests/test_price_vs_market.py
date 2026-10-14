@@ -136,3 +136,32 @@ def test_kpi_incluye_costo_total_y_renta():
     k = kpi_compra(evs)
     assert k["costo_total_media"] is not None
     assert (k["renta_evaluadas"], k["renta_por_encima"]) == (1, 1)
+
+
+# ── Calcular renta y margen (Propuesta de compra) ───────────────────────────
+from api.services.market_valuation import semaforo_margen, rentas_por_plazo, fondeo_check  # noqa: E402
+
+
+def test_semaforo_frente_al_fondeo_y_al_objetivo():
+    assert semaforo_margen(0.18, 0.2067) == "rojo"        # no cubre el fondeo
+    assert semaforo_margen(0.24, 0.2067) == "amarillo"    # cubre fondeo, no llega al 30%
+    assert semaforo_margen(0.30, 0.2067) == "verde"
+    assert semaforo_margen(None, 0.2067) == "sin_datos"
+
+
+def test_rentas_por_plazo_formula_del_proceso():
+    """Margen anual = (renta × plazo − financiado) ÷ financiado ÷ años.
+    30.000 − 3.000 = 27.000 financiados."""
+    filas = {r["plazo_meses"]: r for r in rentas_por_plazo(30000, 3000, 0.2067)}
+    assert set(filas) == {24, 36, 48}
+    assert filas[36]["renta_sugerida"] == 1425.0                      # 27.000 × 1,9 / 36
+    assert filas[24]["renta_sugerida"] == 1800.0                      # 27.000 × 1,6 / 24
+    assert filas[36]["renta_minima_fondeo"] == round(27000 * (1 + 0.2067 * 3) / 36, 2)
+    for r in filas.values():
+        assert abs(rentabilidad_anual(30000, 3000, r["renta_sugerida"], r["plazo_meses"]) - 0.30) < 1e-9
+
+
+def test_fondeo_disponible():
+    assert fondeo_check(27000, 3_000_000)["estado"] == "ok"
+    assert fondeo_check(27000, 20000)["estado"] == "insuficiente"
+    assert fondeo_check(None, 20000)["estado"] == "sin_datos"
