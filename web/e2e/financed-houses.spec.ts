@@ -17,7 +17,9 @@
 import { test, expect, Page } from '@playwright/test'
 
 const APP_URL = process.env.E2E_BASE_URL || 'https://maninos-ai.vercel.app'
-const API_URL = process.env.E2E_API_URL || 'https://maninos-ai-production.up.railway.app'
+// Por los proxies de la app: el backend exige X-Internal-Key desde el candado
+// del API, así que llamar a Railway directamente devolvía 401.
+const API_URL = process.env.E2E_BASE_URL || 'https://maninos-ai.vercel.app'
 const SB_URL = process.env.SUPABASE_URL as string
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 

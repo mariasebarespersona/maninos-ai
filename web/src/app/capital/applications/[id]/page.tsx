@@ -1761,104 +1761,6 @@ export default function ApplicationDetailPage() {
                 </div>
               )}
 
-              {/* B2: Smart Pricing — Rent-Anchored */}
-              {rtoCalc.smart_pricing && (
-                <div className="card-luxury p-5" style={{ borderLeft: '4px solid #7c3aed' }}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <DollarSign className="w-5 h-5 text-purple-600" />
-                    <h2 className="font-serif text-lg" style={{ color: 'var(--ink)' }}>Precio Inteligente</h2>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">OPORTUNIDAD</span>
-                  </div>
-
-                  {/* How it works explanation */}
-                  <div className="p-4 rounded-lg bg-purple-50/50 border border-purple-100 mb-4 space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-wider text-purple-700">¿Cómo funciona?</p>
-                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      La fórmula estándar calcula la mensualidad solo basándose en el precio de la casa + interés.
-                      Pero <strong>no considera cuánto paga el cliente hoy de renta</strong>.
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      Si un cliente paga <strong>{fmt(rtoCalc.smart_pricing.current_rent)}/mes de renta</strong> y la fórmula
-                      dice <strong>{fmt(rtoCalc.smart_pricing.base_payment)}/mes</strong>, estamos dejando
-                      {' '}<strong>{fmt(rtoCalc.smart_pricing.current_rent - rtoCalc.smart_pricing.base_payment)}/mes sobre la mesa</strong> que
-                      el cliente puede pagar cómodamente (ya lo hace hoy).
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
-                      El Precio Inteligente cobra el <strong>90% de su renta actual</strong>: el cliente siente que ahorra
-                      un 10% vs lo que paga hoy, y <strong>Maninos captura la diferencia</strong>.
-                    </p>
-                    <div className="mt-2 p-2 rounded bg-white border border-purple-100 text-xs" style={{ color: 'var(--slate)' }}>
-                      <strong>Reglas:</strong> Nunca cobramos menos que la fórmula (no perdemos dinero) · Nunca más del 45% del ingreso total (DTI seguro) · Redondeado al $5 más cercano
-                    </div>
-                  </div>
-
-                  {/* Visual comparison: 3 columns */}
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    <div className="p-4 rounded-lg bg-gray-50 text-center">
-                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Renta Actual del Cliente</p>
-                      <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.smart_pricing.current_rent)}</p>
-                      <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Lo que paga hoy por alquilar</p>
-                    </div>
-                    <div className="p-4 rounded-lg text-center" style={{ backgroundColor: '#f5f3ff', border: '2px solid #7c3aed' }}>
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-700">Precio Inteligente</p>
-                      <p className="text-2xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}</p>
-                      <p className="text-[11px] mt-1 text-purple-600">
-                        Ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs lo que paga hoy
-                      </p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-gray-50 text-center">
-                      <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--ash)' }}>Pago Fórmula Estándar</p>
-                      <p className="text-2xl font-bold" style={{ color: 'var(--ash)' }}>{fmt(rtoCalc.smart_pricing.base_payment)}</p>
-                      <p className="text-[11px] mt-1" style={{ color: 'var(--ash)' }}>Solo casa + interés (sin considerar renta)</p>
-                    </div>
-                  </div>
-
-                  {/* The punchline: extra revenue */}
-                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 mb-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2">Resultado</p>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-purple-800">
-                          Maninos cobra <strong>+{fmt(rtoCalc.smart_pricing.extra_per_month)}/mes</strong> más
-                          que la fórmula estándar
-                        </p>
-                        <p className="text-sm text-purple-800">
-                          Durante <strong>{rtoCalc.smart_pricing.term_months} meses</strong> del contrato
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-3xl font-bold text-purple-700">+{fmt(rtoCalc.smart_pricing.extra_total_over_term)}</p>
-                        <p className="text-xs text-purple-600">ganancia extra total</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Why it works for the client too */}
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-green-800">El cliente gana</p>
-                        <p className="text-green-700">
-                          Paga {fmt(rtoCalc.smart_pricing.client_saves_vs_rent)} menos que su renta actual.
-                          En vez de tirar dinero en alquiler, está pagando su propia casa.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-green-800">Maninos gana</p>
-                        <p className="text-green-700">
-                          ROI sube de {rtoCalc.recommended?.roi_maninos_pct}% a {rtoCalc.smart_pricing.smart_roi_pct}%.
-                          DTI del cliente: {rtoCalc.smart_pricing.smart_dti}% (seguro).
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Autorización de compra de esta casa vs. los términos de la venta */}
               <AutorizacionCasa propertyId={app?.properties?.id || null} terminos={{
                 precio: app?.sales?.sale_price ?? null, enganche: app?.sales?.rto_down_payment ?? null,
@@ -1928,12 +1830,6 @@ export default function ApplicationDetailPage() {
                         ))}
                       </tr>
                       <tr>
-                        <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>Valor Casa al Final</td>
-                        {rtoCalc.scenarios.map((s: any) => (
-                          <td key={s.term_months} className="py-2 text-center text-sm" style={{ color: 'var(--charcoal)' }}>{fmt(s.future_value_at_end)}</td>
-                        ))}
-                      </tr>
-                      <tr>
                         <td className="py-2 text-xs" style={{ color: 'var(--charcoal)' }}>vs Renta Actual</td>
                         {rtoCalc.scenarios.map((s: any) => (
                           <td key={s.term_months} className="py-2 text-center text-xs">
@@ -1966,39 +1862,6 @@ export default function ApplicationDetailPage() {
                       </tr>
                     </tbody>
                   </table>
-                </div>
-              </div>
-
-              {/* D: ROI Breakdown for Maninos */}
-              <div className="card-luxury p-5">
-                <h3 className="font-serif text-base mb-3" style={{ color: 'var(--ink)' }}>Retorno para Maninos</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                  <div className="p-3 rounded-lg bg-gray-50">
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Inversión Total</p>
-                    <p className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.maninos_summary.total_investment)}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-green-50">
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Ingreso Total</p>
-                    <p className="font-bold text-lg" style={{ color: 'var(--success)' }}>{fmt(rtoCalc.maninos_summary.total_income_recommended)}</p>
-                  </div>
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--gold-50, #fef9e7)' }}>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Ganancia Neta</p>
-                    <p className="font-bold text-lg" style={{ color: 'var(--gold-700)' }}>{fmt(rtoCalc.maninos_summary.net_profit)}</p>
-                  </div>
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--gold-50, #fef9e7)' }}>
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>ROI</p>
-                    <p className="font-bold text-2xl" style={{ color: 'var(--gold-700)' }}>{rtoCalc.maninos_summary.roi_pct}%</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                  <div className="flex justify-between p-2 rounded bg-gray-50">
-                    <span style={{ color: 'var(--ash)' }}>Ganancia por financiamiento</span>
-                    <span className="font-semibold" style={{ color: 'var(--success)' }}>{fmt(rtoCalc.maninos_summary.financing_return)}</span>
-                  </div>
-                  <div className="flex justify-between p-2 rounded bg-gray-50">
-                    <span style={{ color: 'var(--ash)' }}>Ganancia por activo (venta vs inversión)</span>
-                    <span className="font-semibold" style={{ color: rtoCalc.maninos_summary.asset_return >= 0 ? 'var(--success)' : 'var(--error)' }}>{fmt(rtoCalc.maninos_summary.asset_return)}</span>
-                  </div>
                 </div>
               </div>
 
@@ -2049,33 +1912,6 @@ export default function ApplicationDetailPage() {
                 )}
               </div>
 
-              {/* F: Future Value */}
-              <div className="card-luxury p-5">
-                <h3 className="font-serif text-base mb-3" style={{ color: 'var(--ink)' }}>Predicción de Valor Futuro</h3>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="text-center">
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>Valor hoy</p>
-                    <p className="font-bold text-lg" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.future_value.current_market_value)}</p>
-                  </div>
-                  <div className="text-2xl" style={{ color: 'var(--ash)' }}>→</div>
-                  <div className="text-center">
-                    <p className="text-xs" style={{ color: 'var(--ash)' }}>En {rtoCalc.recommended?.term_months || 36} meses</p>
-                    <p className="font-bold text-lg" style={{ color: 'var(--charcoal)' }}>{fmt(rtoCalc.future_value.at_end_of_recommended_term)}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100" style={{ color: 'var(--slate)' }}>
-                      -{rtoCalc.future_value.total_depreciation_pct}% depreciación
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--ash)' }}>
-                  Tasa de depreciación: {(rtoCalc.future_value.depreciation_rate_annual * 100).toFixed(1)}% anual |
-                  Confianza: <span className={`font-semibold ${rtoCalc.future_value.confidence === 'alta' ? 'text-green-600' : rtoCalc.future_value.confidence === 'media' ? 'text-amber-600' : 'text-red-600'}`}>
-                    {rtoCalc.future_value.confidence}
-                  </span>
-                  {rtoCalc.future_value.similar_houses?.length > 0 && ` (basado en ${rtoCalc.future_value.similar_houses.length} casas similares)`}
-                </p>
-              </div>
               {/* G: Decision — Choose payment and approve/reject */}
               {canReview && (
                 <div className="card-luxury p-5" style={{ borderTop: '3px solid var(--gold-600)' }}>
@@ -2096,30 +1932,6 @@ export default function ApplicationDetailPage() {
 
                   {/* Approve with chosen payment */}
                   <div className="grid md:grid-cols-2 gap-3 mb-4">
-                    {rtoCalc.smart_pricing && (
-                      <button
-                        onClick={() => handleReview('approved', {
-                          monthly_rent: rtoCalc.smart_pricing.smart_payment,
-                          term_months: rtoCalc.recommended?.term_months,
-                          down_payment: rtoCalc.recommended?.down_payment,
-                        })}
-                        disabled={reviewing}
-                        className="p-4 rounded-lg border-2 text-left transition-all hover:shadow-md disabled:opacity-50"
-                        style={{ borderColor: '#7c3aed', backgroundColor: '#faf5ff' }}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold uppercase text-purple-700">Precio Inteligente</span>
-                          {reviewing && <Loader2 className="w-4 h-4 animate-spin text-purple-600" />}
-                        </div>
-                        <p className="text-2xl font-bold text-purple-700">{fmt(rtoCalc.smart_pricing.smart_payment)}/mes</p>
-                        <p className="text-xs text-purple-600 mt-1">
-                          {rtoCalc.recommended?.term_months} meses · Enganche {fmt(rtoCalc.recommended?.down_payment)} · ROI {rtoCalc.smart_pricing.smart_roi_pct}%
-                        </p>
-                        <p className="text-[10px] mt-2" style={{ color: 'var(--ash)' }}>
-                          Cliente ahorra {rtoCalc.smart_pricing.client_saves_pct}% vs su renta actual
-                        </p>
-                      </button>
-                    )}
                     <button
                       onClick={() => handleReview('approved', {
                         monthly_rent: rtoCalc.recommended?.monthly_payment,
@@ -2131,15 +1943,15 @@ export default function ApplicationDetailPage() {
                       style={{ borderColor: 'var(--stone)', backgroundColor: 'var(--ivory, #fafaf5)' }}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold uppercase" style={{ color: 'var(--ash)' }}>Pago Estándar</span>
+                        <span className="text-xs font-bold uppercase" style={{ color: 'var(--ash)' }}>Aprobar con la mensualidad recomendada</span>
                         {reviewing && <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--slate)' }} />}
                       </div>
                       <p className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{fmt(rtoCalc.recommended?.monthly_payment)}/mes</p>
                       <p className="text-xs mt-1" style={{ color: 'var(--slate)' }}>
-                        {rtoCalc.recommended?.term_months} meses · Enganche {fmt(rtoCalc.recommended?.down_payment)} · ROI {rtoCalc.recommended?.roi_maninos_pct}%
+                        {rtoCalc.recommended?.term_months} meses · Enganche {fmt(rtoCalc.recommended?.down_payment)}
                       </p>
                       <p className="text-[10px] mt-2" style={{ color: 'var(--ash)' }}>
-                        Calculado con fórmula estándar de interés
+                        Renta del motor de Capital (margen objetivo {((rtoCalc.renta_margen?.objetivo ?? 0.3) * 100).toFixed(0)}%) dentro de la capacidad del cliente
                       </p>
                     </button>
                   </div>
