@@ -878,6 +878,27 @@ def _fondeo() -> dict:
     return out
 
 
+def _cobranza_por_contrato(contract_ids: list) -> dict:
+    """{contrato: {esperado, cobrado, vencidos, atrasados}} con las mensualidades
+    que vencen hasta hoy. Una pagada sin paid_amount cuenta por su importe."""
+    hoy = date.today().isoformat()
+    out: dict = {}
+    for chunk in _chunks([c for c in contract_ids if c], 100):
+        rows = (sb.table("rto_payments").select("rto_contract_id, amount, paid_amount, status, due_date")
+                .in_("rto_contract_id", chunk).lte("due_date", hoy).execute().data or [])
+        for p in rows:
+            d = out.setdefault(p["rto_contract_id"], {"esperado": 0.0, "cobrado": 0.0, "vencidos": 0, "atrasados": 0})
+            d["esperado"] += float(p.get("amount") or 0)
+            pagado = p.get("paid_amount")
+            if pagado is None and p.get("status") == "paid":
+                pagado = p.get("amount")
+            d["cobrado"] += float(pagado or 0)
+            d["vencidos"] += 1
+            if p.get("status") == "late":
+                d["atrasados"] += 1
+    return out
+
+
 def _renta_y_margen(ev: dict, fondeo: dict) -> dict:
     """Bloque 'Calcular renta y margen' sobre una evaluación de compra."""
     from api.services.market_valuation import semaforo_margen, rentas_por_plazo, fondeo_check
@@ -1045,6 +1066,8 @@ async def price_vs_market_kpi():
         renos = _reno_costs_by_code([(props.get(s.get("property_id")) or {}).get("property_code") for s in sales])
         historico, anuncios = cargar_historico(), _anuncios_comparables()
         contratos = _fetch_contracts([s["rto_contract_id"] for s in sales if s.get("rto_contract_id")])
+        cobranza = _cobranza_por_contrato([s["rto_contract_id"] for s in sales if s.get("rto_contract_id")])
+        from api.services.market_valuation import margen_real
 
         por_casa: dict = {}
         evaluaciones = []
@@ -1056,7 +1079,10 @@ async def price_vs_market_kpi():
                                    renos.get(prop.get("property_code")),
                                    contratos.get(s.get("rto_contract_id")))
             evaluaciones.append(ev)
+            cb = cobranza.get(s.get("rto_contract_id")) or {}
             por_casa[s["id"]] = {
+                "margen_real": margen_real(ev["rentabilidad"]["anual"], cb.get("esperado", 0), cb.get("cobrado", 0)),
+                "cobrado": round(cb.get("cobrado", 0), 2), "esperado": round(cb.get("esperado", 0), 2),
                 "rentabilidad": ev["rentabilidad"]["anual"],
                 "rentabilidad_estado": ev["rentabilidad"]["estado"],
                 "semaforo": semaforo_margen(ev["rentabilidad"]["anual"], fondeo.get("costo")),
@@ -1066,6 +1092,15 @@ async def price_vs_market_kpi():
         kpi = kpi_compra(evaluaciones)
         kpi["costo_fondeo"] = fondeo.get("costo")
         kpi["bajo_fondeo"] = sum(1 for v in por_casa.values() if v["semaforo"] == "rojo")
+        # Margen proyectado vs. real (solo casas con mensualidades ya vencidas)
+        pares = [(v["rentabilidad"], v["margen_real"]) for v in por_casa.values()
+                 if v["rentabilidad"] is not None and v["margen_real"] is not None]
+        import statistics as _st
+        kpi["margen_proyectado_medio"] = round(_st.mean(p for p, _ in pares), 4) if pares else None
+        kpi["margen_real_medio"] = round(_st.mean(r for _, r in pares), 4) if pares else None
+        kpi["casas_con_vencimientos"] = len(pares)
+        esp = sum(v["esperado"] for v in por_casa.values())
+        kpi["cobranza"] = round(sum(v["cobrado"] for v in por_casa.values()) / esp, 4) if esp else None
         return {"ok": True, "kpi": kpi, "fondeo": fondeo, "por_casa": por_casa,
                 "falta_migracion": falta_migracion}
     except Exception as e:
@@ -1097,10 +1132,19 @@ async def get_price_evaluation(sale_id: str):
     reno = _reno_costs_by_code([prop.get("property_code")]).get(prop.get("property_code"))
     ev, val = _evaluacion_de(sale, prop, cargar_historico(), _anuncios_comparables(), manual, reno, contract)
     fondeo = _fondeo()
+    from api.services.market_valuation import margen_real
+    cb = (_cobranza_por_contrato([sale.get("rto_contract_id")]).get(sale.get("rto_contract_id"))
+          if sale.get("rto_contract_id") else None) or {"esperado": 0.0, "cobrado": 0.0, "vencidos": 0, "atrasados": 0}
     return {
         "ok": True,
         "evaluacion": ev,
         "renta_margen": _renta_y_margen(ev, fondeo),
+        "margen_real": {
+            "proyectado": ev["rentabilidad"]["anual"],
+            "real": margen_real(ev["rentabilidad"]["anual"], cb["esperado"], cb["cobrado"]),
+            "esperado": round(cb["esperado"], 2), "cobrado": round(cb["cobrado"], 2),
+            "vencidos": cb["vencidos"], "atrasados": cb["atrasados"],
+        },
         "referencias": _referencias_historicas(_sujeto_valoracion(prop)),
         # Comparador: con qué casas y método se estimó el valor automático
         "automatico": {

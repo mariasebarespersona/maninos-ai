@@ -25,6 +25,7 @@ interface PriceEvaluation {
   automatico: ValorAutomatico
   referencias: Referencias
   renta_margen?: RentaMargen
+  margen_real?: { proyectado: number | null; real: number | null; esperado: number; cobrado: number; vencidos: number; atrasados: number }
   manual: {
     market_value: number | null; source: string | null; market_rent: number | null; rent_source: string | null
     notes: string | null; evaluated_by: string | null; evaluated_at: string
@@ -168,6 +169,15 @@ export default function PriceVsMarketCard({ saleId }: { saleId: string }) {
           {data.renta_margen.semaforo === 'rojo' && <>Margen {pct(r.anual)}: no cubre el costo del fondeo ({pct(data.renta_margen.costo_fondeo)}).</>}
           {data.renta_margen.semaforo === 'amarillo' && <>Margen {pct(r.anual)}: cubre el costo del fondeo ({pct(data.renta_margen.costo_fondeo)}) pero no llega al {pct(data.renta_margen.objetivo)}.</>}
           {data.renta_margen.semaforo === 'verde' && <>Margen {pct(r.anual)}: por encima del fondeo ({pct(data.renta_margen.costo_fondeo)}) y del objetivo.</>}
+        </p>
+      )}
+
+      {data.margen_real && data.margen_real.vencidos > 0 && (
+        <p className="text-sm mb-4" data-testid="eval-margen-real" style={{ color: 'var(--slate)' }}
+           title="Real = proyectado × (cobrado ÷ lo que debía cobrarse hasta hoy según el calendario)">
+          Margen real a la fecha: <strong style={{ color: 'var(--ink)' }}>{pct(data.margen_real.real)}</strong> (proyectado {pct(data.margen_real.proyectado)}) ·
+          cobrado {formatMoney(data.margen_real.cobrado)} de {formatMoney(data.margen_real.esperado)} vencidos
+          {data.margen_real.atrasados > 0 && <> · {data.margen_real.atrasados} mensualidades atrasadas</>}
         </p>
       )}
 

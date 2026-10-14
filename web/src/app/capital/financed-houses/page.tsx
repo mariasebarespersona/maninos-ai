@@ -68,6 +68,8 @@ interface PriceVsMarket {
     mercado_evaluadas: number; por_encima_de_mercado: number
     costo_total_media: number | null; renta_evaluadas: number; renta_por_encima: number
     costo_fondeo?: number | null; bajo_fondeo?: number
+    margen_proyectado_medio?: number | null; margen_real_medio?: number | null
+    casas_con_vencimientos?: number; cobranza?: number | null
   }
   por_casa: Record<string, { rentabilidad: number | null; rentabilidad_estado: string; semaforo?: string; mercado_estado: string }>
 }
@@ -186,6 +188,12 @@ export default function FinancedHousesPage() {
             {pvm.kpi.costo_fondeo != null && (
               <span className="block" data-testid="kpi-bajo-fondeo" style={{ color: (pvm.kpi.bajo_fondeo || 0) > 0 ? 'var(--danger)' : 'var(--success)' }}>
                 <strong>{pvm.kpi.bajo_fondeo || 0}</strong> casas con margen por debajo del costo del fondeo ({pctTxt(pvm.kpi.costo_fondeo)})
+              </span>
+            )}
+            {pvm.kpi.margen_real_medio != null && (
+              <span className="block" data-testid="kpi-margen-real" title="Real = proyectado × (cobrado ÷ lo que debía cobrarse hasta hoy según el calendario)">
+                Margen proyectado {pctTxt(pvm.kpi.margen_proyectado_medio)} · real a la fecha <strong>{pctTxt(pvm.kpi.margen_real_medio)}</strong>
+                {' '}(cobrado el {pctTxt(pvm.kpi.cobranza)} de lo vencido, {pvm.kpi.casas_con_vencimientos} casas)
               </span>
             )}
           </p>

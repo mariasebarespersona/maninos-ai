@@ -165,3 +165,12 @@ def test_fondeo_disponible():
     assert fondeo_check(27000, 3_000_000)["estado"] == "ok"
     assert fondeo_check(27000, 20000)["estado"] == "insuficiente"
     assert fondeo_check(None, 20000)["estado"] == "sin_datos"
+
+
+def test_margen_real_escala_por_cobranza():
+    from api.services.market_valuation import margen_real
+    assert margen_real(0.30, 10000, 10000) == 0.30        # al día
+    assert margen_real(0.30, 10000, 5000) == 0.15         # cobró la mitad de lo vencido
+    assert margen_real(0.30, 10000, 12000) == 0.30        # adelantar no sube el margen
+    assert margen_real(0.30, 0, 0) is None                # aún no vence nada
+    assert margen_real(None, 1000, 500) is None

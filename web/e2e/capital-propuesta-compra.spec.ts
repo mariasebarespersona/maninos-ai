@@ -92,6 +92,27 @@ test.afterAll(async () => {
       await sb.from('properties').delete().eq('id', propId)
     }
     if (clientId) await sb.from('clients').delete().eq('id', clientId)
+    // Cadena del alta manual del test de margen real
+    const mprops = (await sb.from('properties').select('id').eq('property_code', `${PCODE}M`)).data || []
+    for (const { id: mp } of mprops) {
+      for (const ms of (await sb.from('sales').select('id, client_id').eq('property_id', mp)).data || []) {
+        const cids = ((await sb.from('rto_contracts').select('id').eq('sale_id', ms.id)).data || []).map(c => c.id)
+        if (cids.length) {
+          await sb.from('capital_transactions').delete().in('rto_contract_id', cids)
+          await sb.from('capital_invoices').delete().in('rto_contract_id', cids)
+          await sb.from('capital_down_payment_installments').delete().in('contract_id', cids)
+          await sb.from('rto_payments').delete().in('rto_contract_id', cids)
+        }
+        await sb.from('title_transfers').delete().eq('sale_id', ms.id)
+        await sb.from('sales').update({ rto_contract_id: null }).eq('id', ms.id)
+        if (cids.length) await sb.from('rto_contracts').delete().in('id', cids)
+        await sb.from('rto_applications').delete().eq('sale_id', ms.id)
+        await sb.from('notifications').delete().eq('related_entity_id', ms.id)
+        await sb.from('sales').delete().eq('id', ms.id)
+        if (ms.client_id) await sb.from('clients').delete().eq('id', ms.client_id)
+      }
+      await sb.from('properties').delete().eq('id', mp)
+    }
   } catch (e) { console.warn('teardown warning:', e) }
 })
 
@@ -174,4 +195,40 @@ test('Cálculo RTO de Clientes RTO usa el mismo motor (margen vs fondeo)', async
   await page.getByRole('button', { name: /Cálculo RTO/ }).first().click()
   await expect(page.getByTestId('rto-margen-36')).toBeVisible({ timeout: 45000 })
   await expect(page.getByTestId('rto-fondeo')).toContainText('Fondeo disponible')
+})
+
+test('Margen proyectado vs real: la cobranza a la fecha escala el margen', async ({ page, request }) => {
+  test.setTimeout(180000)
+  // Contrato de 24 meses que empezó hace 6; solo los 3 primeros pagos cobrados
+  const hoy = new Date()
+  const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1)
+  const pagadoHasta = new Date(hoy.getFullYear(), hoy.getMonth() - 4, 28)
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const r = await request.post(`${APP_URL}/api/capital/manual-intake`, {
+    data: {
+      client: { name: `E2E Cliente Margen ${PCODE}` },
+      property: { property_code: `${PCODE}M`, address: `E2E Margen Real ${PCODE}`, city: 'Houston' },
+      terms: { purchase_price: 30000, down_payment: 3000, monthly_rent: 1425, term_months: 24,
+        start_date: iso(inicio), payment_due_day: 15 },
+      paid_through: iso(pagadoHasta), down_payment_paid: true,
+    },
+  })
+  expect(r.status(), await r.text()).toBe(200)
+  const saleId = (await r.json()).sale_id
+
+  const ev = await (await request.get(`${APP_URL}/api/capital/financed-houses/${saleId}/price-evaluation`)).json()
+  const mr = ev.margen_real
+  expect(mr.vencidos).toBeGreaterThanOrEqual(5)
+  expect(mr.cobrado).toBeLessThan(mr.esperado)
+  // real = proyectado × cobrado/esperado
+  expect(mr.real).toBeCloseTo(mr.proyectado * (mr.cobrado / mr.esperado), 3)
+  expect(mr.real).toBeLessThan(mr.proyectado)
+
+  await login(page)
+  await page.goto(`${APP_URL}/capital/financed-houses/${saleId}`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await expect(page.getByTestId('eval-margen-real')).toContainText('Margen real a la fecha', { timeout: 45000 })
+  await expect(page.getByTestId('eval-margen-real')).toContainText('mensualidades atrasadas')
+
+  await page.goto(`${APP_URL}/capital/financed-houses`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await expect(page.getByTestId('kpi-margen-real')).toContainText('real a la fecha', { timeout: 45000 })
 })

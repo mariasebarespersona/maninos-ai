@@ -567,3 +567,16 @@ def fondeo_check(saldo_financiado: Optional[float], disponible: Optional[float])
         "disponible": round(float(disponible), 2),
         "despues": round(float(disponible) - float(saldo_financiado), 2),
     }
+
+
+def margen_real(proyectado: Optional[float], esperado: float, cobrado: float) -> Optional[float]:
+    """Margen real a la fecha: el proyectado escalado por la cobranza.
+
+    real = proyectado × (cobrado ÷ esperado), con lo esperado = mensualidades
+    vencidas hasta hoy según el calendario. Pagar al día → real = proyectado;
+    atrasos o impagos lo bajan en la misma proporción. Sin vencimientos aún,
+    no hay real (None). Se limita a ×1: pagar por adelantado no sube el margen.
+    """
+    if proyectado is None or not esperado or esperado <= 0:
+        return None
+    return round(proyectado * min(1.0, max(0.0, cobrado / esperado)), 4)
