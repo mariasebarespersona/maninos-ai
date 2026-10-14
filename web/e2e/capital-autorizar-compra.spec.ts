@@ -83,6 +83,8 @@ test('Comité pide ajustes → se corrige y reenvía → comité aprueba → VoB
   await card.locator('label:text-is("Renta mensual")').locator('xpath=..').locator('input').fill('1425')
   await card.getByTestId('motivo-ajuste').fill('E2E: subir la renta para llegar al 30%')
   await card.getByTestId('confirmar-ajustes').click()
+  // Sale de "Por decidir" y pasa a "Con ajustes"
+  await page.getByRole('button', { name: /^Con ajustes/ }).click()
   await expect(card.getByTestId('estado')).toHaveText('Ajustes pedidos', { timeout: 20000 })
   await expect(card.getByTestId('votos')).toContainText('pide ajustes')
   await expect(card.getByTestId('votos')).toContainText('renta $1,425.00')

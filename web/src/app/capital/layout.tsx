@@ -22,6 +22,8 @@ interface NavSection {
   items: NavItem[]
 }
 
+// Orden por etapas del negocio (Jorge, 2026-10-14): Acquire → Onboard →
+// Manage Portfolio → Deliver → Fund. Títulos de sección en inglés.
 const navigationSections: NavSection[] = [
   {
     title: 'General',
@@ -30,32 +32,23 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Fondeo',
+    title: 'Acquire',
     items: [
-      { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
-      { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
-      { name: 'Pagos a inversionistas', href: '/capital/pagos-inversionistas', icon: CalendarClock },
-      { name: 'Registro de inversionistas', href: '/capital/registro-inversionistas', icon: Table2 },
-    ],
-  },
-  {
-    title: 'Compra',
-    items: [
-      { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
       { name: 'Propuesta de compra', href: '/capital/evaluar-compra', icon: Calculator },
       { name: 'Autorizar compra', href: '/capital/autorizaciones', icon: Gavel },
     ],
   },
   {
-    title: 'Clientes',
+    title: 'Onboard',
     items: [
       { name: 'Clientes RTO', href: '/capital/applications', icon: FileCheck },
       { name: 'Contratos', href: '/capital/contracts', icon: FileSignature },
     ],
   },
   {
-    title: 'Cartera',
+    title: 'Manage Portfolio',
     items: [
+      { name: 'Casas Financiadas', href: '/capital/financed-houses', icon: Home },
       { name: 'Pagos de clientes', href: '/capital/payments', icon: CreditCard },
       { name: 'KPIs', href: '/capital/kpis', icon: Target },
       { name: 'Reportes', href: '/capital/reports', icon: BarChart3 },
@@ -63,11 +56,20 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Entrega',
+    title: 'Deliver',
     items: [
       { name: 'Casas Entregadas', href: '/capital/casas-entregadas', icon: Home },
       { name: 'Lealtad de Cliente', href: '/capital/lealtad-cliente', icon: Heart },
       { name: 'Encuestas', href: '/capital/encuestas', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Fund',
+    items: [
+      { name: 'Seguimiento de inversionistas', href: '/capital/investors', icon: Users },
+      { name: 'Promissory Notes', href: '/capital/promissory-notes', icon: FileText },
+      { name: 'Pagos a inversionistas', href: '/capital/pagos-inversionistas', icon: CalendarClock },
+      { name: 'Registro de inversionistas', href: '/capital/registro-inversionistas', icon: Table2 },
     ],
   },
 ]
