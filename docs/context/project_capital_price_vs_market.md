@@ -15,3 +15,15 @@ Built 2026-10-12 from Maninos' Capital process map (Responsable de Adquisiciones
 - Reality at launch: median annual return 24%, only 11 of 142 contracts reach 30%. 137 of 142 houses have no sqft, so no automatic market value.
 
 Tests: `tests/test_price_vs_market.py`, `web/e2e/capital-price-vs-market.spec.ts`. Related: [[project_capital_financed_houses]].
+
+**Rent & margin / Propuesta de compra (2026-10-14).**
+- **Funding cost** is computed live by `_fondeo()`: the amount-weighted average `annual_rate` of active `promissory_notes` (20.67% at launch). Available funding is the sum of `available_capital` of active investors.
+- **Margin traffic light:**
+  - red: below the funding cost;
+  - amber: covers the funding cost but is below 30%;
+  - green: 30% or more (Jorge's target).
+- **Rents** are suggested at 24, 36 and 48 months (`rentas_por_plazo`).
+- **The "Evaluar compra" page became "Propuesta de compra"** (route `/capital/evaluar-compra`). Proposals are saved server-recalculated in `capital_purchase_proposals` (migration 120) and go through borrador → aprobada / rechazada.
+- **Clientes RTO → Cálculo RTO uses the SAME engine.** It previously had a hardcoded 24% simple rate and terms 24–60.
+- **Still pending definition:** pricing policy, the exact buffer, what to do when funding is short (today it only warns), and "real vs projected margin".
+- E2E: `web/e2e/capital-propuesta-compra.spec.ts`.
