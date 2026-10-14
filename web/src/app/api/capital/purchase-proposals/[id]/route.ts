@@ -15,6 +15,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const res = await fetch(`${API}/api/capital/purchase-proposals/${params.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await request.json()), cache: 'no-store',
+    })
+    return NextResponse.json(await res.json(), { status: res.status })
+  } catch {
+    return NextResponse.json({ ok: false, error: 'Backend unavailable' }, { status: 500 })
+  }
+}
+
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const res = await fetch(`${API}/api/capital/purchase-proposals/${params.id}`, { method: 'DELETE', cache: 'no-store' })

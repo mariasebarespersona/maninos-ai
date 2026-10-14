@@ -155,11 +155,12 @@ test('Propuesta de compra: renta por plazo, margen vs fondeo, fondeo disponible;
   expect(Number(row.costo_fondeo)).toBeGreaterThan(0.1)
   expect(row.created_by).toBe(process.env.E2E_CAPITAL_EMAIL)
 
-  // Aprobar
-  await page.getByTestId(`propuesta-${row.id}`).getByTitle('Aprobar').click()
-  await expect(page.getByTestId(`propuesta-${row.id}`)).toContainText('aprobada', { timeout: 20000 })
-  const row2 = (await sb.from('capital_purchase_proposals').select('status, decided_by').eq('id', row.id).single()).data!
-  expect(row2).toMatchObject({ status: 'aprobada', decided_by: process.env.E2E_CAPITAL_EMAIL })
+  // Ya no se aprueba aquí: se envía al Comité (la decisión es de otros)
+  await page.getByTestId(`enviar-${row.id}`).click()
+  await expect(page.getByTestId(`propuesta-${row.id}`)).toContainText('En comité', { timeout: 20000 })
+  const row2 = (await sb.from('capital_purchase_proposals').select('status, requested_at').eq('id', row.id).single()).data!
+  expect(row2.status).toBe('en_comite')
+  expect(row2.requested_at).toBeTruthy()
 })
 
 test('Cálculo RTO de Clientes RTO usa el mismo motor (margen vs fondeo)', async ({ page, request }) => {

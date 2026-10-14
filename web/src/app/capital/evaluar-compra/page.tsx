@@ -16,7 +16,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Calculator, Loader2, Info, Save, Check, X, Trash2 } from 'lucide-react'
+import { Calculator, Loader2, Info, Save, Send, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useAuth } from '@/components/Auth/AuthProvider'
 import { useToast } from '@/components/ui/Toast'
 import { formatMoney } from '@/lib/money'
@@ -35,8 +36,13 @@ interface Resultado {
 interface Propuesta {
   id: string; origen: string | null; casa: string | null; precio: number; enganche: number
   plazo_meses: number; mensualidad: number; margen_anual: number | null; costo_fondeo: number | null
-  semaforo: string | null; status: 'borrador' | 'aprobada' | 'rechazada'; notas: string | null
+  semaforo: string | null; status: 'borrador' | 'en_comite' | 'en_vobo' | 'ajustes' | 'aprobada' | 'rechazada'; notas: string | null
   created_by: string | null; created_at: string; decided_by: string | null
+}
+
+const ESTADO_TXT: Record<string, string> = {
+  borrador: 'Borrador', en_comite: 'En comité', en_vobo: 'Pendiente de VoBo',
+  ajustes: 'Ajustes pedidos', aprobada: 'Aprobada', rechazada: 'Rechazada',
 }
 
 const COLOR_SEMAFORO: Record<string, string> = { verde: 'var(--success)', amarillo: 'var(--warning, #b7791f)', rojo: 'var(--danger)' }
@@ -151,13 +157,16 @@ export default function EvaluarCompraPage() {
     } catch { toast.error('No se pudo guardar') } finally { setSaving(false) }
   }
 
-  const decidir = async (id: string, status: 'aprobada' | 'rechazada') => {
-    const r = await fetch(`/api/capital/purchase-proposals/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, decided_by: user?.email || null }),
+  // La decisión la toman el Comité y el CEO en "Autorizar compra"; aquí solo
+  // se envía al comité (quien propone no aprueba su propia propuesta).
+  const enviarComite = async (id: string) => {
+    const r = await fetch(`/api/capital/purchase-proposals/${id}/submit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submitted_by: user?.email || null }),
     })
     const d = await r.json()
-    if (!r.ok || !d.ok) { toast.error(d.detail || 'No se pudo actualizar'); return }
+    if (!r.ok || !d.ok) { toast.error(d.detail || 'No se pudo enviar'); return }
+    toast.success('Enviada al Comité de Inversión')
     cargarPropuestas()
   }
 
@@ -348,15 +357,17 @@ export default function EvaluarCompraPage() {
                     <td className="text-right py-1.5 pr-3">{formatMoney(p.precio)}</td>
                     <td className="text-right py-1.5 pr-3">{formatMoney(p.mensualidad)} × {p.plazo_meses}</td>
                     <td className="text-right py-1.5 pr-3 font-semibold" style={{ color: COLOR_SEMAFORO[p.semaforo || ''] || 'var(--ink)' }}>{pct(p.margen_anual)}</td>
-                    <td className="py-1.5 pr-3 capitalize">{p.status}</td>
+                    <td className="py-1.5 pr-3">{ESTADO_TXT[p.status] || p.status}</td>
                     <td className="py-1.5 text-right whitespace-nowrap">
-                      {p.status === 'borrador' ? (
-                        <>
-                          <button onClick={() => decidir(p.id, 'aprobada')} className="btn-ghost btn-sm" title="Aprobar"><Check className="w-4 h-4" /></button>
-                          <button onClick={() => decidir(p.id, 'rechazada')} className="btn-ghost btn-sm" title="Rechazar"><X className="w-4 h-4" /></button>
-                        </>
-                      ) : null}
-                      <button onClick={() => borrar(p.id)} className="btn-ghost btn-sm" title="Borrar"><Trash2 className="w-4 h-4" /></button>
+                      {p.status === 'borrador' && (
+                        <button onClick={() => enviarComite(p.id)} className="btn-ghost btn-sm" title="Enviar al comité" data-testid={`enviar-${p.id}`}><Send className="w-4 h-4" /></button>
+                      )}
+                      {p.status !== 'borrador' && (
+                        <Link href="/capital/autorizaciones" className="text-xs underline" style={{ color: 'var(--gold-700)' }}>Ver</Link>
+                      )}
+                      {p.status === 'borrador' && (
+                        <button onClick={() => borrar(p.id)} className="btn-ghost btn-sm" title="Borrar"><Trash2 className="w-4 h-4" /></button>
+                      )}
                     </td>
                   </tr>
                 ))}
